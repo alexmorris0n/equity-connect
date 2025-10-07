@@ -1,0 +1,193 @@
+# ============================================
+# EQUITY CONNECT - ENVIRONMENT VARIABLES
+# ============================================
+# Copy this file to .env and fill in your actual values
+
+# ============================================
+# CORE SERVICES
+# ============================================
+
+# PropStream API (Lead Sourcing + Skip-trace)
+PROPSTREAM_API_KEY=your_propstream_api_key_here
+PROPSTREAM_BASE_URL=https://api.propstream.com/v1
+
+# ============================================
+# SKIP-TRACE PROVIDERS (Multi-Provider Router)
+# ============================================
+
+# Melissa Data (Priority 1 - Best accuracy)
+MELISSA_API_KEY=your_melissa_api_key_here
+MELISSA_BASE_URL=https://personator.melissadata.net/v3/WEB/ContactVerify
+
+# TrueTrace (Priority 2 - Good balance)
+TRUETRACE_API_KEY=your_truetrace_api_key_here
+TRUETRACE_BASE_URL=https://api.truetrace.com/v1
+
+# Spokeo (Priority 3 - Consumer data focus)
+SPOKEO_API_KEY=your_spokeo_api_key_here
+SPOKEO_BASE_URL=https://api.spokeo.com/v1
+
+# TLO (Priority 4 - Deep skip trace)
+TLO_API_KEY=your_tlo_api_key_here
+TLO_BASE_URL=https://api.tlo.com/v2
+
+# BeenVerified (Priority 5 - Background checks)
+BEENVERIFIED_API_KEY=your_beenverified_api_key_here
+BEENVERIFIED_BASE_URL=https://api.beenverified.com/v1
+
+# Supabase (Database + Real-time)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
+
+
+# People Data Labs (Demographic Data - Optional)
+PDL_API_KEY=your_pdl_api_key_here
+PDL_BASE_URL=https://api.peopledatalabs.com/v5
+
+# ============================================
+# AI SERVICES
+# ============================================
+
+# OpenAI (Persona Assignment & Content)
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4
+OPENAI_ORGANIZATION=your_org_id_here
+
+# ElevenLabs (Voice Generation)
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+ELEVENLABS_BASE_URL=https://api.elevenlabs.io/v1
+
+# ============================================
+# COMMUNICATION PLATFORMS
+# ============================================
+
+# Instantly.ai (Email Campaigns)
+INSTANTLY_API_KEY=your_instantly_api_key_here
+INSTANTLY_BASE_URL=https://api.instantly.ai/api/v1
+INSTANTLY_CAMPAIGN_ID=your_campaign_id_here
+
+# Twilio (SMS & Voice Calls)
+TWILIO_ACCOUNT_SID=your_twilio_account_sid_here
+TWILIO_AUTH_TOKEN=your_twilio_auth_token_here
+TWILIO_PHONE_NUMBER=your_twilio_phone_number_here
+
+# SignalWire (Call Pool Management)
+SIGNALWIRE_PROJECT_ID=your_signalwire_project_id_here
+SIGNALWIRE_API_TOKEN=your_signalwire_api_token_here
+SIGNALWIRE_SPACE_URL=https://your-space.signalwire.com
+
+# ============================================
+# FRONTEND DEPLOYMENT
+# ============================================
+
+# Vercel (Frontend Hosting)
+VERCEL_TOKEN=your_vercel_token_here
+VERCEL_TEAM_ID=your_vercel_team_id_here
+VERCEL_PROJECT_ID=equity-connect-frontend
+VERCEL_URL=your-vercel-app-url-here
+
+# ============================================
+# CALL TRACKING
+# ============================================
+
+# CallRail (Show Verification)
+CALLRAIL_ACCOUNT_ID=your_callrail_account_id_here
+CALLRAIL_API_KEY=your_callrail_api_key_here
+CALLRAIL_BASE_URL=https://api.callrail.com/v2
+
+# ============================================
+# MICROSITE DEPLOYMENT
+# ============================================
+
+# Vercel (Microsite Hosting)
+VERCEL_TOKEN=your_vercel_token_here
+VERCEL_TEAM_ID=your_vercel_team_id_here
+VERCEL_PROJECT_ID=equity-connect-microsites
+
+# Cloudflare (DNS Management)
+CLOUDFLARE_API_TOKEN=your_cloudflare_token_here
+CLOUDFLARE_ZONE_ID=your_zone_id_here
+CLOUDFLARE_DOMAIN=equityconnect.com
+
+# ============================================
+# N8N WORKFLOW ENGINE
+# ============================================
+
+# n8n (Workflow Automation)
+N8N_WEBHOOK_URL=https://your-n8n-instance.com
+N8N_API_KEY=your_n8n_api_key_here
+N8N_BASE_URL=https://your-n8n-instance.com/api/v1
+
+# ============================================
+# SECURITY & COMPLIANCE
+# ============================================
+
+# Encryption
+ENCRYPTION_KEY=your_32_character_encryption_key_here
+JWT_SECRET=your_jwt_secret_here
+
+# Compliance
+TCPA_COMPLIANCE_ENABLED=true
+CCPA_COMPLIANCE_ENABLED=true
+GDPR_COMPLIANCE_ENABLED=true
+
+# ============================================
+# BUSINESS CONFIGURATION
+# ============================================
+
+# Lead Generation
+DAILY_LEAD_TARGET=100
+LEAD_QUALITY_THRESHOLD=70
+EQUITY_MINIMUM=200000
+AGE_MINIMUM=62
+
+# Revenue Settings
+BOOKING_FEE=100
+SHOW_BONUS=400
+REWORK_LEAD_PRICE=25
+BULK_LEAD_DISCOUNT=0.2
+
+# ============================================
+# MONITORING & ALERTS
+# ============================================
+
+# Slack (Notifications)
+SLACK_WEBHOOK_URL=your_slack_webhook_url_here
+SLACK_CHANNEL=#equity-connect-alerts
+
+# Email Alerts
+ALERT_EMAIL=admin@equityconnect.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_password_here
+
+# ============================================
+# DEVELOPMENT & TESTING
+# ============================================
+
+# Environment
+NODE_ENV=production
+LOG_LEVEL=info
+DEBUG_MODE=false
+
+# Testing
+TEST_MODE=false
+MOCK_APIS=false
+SAMPLE_DATA_ENABLED=false
+
+# ============================================
+# BACKUP & RECOVERY
+# ============================================
+
+# Database Backup
+BACKUP_ENABLED=true
+BACKUP_SCHEDULE=0 2 * * *
+BACKUP_RETENTION_DAYS=30
+
+# File Storage
+AWS_ACCESS_KEY_ID=your_aws_access_key_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key_here
+AWS_S3_BUCKET=equity-connect-backups
+AWS_REGION=us-east-1

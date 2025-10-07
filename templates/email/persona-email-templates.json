@@ -1,0 +1,96 @@
+{
+  "persona_templates": {
+    "carlos_maria": {
+      "persona_name": "Carlos/Maria",
+      "cultural_insights": "Latino/Hispanic community, family-oriented, Spanish/English bilingual",
+      "tone": "warm, family-focused, community-oriented",
+      "email_sequence": {
+        "email_1": {
+          "subject": "Hola {{lead_first_name}} - Tu vecino Carlos tiene algo importante que compartir",
+          "body": "Hola {{lead_first_name}},\n\nSoy {{persona_name}}, vivo aquí en {{neighborhood_name}} y he notado tu hermosa casa en {{property_street}}. Como vecino, quería compartir contigo una oportunidad que podría ayudar a tu familia.\n\nMuchos de nuestros vecinos han descubierto cómo acceder al valor de su hogar sin tener que venderlo o hacer pagos mensuales. Es algo llamado hipoteca inversa, y puede ser especialmente útil para familias como la tuya.\n\nHe preparado información específica para nuestro vecindario: {{microsite_url}}\n\n¿Te gustaría que conversemos sobre esto? Estoy aquí para responder cualquier pregunta que tengas.\n\nCon cariño,\n{{persona_name}}\n\nP.S. Si prefieres hablar en español, estaré encantado de hacerlo."
+        },
+        "email_2": {
+          "subject": "{{lead_first_name}}, ¿sabías que tu casa podría darte ${{estimated_equity}}?",
+          "body": "Hola {{lead_first_name}},\n\nEspero que estés bien. Te escribo porque he estado pensando en tu situación y creo que hay algo importante que deberías saber.\n\nTu casa en {{property_street}} tiene un valor estimado de ${{property_value}}, y con una hipoteca inversa, podrías acceder a hasta ${{estimated_equity}} de ese valor. Esto podría significar:\n\n• Pagar deudas médicas o de tarjetas de crédito\n• Ayudar a tus hijos o nietos con la universidad\n• Mejorar tu casa para que sea más cómoda\n• Simplemente tener más tranquilidad financiera\n\nLo mejor de todo: no tienes que hacer pagos mensuales mientras vivas en tu casa.\n\nMás información aquí: {{microsite_url}}\n\n¿Te parece interesante? Me encantaría explicarte más.\n\nUn abrazo,\n{{persona_name}}"
+        },
+        "email_3": {
+          "subject": "La historia de Rosa - una vecina que cambió su vida",
+          "body": "Hola {{lead_first_name}},\n\nTe quería contar sobre Rosa, una vecina nuestra que vive en {{neighborhood_name}} desde hace 25 años. Como muchas de nosotras, Rosa tenía dificultades financieras después de que su esposo falleció.\n\nRosa decidió explorar una hipoteca inversa y ahora puede:\n• Pagar sus facturas médicas sin estrés\n• Ayudar a su hija con el depósito de su primera casa\n• Viajar a visitar a sus nietos en México\n\n'No sabía que esto era posible', me dijo Rosa. 'Ahora tengo la tranquilidad que necesitaba.'\n\nRosa me pidió que compartiera su historia porque sabe que hay otras familias en nuestra comunidad que podrían beneficiarse.\n\n¿Te gustaría saber más sobre cómo esto podría funcionar para ti?\n\n{{microsite_url}}\n\nCon cariño,\n{{persona_name}}"
+        },
+        "email_4": {
+          "subject": "Última oportunidad - {{lead_first_name}}, ¿estás listo para cambiar tu situación?",
+          "body": "Hola {{lead_first_name}},\n\nEsta es mi última carta sobre esta oportunidad. Entiendo que puede ser abrumador pensar en decisiones financieras importantes.\n\nPero déjame ser directo contigo: si tienes 62 años o más y eres dueño de tu casa, podrías estar perdiendo una oportunidad que podría cambiar tu vida.\n\nNo estoy tratando de venderte nada. Solo quiero que tengas la información que necesitas para tomar la mejor decisión para ti y tu familia.\n\nUna conversación de 15 minutos podría aclarar todas tus dudas:\n\n{{microsite_url}}\n\nSi decides que no es para ti, no hay problema. Pero si tienes curiosidad, ¿por qué no averiguar más?\n\nTu vecino,\n{{persona_name}}\n\nP.D. Si no respondes, asumiré que no estás interesado y no te molestaré más."
+        }
+      }
+    },
+    "priya_rahul": {
+      "persona_name": "Priya/Rahul",
+      "cultural_insights": "South Asian community, education-focused, respectful and warm",
+      "tone": "respectful, educational, family-oriented",
+      "email_sequence": {
+        "email_1": {
+          "subject": "Namaste {{lead_first_name}} - A neighbor's respectful inquiry",
+          "body": "Namaste {{lead_first_name}},\n\nI hope this message finds you well. I am {{persona_name}}, and I live here in {{neighborhood_name}}. I have noticed your beautiful home on {{property_street}} and wanted to respectfully share some information that might be of interest to you and your family.\n\nAs someone who values financial security and family well-being, I believe in sharing opportunities that could benefit our community. There is a financial option called a reverse mortgage that many homeowners in our area have found helpful.\n\nI have prepared some information specifically for our neighborhood: {{microsite_url}}\n\nI would be honored to discuss this with you if you are interested. Please know that there is no pressure, and I am here simply to provide information.\n\nWith warm regards,\n{{persona_name}}"
+        },
+        "email_2": {
+          "subject": "{{lead_first_name}}, your home equity could provide ${{estimated_equity}} in financial freedom",
+          "body": "Dear {{lead_first_name}},\n\nI hope you are doing well. I wanted to follow up with some specific information about your property that might interest you.\n\nYour home at {{property_street}} has an estimated value of ${{property_value}}. Through a reverse mortgage, you could potentially access up to ${{estimated_equity}} of that value. This could help with:\n\n• Supporting your children's education or career goals\n• Managing healthcare expenses\n• Home improvements for comfort and safety\n• Creating a financial cushion for unexpected needs\n\nWhat makes this particularly appealing is that you would not need to make monthly payments while living in your home.\n\nMore details are available here: {{microsite_url}}\n\nI would be happy to explain how this works in more detail if you are interested.\n\nRespectfully,\n{{persona_name}}"
+        },
+        "email_3": {
+          "subject": "Success story from our community - Mr. Patel's experience",
+          "body": "Dear {{lead_first_name}},\n\nI wanted to share a story from our community that might be relevant to your situation. Mr. Patel, who lives in {{neighborhood_name}}, was facing some financial challenges after his retirement.\n\nThrough a reverse mortgage, Mr. Patel was able to:\n• Fund his daughter's medical school education\n• Renovate his home to make it more accessible\n• Create a comfortable retirement without financial stress\n\n'This decision allowed me to maintain my dignity and independence while supporting my family,' Mr. Patel shared with me.\n\nHe asked me to share his experience because he believes other families in our community could benefit from knowing about this option.\n\nWould you like to learn more about how this might work for your situation?\n\n{{microsite_url}}\n\nWith respect,\n{{persona_name}}"
+        },
+        "email_4": {
+          "subject": "Final opportunity - {{lead_first_name}}, knowledge is power",
+          "body": "Dear {{lead_first_name}},\n\nThis is my final message about this opportunity. I understand that financial decisions require careful consideration and time.\n\nHowever, I believe that knowledge is power, and if you are 62 or older and own your home, you deserve to know about all your options.\n\nI am not trying to sell you anything. I am simply offering information that could potentially improve your financial situation and quality of life.\n\nA brief 15-minute conversation could answer all your questions:\n\n{{microsite_url}}\n\nIf you decide this is not right for you, I completely understand. But if you are curious, why not learn more?\n\nRespectfully,\n{{persona_name}}\n\nP.S. If I do not hear from you, I will assume you are not interested and will not contact you again."
+        }
+      }
+    },
+    "marcus_latoya": {
+      "persona_name": "Marcus/Latoya",
+      "cultural_insights": "African American community, direct and supportive, community-focused",
+      "tone": "direct, supportive, community-oriented",
+      "email_sequence": {
+        "email_1": {
+          "subject": "Hey {{lead_first_name}} - Your neighbor Marcus has something important to share",
+          "body": "Hey {{lead_first_name}},\n\nWhat's good? I'm {{persona_name}}, and I live right here in {{neighborhood_name}}. I've been noticing your place on {{property_street}} and wanted to reach out about something that could really help you out.\n\nLook, I'm not trying to sell you anything. I'm just a neighbor who found out about this thing called a reverse mortgage, and I think more people in our community should know about it.\n\nBasically, if you're 62 or older and own your home, you might be able to get cash from your house without having to sell it or make monthly payments. I know that sounds too good to be true, but it's real.\n\nI put together some info specifically for our area: {{microsite_url}}\n\nIf you're interested, I'd love to chat about it. No pressure at all - just want to make sure you have the information you need.\n\nTake care,\n{{persona_name}}"
+        },
+        "email_2": {
+          "subject": "{{lead_first_name}}, your house could give you ${{estimated_equity}} - here's how",
+          "body": "Hey {{lead_first_name}},\n\nHope you're doing well. I wanted to follow up with some real numbers about your situation.\n\nYour house on {{property_street}} is worth about ${{property_value}}, and with a reverse mortgage, you could potentially get up to ${{estimated_equity}} of that value. That's real money that could help with:\n\n• Paying off credit card debt or medical bills\n• Helping your kids or grandkids with school\n• Making your house more comfortable and safe\n• Just having some breathing room financially\n\nThe best part? You don't have to make monthly payments while you're living there.\n\nCheck out more details here: {{microsite_url}}\n\nI'm here if you want to talk through how this actually works.\n\nPeace,\n{{persona_name}}"
+        },
+        "email_3": {
+          "subject": "Real talk - here's what happened when Mrs. Johnson did this",
+          "body": "Hey {{lead_first_name}},\n\nI want to tell you about Mrs. Johnson, who lives over on {{neighborhood_name}}. She was in a tough spot after her husband passed - trying to make ends meet on just her social security.\n\nMrs. Johnson decided to look into a reverse mortgage, and now she's able to:\n• Pay her property taxes without stress\n• Help her grandson with college\n• Fix up her house so it's safer for her to live in\n\n'Marcus, I wish I had known about this sooner,' she told me. 'It gave me my dignity back and let me help my family.'\n\nMrs. Johnson asked me to share her story because she knows there are other folks in our community who could benefit from this information.\n\nWant to know more about how this could work for you?\n\n{{microsite_url}}\n\nRespectfully,\n{{persona_name}}"
+        },
+        "email_4": {
+          "subject": "Last chance - {{lead_first_name}}, are you ready to change your situation?",
+          "body": "Hey {{lead_first_name}},\n\nThis is my last message about this opportunity. I get it - financial stuff can be overwhelming and confusing.\n\nBut here's the thing: if you're 62 or older and you own your home, you might be sitting on a goldmine and not even know it.\n\nI'm not trying to pressure you into anything. I just want to make sure you have all the information you need to make the best decision for yourself and your family.\n\nA quick 15-minute conversation could answer all your questions:\n\n{{microsite_url}}\n\nIf you decide this isn't for you, that's cool. But if you're curious, why not find out more?\n\nYour neighbor,\n{{persona_name}}\n\nP.S. If I don't hear back from you, I'll assume you're not interested and won't bother you anymore."
+        }
+      }
+    },
+    "nina_jen": {
+      "persona_name": "Nina/Jen",
+      "cultural_insights": "European/White community, neighborly and approachable",
+      "tone": "friendly, neighborly, informative",
+      "email_sequence": {
+        "email_1": {
+          "subject": "Hi {{lead_first_name}} - Your neighbor Nina has some helpful information",
+          "body": "Hi {{lead_first_name}},\n\nI hope this finds you well! I'm {{persona_name}}, and I live here in {{neighborhood_name}}. I've noticed your lovely home on {{property_street}} and wanted to share some information that might be helpful to you.\n\nAs neighbors, I believe we should look out for each other and share opportunities that could benefit our community. I recently learned about something called a reverse mortgage, and I think it's worth knowing about.\n\nIt's a way for homeowners 62 and older to access the equity in their home without having to sell it or make monthly payments. I know that sounds almost too good to be true, but it's a legitimate financial option.\n\nI've put together some information specifically for our neighborhood: {{microsite_url}}\n\nI'd be happy to discuss this with you if you're interested. No pressure at all - just want to make sure you have the information you need.\n\nBest regards,\n{{persona_name}}"
+        },
+        "email_2": {
+          "subject": "{{lead_first_name}}, your home equity could provide ${{estimated_equity}} in financial flexibility",
+          "body": "Hi {{lead_first_name}},\n\nI hope you're doing well! I wanted to follow up with some specific information about your property that might interest you.\n\nYour home at {{property_street}} has an estimated value of ${{property_value}}. Through a reverse mortgage, you could potentially access up to ${{estimated_equity}} of that value. This could help with:\n\n• Paying off existing debts or medical expenses\n• Supporting your children or grandchildren\n• Home improvements for comfort and safety\n• Creating a financial cushion for retirement\n\nWhat's particularly appealing is that you wouldn't need to make monthly payments while living in your home.\n\nYou can find more details here: {{microsite_url}}\n\nI'd be happy to explain how this works in more detail if you're interested.\n\nWarm regards,\n{{persona_name}}"
+        },
+        "email_3": {
+          "subject": "A success story from our neighborhood - The Andersons' experience",
+          "body": "Hi {{lead_first_name}},\n\nI wanted to share a story from our community that might be relevant to your situation. The Andersons, who live in {{neighborhood_name}}, were facing some financial challenges after Mr. Anderson's retirement.\n\nThrough a reverse mortgage, the Andersons were able to:\n• Fund their granddaughter's college education\n• Renovate their home to make it more accessible\n• Travel to visit their children and grandchildren\n\n'This decision gave us the financial freedom we needed while allowing us to stay in our home,' Mrs. Anderson shared with me.\n\nThey asked me to share their experience because they believe other families in our neighborhood could benefit from knowing about this option.\n\nWould you like to learn more about how this might work for your situation?\n\n{{microsite_url}}\n\nBest regards,\n{{persona_name}}"
+        },
+        "email_4": {
+          "subject": "Final opportunity - {{lead_first_name}}, knowledge is empowering",
+          "body": "Hi {{lead_first_name}},\n\nThis is my final message about this opportunity. I understand that financial decisions require careful consideration and time.\n\nHowever, I believe that knowledge is empowering, and if you're 62 or older and own your home, you deserve to know about all your options.\n\nI'm not trying to sell you anything. I'm simply offering information that could potentially improve your financial situation and quality of life.\n\nA brief 15-minute conversation could answer all your questions:\n\n{{microsite_url}}\n\nIf you decide this isn't right for you, I completely understand. But if you're curious, why not learn more?\n\nWarm regards,\n{{persona_name}}\n\nP.S. If I don't hear from you, I'll assume you're not interested and won't contact you again."
+        }
+      }
+    }
+  }
+}

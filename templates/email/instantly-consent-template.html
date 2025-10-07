@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm Your Interest in Reverse Mortgage Information</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+        .broker-info {
+            background-color: #f3f4f6;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .broker-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 5px;
+        }
+        .broker-company {
+            color: #6b7280;
+            font-size: 14px;
+        }
+        .consent-button {
+            display: inline-block;
+            background-color: #3b82f6;
+            color: white;
+            padding: 16px 32px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            transition: background-color 0.3s;
+        }
+        .consent-button:hover {
+            background-color: #2563eb;
+        }
+        .fallback-text {
+            background-color: #fef3c7;
+            border: 1px solid #f59e0b;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 12px;
+            color: #6b7280;
+            text-align: center;
+        }
+        .disclaimer {
+            background-color: #f9fafb;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .highlight {
+            background-color: #dbeafe;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Equity Connect</div>
+            <p style="margin: 0; color: #6b7280;">Reverse Mortgage Information</p>
+        </div>
+
+        <h1 style="color: #1f2937; margin-bottom: 20px;">Confirm Your Interest</h1>
+        
+        <p>Hello <strong>{{firstName}} {{lastName}}</strong>,</p>
+        
+        <p>Thank you for your interest in reverse mortgage information. To keep you safe and compliant with federal rules, we need your permission to contact you.</p>
+
+        <div class="broker-info">
+            <div class="broker-name">{{broker_name}}</div>
+            <div class="broker-company">Your Reverse Mortgage Specialist</div>
+        </div>
+
+        <p><strong>One-click confirmation:</strong></p>
+        
+        <div style="text-align: center;">
+            <a href="{{consent_url}}" class="consent-button">
+                Yes, you may contact me
+            </a>
+        </div>
+
+        <div class="fallback-text">
+            <strong>Prefer email?</strong> Just reply <span class="highlight">YES</span> and we'll take it from there.
+        </div>
+
+        <div class="disclaimer">
+            <strong>What happens next?</strong><br>
+            • A representative will call you within 24 hours<br>
+            • We'll discuss your specific situation and needs<br>
+            • No obligation - just helpful information<br>
+            • We will not share your information with anyone
+        </div>
+
+        <p style="margin-top: 30px;">
+            <strong>Questions?</strong> Call us at <a href="tel:+14085550000" style="color: #3b82f6;">(408) 555-0000</a> or reply to this email.
+        </p>
+
+        <div class="footer">
+            <p>This email was sent because you requested information about reverse mortgages.</p>
+            <p>Equity Connect | 123 Main Street, San Francisco, CA 94102</p>
+            <p><a href="#" style="color: #6b7280;">Unsubscribe</a> | <a href="#" style="color: #6b7280;">Privacy Policy</a></p>
+        </div>
+    </div>
+</body>
+</html>

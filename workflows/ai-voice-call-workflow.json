@@ -1,0 +1,580 @@
+{
+  "name": "AI Voice Call - Warm Lead Response Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "warm-lead-check-trigger",
+      "name": "Warm Lead Check Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "table": "leads",
+        "filterType": "manual",
+        "conditions": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "warm_lead",
+            "ai_call_status": "pending",
+            "email_response": "positive",
+            "created_at": "={{ $now.minus({hours: 2}) }}"
+          }
+        },
+        "limit": 10
+      },
+      "id": "get-warm-leads",
+      "name": "Get Warm Leads for AI Call",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-phone",
+              "leftValue": "={{ $json.phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "not-called",
+              "leftValue": "={{ $json.ai_call_status }}",
+              "rightValue": "completed",
+              "operator": {
+                "type": "string",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "validate-lead-for-call",
+      "name": "Validate Lead for AI Call",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "table": "personas",
+        "id": "={{ $json.assigned_persona_id }}"
+      },
+      "id": "get-persona-details",
+      "name": "Get Persona Details",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare AI call data with persona adaptation\nconst lead = $input.first().json;\nconst persona = $input.last().json;\n\n// Create personalized call script based on persona\nconst callScript = {\n  \"lead_id\": lead.id,\n  \"phone_number\": lead.phone,\n  \"first_name\": lead.first_name,\n  \"last_name\": lead.last_name,\n  \"property_address\": lead.property_address,\n  \"property_city\": lead.property_city,\n  \"property_state\": lead.property_state,\n  \"estimated_equity\": lead.estimated_equity,\n  \"persona_name\": persona.name,\n  \"persona_heritage\": persona.heritage,\n  \"voice_id\": persona.voice_id_female || persona.voice_id_male,\n  \"greeting\": persona.greeting_female || persona.greeting_male,\n  \"cultural_markers\": persona.cultural_markers,\n  \"trust_builders\": persona.trust_builders,\n  \"neighborhood\": lead.property_city,\n  \"email_response\": lead.email_response,\n  \"call_context\": `Calling ${lead.first_name} who responded positively to our reverse mortgage email. They live in ${lead.property_city}, ${lead.property_state} and have approximately ${lead.estimated_equity} in home equity.`\n};\n\n// Add persona-specific adaptations\nif (persona.heritage === 'Latino/Hispanic') {\n  callScript.persona_adaptations = {\n    \"greeting\": \"Hola, ${lead.first_name}\",\n    \"cultural_references\": [\"familia\", \"comunidad\", \"legacy\", \"herencia\"],\n    \"trust_phrases\": [\n      `Many families in ${lead.property_city} trust me`,\n      \"Como profesional, I understand\",\n      \"I've helped many familias in our community\"\n    ]\n  };\n} else if (persona.heritage === 'South Asian') {\n  callScript.persona_adaptations = {\n    \"greeting\": \"Namaste, ${lead.first_name}\",\n    \"cultural_references\": [\"family honor\", \"generational wealth\", \"community respect\"],\n    \"trust_phrases\": [\n      `Many families in ${lead.property_city} have trusted me`,\n      \"As someone who understands family values\",\n      \"I've helped many families in our community\"\n    ]\n  };\n} else if (persona.heritage === 'African American') {\n  callScript.persona_adaptations = {\n    \"greeting\": \"Hello, ${lead.first_name}, how are you doing today?\",\n    \"cultural_references\": [\"family legacy\", \"community building\", \"wise investments\"],\n    \"trust_phrases\": [\n      `Many families in ${lead.property_city} trust me`,\n      \"As someone who understands family values\",\n      \"I've helped many families in our community\"\n    ]\n  };\n}\n\nreturn { json: callScript };"
+      },
+      "id": "prepare-ai-call-data",
+      "name": "Prepare AI Call Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.vapi.ai/call",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "vapiApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "assistantId",
+              "value": "cc783b73-004f-406e-a047-9783dfa23efe"
+            },
+            {
+              "name": "customer",
+              "value": "={{ JSON.stringify({number: $json.phone_number, name: $json.first_name + ' ' + $json.last_name}) }}"
+            },
+            {
+              "name": "phoneNumberId",
+              "value": "={{ $credentials.vapiApi.phoneNumberId }}"
+            },
+            {
+              "name": "assistantOverrides",
+              "value": "={{ JSON.stringify({firstMessage: 'Thank you for calling My Reverse Options, this is Barbara speaking. How\\'s your day going so far?', model: {model: 'gpt-5-mini', messages: [{role: 'system', content: $json.persona_adapted_prompt}]}}) }}"
+            }
+          ]
+        }
+      },
+      "id": "initiate-vapi-call",
+      "name": "Initiate Vapi AI Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{ $credentials.twilioApi.accountSid }}/Calls.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "From",
+              "value": "={{ $credentials.twilioApi.phoneNumber }}"
+            },
+            {
+              "name": "Url",
+              "value": "https://your-webhook-url.com/ai-call-handler"
+            },
+            {
+              "name": "Method",
+              "value": "POST"
+            },
+            {
+              "name": "StatusCallback",
+              "value": "https://your-webhook-url.com/call-status"
+            },
+            {
+              "name": "StatusCallbackEvent",
+              "value": "completed"
+            }
+          ]
+        }
+      },
+      "id": "initiate-ai-call",
+      "name": "Initiate AI Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "leads",
+        "id": "={{ $json.lead_id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ai_call_status": "initiated",
+            "ai_call_timestamp": "={{ $now }}",
+            "ai_call_sid": "={{ $json.sid }}",
+            "ai_call_voice_id": "={{ $json.voice_id }}"
+          }
+        }
+      },
+      "id": "update-lead-call-status",
+      "name": "Update Lead Call Status",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-call-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "vapi-call-webhook-handler",
+      "name": "Vapi Call Webhook Handler",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Vapi call webhook data\nconst webhookData = $input.first().json;\n\n// Extract structured data from Vapi call result\nconst callResult = {\n  \"call_id\": webhookData.id,\n  \"lead_id\": webhookData.metadata?.lead_id,\n  \"call_status\": webhookData.status,\n  \"call_duration\": webhookData.duration,\n  \"ended_reason\": webhookData.endedReason,\n  \"transcript\": webhookData.transcript,\n  \"structured_data\": webhookData.structuredData,\n  \"summary\": webhookData.summary,\n  \"success_evaluation\": webhookData.successEvaluation\n};\n\n// Extract key information from structured data\nif (callResult.structured_data) {\n  const data = callResult.structured_data;\n  callResult.contact_info = {\n    \"first_name\": data.contact?.first_name,\n    \"last_name\": data.contact?.last_name,\n    \"phone\": data.contact?.phone,\n    \"address\": `${data.contact?.street_address}, ${data.contact?.city}, ${data.contact?.state} ${data.contact?.zipcode}`\n  };\n  \n  callResult.qualification = {\n    \"age_qualified\": data.qualification?.age_62_plus,\n    \"primary_residence\": data.qualification?.primary_residence,\n    \"homeowner\": data.qualification?.homeowner,\n    \"qualified\": data.qualification?.qualified\n  };\n  \n  callResult.financial = {\n    \"home_value\": data.financial?.home_value,\n    \"mortgage_balance\": data.financial?.mortgage_balance,\n    \"calculated_equity\": data.financial?.calculated_equity,\n    \"potential_access\": data.financial?.potential_access_50_pct\n  };\n  \n  callResult.appointment = {\n    \"booked\": data.appointment?.booked,\n    \"day\": data.appointment?.day,\n    \"time\": data.appointment?.time,\n    \"specialist\": data.appointment?.specialist\n  };\n  \n  callResult.outcome = {\n    \"category\": data.outcome?.category,\n    \"lead_quality\": data.outcome?.lead_quality,\n    \"next_action\": data.outcome?.next_action\n  };\n  \n  callResult.quality_metrics = {\n    \"rapport_score\": data.quality?.rapport,\n    \"completeness_score\": data.quality?.completeness,\n    \"compliance_score\": data.quality?.compliance_score,\n    \"senior_friendly_score\": data.quality?.senior_friendly\n  };\n}\n\nreturn { json: callResult };"
+      },
+      "id": "process-vapi-call-result",
+      "name": "Process Vapi Call Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "call-completed",
+              "leftValue": "={{ $json.call_status }}",
+              "rightValue": "ended",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "appointment-booked",
+              "leftValue": "={{ $json.appointment?.booked }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-appointment-success",
+      "name": "Check Appointment Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "leads",
+        "id": "={{ $json.lead_id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ai_call_status": "completed",
+            "ai_call_result": "successful",
+            "ai_call_duration": "={{ $json.call_duration }}",
+            "appointment_scheduled": "true",
+            "appointment_date": "={{ $json.appointment_date }}",
+            "appointment_time": "={{ $json.appointment_time }}",
+            "assigned_broker_id": "={{ $json.assigned_broker_id }}",
+            "status": "appointment_scheduled"
+          }
+        }
+      },
+      "id": "update-successful-call",
+      "name": "Update Successful Call",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "leads",
+        "id": "={{ $json.lead_id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ai_call_status": "completed",
+            "ai_call_result": "unsuccessful",
+            "ai_call_duration": "={{ $json.call_duration }}",
+            "status": "ai_call_failed",
+            "next_action": "human_follow_up"
+          }
+        }
+      },
+      "id": "update-failed-call",
+      "name": "Update Failed Call",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [680, 700]
+    },
+    {
+      "parameters": {
+        "url": "https://api.instantly.ai/api/v1/campaigns/send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "instantlyApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "campaign_id",
+              "value": "ai_call_follow_up"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "name": "subject",
+              "value": "Following up on our call - Reverse Mortgage Information"
+            },
+            {
+              "name": "html",
+              "value": "={{ $json.follow_up_template }}"
+            }
+          ]
+        }
+      },
+      "id": "send-follow-up-email",
+      "name": "Send Follow-up Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "call-analytics-trigger",
+      "name": "Call Analytics Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 900]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "table": "leads",
+        "filterType": "manual",
+        "conditions": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ai_call_status": "completed",
+            "ai_call_timestamp": "={{ $now.minus({days: 1}) }}"
+          }
+        }
+      },
+      "id": "get-call-analytics",
+      "name": "Get Call Analytics",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [460, 900]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate AI call performance metrics\nconst calls = $input.all();\n\nconst analytics = {\n  \"total_calls\": calls.length,\n  \"successful_calls\": calls.filter(call => call.json.ai_call_result === 'successful').length,\n  \"failed_calls\": calls.filter(call => call.json.ai_call_result === 'unsuccessful').length,\n  \"average_duration\": calls.reduce((sum, call) => sum + (call.json.ai_call_duration || 0), 0) / calls.length,\n  \"appointment_rate\": calls.filter(call => call.json.appointment_scheduled === true).length / calls.length,\n  \"success_rate\": calls.filter(call => call.json.ai_call_result === 'successful').length / calls.length\n};\n\n// Calculate by persona\nconst personaStats = {};\ncalls.forEach(call => {\n  const persona = call.json.assigned_persona_id;\n  if (!personaStats[persona]) {\n    personaStats[persona] = {\n      \"total_calls\": 0,\n      \"successful_calls\": 0,\n      \"appointment_rate\": 0\n    };\n  }\n  personaStats[persona].total_calls++;\n  if (call.json.ai_call_result === 'successful') {\n    personaStats[persona].successful_calls++;\n  }\n  if (call.json.appointment_scheduled === true) {\n    personaStats[persona].appointment_rate++;\n  }\n});\n\n// Calculate rates\nObject.keys(personaStats).forEach(persona => {\n  const stats = personaStats[persona];\n  stats.success_rate = stats.successful_calls / stats.total_calls;\n  stats.appointment_rate = stats.appointment_rate / stats.total_calls;\n});\n\nanalytics.persona_performance = personaStats;\n\nreturn { json: analytics };"
+      },
+      "id": "calculate-call-metrics",
+      "name": "Calculate Call Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 900]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "table": "ai_call_analytics",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ $now }}",
+            "total_calls": "={{ $json.total_calls }}",
+            "successful_calls": "={{ $json.successful_calls }}",
+            "failed_calls": "={{ $json.failed_calls }}",
+            "average_duration": "={{ $json.average_duration }}",
+            "appointment_rate": "={{ $json.appointment_rate }}",
+            "success_rate": "={{ $json.success_rate }}",
+            "persona_performance": "={{ JSON.stringify($json.persona_performance) }}"
+          }
+        }
+      },
+      "id": "save-call-analytics",
+      "name": "Save Call Analytics",
+      "type": "n8n-nodes-base.softr",
+      "typeVersion": 1,
+      "position": [900, 900]
+    }
+  ],
+  "connections": {
+    "warm-lead-check-trigger": {
+      "main": [
+        [
+          {
+            "node": "get-warm-leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-warm-leads": {
+      "main": [
+        [
+          {
+            "node": "validate-lead-for-call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate-lead-for-call": {
+      "main": [
+        [
+          {
+            "node": "get-persona-details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-persona-details": {
+      "main": [
+        [
+          {
+            "node": "prepare-ai-call-data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-ai-call-data": {
+      "main": [
+        [
+          {
+            "node": "generate-ai-voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "prepare-ai-call-data": {
+      "main": [
+        [
+          {
+            "node": "initiate-vapi-call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "initiate-vapi-call": {
+      "main": [
+        [
+          {
+            "node": "update-lead-call-status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "vapi-call-webhook-handler": {
+      "main": [
+        [
+          {
+            "node": "process-vapi-call-result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "process-vapi-call-result": {
+      "main": [
+        [
+          {
+            "node": "check-appointment-success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-appointment-success": {
+      "main": [
+        [
+          {
+            "node": "update-successful-call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "update-failed-call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update-failed-call": {
+      "main": [
+        [
+          {
+            "node": "send-follow-up-email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-analytics-trigger": {
+      "main": [
+        [
+          {
+            "node": "get-call-analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-call-analytics": {
+      "main": [
+        [
+          {
+            "node": "calculate-call-metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "calculate-call-metrics": {
+      "main": [
+        [
+          {
+            "node": "save-call-analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T10:00:00.000Z",
+  "versionId": "1"
+}

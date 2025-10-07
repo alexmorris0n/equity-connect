@@ -1,0 +1,221 @@
+{
+  "base_microsite_structure": {
+    "domain_configuration": {
+      "subdomain": "{neighborhood-slug}",
+      "custom_domain": "{neighborhood-slug}.equityconnect.com",
+      "ssl_enabled": true,
+      "cdn_enabled": true
+    },
+    "seo_configuration": {
+      "title": "{persona.name} - {neighborhood} Reverse Mortgage Specialist",
+      "description": "Unlock up to ${avgEquity} from your {neighborhood} home. Trusted by {communityReference} families since 2020.",
+      "keywords": ["reverse mortgage", "{neighborhood}", "home equity", "{persona.heritage} families"],
+      "og_image": "/images/personas/{persona.id}/og-image.jpg",
+      "og_title": "{persona.name} - {neighborhood} Reverse Mortgage Expert",
+      "og_description": "Trusted by {count} {culturalReference} families in your neighborhood"
+    },
+    "hero_section": {
+      "headline": "{persona.name} Helps {neighborhood} Homeowners Access Tax-Free Cash",
+      "subheadline": "Trusted by {count} {culturalReference} families in your neighborhood",
+      "hero_image": "/images/neighborhoods/{neighborhood-slug}-hero.jpg",
+      "persona_image": "/images/personas/{persona.id}/professional.jpg",
+      "cta": {
+        "primary": "Calculate Your Equity",
+        "secondary": "Schedule a Call",
+        "primary_url": "#calculator",
+        "secondary_url": "#schedule"
+      }
+    },
+    "trust_signals": {
+      "licenses": ["NMLS #123456", "CA DRE #789012"],
+      "certifications": ["Certified Reverse Mortgage Professional", "Member, {culturalOrganization}"],
+      "awards": ["2024 Top Reverse Mortgage Advisor", "{neighborhood} Business Excellence"],
+      "testimonial_count": "{count} Happy Families Helped",
+      "years_in_business": "15+ Years",
+      "google_rating": "4.9/5 stars"
+    },
+    "calculator_configuration": {
+      "default_values": {
+        "home_value": "{propertyValue}",
+        "age": "{estimatedAge}",
+        "zip_code": "{zipCode}",
+        "loan_balance": "{currentLoanBalance}"
+      },
+      "customization": {
+        "accent_color": "{culturalColorScheme}",
+        "language": "{primaryLanguage}",
+        "currency_format": "USD",
+        "theme": "{persona.theme}"
+      },
+      "results_display": {
+        "show_monthly_payment": false,
+        "show_lump_sum": true,
+        "show_line_of_credit": true,
+        "show_tenure_payment": true
+      }
+    },
+    "testimonials": [
+      {
+        "name": "{culturallyMatchedName1}",
+        "location": "{nearbyNeighborhood}",
+        "image": "/images/testimonials/{persona.id}-1.jpg",
+        "quote": "Culturally relevant success story...",
+        "amount": "$127,000",
+        "use_case": "Helped grandchildren with college",
+        "rating": 5
+      },
+      {
+        "name": "{culturallyMatchedName2}",
+        "location": "{neighborhood}",
+        "image": "/images/testimonials/{persona.id}-2.jpg",
+        "quote": "Trust-building testimonial...",
+        "amount": "$195,000",
+        "use_case": "Medical expenses and home renovation",
+        "rating": 5
+      }
+    ],
+    "neighborhood_section": {
+      "headline": "Why {neighborhood} Homeowners Choose {persona.name}",
+      "stats": {
+        "avg_home_value": "${avgValue}",
+        "appreciation": "+{rate}% this year",
+        "avg_equity_available": "${avgEquity}",
+        "families_helped": "{count} families"
+      },
+      "landmarks": [
+        {
+          "name": "{landmark1}",
+          "distance": "0.5 miles",
+          "image": "/images/landmarks/{landmark1-slug}.jpg"
+        }
+      ],
+      "map": {
+        "center": "{lat,lng}",
+        "zoom": 14,
+        "markers": ["client-testimonials", "local-office"]
+      }
+    },
+    "educational_content": {
+      "videos": [
+        {
+          "title": "How Reverse Mortgages Work",
+          "url": "https://youtube.com/...",
+          "thumbnail": "/images/video-thumb-1.jpg",
+          "duration": "3:45",
+          "language": "{primaryLanguage}"
+        }
+      ],
+      "faqs": [
+        {
+          "question": "Will I still own my home?",
+          "answer": "Yes! You retain 100% ownership...",
+          "icon": "home"
+        },
+        {
+          "question": "Are there monthly payments?",
+          "answer": "No monthly mortgage payments required...",
+          "icon": "calendar"
+        }
+      ],
+      "guides": [
+        {
+          "title": "Reverse Mortgage Guide for {culturalGroup} Families",
+          "pdf": "/downloads/{persona.id}-guide.pdf",
+          "pages": 12,
+          "language": "{primaryLanguage}"
+        }
+      ]
+    },
+    "call_to_actions": {
+      "sticky": {
+        "desktop": "Calculate Your Equity Now",
+        "mobile": "Quick Calculator"
+      },
+      "exit": {
+        "headline": "Wait! Get Your Free {neighborhood} Home Equity Report",
+        "subheadline": "See exactly how much tax-free cash you could access"
+      },
+      "scroll": {
+        "percentage": 50,
+        "message": "👋 Hi! I'm {persona.firstName}. Any questions?"
+      }
+    },
+    "tracking": {
+      "gtm": "GTM-XXXXX",
+      "fb_pixel": "1234567890",
+      "call_rail": {
+        "swap": true,
+        "number": "555-123-4567",
+        "pool": "{neighborhood}-pool"
+      },
+      "hotjar": "1234567",
+      "mixpanel": "abc123"
+    },
+    "ab_testing": {
+      "variants": {
+        "hero": ["trust-focused", "value-focused", "urgency-focused"],
+        "calculator": ["embedded", "modal", "separate-page"],
+        "testimonials": ["carousel", "grid", "featured"]
+      }
+    }
+  },
+  "persona_specific_configs": {
+    "carlos_maria_rodriguez": {
+      "cultural_color_scheme": "#E74C3C",
+      "primary_language": "Spanish",
+      "cultural_organization": "Hispanic Chamber of Commerce",
+      "theme": "warm_family",
+      "local_references": ["mercado", "iglesia", "parque"],
+      "trust_builders": [
+        "Mi abuela always said...",
+        "Como padre de familia, I understand",
+        "Many familias in our community trust me"
+      ]
+    },
+    "priya_rahul_patel": {
+      "cultural_color_scheme": "#F39C12",
+      "primary_language": "English",
+      "cultural_organization": "Indian Business Association",
+      "theme": "professional_warm",
+      "local_references": ["temple", "community center", "restaurant"],
+      "trust_builders": [
+        "Many families from our community",
+        "As someone who values family legacy",
+        "Building generational wealth"
+      ]
+    },
+    "marcus_latoya_washington": {
+      "cultural_color_scheme": "#3498DB",
+      "primary_language": "English",
+      "cultural_organization": "African American Chamber",
+      "theme": "strong_community",
+      "local_references": ["church", "community center", "barbershop"],
+      "trust_builders": [
+        "I've helped many families in our community",
+        "Building Black wealth matters",
+        "Your home is your biggest asset"
+      ]
+    }
+  },
+  "deployment_configuration": {
+    "vercel_setup": {
+      "project_name": "equity-connect-microsites",
+      "framework": "nextjs",
+      "build_command": "npm run build",
+      "output_directory": "out",
+      "install_command": "npm install"
+    },
+    "environment_variables": {
+      "NEXT_PUBLIC_PERSONA_ID": "{persona_id}",
+      "NEXT_PUBLIC_NEIGHBORHOOD": "{neighborhood}",
+      "NEXT_PUBLIC_API_ENDPOINT": "https://api.equityconnect.com",
+      "NEXT_PUBLIC_TRACKING_ID": "{callrail_id}",
+      "NEXT_PUBLIC_GTM_ID": "GTM-XXXXX"
+    },
+    "dns_configuration": {
+      "wildcard_domain": "*.equityconnect.com",
+      "ssl_certificate": "wildcard_ssl",
+      "cdn_provider": "cloudflare"
+    }
+  }
+}

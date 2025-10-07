@@ -1,0 +1,256 @@
+{
+  "broker_acquisition_templates": {
+    "initial_outreach": {
+      "subject": "Exclusive Reverse Mortgage Leads - {{broker_name}}",
+      "html": `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reverse Mortgage Lead Partnership</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Exclusive Reverse Mortgage Leads</h1>
+            <p style="color: white; margin: 10px 0 0 0; font-size: 16px;">Pre-qualified, culturally matched, show-verified</p>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
+            <h2 style="color: #2c3e50; margin-top: 0;">Hi {{broker_name}},</h2>
+            
+            <p>I'm reaching out because I noticed you specialize in reverse mortgages in {{location}}.</p>
+            
+            <p>I run a lead generation company that provides <strong>pre-qualified reverse mortgage leads</strong> to licensed brokers like yourself.</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #667eea;">
+              <h3 style="color: #2c3e50; margin-top: 0;">Our leads are:</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li>✅ <strong>Age 62+</strong> with high home equity ($200k+)</li>
+                <li>✅ <strong>Pre-qualified</strong> and culturally matched</li>
+                <li>✅ <strong>Booked appointments</strong> with show verification</li>
+                <li>✅ <strong>$100-200 per booking</strong>, $400 show bonus</li>
+                <li>✅ <strong>70%+ show rates</strong> with CallRail verification</li>
+              </ul>
+            </div>
+            
+            <p>We use AI-powered persona assignment to match leads with culturally relevant brokers, significantly improving conversion rates.</p>
+            
+            <div style="background: #e8f5e8; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #28a745;">
+              <h3 style="color: #155724; margin-top: 0;">Recent Success:</h3>
+              <p style="margin: 0; color: #155724;"><strong>Broker in {{location}}</strong> closed 8 loans last month using our leads, generating $64,000 in commissions.</p>
+            </div>
+            
+            <p>Would you be interested in a <strong>15-minute call</strong> to discuss how this could help your business?</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://calendly.com/equityconnect/15min" style="background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Schedule 15-Minute Call</a>
+            </div>
+            
+            <p>Or simply reply to this email and I'll get back to you within 2 hours.</p>
+            
+            <p>Best regards,<br>
+            <strong>Alex</strong><br>
+            Equity Connect Lead Generation<br>
+            📞 (555) 123-4567<br>
+            📧 alex@equityconnect.com</p>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; font-size: 14px; color: #6c757d;">
+            <p style="margin: 0;">This email was sent to {{broker_name}} at {{company}} because you're a licensed reverse mortgage broker in {{location}}.</p>
+            <p style="margin: 10px 0 0 0;"><a href="{{unsubscribe_url}}" style="color: #667eea;">Unsubscribe</a> | <a href="{{privacy_url}}" style="color: #667eea;">Privacy Policy</a></p>
+          </div>
+        </body>
+        </html>
+      `
+    },
+    "follow_up": {
+      "subject": "Quick question about your reverse mortgage business",
+      "html": `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Quick Question</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f8f9fa; padding: 25px; border-radius: 8px;">
+            <h2 style="color: #2c3e50; margin-top: 0;">Hi {{broker_name}},</h2>
+            
+            <p>I sent you an email a few days ago about reverse mortgage leads, but I wanted to follow up with a quick question:</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #667eea;">
+              <h3 style="color: #2c3e50; margin-top: 0;">What's your biggest challenge with reverse mortgage leads right now?</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li>❓ Finding qualified prospects (age 62+, high equity)</li>
+                <li>❓ Getting leads to actually show up for appointments</li>
+                <li>❓ Converting leads into closed loans</li>
+                <li>❓ Competing with other brokers for the same leads</li>
+              </ul>
+            </div>
+            
+            <p>I ask because our system solves all of these problems:</p>
+            
+            <ul style="margin: 0; padding-left: 20px;">
+              <li>✅ <strong>Pre-qualified leads</strong> - Age 62+, $200k+ equity, owner-occupied</li>
+              <li>✅ <strong>70%+ show rates</strong> - CallRail verification, cultural matching</li>
+              <li>✅ <strong>Higher conversion</strong> - AI personas, personalized approach</li>
+              <li>✅ <strong>Exclusive leads</strong> - Not sold to multiple brokers</li>
+            </ul>
+            
+            <p>If any of these challenges resonate with you, I'd love to show you how we can help.</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://calendly.com/equityconnect/15min" style="background: #667eea; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Schedule 15-Minute Call</a>
+            </div>
+            
+            <p>Or just reply with your biggest challenge and I'll send you a personalized solution.</p>
+            
+            <p>Best,<br>
+            <strong>Alex</strong><br>
+            Equity Connect</p>
+          </div>
+        </body>
+        </html>
+      `
+    },
+    "retention": {
+      "subject": "How can we help you succeed with reverse mortgage leads?",
+      "html": `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Broker Success Support</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: #f8f9fa; padding: 25px; border-radius: 8px;">
+            <h2 style="color: #2c3e50; margin-top: 0;">Hi {{broker_name}},</h2>
+            
+            <p>I noticed you haven't been as active with our leads recently, and I want to make sure we're providing the support you need to succeed.</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #ffc107;">
+              <h3 style="color: #856404; margin-top: 0;">Your Recent Performance:</h3>
+              <ul style="margin: 0; padding-left: 20px; color: #856404;">
+                <li>📊 <strong>Appointments:</strong> {{monthly_appointments}} this month</li>
+                <li>📊 <strong>Shows:</strong> {{monthly_shows}} this month</li>
+                <li>📊 <strong>Conversion Rate:</strong> {{conversion_rate}}%</li>
+                <li>📊 <strong>Performance Score:</strong> {{performance_score}}/10</li>
+              </ul>
+            </div>
+            
+            <p>I'm here to help you improve these numbers. Let's identify what's working and what we can optimize:</p>
+            
+            <div style="background: #e8f5e8; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #28a745;">
+              <h3 style="color: #155724; margin-top: 0;">How We Can Help:</h3>
+              <ul style="margin: 0; padding-left: 20px; color: #155724;">
+                <li>🎯 <strong>Lead Quality Review</strong> - Analyze your lead performance</li>
+                <li>📞 <strong>Call Script Optimization</strong> - Improve your conversion rates</li>
+                <li>📊 <strong>Performance Coaching</strong> - One-on-one success strategies</li>
+                <li>🔄 <strong>Lead Routing Adjustment</strong> - Better match your expertise</li>
+              </ul>
+            </div>
+            
+            <p>I'd love to schedule a 15-minute call to discuss how we can help you succeed.</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://calendly.com/equityconnect/15min" style="background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Schedule Success Call</a>
+            </div>
+            
+            <p>Your success is our success. Let's work together to improve your results.</p>
+            
+            <p>Best regards,<br>
+            <strong>Alex</strong><br>
+            Equity Connect<br>
+            📞 (555) 123-4567</p>
+          </div>
+        </body>
+        </html>
+      `
+    },
+    "referral_request": {
+      "subject": "Referral Bonus - Help us find great reverse mortgage brokers",
+      "html": `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Referral Bonus Program</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Referral Bonus Program</h1>
+            <p style="color: white; margin: 10px 0 0 0; font-size: 16px;">Earn $500 for every broker you refer</p>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 25px; border-radius: 8px;">
+            <h2 style="color: #2c3e50; margin-top: 0;">Hi {{broker_name}},</h2>
+            
+            <p>You've been doing great with our leads, and I'd love to reward you for helping us grow our network of quality brokers.</p>
+            
+            <div style="background: white; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #28a745;">
+              <h3 style="color: #155724; margin-top: 0;">Referral Bonus Program:</h3>
+              <ul style="margin: 0; padding-left: 20px; color: #155724;">
+                <li>💰 <strong>$500 bonus</strong> for every broker you refer</li>
+                <li>💰 <strong>$200 bonus</strong> when they complete their first month</li>
+                <li>💰 <strong>$100 bonus</strong> for every 10 leads they process</li>
+                <li>💰 <strong>No limit</strong> on referrals or bonuses</li>
+              </ul>
+            </div>
+            
+            <p>We're looking for brokers who:</p>
+            <ul style="margin: 0; padding-left: 20px;">
+              <li>✅ Are licensed reverse mortgage brokers</li>
+              <li>✅ Have 2+ years of experience</li>
+              <li>✅ Are committed to quality service</li>
+              <li>✅ Want to grow their business</li>
+            </ul>
+            
+            <p>Know any brokers who might be interested? Here's how to refer them:</p>
+            
+            <div style="background: #e8f5e8; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #28a745;">
+              <h3 style="color: #155724; margin-top: 0;">How to Refer:</h3>
+              <ol style="margin: 0; padding-left: 20px; color: #155724;">
+                <li>Send them this link: <strong>equityconnect.com/referral/{{broker_name}}</strong></li>
+                <li>Or forward this email to them</li>
+                <li>When they sign up, mention your name</li>
+                <li>You'll get your bonus within 30 days</li>
+              </ol>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://equityconnect.com/referral/{{broker_name}}" style="background: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">Get Your Referral Link</a>
+            </div>
+            
+            <p>Thanks for being part of our success!</p>
+            
+            <p>Best regards,<br>
+            <strong>Alex</strong><br>
+            Equity Connect</p>
+          </div>
+        </body>
+        </html>
+      `
+    }
+  },
+  "linkedin_templates": {
+    "connection_request": "Hi {{broker_name}}, I'd love to connect with other reverse mortgage professionals in {{location}}.",
+    "follow_up_message": "Hi {{broker_name}}, I help reverse mortgage brokers get more qualified leads. Would you be interested in learning more?",
+    "referral_request": "Hi {{broker_name}}, I'm looking for quality reverse mortgage brokers to partner with. Know anyone who might be interested?"
+  },
+  "phone_scripts": {
+    "initial_call": {
+      "opening": "Hi {{broker_name}}, I'm calling because I help reverse mortgage brokers get more qualified leads.",
+      "value_prop": "Our leads are pre-qualified, culturally matched, and come with show verification.",
+      "close": "Would you be interested in a 15-minute call to discuss how this could help your business?"
+    },
+    "follow_up_call": {
+      "opening": "Hi {{broker_name}}, I sent you an email about reverse mortgage leads. Did you get a chance to review it?",
+      "value_prop": "I wanted to follow up because I think our leads could really help your business grow.",
+      "close": "Would you be available for a quick 15-minute call this week?"
+    }
+  }
+}

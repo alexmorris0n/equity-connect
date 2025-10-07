@@ -1,0 +1,363 @@
+{
+  "name": "Equity Connect - Error Handling & Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "error-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "error-webhook",
+      "name": "Error Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "error-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "critical-error",
+              "leftValue": "={{$json.error_level}}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "error-level-filter",
+      "name": "Filter Critical Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.slack.com/api/chat.postMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "channel",
+              "value": "#equity-connect-alerts"
+            },
+            {
+              "name": "text",
+              "value": "🚨 CRITICAL ERROR in Equity Connect Workflow\n\nError: {{$json.error_message}}\nWorkflow: {{$json.workflow_name}}\nNode: {{$json.node_name}}\nTime: {{$json.timestamp}}\nLead ID: {{$json.lead_id}}\n\nImmediate attention required!"
+            },
+            {
+              "name": "username",
+              "value": "Equity Connect Monitor"
+            },
+            {
+              "name": "icon_emoji",
+              "value": ":warning:"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "slack-critical-alert",
+      "name": "Slack Critical Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$credentials.twilioApi.accountSid}}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "{{$json.emergency_phone}}"
+            },
+            {
+              "name": "From",
+              "value": "{{$credentials.twilioApi.phoneNumber}}"
+            },
+            {
+              "name": "Body",
+              "value": "CRITICAL ERROR: Equity Connect workflow failure. Error: {{$json.error_message}}. Check Slack for details."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sms-emergency-alert",
+      "name": "SMS Emergency Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.gohighlevel.com/v1/contacts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "goHighLevelApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "firstName",
+              "value": "Error"
+            },
+            {
+              "name": "lastName",
+              "value": "Log"
+            },
+            {
+              "name": "email",
+              "value": "errors@equityconnect.com"
+            },
+            {
+              "name": "customFields",
+              "value": "={{JSON.stringify({error_type: $json.error_type, workflow: $json.workflow_name, lead_id: $json.lead_id, timestamp: $json.timestamp, error_message: $json.error_message})}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-error-to-crm",
+      "name": "Log Error to CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.datadog.com/api/v1/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "datadogApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "Equity Connect Workflow Error"
+            },
+            {
+              "name": "text",
+              "value": "{{$json.error_message}}"
+            },
+            {
+              "name": "alert_type",
+              "value": "{{$json.error_level}}"
+            },
+            {
+              "name": "tags",
+              "value": "workflow:{{$json.workflow_name}},node:{{$json.node_name}},lead_id:{{$json.lead_id}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "datadog-logging",
+      "name": "Datadog Logging",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "retry-eligible",
+              "leftValue": "={{$json.error_type}}",
+              "rightValue": "api_timeout",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "retry-check",
+      "name": "Check if Retry Eligible",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "minutes"
+      },
+      "id": "retry-delay",
+      "name": "Retry Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.retry_url}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "{{$json.retry_auth_type}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": "={{$json.retry_parameters}}"
+        },
+        "options": {}
+      },
+      "id": "retry-request",
+      "name": "Retry Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.gohighlevel.com/v1/contacts/{{$json.lead_id}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "goHighLevelApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customFields",
+              "value": "={{JSON.stringify({workflow_status: 'failed', error_count: $json.error_count + 1, last_error: $json.error_message, last_error_time: $json.timestamp})}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-lead-status",
+      "name": "Update Lead Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "error-webhook": {
+      "main": [
+        [
+          {
+            "node": "error-level-filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "error-level-filter": {
+      "main": [
+        [
+          {
+            "node": "slack-critical-alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "slack-critical-alert": {
+      "main": [
+        [
+          {
+            "node": "sms-emergency-alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "sms-emergency-alert": {
+      "main": [
+        [
+          {
+            "node": "log-error-to-crm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "log-error-to-crm": {
+      "main": [
+        [
+          {
+            "node": "datadog-logging",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "datadog-logging": {
+      "main": [
+        [
+          {
+            "node": "retry-check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "retry-check": {
+      "main": [
+        [
+          {
+            "node": "retry-delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "retry-delay": {
+      "main": [
+        [
+          {
+            "node": "retry-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "retry-request": {
+      "main": [
+        [
+          {
+            "node": "update-lead-status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

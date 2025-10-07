@@ -1,0 +1,217 @@
+version: '3.8'
+
+# ================================================
+# EQUITY CONNECT - LOCAL DEVELOPMENT STACK
+# ================================================
+# Run: docker-compose up -d
+# Stop: docker-compose down
+# Logs: docker-compose logs -f
+# ================================================
+
+services:
+  # ================================================
+  # PostgreSQL Database
+  # ================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: equity-postgres
+    environment:
+      POSTGRES_DB: equity_connect
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database-setup.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - equity-network
+
+  # ================================================
+  # Redis (Caching & Queue)
+  # ================================================
+  redis:
+    image: redis:7-alpine
+    container_name: equity-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - equity-network
+
+  # ================================================
+  # n8n Workflow Automation
+  # ================================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: equity-n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_WEBHOOK_URL=http://localhost:5678
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=equity_connect
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=postgres_dev_password
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-daily-lead-workflow.json:/home/node/.n8n/workflows/daily-lead-workflow.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - equity-network
+
+  # ================================================
+  # Webhook Handler Server
+  # ================================================
+  webhook-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.webhook
+    container_name: equity-webhooks
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - SUPABASE_URL=${SUPABASE_URL:-http://postgres:5432}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - INSTANTLY_WEBHOOK_SECRET=${INSTANTLY_WEBHOOK_SECRET}
+      - VAPI_WEBHOOK_SECRET=${VAPI_WEBHOOK_SECRET}
+      - CALENDLY_WEBHOOK_SECRET=${CALENDLY_WEBHOOK_SECRET}
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./webhook-server.js:/app/server.js:ro
+      - ./package.json:/app/package.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - equity-network
+
+  # ================================================
+  # Monitoring Dashboard
+  # ================================================
+  monitoring:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitoring
+    container_name: equity-monitoring
+    environment:
+      - NODE_ENV=development
+      - MONITORING_PORT=3001
+      - SUPABASE_URL=${SUPABASE_URL:-http://postgres:5432}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SLACK_WEBHOOK=${SLACK_WEBHOOK}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./monitoring-dashboard.js:/app/dashboard.js:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - equity-network
+
+  # ================================================
+  # Microsite Deployment Service
+  # ================================================
+  microsite-deployer:
+    build:
+      context: .
+      dockerfile: Dockerfile.microsite
+    container_name: equity-microsite
+    environment:
+      - NODE_ENV=development
+      - VERCEL_TOKEN=${VERCEL_TOKEN}
+      - VERCEL_PROJECT_ID=${VERCEL_PROJECT_ID}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    volumes:
+      - ./microsite-deployment.js:/app/deployer.js:ro
+      - ./templates:/app/templates:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - equity-network
+
+  # ================================================
+  # Optional: Local Mailhog (Email Testing)
+  # ================================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: equity-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - equity-network
+
+  # ================================================
+  # Optional: pgAdmin (Database Management)
+  # ================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: equity-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@equityconnect.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - equity-network
+
+# ================================================
+# VOLUMES
+# ================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  n8n_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+# ================================================
+# NETWORKS
+# ================================================
+networks:
+  equity-network:
+    driver: bridge

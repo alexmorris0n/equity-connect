@@ -1,0 +1,159 @@
+{
+  "name": "equity-connect",
+  "version": "2.0.0",
+  "description": "Automated reverse mortgage lead generation and conversion system with comprehensive operational infrastructure",
+  "main": "scripts/webhook-server.js",
+  "scripts": {
+    "start": "node scripts/webhook-server.js",
+    "dev": "nodemon scripts/webhook-server.js",
+    "monitor": "node scripts/monitoring-dashboard.js",
+    "deploy": "node scripts/deploy-microsite.js",
+    "setup:db": "psql $SUPABASE_URL < config/supabase-production-migration.sql",
+    "setup:env": "cp config/environment-template.txt .env",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "build:frontend": "cd frontend && npm run build",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run monitor\" \"npm run dev:frontend\"",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "backup:db": "pg_dump $DATABASE_URL > backups/backup-$(date +%Y%m%d-%H%M%S).sql",
+    "migrate:run": "node -e \"console.log('Run: psql $SUPABASE_URL < config/supabase-production-migration.sql')\"",
+    "logs:webhook": "pm2 logs webhook-server",
+    "logs:monitor": "pm2 logs monitoring",
+    "restart:all": "pm2 restart all",
+    "health:check": "curl http://localhost:3000/health && curl http://localhost:3001/health"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "@vercel/client": "^11.2.5",
+    "axios": "^1.6.2",
+    "body-parser": "^1.20.2",
+    "chart.js": "^4.4.1",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "handlebars": "^4.7.8",
+    "node-cron": "^3.0.3",
+    "pg": "^8.11.3",
+    "redis": "^4.6.12",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "winston": "^3.11.0",
+    "bull": "^4.12.2",
+    "ioredis": "^5.3.2",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "multer": "^1.4.5-lts.1",
+    "csv-parser": "^3.0.0",
+    "moment": "^2.29.4",
+    "moment-timezone": "^0.5.45",
+    "uuid": "^9.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@types/jest": "^29.5.12",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-node": "^11.1.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "prettier": "^3.1.1",
+    "supertest": "^6.3.4",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "automation",
+    "lead-generation",
+    "reverse-mortgage",
+    "n8n",
+    "supabase",
+    "vercel",
+    "webhook-server",
+    "monitoring",
+    "real-estate",
+    "crm",
+    "ai-voice",
+    "email-automation"
+  ],
+  "author": "Equity Connect Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/equity-connect/equity-connect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/equity-connect/equity-connect/issues"
+  },
+  "homepage": "https://github.com/equity-connect/equity-connect#readme",
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "scripts/**/*.js",
+      "!scripts/test/**",
+      "!**/node_modules/**"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": ["text", "lcov", "html"]
+  },
+  "eslintConfig": {
+    "env": {
+      "node": true,
+      "es2022": true,
+      "jest": true
+    },
+    "extends": [
+      "eslint:recommended",
+      "prettier"
+    ],
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "rules": {
+      "no-console": "warn",
+      "no-unused-vars": "error",
+      "prefer-const": "error"
+    }
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "es5",
+    "singleQuote": true,
+    "printWidth": 80,
+    "tabWidth": 2
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged",
+      "pre-push": "npm test"
+    }
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write",
+      "git add"
+    ],
+    "*.{json,md}": [
+      "prettier --write",
+      "git add"
+    ]
+  }
+}

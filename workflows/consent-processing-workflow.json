@@ -1,0 +1,391 @@
+{
+  "name": "Consent Processing Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "consent-form",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Consent Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "consent-form-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate and parse consent form data\nconst payload = $input.first().json;\n\n// Required fields\nconst requiredFields = ['lead_id', 'consent'];\nconst missingFields = requiredFields.filter(field => !payload[field]);\n\nif (missingFields.length > 0) {\n  throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n}\n\n// Parse consent (should be boolean or string 'true'/'false')\nlet consent = payload.consent;\nif (typeof consent === 'string') {\n  consent = consent.toLowerCase() === 'true';\n}\n\n// Extract additional data\nconst consentData = {\n  lead_id: payload.lead_id,\n  consent: consent,\n  method: payload.method || 'form',\n  ip_address: payload.ip_address || '',\n  user_agent: payload.user_agent || '',\n  token_hash: payload.token_hash || '',\n  utm_campaign: payload.utm_campaign || '',\n  utm_source: payload.utm_source || '',\n  utm_medium: payload.utm_medium || '',\n  first_name: payload.first_name || '',\n  last_name: payload.last_name || '',\n  email: payload.email || '',\n  phone: payload.phone || ''\n};\n\nreturn [{\n  json: consentData\n}];"
+      },
+      "id": "validate-consent-data",
+      "name": "Validate Consent Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "consent-given",
+              "leftValue": "={{$json.consent}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-consent",
+      "name": "Consent Given?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://your-project.supabase.co/rest/v1/leads",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$credentials.supabaseApi.apiKey}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.supabaseApi.serviceRoleKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "eq.{{$json.lead_id}}"
+            }
+          ]
+        },
+        "bodyContentType": "json",
+        "jsonBody": "={{JSON.stringify({consent: true, consented_at: new Date().toISOString(), consent_method: $json.method, updated_at: new Date().toISOString()})}}",
+        "options": {}
+      },
+      "id": "update-lead-consent",
+      "name": "Update Lead Consent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://your-project.supabase.co/rest/v1/lead_consent_audit",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$credentials.supabaseApi.apiKey}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.supabaseApi.serviceRoleKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "lead_id",
+              "value": "={{$json.lead_id}}"
+            },
+            {
+              "name": "consent",
+              "value": "={{$json.consent}}"
+            },
+            {
+              "name": "method",
+              "value": "={{$json.method}}"
+            },
+            {
+              "name": "ip_address",
+              "value": "={{$json.ip_address}}"
+            },
+            {
+              "name": "user_agent",
+              "value": "={{$json.user_agent}}"
+            },
+            {
+              "name": "token_hash",
+              "value": "={{$json.token_hash}}"
+            },
+            {
+              "name": "utm_campaign",
+              "value": "={{$json.utm_campaign}}"
+            },
+            {
+              "name": "utm_source",
+              "value": "={{$json.utm_source}}"
+            },
+            {
+              "name": "utm_medium",
+              "value": "={{$json.utm_medium}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-consent-audit",
+      "name": "Create Consent Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Trigger Vepi call for consented leads\nconst consentData = $('validate-consent-data').item.json;\n\nif (consentData.consent) {\n  // Get assigned phone number from n8n table\n  const phoneAssignment = await $workflow.getTableData('phone_assignments', {\n    filter: {\n      conditions: [\n        {\n          column: 'lead_id',\n          operator: 'equals',\n          value: consentData.lead_id\n        },\n        {\n          column: 'status',\n          operator: 'equals',\n          value: 'active'\n        }\n      ]\n    }\n  });\n  \n  if (phoneAssignment && phoneAssignment.length > 0) {\n    const assignment = phoneAssignment[0];\n    \n    // Trigger Vepi call\n    const vepiPayload = {\n      lead_id: consentData.lead_id,\n      phone_number: assignment.phone_number,\n      broker_id: assignment.broker_id,\n      first_name: consentData.first_name,\n      last_name: consentData.last_name,\n      phone: consentData.phone,\n      consent_method: consentData.method,\n      priority: 'high'\n    };\n    \n    return [{\n      json: {\n        ...consentData,\n        vepi_triggered: true,\n        vepi_payload: vepiPayload\n      }\n    }];\n  }\n}\n\nreturn [{\n  json: {\n    ...consentData,\n    vepi_triggered: false\n  }\n}];"
+      },
+      "id": "trigger-vepi-call",
+      "name": "Trigger Vepi Call",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://your-vepi-instance.com/webhook/consent-call",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "lead_id",
+              "value": "={{$json.lead_id}}"
+            },
+            {
+              "name": "phone_number",
+              "value": "={{$json.phone_number}}"
+            },
+            {
+              "name": "broker_id",
+              "value": "={{$json.broker_id}}"
+            },
+            {
+              "name": "first_name",
+              "value": "={{$json.first_name}}"
+            },
+            {
+              "name": "last_name",
+              "value": "={{$json.last_name}}"
+            },
+            {
+              "name": "phone",
+              "value": "={{$json.phone}}"
+            },
+            {
+              "name": "consent_method",
+              "value": "={{$json.consent_method}}"
+            },
+            {
+              "name": "priority",
+              "value": "high"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "call-vepi-webhook",
+      "name": "Call Vepi Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create response based on consent result\nconst consentData = $('validate-consent-data').item.json;\nconst vepiResult = $('trigger-vepi-call').item.json;\n\nlet response = {\n  success: true,\n  lead_id: consentData.lead_id,\n  consent: consentData.consent,\n  message: consentData.consent ? 'Consent recorded successfully' : 'Consent declined'\n};\n\nif (consentData.consent) {\n  response.message = 'Thank you! We\\'ll contact you shortly.';\n  response.next_steps = 'A representative will call you within 24 hours.';\n  response.vepi_triggered = vepiResult.vepi_triggered;\n} else {\n  response.message = 'No problem. You can change your mind anytime.';\n  response.next_steps = 'If you change your mind, just reply YES to any of our emails.';\n}\n\nreturn [{\n  json: response\n}];"
+      },
+      "id": "create-response",
+      "name": "Create Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify($json)}}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle declined consent\nconst consentData = $('validate-consent-data').item.json;\n\nconst response = {\n  success: true,\n  lead_id: consentData.lead_id,\n  consent: false,\n  message: 'No problem. You can change your mind anytime.'\n};\n\nreturn [{\n  json: response\n}];"
+      },
+      "id": "handle-declined-consent",
+      "name": "Handle Declined Consent",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify($json)}}",
+        "options": {}
+      },
+      "id": "declined-response",
+      "name": "Declined Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [
+        [
+          {
+            "node": "validate-consent-data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate-consent-data": {
+      "main": [
+        [
+          {
+            "node": "check-consent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-consent": {
+      "main": [
+        [
+          {
+            "node": "update-lead-consent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "handle-declined-consent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update-lead-consent": {
+      "main": [
+        [
+          {
+            "node": "create-consent-audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create-consent-audit": {
+      "main": [
+        [
+          {
+            "node": "trigger-vepi-call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trigger-vepi-call": {
+      "main": [
+        [
+          {
+            "node": "call-vepi-webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call-vepi-webhook": {
+      "main": [
+        [
+          {
+            "node": "create-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create-response": {
+      "main": [
+        [
+          {
+            "node": "webhook-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "handle-declined-consent": {
+      "main": [
+        [
+          {
+            "node": "declined-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

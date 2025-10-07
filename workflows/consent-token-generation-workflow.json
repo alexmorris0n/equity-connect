@@ -1,0 +1,185 @@
+{
+  "name": "Consent Token Generation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-consent-link",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Generate Consent Link",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "consent-link-generator"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Validate input payload\nconst payload = $input.first().json;\n\n// Required fields\nconst requiredFields = ['lead_id', 'broker_id'];\nconst missingFields = requiredFields.filter(field => !payload[field]);\n\nif (missingFields.length > 0) {\n  throw new Error(`Missing required fields: ${missingFields.join(', ')}`);\n}\n\n// Optional fields with defaults\nconst leadData = {\n  lead_id: payload.lead_id,\n  broker_id: payload.broker_id,\n  first_name: payload.first_name || '',\n  last_name: payload.last_name || '',\n  email: payload.email || '',\n  phone: payload.phone || '',\n  utm_campaign: payload.utm_campaign || 'rm-default',\n  utm_source: payload.utm_source || 'email',\n  utm_medium: payload.utm_medium || 'email'\n};\n\n// Set expiration (7 days from now)\nconst expiresAt = new Date();\nexpiresAt.setDate(expiresAt.getDate() + 7);\n\nreturn [{\n  json: {\n    ...leadData,\n    expires_at: expiresAt.toISOString(),\n    expires_timestamp: Math.floor(expiresAt.getTime() / 1000)\n  }\n}];"
+      },
+      "id": "validate-payload",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://your-project.supabase.co/rest/v1/leads",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$credentials.supabaseApi.apiKey}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$credentials.supabaseApi.serviceRoleKey}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "eq.{{$json.lead_id}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-lead-data",
+      "name": "Get Lead Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create consent token payload\nconst leadData = $('get-lead-data').item.json[0];\nconst payload = $('validate-payload').item.json;\n\n// Merge lead data with payload (payload takes precedence)\nconst tokenData = {\n  lead_id: payload.lead_id,\n  broker_id: payload.broker_id,\n  first_name: payload.first_name || leadData.first_name,\n  last_name: payload.last_name || leadData.last_name,\n  email: payload.email || leadData.email,\n  phone: payload.phone || leadData.phone,\n  utm_campaign: payload.utm_campaign,\n  utm_source: payload.utm_source,\n  utm_medium: payload.utm_medium,\n  exp: payload.expires_timestamp\n};\n\n// Create JWT payload\nconst jwtPayload = {\n  sub: tokenData.lead_id,\n  broker_id: tokenData.broker_id,\n  first_name: tokenData.first_name,\n  last_name: tokenData.last_name,\n  email: tokenData.email,\n  phone: tokenData.phone,\n  utm_campaign: tokenData.utm_campaign,\n  utm_source: tokenData.utm_source,\n  utm_medium: tokenData.utm_medium,\n  exp: tokenData.exp,\n  iat: Math.floor(Date.now() / 1000)\n};\n\nreturn [{\n  json: {\n    ...tokenData,\n    jwt_payload: jwtPayload,\n    expires_at: payload.expires_at\n  }\n}];"
+      },
+      "id": "create-token-payload",
+      "name": "Create Token Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate HMAC-SHA256 signature for consent token\nconst crypto = require('crypto');\nconst payload = $('create-token-payload').item.json;\n\n// Get secret from environment\nconst secret = process.env.FORM_LINK_SECRET || 'your-secret-key-change-this';\n\n// Create the data to sign\nconst dataToSign = JSON.stringify(payload.jwt_payload);\n\n// Generate HMAC signature\nconst signature = crypto\n  .createHmac('sha256', secret)\n  .update(dataToSign)\n  .digest('base64url');\n\n// Create the final token\nconst token = Buffer.from(dataToSign).toString('base64url') + '.' + signature;\n\n// Generate consent URL\nconst baseUrl = process.env.CONSENT_FORM_URL || 'https://form.equityconnect.com';\nconst consentUrl = `${baseUrl}/consent?token=${token}`;\n\n// Generate simple URL (fallback)\nconst simpleUrl = `${baseUrl}/consent?` + new URLSearchParams({\n  first: payload.first_name,\n  last: payload.last_name,\n  email: payload.email,\n  phone: payload.phone,\n  broker: payload.broker_id,\n  leadId: payload.lead_id,\n  utm_campaign: payload.utm_campaign\n}).toString();\n\nreturn [{\n  json: {\n    ...payload,\n    token: token,\n    consent_url: consentUrl,\n    simple_url: simpleUrl,\n    expires_at: payload.expires_at\n  }\n}];"
+      },
+      "id": "generate-token",
+      "name": "Generate Token",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Create response with consent link\nconst tokenData = $('generate-token').item.json;\n\nconst response = {\n  success: true,\n  lead_id: tokenData.lead_id,\n  broker_id: tokenData.broker_id,\n  consent_url: tokenData.consent_url,\n  simple_url: tokenData.simple_url,\n  expires_at: tokenData.expires_at,\n  message: 'Consent link generated successfully'\n};\n\n// Add email template data\nresponse.email_data = {\n  subject: 'Confirm Your Interest in Reverse Mortgage Information',\n  preheader: 'One-click confirmation to receive your personalized information',\n  consent_url: tokenData.consent_url,\n  fallback_text: 'Prefer email? Just reply YES and we\\'ll take it from there.',\n  broker_name: tokenData.broker_id,\n  lead_name: `${tokenData.first_name} ${tokenData.last_name}`\n};\n\nreturn [{\n  json: response\n}];"
+      },
+      "id": "create-response",
+      "name": "Create Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify($json)}}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [
+        [
+          {
+            "node": "validate-payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate-payload": {
+      "main": [
+        [
+          {
+            "node": "get-lead-data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-lead-data": {
+      "main": [
+        [
+          {
+            "node": "create-token-payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create-token-payload": {
+      "main": [
+        [
+          {
+            "node": "generate-token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "generate-token": {
+      "main": [
+        [
+          {
+            "node": "create-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create-response": {
+      "main": [
+        [
+          {
+            "node": "webhook-response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

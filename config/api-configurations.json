@@ -1,0 +1,271 @@
+{
+  "propstream_api": {
+    "base_url": "https://api.propstream.com/v1",
+    "endpoints": {
+      "net_new_export": "/exports/net-new",
+      "skip_trace": "/skip-trace",
+      "saved_searches": "/saved-searches",
+      "property_details": "/property/{property_id}",
+      "owner_search": "/owner"
+    },
+    "rate_limits": {
+      "requests_per_month": 10000,
+      "requests_per_day": 1000,
+      "requests_per_hour": 100
+    },
+    "filtering_criteria": {
+      "age_minimum": 62,
+      "owner_occupied": true,
+      "equity_minimum": 200000,
+      "purchase_date_maximum": "2020-01-01",
+      "property_types": ["single_family", "condo", "townhouse"],
+      "excluded_states": ["NY", "CT", "MA"],
+      "included_states": ["CA", "FL", "TX", "WA", "OR", "AZ", "NV", "CO"]
+    },
+    "search_parameters": {
+      "limit": 200,
+      "offset": 0,
+      "sort_by": "estimated_equity",
+      "sort_order": "desc"
+    }
+  },
+  "people_data_labs": {
+    "base_url": "https://api.peopledatalabs.com/v5",
+    "endpoints": {
+      "person_enrichment": "/person/enrich",
+      "bulk_enrichment": "/person/bulk",
+      "search": "/person/search",
+      "retrieve": "/person/retrieve"
+    },
+    "rate_limits": {
+      "requests_per_month": 10000,
+      "requests_per_day": 500,
+      "requests_per_hour": 100
+    },
+    "enrichment_fields": [
+      "emails",
+      "phone_numbers",
+      "demographics",
+      "ethnicity",
+      "social_profiles",
+      "interests",
+      "income_estimate",
+      "education",
+      "job_title",
+      "company",
+      "location"
+    ]
+  },
+  "openai_api": {
+    "base_url": "https://api.openai.com/v1",
+    "endpoints": {
+      "chat_completions": "/chat/completions",
+      "completions": "/completions",
+      "embeddings": "/embeddings"
+    },
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "tokens_per_minute": 150000,
+      "requests_per_month": 50000
+    },
+    "models": {
+      "persona_assignment": "gpt-4",
+      "email_generation": "gpt-4",
+      "content_optimization": "gpt-3.5-turbo",
+      "embeddings": "text-embedding-ada-002"
+    },
+    "temperature_settings": {
+      "persona_assignment": 0.7,
+      "email_generation": 0.8,
+      "content_optimization": 0.6
+    }
+  },
+  "elevenlabs_api": {
+    "base_url": "https://api.elevenlabs.io/v1",
+    "endpoints": {
+      "text_to_speech": "/text-to-speech",
+      "voices": "/voices",
+      "voice_settings": "/voices/{voice_id}/settings"
+    },
+    "rate_limits": {
+      "characters_per_month": 100000,
+      "requests_per_minute": 20
+    },
+    "voice_profiles": {
+      "carlos_rodriguez": "spanish_male_warm",
+      "maria_rodriguez": "spanish_female_friendly",
+      "priya_patel": "indian_female_professional",
+      "rahul_patel": "indian_male_authoritative",
+      "marcus_washington": "aa_male_strong",
+      "latoya_washington": "aa_female_warm",
+      "michael_anderson": "american_male_neutral",
+      "jennifer_anderson": "american_female_professional"
+    }
+  },
+  "instantly_api": {
+    "base_url": "https://api.instantly.ai/api/v1",
+    "endpoints": {
+      "campaigns": "/campaign",
+      "leads": "/lead",
+      "sequences": "/sequence",
+      "accounts": "/account"
+    },
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "emails_per_day": 100000
+    },
+    "campaign_settings": {
+      "warmup_enabled": true,
+      "deliverability_tracking": true,
+      "bounce_handling": "automatic",
+      "unsubscribe_handling": "automatic"
+    }
+  },
+  "twilio_api": {
+    "base_url": "https://api.twilio.com/2010-04-01",
+    "endpoints": {
+      "calls": "/Accounts/{AccountSid}/Calls.json",
+      "messages": "/Accounts/{AccountSid}/Messages.json",
+      "phone_numbers": "/Accounts/{AccountSid}/IncomingPhoneNumbers.json"
+    },
+    "rate_limits": {
+      "calls_per_minute": 100,
+      "messages_per_minute": 100
+    },
+    "call_settings": {
+      "max_duration": 300, // 5 minutes
+      "recording_enabled": true,
+      "caller_id": "Equity Connect"
+    }
+  },
+  "signalwire_api": {
+    "base_url": "https://your-space.signalwire.com/api/relay/rest",
+    "endpoints": {
+      "phone_numbers": "/phone_numbers",
+      "calls": "/calls",
+      "messages": "/messages",
+      "conferences": "/conferences",
+      "recordings": "/recordings",
+      "transcriptions": "/transcriptions"
+    },
+    "rate_limits": {
+      "requests_per_minute": 100,
+      "requests_per_day": 10000
+    },
+    "authentication": {
+      "type": "bearer_token",
+      "header": "Authorization",
+      "format": "Bearer {token}"
+    },
+    "call_pool_settings": {
+      "call_recording": true,
+      "call_transcription": true,
+      "lead_scoring": true,
+      "attribution": true,
+      "pool_size": 10,
+      "assignment_duration": 24,
+      "webhook_url": "https://your-n8n-instance.com/webhook/call-outcome"
+    },
+    "phone_number_management": {
+      "list_numbers": {
+        "method": "GET",
+        "endpoint": "/phone_numbers",
+        "query_params": ["limit", "offset", "status"]
+      },
+      "get_number": {
+        "method": "GET", 
+        "endpoint": "/phone_numbers/{id}"
+      },
+      "update_number": {
+        "method": "PATCH",
+        "endpoint": "/phone_numbers/{id}",
+        "body_params": ["friendly_name", "voice_url", "sms_url"]
+      },
+      "create_call": {
+        "method": "POST",
+        "endpoint": "/calls",
+        "body_params": ["from", "to", "url", "status_callback"]
+      }
+    }
+  },
+  "supabase_api": {
+    "base_url": "https://your-project.supabase.co",
+    "endpoints": {
+      "leads": "/rest/v1/leads",
+      "brokers": "/rest/v1/brokers",
+      "interactions": "/rest/v1/interactions",
+      "campaigns": "/rest/v1/campaigns",
+      "billing_events": "/rest/v1/billing_events"
+    },
+    "rate_limits": {
+      "requests_per_minute": 300,
+      "requests_per_day": 100000
+    },
+    "database_settings": {
+      "auto_tagging": true,
+      "lead_scoring": true,
+      "real_time_subscriptions": true,
+      "row_level_security": true
+    }
+  },
+  "site_builder_api": {
+    "base_url": "https://api.sitebuilder.com/v1",
+    "endpoints": {
+      "sites": "/sites",
+      "templates": "/templates",
+      "deployments": "/deployments"
+    },
+    "rate_limits": {
+      "requests_per_minute": 30,
+      "sites_per_day": 100
+    },
+    "deployment_settings": {
+      "auto_ssl": true,
+      "cdn_enabled": true,
+      "custom_domains": true,
+      "analytics": true
+    }
+  },
+  "cloudflare_api": {
+    "base_url": "https://api.cloudflare.com/client/v4",
+    "endpoints": {
+      "zones": "/zones",
+      "dns_records": "/zones/{zone_id}/dns_records",
+      "ssl_certificates": "/zones/{zone_id}/ssl/certificates"
+    },
+    "rate_limits": {
+      "requests_per_minute": 1200,
+      "requests_per_day": 100000
+    },
+    "dns_settings": {
+      "wildcard_enabled": true,
+      "auto_ssl": true,
+      "cdn_enabled": true
+    }
+  },
+  "error_handling": {
+    "retry_attempts": 3,
+    "retry_delay": 5000, // 5 seconds
+    "circuit_breaker_threshold": 5,
+    "circuit_breaker_timeout": 60000, // 1 minute
+    "fallback_strategies": {
+      "propstream_api": "use_cached_data",
+      "people_data_labs": "use_alternative_source",
+      "openai_api": "use_template_response",
+      "elevenlabs_api": "use_text_fallback"
+    }
+  },
+  "monitoring": {
+    "health_check_interval": 300000, // 5 minutes
+    "alert_thresholds": {
+      "error_rate": 0.05, // 5%
+      "response_time": 5000, // 5 seconds
+      "success_rate": 0.95 // 95%
+    },
+    "notification_channels": [
+      "slack",
+      "email",
+      "sms"
+    ]
+  }
+}

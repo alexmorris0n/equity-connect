@@ -1,0 +1,248 @@
+{
+  "name": "BatchData Dedup - Lead Pull Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Every 6 Hours)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT zip, broker_id, last_page, last_mak, completed FROM batchdata_cursor_state WHERE completed = false ORDER BY last_run_at ASC LIMIT 5",
+        "options": {}
+      },
+      "id": "get-pending-zips",
+      "name": "Get Pending ZIPs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase_postgres",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-zips",
+      "name": "Split ZIPs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "zip",
+              "name": "zip",
+              "value": "={{ $json.zip }}",
+              "type": "string"
+            },
+            {
+              "id": "broker_id",
+              "name": "broker_id",
+              "value": "={{ $json.broker_id }}",
+              "type": "string"
+            },
+            {
+              "id": "page",
+              "name": "page",
+              "value": "={{ $json.last_page + 1 }}",
+              "type": "number"
+            },
+            {
+              "id": "last_mak",
+              "name": "last_mak",
+              "value": "={{ $json.last_mak || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "quota",
+              "name": "quota",
+              "value": "100",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "set-variables",
+      "name": "Set Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "fetch",
+        "parameters": {
+          "zip": "={{ $json.zip }}",
+          "page": "={{ $json.page }}",
+          "limit": "={{ $json.quota }}",
+          "filters": {
+            "ownerOccupied": true,
+            "singleRes": true,
+            "reverseMortgage": true
+          }
+        }
+      },
+      "id": "batchdata-fetch",
+      "name": "BatchData MCP Fetch",
+      "type": "n8n-nodes-base.mcpTool",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "notes": "Calls BatchData MCP: batchdata-mcp-real-estate"
+    },
+    {
+      "parameters": {
+        "functionCode": "const crypto = require('crypto');\nconst results = $input.all();\nconst data = results[0].json.data || [];\n\n// Compute addr_hash for each record\nconst enriched = data.map(record => {\n  const addressStr = `${record.address_line_1 || ''}${record.city || ''}${record.state || ''}${record.zip || ''}`;\n  const addr_hash = crypto.createHash('sha256')\n    .update(addressStr.toLowerCase())\n    .digest('hex');\n  \n  return {\n    ...record,\n    addr_hash: addr_hash,\n    mak: record.MAK || record.mak || null,\n    apn: record.APN || record.apn || null\n  };\n});\n\nreturn enriched.map(r => ({ json: r }));"
+      },
+      "id": "compute-hash",
+      "name": "Compute addr_hash",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const records = $input.all();\nconst state = $('set-variables').first().json;\n\nconst output = [];\nlet newCount = 0;\nlet dupCount = 0;\n\nfor (const item of records) {\n  const record = item.json;\n  \n  // Prepare payload for insert\n  const payload = {\n    mak: record.mak,\n    apn: record.apn,\n    addr_hash: record.addr_hash,\n    batchdata_payload: record,\n    broker_id: state.broker_id\n  };\n  \n  output.push({ json: payload });\n}\n\nreturn output;"
+      },
+      "id": "prepare-insert",
+      "name": "Prepare Insert Payloads",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO leads (mak, apn, addr_hash, batchdata_payload, assigned_broker_id, source, first_name, last_name, email, phone, property_address, property_city, property_state, property_zip, property_value, estimated_equity, age, owner_occupied, status, last_seen_at, created_at)\nSELECT \n  :mak,\n  :apn,\n  :addr_hash,\n  :payload::jsonb,\n  :broker_id::uuid,\n  'BatchData',\n  :payload::jsonb->>'first_name',\n  :payload::jsonb->>'last_name',\n  :payload::jsonb->>'email',\n  :payload::jsonb->>'phone',\n  :payload::jsonb->>'address_line_1',\n  :payload::jsonb->>'city',\n  :payload::jsonb->>'state',\n  :payload::jsonb->>'zip',\n  (:payload::jsonb->>'property_value')::numeric,\n  (:payload::jsonb->>'estimated_equity')::numeric,\n  (:payload::jsonb->>'age')::integer,\n  (:payload::jsonb->>'owner_occupied')::boolean,\n  'new',\n  NOW(),\n  NOW()\nON CONFLICT (mak, apn, addr_hash) DO UPDATE\n  SET last_seen_at = NOW(),\n      batchdata_payload = EXCLUDED.batchdata_payload\nRETURNING id;",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "insert-leads",
+      "name": "Insert Leads (Dedup)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1780, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase_postgres",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const insertResults = $input.all();\nconst state = $('set-variables').first().json;\nconst originalData = $('compute-hash').all();\n\n// Count new vs duplicate\nconst newLeads = insertResults.filter(r => r.json.id).length;\nconst totalAttempted = originalData.length;\nconst duplicates = totalAttempted - newLeads;\n\n// Get last MAK processed\nconst lastRecord = originalData[originalData.length - 1]?.json;\nconst lastMAK = lastRecord?.mak || state.last_mak;\n\n// Determine if ZIP is completed (no more records)\nconst completed = totalAttempted === 0 || totalAttempted < state.quota;\n\nreturn [{\n  json: {\n    zip: state.zip,\n    broker_id: state.broker_id,\n    page: state.page,\n    last_mak: lastMAK,\n    new_records: newLeads,\n    duplicates: duplicates,\n    completed: completed\n  }\n}];"
+      },
+      "id": "compute-stats",
+      "name": "Compute Stats",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT update_batchdata_cursor(:zip, :broker_id::uuid, :page, :last_mak, :new_records, :duplicates, :completed);",
+        "options": {}
+      },
+      "id": "update-cursor",
+      "name": "Update Cursor State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [2220, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase_postgres",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "loop-back",
+      "name": "Loop Back to Split",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const stats = $('compute-stats').first().json;\n\n// Log completion\nconsole.log(`Completed ZIP ${stats.zip}: ${stats.new_records} new, ${stats.duplicates} duplicates`);\n\nreturn [{ json: { success: true, message: 'BatchData pull completed successfully' } }];"
+      },
+      "id": "log-completion",
+      "name": "Log Completion",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2660, 300]
+    }
+  ],
+  "connections": {
+    "schedule-trigger": {
+      "main": [[{ "node": "get-pending-zips", "type": "main", "index": 0 }]]
+    },
+    "get-pending-zips": {
+      "main": [[{ "node": "split-zips", "type": "main", "index": 0 }]]
+    },
+    "split-zips": {
+      "main": [[{ "node": "set-variables", "type": "main", "index": 0 }]]
+    },
+    "set-variables": {
+      "main": [[{ "node": "batchdata-fetch", "type": "main", "index": 0 }]]
+    },
+    "batchdata-fetch": {
+      "main": [[{ "node": "compute-hash", "type": "main", "index": 0 }]]
+    },
+    "compute-hash": {
+      "main": [[{ "node": "prepare-insert", "type": "main", "index": 0 }]]
+    },
+    "prepare-insert": {
+      "main": [[{ "node": "insert-leads", "type": "main", "index": 0 }]]
+    },
+    "insert-leads": {
+      "main": [[{ "node": "compute-stats", "type": "main", "index": 0 }]]
+    },
+    "compute-stats": {
+      "main": [[{ "node": "update-cursor", "type": "main", "index": 0 }]]
+    },
+    "update-cursor": {
+      "main": [[{ "node": "loop-back", "type": "main", "index": 0 }]]
+    },
+    "loop-back": {
+      "main": [[{ "node": "split-zips", "type": "main", "index": 0 }]]
+    },
+    "split-zips": {
+      "main": [[{ "node": "log-completion", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-07T00:00:00.000Z",
+  "versionId": "1"
+}
+
