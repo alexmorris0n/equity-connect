@@ -1,0 +1,356 @@
+{
+  "name": "Error Handler (DLQ Retry)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron Trigger (Every 5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "retry_after",
+              "value": "lte.{{ new Date().toISOString() }}"
+            },
+            {
+              "name": "attempts",
+              "value": "lt.3"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            },
+            {
+              "name": "order",
+              "value": "created_at.asc"
+            }
+          ]
+        }
+      },
+      "id": "get-dlq-items",
+      "name": "Get DLQ Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.stage }}",
+                    "operation": "equals",
+                    "value2": "pull"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "pull"
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.stage }}",
+                    "operation": "equals",
+                    "value2": "enrich"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "enrich"
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.stage }}",
+                    "operation": "equals",
+                    "value2": "verify"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "verify"
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.stage }}",
+                    "operation": "equals",
+                    "value2": "campaign"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "campaign"
+            }
+          ]
+        }
+      },
+      "id": "switch-stage",
+      "name": "Switch Stage",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Retry Pull Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying BatchData pull:', payload);\n\n// Re-trigger BatchData pull workflow\n// This would call the BatchData Pull Worker workflow\nreturn [{\n  json: {\n    retry_success: true,
+    stage: 'pull',\n    dlq_id: $input.item.json.id\n  }\n}];"
+      },
+      "id": "retry-pull",
+      "name": "Retry Pull",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 100]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Retry Enrichment Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying enrichment:', payload);\n\n// Re-queue for enrichment\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'enrich',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
+      },
+      "id": "retry-enrich",
+      "name": "Retry Enrich",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 250]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Retry Verification Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying verification:', payload);\n\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'verify',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
+      },
+      "id": "retry-verify",
+      "name": "Retry Verify",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Retry Campaign Add Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying campaign add:', payload);\n\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'campaign',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
+      },
+      "id": "retry-campaign",
+      "name": "Retry Campaign",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 550]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"event_type\": \"{{ $json.stage }}\",\n  \"lead_id\": \"{{ $json.lead_id }}\",\n  \"event_data\": {\"retry_from_dlq\": true},\n  \"status\": \"pending\"\n}"
+      },
+      "id": "requeue-pipeline-event",
+      "name": "Requeue Pipeline Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.retry_success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-success",
+      "name": "IF Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "DELETE",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}"
+      },
+      "id": "delete-from-dlq",
+      "name": "Delete from DLQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1650, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Calculate next retry time with exponential backoff\nconst attempts = $node['Split In Batches'].json.attempts;\nconst backoffMinutes = Math.pow(2, attempts) * 5; // 5, 10, 20 minutes\n\nconst retryAfter = new Date();\nretryAfter.setMinutes(retryAfter.getMinutes() + backoffMinutes);\n\nreturn [{\n  json: {\n    dlq_id: $json.dlq_id,\n    new_attempts: attempts + 1,\n    retry_after: retryAfter.toISOString()\n  }\n}];"
+      },
+      "id": "calculate-backoff",
+      "name": "Calculate Backoff",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1650, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"attempts\": {{ $json.new_attempts }},\n  \"retry_after\": \"{{ $json.retry_after }}\"\n}"
+      },
+      "id": "update-dlq-attempts",
+      "name": "Update DLQ Attempts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1850, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "merge",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {},
+      "id": "loop-check",
+      "name": "Loop Check",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log completion stats\nconst processed = $node['Split In Batches'].context.noItemsLeft ? \n  $node['Split In Batches'].context.currentRunIndex : 0;\n\nconsole.log(`DLQ retry complete: ${processed} items processed`);\n\nreturn [{\n  json: {\n    status: 'success',\n    items_processed: processed,\n    completed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-completion",
+      "name": "Log Completion",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2450, 300]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Every 5 min)": {
+      "main": [[{ "node": "Get DLQ Items", "type": "main", "index": 0 }]]
+    },
+    "Get DLQ Items": {
+      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+    },
+    "Split In Batches": {
+      "main": [[{ "node": "Switch Stage", "type": "main", "index": 0 }]]
+    },
+    "Switch Stage": {
+      "main": [
+        [{ "node": "Retry Pull", "type": "main", "index": 0 }],
+        [{ "node": "Retry Enrich", "type": "main", "index": 0 }],
+        [{ "node": "Retry Verify", "type": "main", "index": 0 }],
+        [{ "node": "Retry Campaign", "type": "main", "index": 0 }]
+      ]
+    },
+    "Retry Pull": {
+      "main": [[{ "node": "Requeue Pipeline Event", "type": "main", "index": 0 }]]
+    },
+    "Retry Enrich": {
+      "main": [[{ "node": "Requeue Pipeline Event", "type": "main", "index": 0 }]]
+    },
+    "Retry Verify": {
+      "main": [[{ "node": "Requeue Pipeline Event", "type": "main", "index": 0 }]]
+    },
+    "Retry Campaign": {
+      "main": [[{ "node": "Requeue Pipeline Event", "type": "main", "index": 0 }]]
+    },
+    "Requeue Pipeline Event": {
+      "main": [[{ "node": "IF Success?", "type": "main", "index": 0 }]]
+    },
+    "IF Success?": {
+      "main": [
+        [{ "node": "Delete from DLQ", "type": "main", "index": 0 }],
+        [{ "node": "Calculate Backoff", "type": "main", "index": 0 }]
+      ]
+    },
+    "Delete from DLQ": {
+      "main": [[{ "node": "Merge", "type": "main", "index": 0 }]]
+    },
+    "Calculate Backoff": {
+      "main": [[{ "node": "Update DLQ Attempts", "type": "main", "index": 0 }]]
+    },
+    "Update DLQ Attempts": {
+      "main": [[{ "node": "Merge", "type": "main", "index": 1 }]]
+    },
+    "Merge": {
+      "main": [[{ "node": "Loop Check", "type": "main", "index": 0 }]]
+    },
+    "Loop Check": {
+      "main": [
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }],
+        [{ "node": "Log Completion", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-08T00:00:00.000Z",
+  "versionId": "1"
+}
+

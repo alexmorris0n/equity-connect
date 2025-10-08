@@ -1,0 +1,468 @@
+{
+  "name": "Enrichment Pipeline (Waterfall Skip-Trace)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron Trigger (Every 5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "event_type",
+              "value": "eq.enrich"
+            },
+            {
+              "name": "status",
+              "value": "eq.pending"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            },
+            {
+              "name": "order",
+              "value": "created_at.asc"
+            }
+          ]
+        }
+      },
+      "id": "get-pending-enrichments",
+      "name": "Get Pending Enrichments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "eq.={{ $json.lead_id }}"
+            }
+          ]
+        }
+      },
+      "id": "get-lead",
+      "name": "Get Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// STAGE 1: Melissa Personator API\nconst lead = $input.item.json[0];\n\nreturn [{\n  json: {\n    lead_id: lead.id,\n    full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),\n    address_line1: lead.address_line1 || lead.property_address,\n    city: lead.property_city,\n    state: lead.property_state,\n    zip: lead.property_zip\n  }\n}];"
+      },
+      "id": "prepare-melissa-request",
+      "name": "Prepare Melissa Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{ $env.MELISSA_BASE_URL }}/WEB/ContactVerify/doContactVerify",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $env.MELISSA_API_KEY }}"
+            },
+            {
+              "name": "act",
+              "value": "Check,Verify,Append,Move"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "full",
+              "value": "={{ $json.full_name }}"
+            },
+            {
+              "name": "a1",
+              "value": "={{ $json.address_line1 }}"
+            },
+            {
+              "name": "loc",
+              "value": "={{ $json.city }}"
+            },
+            {
+              "name": "admarea",
+              "value": "={{ $json.state }}"
+            },
+            {
+              "name": "postal",
+              "value": "={{ $json.zip }}"
+            }
+          ]
+        }
+      },
+      "id": "melissa-personator",
+      "name": "Melissa Personator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "melissa-auth",
+          "name": "Melissa API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse Melissa response and extract contact info\nconst response = $input.item.json;\nconst lead_id = $node['Prepare Melissa Request'].json.lead_id;\n\nconst result = {\n  lead_id: lead_id,\n  mak: response.Records?.[0]?.AddressKey || null,\n  phones: [],\n  emails: []\n};\n\n// Extract phones\nif (response.Records?.[0]?.Phone) {\n  result.phones.push({\n    phone: response.Records[0].Phone,\n    source: 'melissa',\n    score: 70,\n    verified: false,\n    type: 'unknown'\n  });\n}\n\nif (response.Records?.[0]?.Phone2) {\n  result.phones.push({\n    phone: response.Records[0].Phone2,\n    source: 'melissa',\n    score: 60,\n    verified: false,\n    type: 'unknown'\n  });\n}\n\n// Extract emails\nif (response.Records?.[0]?.Email) {\n  result.emails.push({\n    email: response.Records[0].Email,\n    source: 'melissa',\n    score: 70,\n    verified: false\n  });\n}\n\nreturn [{ json: result }];"
+      },
+      "id": "parse-melissa-response",
+      "name": "Parse Melissa Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Update lead with MAK and merge contact points\nconst data = $input.item.json;\nconst outputs = [];\n\n// Update MAK if present\nif (data.mak) {\n  outputs.push({\n    json: {\n      action: 'update_mak',\n      lead_id: data.lead_id,\n      mak: data.mak\n    }\n  });\n}\n\n// Merge phones\ndata.phones.forEach(phone => {\n  outputs.push({\n    json: {\n      action: 'merge_contact',\n      lead_id: data.lead_id,\n      kind: 'phone',\n      value: phone.phone,\n      source: phone.source,\n      score: phone.score,\n      verified: phone.verified\n    }\n  });\n});\n\n// Merge emails\ndata.emails.forEach(email => {\n  outputs.push({\n    json: {\n      action: 'merge_contact',\n      lead_id: data.lead_id,\n      kind: 'email',\n      value: email.email,\n      source: email.source,\n      score: email.score,\n      verified: email.verified\n    }\n  });\n});\n\nreturn [outputs];"
+      },
+      "id": "prepare-merge-operations",
+      "name": "Prepare Merge Operations",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-merge-ops",
+      "name": "Split Merge Ops",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "update_mak"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "update_mak"
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "merge_contact"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "merge_contact"
+            }
+          ]
+        }
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?id=eq.{{ $json.lead_id }}",
+        "jsonParameters": true,
+        "bodyParametersJson": "={ \"mak\": \"{{ $json.mak }}\" }"
+      },
+      "id": "update-mak",
+      "name": "Update MAK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2250, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/merge_contact_point",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"p_lead_id\": \"{{ $json.lead_id }}\",\n  \"p_kind\": \"{{ $json.kind }}\",\n  \"p_value\": \"{{ $json.value }}\",\n  \"p_source\": \"{{ $json.source }}\",\n  \"p_score\": {{ $json.score }},\n  \"p_verified\": {{ $json.verified }}\n}"
+      },
+      "id": "merge-contact-point",
+      "name": "Merge Contact Point",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2250, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/compute_quality_score",
+        "jsonParameters": true,
+        "bodyParametersJson": "={ \"p_lead_id\": \"{{ $node['Get Lead'].json[0].id }}\" }"
+      },
+      "id": "compute-quality-score-stage1",
+      "name": "Compute Quality Score (Stage 1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json }}",
+              "operation": "largerEqual",
+              "value2": 60
+            }
+          ]
+        }
+      },
+      "id": "if-contactable",
+      "name": "IF Contactable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Skip Stage 2, already contactable\nconsole.log('Lead is contactable after Stage 1, skipping BatchData skip-trace');\nreturn [{ json: { lead_id: $node['Get Lead'].json[0].id, skip_stage2: true } }];"
+      },
+      "id": "skip-stage2",
+      "name": "Skip Stage 2",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2850, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.BATCHDATA_BASE_URL }}/api/v1/skip-trace",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"first_name\": \"{{ $node['Get Lead'].json[0].first_name }}\",\n  \"last_name\": \"{{ $node['Get Lead'].json[0].last_name }}\",\n  \"address\": \"{{ $node['Get Lead'].json[0].address_line1 }}\",\n  \"city\": \"{{ $node['Get Lead'].json[0].property_city }}\",\n  \"state\": \"{{ $node['Get Lead'].json[0].property_state }}\",\n  \"zip\": \"{{ $node['Get Lead'].json[0].property_zip }}\",\n  \"apn\": \"{{ $node['Get Lead'].json[0].apn }}\"\n}"
+      },
+      "id": "batchdata-skip-trace",
+      "name": "BatchData Skip-Trace (Stage 2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2850, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "batchdata-auth",
+          "name": "BatchData API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse BatchData skip-trace response\nconst response = $input.item.json;\nconst lead_id = $node['Get Lead'].json[0].id;\n\nconst result = {\n  lead_id: lead_id,\n  phones: [],\n  emails: []\n};\n\n// Extract phones\nif (response.phones && Array.isArray(response.phones)) {\n  response.phones.forEach((p, idx) => {\n    result.phones.push({\n      phone: p.number,\n      source: 'batchdata',\n      score: p.score || 60,\n      verified: false,\n      type: p.type || 'unknown'\n    });\n  });\n}\n\n// Extract emails  \nif (response.emails && Array.isArray(response.emails)) {\n  response.emails.forEach((e, idx) => {\n    result.emails.push({\n      email: e.address,\n      source: 'batchdata',\n      score: e.score || 60,\n      verified: false\n    });\n  });\n}\n\nreturn [{ json: result }];"
+      },
+      "id": "parse-batchdata-response",
+      "name": "Parse BatchData Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [3050, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/update_lead_status_from_score",
+        "jsonParameters": true,
+        "bodyParametersJson": "={ \"p_lead_id\": \"{{ $node['Get Lead'].json[0].id }}\" }"
+      },
+      "id": "update-status",
+      "name": "Update Lead Status",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [3250, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events?id=eq.{{ $node['Split In Batches'].json.id }}",
+        "jsonParameters": true,
+        "bodyParametersJson": "={ \"status\": \"completed\" }"
+      },
+      "id": "mark-complete",
+      "name": "Mark Complete",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [3450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Every 5 min)": {
+      "main": [[{ "node": "Get Pending Enrichments", "type": "main", "index": 0 }]]
+    },
+    "Get Pending Enrichments": {
+      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+    },
+    "Split In Batches": {
+      "main": [[{ "node": "Get Lead", "type": "main", "index": 0 }]]
+    },
+    "Get Lead": {
+      "main": [[{ "node": "Prepare Melissa Request", "type": "main", "index": 0 }]]
+    },
+    "Prepare Melissa Request": {
+      "main": [[{ "node": "Melissa Personator", "type": "main", "index": 0 }]]
+    },
+    "Melissa Personator": {
+      "main": [[{ "node": "Parse Melissa Response", "type": "main", "index": 0 }]]
+    },
+    "Parse Melissa Response": {
+      "main": [[{ "node": "Prepare Merge Operations", "type": "main", "index": 0 }]]
+    },
+    "Prepare Merge Operations": {
+      "main": [[{ "node": "Split Merge Ops", "type": "main", "index": 0 }]]
+    },
+    "Split Merge Ops": {
+      "main": [[{ "node": "Switch Action", "type": "main", "index": 0 }]]
+    },
+    "Switch Action": {
+      "main": [
+        [{ "node": "Update MAK", "type": "main", "index": 0 }],
+        [{ "node": "Merge Contact Point", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update MAK": {
+      "main": [[{ "node": "Split Merge Ops", "type": "main", "index": 0 }]]
+    },
+    "Merge Contact Point": {
+      "main": [[{ "node": "Split Merge Ops", "type": "main", "index": 0 }]]
+    },
+    "Split Merge Ops": {
+      "main": [
+        [{ "node": "Switch Action", "type": "main", "index": 0 }],
+        [{ "node": "Compute Quality Score (Stage 1)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Compute Quality Score (Stage 1)": {
+      "main": [[{ "node": "IF Contactable?", "type": "main", "index": 0 }]]
+    },
+    "IF Contactable?": {
+      "main": [
+        [{ "node": "Skip Stage 2", "type": "main", "index": 0 }],
+        [{ "node": "BatchData Skip-Trace (Stage 2)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Skip Stage 2": {
+      "main": [[{ "node": "Update Lead Status", "type": "main", "index": 0 }]]
+    },
+    "BatchData Skip-Trace (Stage 2)": {
+      "main": [[{ "node": "Parse BatchData Response", "type": "main", "index": 0 }]]
+    },
+    "Parse BatchData Response": {
+      "main": [[{ "node": "Prepare Merge Operations", "type": "main", "index": 0 }]]
+    },
+    "Update Lead Status": {
+      "main": [[{ "node": "Mark Complete", "type": "main", "index": 0 }]]
+    },
+    "Mark Complete": {
+      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-08T00:00:00.000Z",
+  "versionId": "1"
+}
+

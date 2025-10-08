@@ -1,0 +1,236 @@
+{
+  "name": "Campaign Feeder (Daily to Instantly)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron Trigger (Daily 8am)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/vw_campaign_ready_leads",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "250"
+            }
+          ]
+        }
+      },
+      "id": "get-campaign-ready-leads",
+      "name": "Get Campaign Ready Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Assign persona based on demographics/heritage\nconst lead = $input.item.json;\n\n// Simple persona assignment logic\nlet personaId = 'carlos_maria_rodriguez'; // default\n\nif (lead.persona_heritage) {\n  const heritage = lead.persona_heritage.toLowerCase();\n  if (heritage.includes('south asian') || heritage.includes('indian')) {\n    personaId = 'priya_rahul_patel';\n  } else if (heritage.includes('african american') || heritage.includes('black')) {\n    personaId = 'marcus_latoya_washington';\n  }\n}\n\nreturn [{\n  json: {\n    ...lead,\n    assigned_persona: personaId\n  }\n}];"
+      },
+      "id": "assign-persona",
+      "name": "Assign Persona",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Determine neighborhood from city/zip\nconst lead = $input.item.json;\n\n// Map city to neighborhood slug (simplified)\nconst cityToNeighborhood = {\n  'los angeles': 'hollywood',\n  'hollywood': 'hollywood',\n  'beverly hills': 'beverly-hills',\n  'santa monica': 'santa-monica',\n  'pasadena': 'pasadena',\n  'long beach': 'long-beach'\n};\n\nconst city = (lead.property_city || '').toLowerCase();\nconst neighborhoodSlug = cityToNeighborhood[city] || 'hollywood';\n\nreturn [{\n  json: {\n    ...lead,\n    neighborhood_slug: neighborhoodSlug\n  }\n}];"
+      },
+      "id": "determine-neighborhood",
+      "name": "Determine Neighborhood",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_lead",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"lead_id\": \"{{ $json.id }}\",\n  \"persona_id\": \"{{ $json.assigned_persona }}\",\n  \"neighborhood_slug\": \"{{ $json.neighborhood_slug }}\"\n}"
+      },
+      "id": "create-microsite",
+      "name": "Create Microsite",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Build Instantly contact payload\nconst lead = $node['Determine Neighborhood'].json;\nconst micrositeUrl = $input.item.json.microsite_url;\n\n// Extract first phone and email\nconst phones = JSON.parse(lead.phones || '[]');\nconst emails = JSON.parse(lead.emails || '[]');\n\nconst primaryPhone = phones.find(p => p.verified) || phones[0];\nconst primaryEmail = emails.find(e => e.verified) || emails[0];\n\nreturn [{\n  json: {\n    email: primaryEmail?.email || lead.email,\n    first_name: lead.first_name,\n    last_name: lead.last_name,\n    phone: primaryPhone?.phone || lead.phone,\n    custom_variables: {\n      microsite_url: micrositeUrl,\n      property_city: lead.property_city,\n      property_state: lead.property_state,\n      property_value: lead.property_value,\n      estimated_equity: lead.estimated_equity,\n      persona_name: lead.assigned_persona.replace(/_/g, ' '),\n      lead_id: lead.id\n    }\n  }\n}];"
+      },
+      "id": "build-instantly-payload",
+      "name": "Build Instantly Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "https://api.instantly.ai/api/v1/lead/add",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"api_key\": \"{{ $env.INSTANTLY_API_KEY }}\",\n  \"campaign_id\": \"{{ $env.INSTANTLY_CAMPAIGN_ID }}\",\n  \"email\": \"{{ $json.email }}\",\n  \"first_name\": \"{{ $json.first_name }}\",\n  \"last_name\": \"{{ $json.last_name }}\",\n  \"phone\": \"{{ $json.phone }}\",\n  \"custom_variables\": {{ JSON.stringify($json.custom_variables) }}\n}"
+      },
+      "id": "add-to-instantly",
+      "name": "Add to Instantly",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1650, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "instantly-auth",
+          "name": "Instantly API Key"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?id=eq.{{ $node['Determine Neighborhood'].json.id }}",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"added_to_campaign_at\": \"{{ new Date().toISOString() }}\",\n  \"campaign_status\": \"queued\",\n  \"assigned_persona\": \"{{ $node['Determine Neighborhood'].json.assigned_persona }}\",\n  \"microsite_url\": \"{{ $node['Create Microsite'].json.microsite_url }}\",\n  \"instantly_campaign_id\": \"{{ $env.INSTANTLY_CAMPAIGN_ID }}\"\n}"
+      },
+      "id": "update-lead-campaign-status",
+      "name": "Update Lead Campaign Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1850, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/interactions",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"lead_id\": \"{{ $node['Determine Neighborhood'].json.id }}\",\n  \"type\": \"email_sent\",\n  \"direction\": \"outbound\",\n  \"subject\": \"Added to Instantly campaign\",\n  \"content\": \"Lead added to campaign with microsite URL\",\n  \"metadata\": {\n    \"campaign_id\": \"{{ $env.INSTANTLY_CAMPAIGN_ID }}\",\n    \"microsite_url\": \"{{ $node['Create Microsite'].json.microsite_url }}\",\n    \"persona\": \"{{ $node['Determine Neighborhood'].json.assigned_persona }}\"\n  }\n}"
+      },
+      "id": "create-interaction-record",
+      "name": "Create Interaction Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2050, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-auth",
+          "name": "Supabase Service Key"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "loop-check",
+      "name": "Loop Check",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log completion stats\nconst totalProcessed = $node['Split In Batches'].context.noItemsLeft ? \n  $node['Split In Batches'].context.currentRunIndex : 0;\n\nconsole.log(`Campaign feeder complete: ${totalProcessed} leads added to Instantly`);\n\nreturn [{\n  json: {\n    status: 'success',\n    leads_processed: totalProcessed,\n    campaign_id: $env.INSTANTLY_CAMPAIGN_ID,\n    completed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-completion",
+      "name": "Log Completion",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2450, 300]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Daily 8am)": {
+      "main": [[{ "node": "Get Campaign Ready Leads", "type": "main", "index": 0 }]]
+    },
+    "Get Campaign Ready Leads": {
+      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+    },
+    "Split In Batches": {
+      "main": [[{ "node": "Assign Persona", "type": "main", "index": 0 }]]
+    },
+    "Assign Persona": {
+      "main": [[{ "node": "Determine Neighborhood", "type": "main", "index": 0 }]]
+    },
+    "Determine Neighborhood": {
+      "main": [[{ "node": "Create Microsite", "type": "main", "index": 0 }]]
+    },
+    "Create Microsite": {
+      "main": [[{ "node": "Build Instantly Payload", "type": "main", "index": 0 }]]
+    },
+    "Build Instantly Payload": {
+      "main": [[{ "node": "Add to Instantly", "type": "main", "index": 0 }]]
+    },
+    "Add to Instantly": {
+      "main": [[{ "node": "Update Lead Campaign Status", "type": "main", "index": 0 }]]
+    },
+    "Update Lead Campaign Status": {
+      "main": [[{ "node": "Create Interaction Record", "type": "main", "index": 0 }]]
+    },
+    "Create Interaction Record": {
+      "main": [[{ "node": "Loop Check", "type": "main", "index": 0 }]]
+    },
+    "Loop Check": {
+      "main": [
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }],
+        [{ "node": "Log Completion", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-08T00:00:00.000Z",
+  "versionId": "1"
+}
+
