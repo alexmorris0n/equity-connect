@@ -20,12 +20,13 @@
     },
     {
       "parameters": {
-        "functionCode": "// Build query signature and parameters\nconst crypto = require('crypto');\n\n// Define market parameters (customize per market)\nconst marketParams = {\n  market: 'hollywood',\n  zip_codes: ['90028', '90038', '90046'],\n  filters: {\n    owner_occupied: true,\n    property_type: 'single_family',\n    age_min: 62,\n    equity_min: 100000\n  },\n  sort: 'created_desc',\n  page_size: 100\n};\n\n// Create normalized query signature for deduplication\nconst querySigData = {\n  zip_codes: marketParams.zip_codes.sort(),\n  filters: marketParams.filters,\n  sort: marketParams.sort\n};\nconst querySig = crypto.createHash('sha256')\n  .update(JSON.stringify(querySigData))\n  .digest('hex');\n\nreturn {\n  json: {\n    source: 'batchdata',\n    query_sig: querySig,\n    market: marketParams.market,\n    params: marketParams\n  }\n};"
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build query signature and parameters\nconst crypto = require('crypto');\n\n// Define market parameters (customize per market)\nconst marketParams = {\n  market: 'hollywood',\n  zip_codes: ['90028', '90038', '90046'],\n  filters: {\n    owner_occupied: true,\n    property_type: 'single_family',\n    age_min: 62,\n    equity_min: 100000\n  },\n  sort: 'created_desc',\n  page_size: 100\n};\n\n// Create normalized query signature for deduplication\nconst querySigData = {\n  zip_codes: marketParams.zip_codes.sort(),\n  filters: marketParams.filters,\n  sort: marketParams.sort\n};\nconst querySig = crypto.createHash('sha256')\n  .update(JSON.stringify(querySigData))\n  .digest('hex');\n\nreturn {\n  source: 'batchdata',\n  query_sig: querySig,\n  market: marketParams.market,\n  params: marketParams\n};"
       },
       "id": "build-query-sig",
       "name": "Build Query Signature",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [450, 300]
     },
     {
@@ -106,12 +107,13 @@
     },
     {
       "parameters": {
-        "functionCode": "// Check if vendor IDs have been seen before (stop-when-known)\nconst items = $input.all();\nconst records = items[0].json.data || [];\n\nif (records.length === 0) {\n  return [{ json: { stop: true, reason: 'no_more_results' } }];\n}\n\n// Extract vendor IDs\nconst vendorIds = records.map(r => r.id);\nconst firstId = vendorIds[0];\nconst lastId = vendorIds[vendorIds.length - 1];\n\n// Store for next node\nreturn [{\n  json: {\n    source: $node['Build Query Signature'].json.source,\n    query_sig: $node['Build Query Signature'].json.query_sig,\n    page_number: $node['Get Bookmark'].json.last_page_fetched + 1,\n    vendor_ids: vendorIds,\n    first_id: firstId,\n    last_id: lastId,\n    records: records,\n    stop: false\n  }\n}];"
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Check if vendor IDs have been seen before (stop-when-known)\nconst records = $input.all()[0].json.data || [];\n\nif (records.length === 0) {\n  return [{ stop: true, reason: 'no_more_results' }];\n}\n\n// Extract vendor IDs\nconst vendorIds = records.map(r => r.id);\nconst firstId = vendorIds[0];\nconst lastId = vendorIds[vendorIds.length - 1];\n\n// Store for next node\nreturn [{\n  source: $('Build Query Signature').first().json.source,\n  query_sig: $('Build Query Signature').first().json.query_sig,\n  page_number: $('Get Bookmark').first().json[0].last_page_fetched + 1,\n  vendor_ids: vendorIds,\n  first_id: firstId,\n  last_id: lastId,\n  records: records,\n  stop: false\n}];"
       },
       "id": "extract-vendor-ids",
       "name": "Extract Vendor IDs",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1050, 300]
     },
     {
@@ -154,12 +156,13 @@
     },
     {
       "parameters": {
-        "functionCode": "// Already seen these IDs, stop pulling\nconsole.log('Stop-when-known triggered: IDs already seen');\nreturn [{ json: { status: 'stopped', reason: 'caught_up' } }];"
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Already seen these IDs, stop pulling\nconsole.log('Stop-when-known triggered: IDs already seen');\nreturn [{ status: 'stopped', reason: 'caught_up' }];"
       },
       "id": "stop-caught-up",
       "name": "Stop (Caught Up)",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1650, 200]
     },
     {
@@ -175,12 +178,13 @@
     },
     {
       "parameters": {
-        "functionCode": "// Compute address hash for deduplication\nconst crypto = require('crypto');\nconst record = $input.item.json;\n\n// Normalize address components\nconst line1 = (record.address_line1 || '').toUpperCase().trim();\nconst city = (record.city || '').toUpperCase().trim();\nconst state = (record.state || '').toUpperCase().trim();\nconst zip = (record.zip || '').substring(0, 5);\n\n// Compute hash\nconst normalized = `${line1}|${city}|${state}|${zip}`;\nconst addrHash = crypto.createHash('sha256').update(normalized).digest('hex');\n\nreturn [{\n  json: {\n    ...record,\n    addr_hash: addrHash,\n    source: 'batchdata'\n  }\n}];"
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Compute address hash for deduplication\nconst crypto = require('crypto');\nconst record = $input.item.json;\n\n// Normalize address components\nconst line1 = (record.address_line1 || '').toUpperCase().trim();\nconst city = (record.city || '').toUpperCase().trim();\nconst state = (record.state || '').toUpperCase().trim();\nconst zip = (record.zip || '').substring(0, 5);\n\n// Compute hash\nconst normalized = `${line1}|${city}|${state}|${zip}`;\nconst addrHash = crypto.createHash('sha256').update(normalized).digest('hex');\n\nreturn {\n  ...record,\n  addr_hash: addrHash,\n  source: 'batchdata'\n};"
       },
       "id": "compute-addr-hash",
       "name": "Compute Addr Hash",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1850, 400]
     },
     {
@@ -273,12 +277,13 @@
     },
     {
       "parameters": {
-        "functionCode": "// Log completion\nconst recordCount = $node['Extract Vendor IDs'].json.vendor_ids.length;\nconsole.log(`BatchData pull complete: ${recordCount} records processed`);\nreturn [{ json: { status: 'success', records: recordCount } }];"
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Log completion\nconst recordCount = $('Extract Vendor IDs').first().json.vendor_ids.length;\nconsole.log(`BatchData pull complete: ${recordCount} records processed`);\nreturn [{ status: 'success', records: recordCount }];"
       },
       "id": "log-completion",
       "name": "Log Completion",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [3050, 400]
     }
   ],
