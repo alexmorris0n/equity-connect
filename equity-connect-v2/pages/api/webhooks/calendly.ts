@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-// Verify Calendly webhook signature
+// Verify Cal.com webhook signature
 function verifySignature(body: string, signature: string, secret: string): boolean {
   const expectedSignature = crypto
     .createHmac('sha256', secret)
@@ -28,36 +28,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Verify webhook signature
-    const signature = req.headers['calendly-webhook-signature'] as string;
-    const secret = process.env.CALENDLY_WEBHOOK_SECRET!;
+    const signature = req.headers['x-cal-signature-256'] as string;
+    const secret = process.env.CAL_WEBHOOK_SECRET!;
     
     if (!verifySignature(JSON.stringify(req.body), signature, secret)) {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    const { event, payload } = req.body;
+    const { triggerEvent, payload } = req.body;
 
-    console.log(`Calendly webhook: ${event}`);
+    console.log(`Cal.com webhook: ${triggerEvent}`);
 
-    // Handle different Calendly events
-    switch (event) {
-      case 'invitee.created':
+    // Handle different Cal.com events
+    switch (triggerEvent) {
+      case 'BOOKING_CREATED':
         await handleAppointmentBooked(payload);
         break;
-      case 'invitee.canceled':
+      case 'BOOKING_CANCELLED':
         await handleAppointmentCanceled(payload);
         break;
-      case 'invitee.rescheduled':
+      case 'BOOKING_RESCHEDULED':
         await handleAppointmentRescheduled(payload);
         break;
       default:
-        console.log(`Unknown Calendly event: ${event}`);
+        console.log(`Unknown Cal.com event: ${triggerEvent}`);
     }
 
-    res.status(200).json({ success: true, event });
+    res.status(200).json({ success: true, event: triggerEvent });
 
   } catch (error) {
-    console.error('Calendly webhook error:', error);
+    console.error('Cal.com webhook error:', error);
     res.status(500).json({ 
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -66,15 +66,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 async function handleAppointmentBooked(payload: any) {
-  const { invitee, event_type } = payload;
+  const { attendees, startTime, endTime, uid, location, eventType } = payload;
+  const attendeeEmail = attendees?.[0]?.email;
   
-  console.log(`Appointment booked: ${invitee.email}`);
+  console.log(`Appointment booked: ${attendeeEmail}`);
   
   // Find lead by email
   const { data: leads } = await supabase
     .from('leads')
     .select('*')
-    .eq('email', invitee.email)
+    .eq('email', attendeeEmail)
     .limit(1);
   
   if (leads && leads.length > 0) {
@@ -86,8 +87,8 @@ async function handleAppointmentBooked(payload: any) {
       .update({
         status: 'appointment_set',
         last_engagement: new Date().toISOString(),
-        calendly_event_id: event_type.uuid,
-        appointment_scheduled_at: event_type.start_time,
+        calendly_event_id: uid,
+        appointment_scheduled_at: startTime,
         updated_at: new Date().toISOString()
       })
       .eq('id', lead.id);
@@ -106,14 +107,16 @@ async function handleAppointmentBooked(payload: any) {
         type: 'appointment',
         direction: 'inbound',
         subject: 'Appointment Booked',
-        scheduled_for: event_type.start_time,
-        meeting_link: event_type.location?.join_url || '',
+        scheduled_for: startTime,
+        meeting_link: location || '',
         outcome: 'appointment_booked',
         metadata: {
-          calendly_event_id: event_type.uuid,
-          event_type_name: event_type.name,
-          invitee_data: invitee,
-          location: event_type.location
+          cal_booking_uid: uid,
+          event_type_slug: eventType?.slug,
+          attendee_data: attendees,
+          start_time: startTime,
+          end_time: endTime,
+          location: location
         },
         created_at: new Date().toISOString()
       });
@@ -132,8 +135,8 @@ async function handleAppointmentBooked(payload: any) {
         amount: 150.00, // Configurable rate for appointments
         status: 'pending',
         metadata: {
-          calendly_event_id: event_type.uuid,
-          scheduled_time: event_type.start_time
+          cal_booking_uid: uid,
+          scheduled_time: startTime
         },
         created_at: new Date().toISOString()
       });
@@ -148,29 +151,30 @@ async function handleAppointmentBooked(payload: any) {
       event_data: {
         lead_id: lead.id,
         broker_id: lead.assigned_broker_id,
-        email: invitee.email,
-        scheduled_time: event_type.start_time,
-        calendly_event_id: event_type.uuid
+        email: attendeeEmail,
+        scheduled_time: startTime,
+        cal_booking_uid: uid
       },
       created_at: new Date().toISOString()
     });
     
     console.log(`Successfully processed appointment booking for lead ${lead.id}`);
   } else {
-    console.log(`No lead found for email: ${invitee.email}`);
+    console.log(`No lead found for email: ${attendeeEmail}`);
   }
 }
 
 async function handleAppointmentCanceled(payload: any) {
-  const { invitee, event_type } = payload;
+  const { attendees, uid } = payload;
+  const attendeeEmail = attendees?.[0]?.email;
   
-  console.log(`Appointment canceled: ${invitee.email}`);
+  console.log(`Appointment canceled: ${attendeeEmail}`);
   
   // Find lead by email
   const { data: leads } = await supabase
     .from('leads')
     .select('*')
-    .eq('email', invitee.email)
+    .eq('email', attendeeEmail)
     .limit(1);
   
   if (leads && leads.length > 0) {
@@ -196,7 +200,7 @@ async function handleAppointmentCanceled(payload: any) {
       subject: 'Appointment Canceled',
       outcome: 'canceled',
       metadata: {
-        calendly_event_id: event_type.uuid,
+        cal_booking_uid: uid,
         canceled_at: new Date().toISOString()
       },
       created_at: new Date().toISOString()
@@ -222,15 +226,16 @@ async function handleAppointmentCanceled(payload: any) {
 }
 
 async function handleAppointmentRescheduled(payload: any) {
-  const { invitee, event_type } = payload;
+  const { attendees, startTime, uid } = payload;
+  const attendeeEmail = attendees?.[0]?.email;
   
-  console.log(`Appointment rescheduled: ${invitee.email}`);
+  console.log(`Appointment rescheduled: ${attendeeEmail}`);
   
   // Find lead by email
   const { data: leads } = await supabase
     .from('leads')
     .select('*')
-    .eq('email', invitee.email)
+    .eq('email', attendeeEmail)
     .limit(1);
   
   if (leads && leads.length > 0) {
@@ -240,7 +245,7 @@ async function handleAppointmentRescheduled(payload: any) {
     await supabase
       .from('leads')
       .update({
-        appointment_scheduled_at: event_type.start_time,
+        appointment_scheduled_at: startTime,
         last_engagement: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -253,11 +258,11 @@ async function handleAppointmentRescheduled(payload: any) {
       type: 'appointment',
       direction: 'inbound',
       subject: 'Appointment Rescheduled',
-      scheduled_for: event_type.start_time,
+      scheduled_for: startTime,
       outcome: 'rescheduled',
       metadata: {
-        calendly_event_id: event_type.uuid,
-        new_time: event_type.start_time
+        cal_booking_uid: uid,
+        new_time: startTime
       },
       created_at: new Date().toISOString()
     });

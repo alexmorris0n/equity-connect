@@ -16,8 +16,8 @@
     "INSTANTLY_WEBHOOK_SECRET": "@instantly-webhook-secret",
     "VAPI_API_KEY": "@vapi-api-key",
     "VAPI_WEBHOOK_SECRET": "@vapi-webhook-secret",
-    "CALENDLY_API_KEY": "@calendly-api-key",
-    "CALENDLY_WEBHOOK_SECRET": "@calendly-webhook-secret",
+    "CAL_API_KEY": "@cal-api-key",
+    "CAL_WEBHOOK_SECRET": "@cal-webhook-secret",
     "ANTHROPIC_API_KEY": "@anthropic-api-key",
     "NEXTAUTH_SECRET": "@nextauth-secret",
     "NEXTAUTH_URL": "@nextauth-url"

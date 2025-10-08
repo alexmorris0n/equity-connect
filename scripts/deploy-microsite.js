@@ -16,36 +16,40 @@ class MicrositeDeployer {
   }
 
   /**
-   * Deploy a new microsite for a lead
+   * Deploy a new microsite for a lead using API route
    * @param {Object} config - Lead and persona configuration
    * @returns {Promise<string>} - Deployment URL
    */
   async deployMicrosite(config) {
     try {
-      console.log(`Deploying microsite for ${config.lead.firstName} ${config.lead.lastName} in ${config.neighborhood}`);
+      console.log(`Deploying microsite for ${config.lead.firstName} ${config.lead.lastName} in ${config.neighborhood.slug}`);
 
-      // Generate subdomain slug
-      const subdomain = this.generateSubdomain(config.neighborhood);
-      
-      // Prepare environment variables
-      const envVars = this.prepareEnvironmentVariables(config);
-      
-      // Create deployment
-      const deployment = await this.client.deployments.create({
-        name: `equity-connect-${subdomain}`,
-        project: 'equity-connect-microsites',
-        target: 'production',
-        gitSource: {
-          type: 'github',
-          repo: 'equity-connect/microsites',
-          ref: 'main'
+      // Call the API route to create microsite
+      const apiUrl = process.env.API_ENDPOINT || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/microsites/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         },
-        env: envVars,
-        alias: [`${subdomain}.equityconnect.com`]
+        body: JSON.stringify({
+          lead_id: config.lead.id,
+          persona_id: config.persona.id,
+          neighborhood_slug: config.neighborhood.slug
+        })
       });
 
-      console.log(`✅ Microsite deployed: ${deployment.url}`);
-      return deployment.url;
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Microsite creation failed');
+      }
+
+      console.log(`✅ Microsite deployed: ${result.microsite_url}`);
+      return result.microsite_url;
 
     } catch (error) {
       console.error('❌ Deployment failed:', error);
@@ -219,10 +223,10 @@ class MicrositeDeployer {
 async function exampleUsage() {
   const deployer = new MicrositeDeployer();
 
-  // Example lead configuration
+  // Example lead configuration - Updated structure
   const exampleConfig = {
     lead: {
-      id: 'lead_12345',
+      id: '00000000-0000-0000-0000-000000000000', // Replace with real lead ID
       firstName: 'Maria',
       lastName: 'Gonzalez',
       propertyAddress: '123 Main St, Hollywood, CA 90210',
@@ -231,12 +235,12 @@ async function exampleUsage() {
     },
     persona: {
       id: 'carlos_maria_rodriguez',
-      name: 'Maria Rodriguez',
+      name: 'Carlos Maria Rodriguez',
       heritage: 'Latino/Hispanic'
     },
-    neighborhood: 'Hollywood',
-    tracking: {
-      callRailId: 'callrail_123'
+    neighborhood: {
+      slug: 'hollywood',
+      name: 'Hollywood'
     }
   };
 
@@ -244,10 +248,7 @@ async function exampleUsage() {
     // Deploy single microsite
     const url = await deployer.deployMicrosite(exampleConfig);
     console.log(`Microsite deployed at: ${url}`);
-
-    // Check deployment status
-    const status = await deployer.getDeploymentStatus('hollywood');
-    console.log('Deployment status:', status);
+    console.log(`View at: ${url}`);
 
   } catch (error) {
     console.error('Example failed:', error);
