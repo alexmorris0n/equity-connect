@@ -24,7 +24,6 @@
         "method": "GET",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq",
         "sendQuery": true,
-        "specifyQuery": "keypair",
         "queryParameters": {
           "parameters": [
             {
@@ -175,7 +174,6 @@
         "method": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
         "sendBody": true,
-        "contentType": "json",
         "specifyBody": "json",
         "jsonBody": "={\n  \"event_type\": \"{{ $json.stage }}\",\n  \"lead_id\": \"{{ $json.lead_id }}\",\n  \"event_data\": {\"retry_from_dlq\": true},\n  \"status\": \"pending\"\n}"
       },
@@ -243,7 +241,6 @@
         "method": "PATCH",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}",
         "sendBody": true,
-        "contentType": "json",
         "specifyBody": "json",
         "jsonBody": "={\n  \"attempts\": {{ $json.new_attempts }},\n  \"retry_after\": \"{{ $json.retry_after }}\"\n}"
       },
