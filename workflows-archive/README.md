@@ -30,6 +30,12 @@ This archive only contains workflows that we **replaced with better versions**, 
   - **Reason:** Improved DLQ retry logic with stage detection
   - **Status:** Do not use - superseded
 
+### Call Tracking - REPLACED
+- **`callrail-verification-workflow.json`** ❌ REPLACED
+  - **Replaced by:** SignalWire integration (call pool management)
+  - **Reason:** SignalWire is more cost-effective and integrates better with n8n/Supabase
+  - **Status:** Do not use - migrated to SignalWire
+
 ---
 
 ## Current Active Workflows (Production)

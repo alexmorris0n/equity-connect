@@ -45,17 +45,6 @@ This folder contains **planned workflows** for future implementation phases. The
 - **Integration:** Updates `interactions`, triggers follow-up workflows
 - **Status:** Draft workflow exists, needs API integration
 
-### `callrail-verification-workflow.json`
-- **Purpose:** CallRail call tracking and verification
-- **Triggers:** Inbound call webhook from CallRail
-- **Features:**
-  - Call source attribution
-  - Duration tracking
-  - Recording storage
-  - Lead matching
-- **Integration:** Updates `interactions`, `leads.phone_verified`
-- **Status:** Draft workflow exists, needs CallRail account
-
 ---
 
 ## 🔜 Phase 4: Broker & Funnel Management (Q2 2026)
