@@ -6,135 +6,75 @@
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 1
+              "field": "hours"
             }
           ]
         }
       },
-      "id": "cron-trigger",
+      "id": "79f40286-511f-4683-b535-ad8ef072b0d5",
       "name": "Cron Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [
+        -976,
+        -320
+      ]
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "// Build query signature and parameters\nconst crypto = require('crypto');\n\n// Define market parameters (customize per market)\nconst marketParams = {\n  market: 'hollywood',\n  zip_codes: ['90028', '90038', '90046'],\n  filters: {\n    owner_occupied: true,\n    property_type: 'single_family',\n    age_min: 62,\n    equity_min: 100000\n  },\n  sort: 'created_desc',\n  page_size: 100\n};\n\n// Create normalized query signature for deduplication\nconst querySigData = {\n  zip_codes: marketParams.zip_codes.sort(),\n  filters: marketParams.filters,\n  sort: marketParams.sort\n};\nconst querySig = crypto.createHash('sha256')\n  .update(JSON.stringify(querySigData))\n  .digest('hex');\n\nreturn {\n  source: 'batchdata',\n  query_sig: querySig,\n  market: marketParams.market,\n  params: marketParams\n};"
+        "jsCode": "// Simplified for MCP - just define market criteria\nconst crypto = require('crypto');\n\nconst marketParams = {\n  market: 'hollywood',\n  zip_codes: ['90028', '90038', '90046'],\n  filters: {\n    owner_occupied: true,\n    property_type: 'single_family',\n    age_min: 62,\n    equity_min: 100000\n  },\n  page_size: 100\n};\n\n// Query sig for bookmark tracking\nconst querySigData = {\n  zip_codes: marketParams.zip_codes.sort(),\n  filters: marketParams.filters\n};\nconst querySig = crypto.createHash('sha256').update(JSON.stringify(querySigData)).digest('hex');\n\nreturn [{json: {\n  source: 'batchdata',\n  query_sig: querySig,\n  market: marketParams.market,\n  params: marketParams\n}}];"
       },
-      "id": "build-query-sig",
-      "name": "Build Query Signature",
+      "id": "d798c8bc-187c-4c8c-9bb2-d0e73388bf30",
+      "name": "Define Market Params",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [450, 300]
+      "position": [
+        -752,
+        -320
+      ]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/get_or_create_bookmark",
-        "jsonParameters": true,
-        "options": {},
-        "bodyParametersJson": "={\n  \"p_source\": \"{{ $json.source }}\",\n  \"p_query_sig\": \"{{ $json.query_sig }}\"\n}"
+        "authentication": "headerAuth",
+        "options": {}
       },
-      "id": "get-bookmark",
+      "id": "418d5705-493e-4ae3-8a92-92ffe6e13cb8",
       "name": "Get Bookmark",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [650, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
+      "position": [
+        -528,
+        -320
+      ]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "GET",
-        "url": "={{ $env.BATCHDATA_BASE_URL }}/api/v1/properties",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "zip_codes",
-              "value": "={{ $node['Build Query Signature'].json.params.zip_codes.join(',') }}"
-            },
-            {
-              "name": "owner_occupied",
-              "value": "={{ $node['Build Query Signature'].json.params.filters.owner_occupied }}"
-            },
-            {
-              "name": "property_type",
-              "value": "={{ $node['Build Query Signature'].json.params.filters.property_type }}"
-            },
-            {
-              "name": "age_min",
-              "value": "={{ $node['Build Query Signature'].json.params.filters.age_min }}"
-            },
-            {
-              "name": "equity_min",
-              "value": "={{ $node['Build Query Signature'].json.params.filters.equity_min }}"
-            },
-            {
-              "name": "sort",
-              "value": "={{ $node['Build Query Signature'].json.params.sort }}"
-            },
-            {
-              "name": "page",
-              "value": "={{ $json.last_page_fetched + 1 }}"
-            },
-            {
-              "name": "per_page",
-              "value": "={{ $node['Build Query Signature'].json.params.page_size }}"
-            }
-          ]
-        }
-      },
-      "id": "fetch-batchdata-page",
-      "name": "Fetch BatchData Page",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [850, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "batchdata-auth",
-          "name": "BatchData API Key"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
         "jsCode": "// Check if vendor IDs have been seen before (stop-when-known)\nconst records = $input.all()[0].json.data || [];\n\nif (records.length === 0) {\n  return [{ stop: true, reason: 'no_more_results' }];\n}\n\n// Extract vendor IDs\nconst vendorIds = records.map(r => r.id);\nconst firstId = vendorIds[0];\nconst lastId = vendorIds[vendorIds.length - 1];\n\n// Store for next node\nreturn [{\n  source: $('Build Query Signature').first().json.source,\n  query_sig: $('Build Query Signature').first().json.query_sig,\n  page_number: $('Get Bookmark').first().json[0].last_page_fetched + 1,\n  vendor_ids: vendorIds,\n  first_id: firstId,\n  last_id: lastId,\n  records: records,\n  stop: false\n}];"
       },
-      "id": "extract-vendor-ids",
+      "id": "db8b08dc-9a50-4019-a934-a0b1a254d1d8",
       "name": "Extract Vendor IDs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1050, 300]
+      "position": [
+        48,
+        -320
+      ]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/has_vendor_ids_been_seen",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"p_source\": \"{{ $json.source }}\",\n  \"p_query_sig\": \"{{ $json.query_sig }}\",\n  \"p_vendor_ids\": {{ $json.vendor_ids }}\n}"
+        "authentication": "headerAuth",
+        "options": {}
       },
-      "id": "check-stop-when-known",
+      "id": "0aa26e25-e0dd-4d7a-8ce3-a564f8d3b0d4",
       "name": "Check Stop-When-Known",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1250, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
+      "position": [
+        272,
+        -320
+      ]
     },
     {
       "parameters": {
@@ -142,208 +82,410 @@
           "boolean": [
             {
               "value1": "={{ $json }}",
-              "operation": "equal",
               "value2": true
             }
           ]
         }
       },
-      "id": "if-seen-before",
+      "id": "05eaeb00-929b-44ff-ad1f-982d9951af08",
       "name": "IF Seen Before?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1450, 300]
+      "position": [
+        496,
+        -320
+      ]
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
         "jsCode": "// Already seen these IDs, stop pulling\nconsole.log('Stop-when-known triggered: IDs already seen');\nreturn [{ status: 'stopped', reason: 'caught_up' }];"
       },
-      "id": "stop-caught-up",
+      "id": "e43a568d-4c59-4ae7-b909-5d6ba28f4063",
       "name": "Stop (Caught Up)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1650, 200]
+      "position": [
+        720,
+        -416
+      ]
     },
     {
       "parameters": {
         "batchSize": 1,
         "options": {}
       },
-      "id": "split-in-batches",
+      "id": "f7fdfc8b-09bf-4233-a732-ae07b4e3e412",
       "name": "Split In Batches",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
-      "position": [1650, 400]
+      "position": [
+        720,
+        -224
+      ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
         "jsCode": "// Compute address hash for deduplication\nconst crypto = require('crypto');\nconst record = $input.item.json;\n\n// Normalize address components\nconst line1 = (record.address_line1 || '').toUpperCase().trim();\nconst city = (record.city || '').toUpperCase().trim();\nconst state = (record.state || '').toUpperCase().trim();\nconst zip = (record.zip || '').substring(0, 5);\n\n// Compute hash\nconst normalized = `${line1}|${city}|${state}|${zip}`;\nconst addrHash = crypto.createHash('sha256').update(normalized).digest('hex');\n\nreturn {\n  ...record,\n  addr_hash: addrHash,\n  source: 'batchdata'\n};"
       },
-      "id": "compute-addr-hash",
+      "id": "9a4fd5b8-72f2-4469-9e0c-45909c2c1bd5",
       "name": "Compute Addr Hash",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1850, 400]
+      "position": [
+        944,
+        -304
+      ]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_lead",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"p_source\": \"batchdata\",\n  \"p_vendor_record_id\": \"{{ $json.id }}\",\n  \"p_vendor_list_id\": \"{{ $node['Build Query Signature'].json.market }}\",\n  \"p_address_line1\": \"{{ $json.address_line1 }}\",\n  \"p_address_line2\": \"{{ $json.address_line2 }}\",\n  \"p_city\": \"{{ $json.city }}\",\n  \"p_state\": \"{{ $json.state }}\",\n  \"p_postal_code\": \"{{ $json.zip }}\",\n  \"p_apn\": \"{{ $json.apn }}\",\n  \"p_owner_first_name\": \"{{ $json.owner_first_name }}\",\n  \"p_owner_last_name\": \"{{ $json.owner_last_name }}\",\n  \"p_owner_full_name\": \"{{ $json.owner_full_name }}\",\n  \"p_owner_company\": \"{{ $json.owner_company }}\",\n  \"p_property_value\": {{ $json.property_value || null }},\n  \"p_estimated_equity\": {{ $json.estimated_equity || null }},\n  \"p_age\": {{ $json.age || null }}\n}"
+        "authentication": "headerAuth",
+        "options": {}
       },
-      "id": "upsert-lead",
+      "id": "534baeb8-18ab-47f0-aac3-5ebf9ed16bcd",
       "name": "Upsert Lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [2050, 400],
+      "position": [
+        1168,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "pipeline_events"
+      },
+      "id": "29fd9580-8a3d-426b-b926-114d20fcc796",
+      "name": "Queue for Enrichment",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        -304
+      ],
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
+        "supabaseApi": {
+          "id": "po6noLWj9epbuiem",
+          "name": "Supabase account"
         }
       }
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"event_type\": \"enrich\",\n  \"lead_id\": \"{{ $json }}\",\n  \"event_data\": {\"stage\": \"new\", \"source\": \"batchdata\"},\n  \"status\": \"pending\"\n}"
+        "options": {}
       },
-      "id": "queue-for-enrichment",
-      "name": "Queue for Enrichment",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2250, 400],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
-    },
-    {
-      "parameters": {},
-      "id": "loop-check",
+      "id": "5ef05645-e904-4eb5-94cd-094c6fd99138",
       "name": "Loop Check",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
-      "position": [2450, 400]
+      "position": [
+        1616,
+        -224
+      ]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/lead_source_events",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"source\": \"{{ $node['Extract Vendor IDs'].json.source }}\",\n  \"pull_params\": {{ JSON.stringify($node['Build Query Signature'].json.params) }},\n  \"page_number\": {{ $node['Extract Vendor IDs'].json.page_number }},\n  \"seen_vendor_ids\": {{ JSON.stringify($node['Extract Vendor IDs'].json.vendor_ids) }},\n  \"first_id\": \"{{ $node['Extract Vendor IDs'].json.first_id }}\",\n  \"last_id\": \"{{ $node['Extract Vendor IDs'].json.last_id }}\"\n}"
+        "tableId": "lead_source_events"
       },
-      "id": "record-source-event",
+      "id": "dddd2eca-86e7-467a-8f6d-9654202626d6",
       "name": "Record Source Event",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2650, 400],
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1840,
+        -224
+      ],
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
+        "supabaseApi": {
+          "id": "po6noLWj9epbuiem",
+          "name": "Supabase account"
         }
       }
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "PATCH",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/source_bookmarks?source=eq.{{ $node['Build Query Signature'].json.source }}&query_sig=eq.{{ $node['Build Query Signature'].json.query_sig }}",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"last_page_fetched\": {{ $node['Extract Vendor IDs'].json.page_number }},\n  \"last_seen_vendor_id\": \"{{ $node['Extract Vendor IDs'].json.last_id }}\",\n  \"updated_at\": \"{{ new Date().toISOString() }}\"\n}"
+        "operation": "update",
+        "tableId": "source_bookmarks"
       },
-      "id": "advance-bookmark",
+      "id": "0c995461-8ede-4e89-9590-8faf204d8364",
       "name": "Advance Bookmark",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2850, 400],
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2064,
+        -224
+      ],
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
+        "supabaseApi": {
+          "id": "po6noLWj9epbuiem",
+          "name": "Supabase account"
         }
       }
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
         "jsCode": "// Log completion\nconst recordCount = $('Extract Vendor IDs').first().json.vendor_ids.length;\nconsole.log(`BatchData pull complete: ${recordCount} records processed`);\nreturn [{ status: 'success', records: recordCount }];"
       },
-      "id": "log-completion",
+      "id": "d3802ef9-b905-496c-b61b-4e5529633707",
       "name": "Log Completion",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3050, 400]
+      "position": [
+        2288,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "groq-model",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Fetch properties from BatchData for market: {{ $('Build Query Signature').first().json.market }}\n\nSearch criteria:\n- Zip codes: {{ $('Build Query Signature').first().json.params.zip_codes.join(', ') }}\n- Owner occupied: true\n- Property type: Single Family\n- Age minimum: 62\n- Equity minimum: $100,000\n- Page: {{ $('Get Bookmark').first().json[0].last_page_fetched + 1 }}\n- Per page: 100\n\nUse the BatchData MCP tools to search properties and return the results with MAK (Master Address Key) for deduplication.",
+        "options": {}
+      },
+      "id": "batchdata-agent",
+      "name": "BatchData AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -304,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "batchdata-mcp",
+      "name": "BatchData MCP Tool",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -96
+      ]
     }
   ],
   "connections": {
     "Cron Trigger": {
-      "main": [[{ "node": "Build Query Signature", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Build Query Signature",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Define Market Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Build Query Signature": {
-      "main": [[{ "node": "Get Bookmark", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Get Bookmark",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Get Bookmark": {
-      "main": [[{ "node": "Fetch BatchData Page", "type": "main", "index": 0 }]]
-    },
-    "Fetch BatchData Page": {
-      "main": [[{ "node": "Extract Vendor IDs", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "BatchData AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Extract Vendor IDs": {
-      "main": [[{ "node": "Check Stop-When-Known", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Check Stop-When-Known",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Check Stop-When-Known": {
-      "main": [[{ "node": "IF Seen Before?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "IF Seen Before?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "IF Seen Before?": {
       "main": [
-        [{ "node": "Stop (Caught Up)", "type": "main", "index": 0 }],
-        [{ "node": "Split In Batches", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Stop (Caught Up)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Split In Batches": {
-      "main": [[{ "node": "Compute Addr Hash", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Compute Addr Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Compute Addr Hash": {
-      "main": [[{ "node": "Upsert Lead", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Upsert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Upsert Lead": {
-      "main": [[{ "node": "Queue for Enrichment", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Queue for Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Queue for Enrichment": {
-      "main": [[{ "node": "Loop Check", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Loop Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Loop Check": {
       "main": [
-        [{ "node": "Split In Batches", "type": "main", "index": 0 }],
-        [{ "node": "Record Source Event", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Source Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Record Source Event": {
-      "main": [[{ "node": "Advance Bookmark", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Advance Bookmark",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Advance Bookmark": {
-      "main": [[{ "node": "Log Completion", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Log Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BatchData MCP Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "BatchData AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "BatchData AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BatchData AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Extract Vendor IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define Market Params": {
+      "main": [
+        [
+          {
+            "node": "Get Bookmark",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 1,
-  "updatedAt": "2025-10-08T00:00:00.000Z",
-  "versionId": "1"
+  "pinData": {}
 }
-

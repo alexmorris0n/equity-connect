@@ -1,125 +1,145 @@
 {
-  "name": "Enrichment Pipeline (Waterfall Skip-Trace)",
+  "name": "Enrichment Pipeline (BatchData → Melissa Waterfall)",
   "nodes": [
     {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 5
+              "field": "minutes"
             }
           ]
         }
       },
-      "id": "cron-trigger",
-      "name": "Cron Trigger (Every 5 min)",
+      "id": "cron",
+      "name": "Every 5 Minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [208, 572]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "event_type",
-              "value": "eq.enrich"
-            },
-            {
-              "name": "status",
-              "value": "eq.pending"
-            },
-            {
-              "name": "limit",
-              "value": "50"
-            },
-            {
-              "name": "order",
-              "value": "created_at.asc"
-            }
-          ]
-        }
+        "operation": "getAll",
+        "tableId": "pipeline_events"
       },
-      "id": "get-pending-enrichments",
+      "id": "get-events",
       "name": "Get Pending Enrichments",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [450, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [432, 572]
     },
     {
       "parameters": {
         "batchSize": 1,
         "options": {}
       },
-      "id": "split-in-batches",
-      "name": "Split In Batches",
+      "id": "split-events",
+      "name": "Split Events",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
-      "position": [650, 300]
+      "position": [656, 572]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
+        "operation": "get",
+        "tableId": "leads"
+      },
+      "id": "get-lead",
+      "name": "Get Lead",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, 448]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "groq-stage1",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [1112, 672]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "batchdata-mcp-stage1",
+      "name": "BatchData MCP Tool",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1,
+      "position": [1240, 672]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Enrich contact information (Stage 1 - BatchData):\n\nName: {{ $json.first_name }} {{ $json.last_name }}\nAddress: {{ $json.address_line1 }}, {{ $json.property_city }}, {{ $json.property_state }} {{ $json.property_zip }}\nAPN: {{ $json.apn }}\n\nUse BatchData MCP to find phones and emails with verification.",
+        "options": {}
+      },
+      "id": "batchdata-agent",
+      "name": "BatchData Skip-Trace (Stage 1)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1104, 448]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst lead = $('Get Lead').first().json;\nconst phones = result.phones || [];\nconst emails = result.emails || [];\nconst bestPhone = phones.find(p => p.line_type === 'mobile' && !p.dnc) || phones[0];\nconst bestEmail = emails.find(e => e.deliverable) || emails[0];\nreturn [{json: {lead_id: lead.id, primary_phone: bestPhone?.number || null, primary_email: bestEmail?.address || null, phone_verified: !!(bestPhone && !bestPhone.dnc), email_verified: !!(bestEmail?.deliverable), phones: JSON.stringify(phones), emails: JSON.stringify(emails), enriched_by: 'batchdata', enriched_at: new Date().toISOString(), has_contact: !!(bestPhone || bestEmail)}}];"
+      },
+      "id": "parse-stage1",
+      "name": "Parse BatchData",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1456, 448]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
             {
-              "name": "id",
-              "value": "eq.={{ $json.lead_id }}"
+              "value1": "={{ $json.has_contact }}",
+              "value2": true
             }
           ]
         }
       },
-      "id": "get-lead",
-      "name": "Get Lead",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [850, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
+      "id": "if-has-contact",
+      "name": "Has Contact?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1680, 448]
     },
     {
       "parameters": {
-        "jsCode": "// STAGE 1: Melissa Personator API\nconst lead = $input.all()[0].json[0];\n\nreturn [{\n  json: {\n    lead_id: lead.id,\n    full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),\n    address_line1: lead.address_line1 || lead.property_address,\n    city: lead.property_city,\n    state: lead.property_state,\n    zip: lead.property_zip\n  }\n}];"
+        "operation": "update",
+        "tableId": "leads"
       },
-      "id": "prepare-melissa-request",
-      "name": "Prepare Melissa Request",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1050, 300]
+      "id": "update-stage1",
+      "name": "Update (Stage 1)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2576, 352]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "GET",
+        "jsCode": "const lead = $('Get Lead').first().json;\nreturn [{json: {lead_id: lead.id, full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(), address_line1: lead.address_line1, city: lead.property_city, state: lead.property_state, zip: lead.property_zip}}];"
+      },
+      "id": "prep-melissa",
+      "name": "Prep Melissa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1904, 544]
+    },
+    {
+      "parameters": {
         "url": "={{ $env.MELISSA_BASE_URL }}/WEB/ContactVerify/doContactVerify",
+        "authentication": "headerAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
               "name": "id",
               "value": "={{ $env.MELISSA_API_KEY }}"
-            },
-            {
-              "name": "act",
-              "value": "Check,Verify,Append,Move"
             },
             {
               "name": "format",
@@ -146,329 +166,151 @@
               "value": "={{ $json.zip }}"
             }
           ]
-        }
-      },
-      "id": "melissa-personator",
-      "name": "Melissa Personator",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [1250, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "melissa-auth",
-          "name": "Melissa API Key"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "jsCode": "// Parse Melissa response and extract contact info\nconst response = $input.all()[0].json;\nconst lead_id = $('Prepare Melissa Request').first().json.lead_id;\n\nconst result = {\n  lead_id: lead_id,\n  mak: response.Records?.[0]?.AddressKey || null,\n  phones: [],\n  emails: []\n};\n\n// Extract phones\nif (response.Records?.[0]?.Phone) {\n  result.phones.push({\n    phone: response.Records[0].Phone,\n    source: 'melissa',\n    score: 70,\n    verified: false,\n    type: 'unknown'\n  });\n}\n\nif (response.Records?.[0]?.Phone2) {\n  result.phones.push({\n    phone: response.Records[0].Phone2,\n    source: 'melissa',\n    score: 60,\n    verified: false,\n    type: 'unknown'\n  });\n}\n\n// Extract emails\nif (response.Records?.[0]?.Email) {\n  result.emails.push({\n    email: response.Records[0].Email,\n    source: 'melissa',\n    score: 70,\n    verified: false\n  });\n}\n\nreturn [{ json: result }];"
-      },
-      "id": "parse-melissa-response",
-      "name": "Parse Melissa Response",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1450, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Update lead with MAK and merge contact points\nconst data = $input.all()[0].json;\nconst outputs = [];\n\n// Update MAK if present\nif (data.mak) {\n  outputs.push({\n    action: 'update_mak',\n    lead_id: data.lead_id,\n    mak: data.mak\n  });\n}\n\n// Merge phones\ndata.phones.forEach(phone => {\n  outputs.push({\n    action: 'merge_contact',\n    lead_id: data.lead_id,\n    kind: 'phone',\n    value: phone.phone,\n    source: phone.source,\n    score: phone.score,\n    verified: phone.verified\n  });\n});\n\n// Merge emails\ndata.emails.forEach(email => {\n  outputs.push({\n    action: 'merge_contact',\n    lead_id: data.lead_id,\n    kind: 'email',\n    value: email.email,\n    source: email.source,\n    score: email.score,\n    verified: email.verified\n  });\n});\n\nreturn outputs.map(o => ({ json: o }));"
-      },
-      "id": "prepare-merge-operations",
-      "name": "Prepare Merge Operations",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1650, 300]
-    },
-    {
-      "parameters": {
-        "batchSize": 1,
+        },
         "options": {}
       },
-      "id": "split-merge-ops",
-      "name": "Split Merge Ops",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 1,
-      "position": [1850, 300]
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "string": [
-                  {
-                    "value1": "={{ $json.action }}",
-                    "operation": "equals",
-                    "value2": "update_mak"
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "update_mak"
-            },
-            {
-              "conditions": {
-                "string": [
-                  {
-                    "value1": "={{ $json.action }}",
-                    "operation": "equals",
-                    "value2": "merge_contact"
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "merge_contact"
-            }
-          ]
-        }
-      },
-      "id": "switch-action",
-      "name": "Switch Action",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [2050, 300]
-    },
-    {
-      "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "PATCH",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?id=eq.{{ $json.lead_id }}",
-        "jsonParameters": true,
-        "bodyParametersJson": "={ \"mak\": \"{{ $json.mak }}\" }"
-      },
-      "id": "update-mak",
-      "name": "Update MAK",
+      "id": "melissa-api",
+      "name": "Melissa (Stage 2)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [2250, 200],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/merge_contact_point",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"p_lead_id\": \"{{ $json.lead_id }}\",\n  \"p_kind\": \"{{ $json.kind }}\",\n  \"p_value\": \"{{ $json.value }}\",\n  \"p_source\": \"{{ $json.source }}\",\n  \"p_score\": {{ $json.score }},\n  \"p_verified\": {{ $json.verified }}\n}"
-      },
-      "id": "merge-contact-point",
-      "name": "Merge Contact Point",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2250, 400],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/compute_quality_score",
-        "jsonParameters": true,
-        "bodyParametersJson": "={ \"p_lead_id\": \"{{ $node['Get Lead'].json[0].id }}\" }"
-      },
-      "id": "compute-quality-score-stage1",
-      "name": "Compute Quality Score (Stage 1)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2450, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "number": [
-            {
-              "value1": "={{ $json }}",
-              "operation": "largerEqual",
-              "value2": 60
-            }
-          ]
-        }
-      },
-      "id": "if-contactable",
-      "name": "IF Contactable?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [2650, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Skip Stage 2, already contactable\nconsole.log('Lead is contactable after Stage 1, skipping BatchData skip-trace');\nreturn [{ json: { lead_id: $('Get Lead').first().json[0].id, skip_stage2: true } }];"
-      },
-      "id": "skip-stage2",
-      "name": "Skip Stage 2",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2850, 200]
-    },
-    {
-      "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
-        "url": "={{ $env.BATCHDATA_BASE_URL }}/api/v1/skip-trace",
-        "jsonParameters": true,
-        "bodyParametersJson": "={\n  \"first_name\": \"{{ $node['Get Lead'].json[0].first_name }}\",\n  \"last_name\": \"{{ $node['Get Lead'].json[0].last_name }}\",\n  \"address\": \"{{ $node['Get Lead'].json[0].address_line1 }}\",\n  \"city\": \"{{ $node['Get Lead'].json[0].property_city }}\",\n  \"state\": \"{{ $node['Get Lead'].json[0].property_state }}\",\n  \"zip\": \"{{ $node['Get Lead'].json[0].property_zip }}\",\n  \"apn\": \"{{ $node['Get Lead'].json[0].apn }}\"\n}"
-      },
-      "id": "batchdata-skip-trace",
-      "name": "BatchData Skip-Trace (Stage 2)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2850, 400],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "batchdata-auth",
-          "name": "BatchData API Key"
-        }
-      },
+      "position": [2128, 544],
       "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "// Parse BatchData skip-trace response\nconst response = $input.all()[0].json;\nconst lead_id = $('Get Lead').first().json[0].id;\n\nconst result = {\n  lead_id: lead_id,\n  phones: [],\n  emails: []\n};\n\n// Extract phones\nif (response.phones && Array.isArray(response.phones)) {\n  response.phones.forEach((p, idx) => {\n    result.phones.push({\n      phone: p.number,\n      source: 'batchdata',\n      score: p.score || 60,\n      verified: false,\n      type: p.type || 'unknown'\n    });\n  });\n}\n\n// Extract emails  \nif (response.emails && Array.isArray(response.emails)) {\n  response.emails.forEach((e, idx) => {\n    result.emails.push({\n      email: e.address,\n      source: 'batchdata',\n      score: e.score || 60,\n      verified: false\n    });\n  });\n}\n\nreturn [{ json: result }];"
+        "jsCode": "const r = $input.first().json;\nconst lid = $('Prep Melissa').first().json.lead_id;\nconst phone = r.Records?.[0]?.Phone || null;\nconst email = r.Records?.[0]?.Email || null;\nreturn [{json: {lead_id: lid, primary_phone: phone, primary_email: email, phone_verified: !!phone, email_verified: !!email, phones: JSON.stringify(phone ? [{phone, source: 'melissa'}] : []), emails: JSON.stringify(email ? [{email, source: 'melissa'}] : []), enriched_by: 'melissa', enriched_at: new Date().toISOString(), last_melissa_try_at: new Date().toISOString()}}];"
       },
-      "id": "parse-batchdata-response",
-      "name": "Parse BatchData Response",
+      "id": "parse-melissa",
+      "name": "Parse Melissa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [2352, 544]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "leads"
+      },
+      "id": "update-stage2",
+      "name": "Update (Stage 2)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2576, 544]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst data = $input.first().json;\nconst entries = [];\nif (data.primary_phone) { const h = crypto.createHash('md5').update(data.primary_phone.replace(/\\D/g, '')).digest('hex'); entries.push({hash: h, source: data.enriched_by, contact_type: 'phone'}); }\nif (data.primary_email) { const h = crypto.createHash('md5').update(data.primary_email.toLowerCase().trim()).digest('hex'); entries.push({hash: h, source: data.enriched_by, contact_type: 'email'}); }\nif (entries.length === 0) entries.push({hash: 'skip', source: 'none', contact_type: 'none'});\nreturn entries.map(e => ({json: e}));"
+      },
+      "id": "prep-suppression",
+      "name": "Prep Suppression",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3050, 400]
+      "position": [2800, 448]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/update_lead_status_from_score",
-        "jsonParameters": true,
-        "bodyParametersJson": "={ \"p_lead_id\": \"{{ $node['Get Lead'].json[0].id }}\" }"
+        "operation": "upsert"
       },
-      "id": "update-status",
-      "name": "Update Lead Status",
+      "id": "upsert-suppression",
+      "name": "Upsert Suppression",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [3024, 448]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/compute_quality_score",
+        "authentication": "headerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"p_lead_id\": \"{{ $('Get Lead').first().json.id }}\"}",
+        "options": {}
+      },
+      "id": "compute-score",
+      "name": "Compute Score",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [3250, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
+      "position": [3248, 448]
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
-        "requestMethod": "PATCH",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events?id=eq.{{ $node['Split In Batches'].json.id }}",
-        "jsonParameters": true,
-        "bodyParametersJson": "={ \"status\": \"completed\" }"
+        "operation": "update",
+        "tableId": "pipeline_events"
       },
       "id": "mark-complete",
       "name": "Mark Complete",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [3450, 300],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "supabase-auth",
-          "name": "Supabase Service Key"
-        }
-      }
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [3472, 572]
     }
   ],
   "connections": {
-    "Cron Trigger (Every 5 min)": {
-      "main": [[{ "node": "Get Pending Enrichments", "type": "main", "index": 0 }]]
+    "Every 5 Minutes": {
+      "main": [[{"node": "Get Pending Enrichments", "type": "main", "index": 0}]]
     },
     "Get Pending Enrichments": {
-      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+      "main": [[{"node": "Split Events", "type": "main", "index": 0}]]
     },
-    "Split In Batches": {
-      "main": [[{ "node": "Get Lead", "type": "main", "index": 0 }]]
+    "Split Events": {
+      "main": [[{"node": "Get Lead", "type": "main", "index": 0}]]
     },
     "Get Lead": {
-      "main": [[{ "node": "Prepare Melissa Request", "type": "main", "index": 0 }]]
+      "main": [[{"node": "BatchData Skip-Trace (Stage 1)", "type": "main", "index": 0}]]
     },
-    "Prepare Melissa Request": {
-      "main": [[{ "node": "Melissa Personator", "type": "main", "index": 0 }]]
+    "BatchData Skip-Trace (Stage 1)": {
+      "main": [[{"node": "Parse BatchData", "type": "main", "index": 0}]]
     },
-    "Melissa Personator": {
-      "main": [[{ "node": "Parse Melissa Response", "type": "main", "index": 0 }]]
+    "Parse BatchData": {
+      "main": [[{"node": "Has Contact?", "type": "main", "index": 0}]]
     },
-    "Parse Melissa Response": {
-      "main": [[{ "node": "Prepare Merge Operations", "type": "main", "index": 0 }]]
-    },
-    "Prepare Merge Operations": {
-      "main": [[{ "node": "Split Merge Ops", "type": "main", "index": 0 }]]
-    },
-    "Split Merge Ops": {
-      "main": [[{ "node": "Switch Action", "type": "main", "index": 0 }]]
-    },
-    "Switch Action": {
+    "Has Contact?": {
       "main": [
-        [{ "node": "Update MAK", "type": "main", "index": 0 }],
-        [{ "node": "Merge Contact Point", "type": "main", "index": 0 }]
+        [{"node": "Update (Stage 1)", "type": "main", "index": 0}],
+        [{"node": "Prep Melissa", "type": "main", "index": 0}]
       ]
     },
-    "Update MAK": {
-      "main": [[{ "node": "Split Merge Ops", "type": "main", "index": 0 }]]
+    "Update (Stage 1)": {
+      "main": [[{"node": "Prep Suppression", "type": "main", "index": 0}]]
     },
-    "Merge Contact Point": {
-      "main": [[{ "node": "Split Merge Ops", "type": "main", "index": 0 }]]
+    "Prep Melissa": {
+      "main": [[{"node": "Melissa (Stage 2)", "type": "main", "index": 0}]]
     },
-    "Split Merge Ops": {
-      "main": [
-        [{ "node": "Switch Action", "type": "main", "index": 0 }],
-        [{ "node": "Compute Quality Score (Stage 1)", "type": "main", "index": 0 }]
-      ]
+    "Melissa (Stage 2)": {
+      "main": [[{"node": "Parse Melissa", "type": "main", "index": 0}]]
     },
-    "Compute Quality Score (Stage 1)": {
-      "main": [[{ "node": "IF Contactable?", "type": "main", "index": 0 }]]
+    "Parse Melissa": {
+      "main": [[{"node": "Update (Stage 2)", "type": "main", "index": 0}]]
     },
-    "IF Contactable?": {
-      "main": [
-        [{ "node": "Skip Stage 2", "type": "main", "index": 0 }],
-        [{ "node": "BatchData Skip-Trace (Stage 2)", "type": "main", "index": 0 }]
-      ]
+    "Update (Stage 2)": {
+      "main": [[{"node": "Prep Suppression", "type": "main", "index": 0}]]
     },
-    "Skip Stage 2": {
-      "main": [[{ "node": "Update Lead Status", "type": "main", "index": 0 }]]
+    "Prep Suppression": {
+      "main": [[{"node": "Upsert Suppression", "type": "main", "index": 0}]]
     },
-    "BatchData Skip-Trace (Stage 2)": {
-      "main": [[{ "node": "Parse BatchData Response", "type": "main", "index": 0 }]]
+    "Upsert Suppression": {
+      "main": [[{"node": "Compute Score", "type": "main", "index": 0}]]
     },
-    "Parse BatchData Response": {
-      "main": [[{ "node": "Prepare Merge Operations", "type": "main", "index": 0 }]]
-    },
-    "Update Lead Status": {
-      "main": [[{ "node": "Mark Complete", "type": "main", "index": 0 }]]
+    "Compute Score": {
+      "main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]
     },
     "Mark Complete": {
-      "main": [[{ "node": "Split In Batches", "type": "main", "index": 0 }]]
+      "main": [[{"node": "Split Events", "type": "main", "index": 0}]]
+    },
+    "Groq Chat Model": {
+      "main": [],
+      "ai_languageModel": [[{"node": "BatchData Skip-Trace (Stage 1)", "type": "ai_languageModel", "index": 0}]]
+    },
+    "BatchData MCP Tool": {
+      "main": [],
+      "ai_tool": [[{"node": "BatchData Skip-Trace (Stage 1)", "type": "ai_tool", "index": 0}]]
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
   },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 1,
-  "updatedAt": "2025-10-08T00:00:00.000Z",
-  "versionId": "1"
+  "pinData": {}
 }
-
