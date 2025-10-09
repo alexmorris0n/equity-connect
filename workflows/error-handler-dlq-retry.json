@@ -24,6 +24,7 @@
         "requestMethod": "GET",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq",
         "sendQuery": true,
+        "options": {},
         "queryParameters": {
           "parameters": [
             {
@@ -179,6 +180,7 @@
         "requestMethod": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
         "jsonParameters": true,
+        "options": {},
         "bodyParametersJson": "={\n  \"event_type\": \"{{ $json.stage }}\",\n  \"lead_id\": \"{{ $json.lead_id }}\",\n  \"event_data\": {\"retry_from_dlq\": true},\n  \"status\": \"pending\"\n}"
       },
       "id": "requeue-pipeline-event",
@@ -214,6 +216,7 @@
       "parameters": {
         "authentication": "headerAuth",
         "requestMethod": "DELETE",
+        "options": {},
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}"
       },
       "id": "delete-from-dlq",
@@ -244,6 +247,7 @@
         "requestMethod": "PATCH",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}",
         "jsonParameters": true,
+        "options": {},
         "bodyParametersJson": "={\n  \"attempts\": {{ $json.new_attempts }},\n  \"retry_after\": \"{{ $json.retry_after }}\"\n}"
       },
       "id": "update-dlq-attempts",
