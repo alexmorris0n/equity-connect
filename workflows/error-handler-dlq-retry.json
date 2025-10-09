@@ -20,27 +20,27 @@
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
         "method": "GET",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq",
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
+        "specifyQuery": "keypair",
+        "queriesUi": {
+          "parameter": [
             {
               "name": "retry_after",
-              "value": "lte.{{ new Date().toISOString() }}"
+              "value": "=lte.{{ new Date().toISOString() }}"
             },
             {
               "name": "attempts",
-              "value": "lt.3"
+              "value": "=lt.3"
             },
             {
               "name": "limit",
-              "value": "20"
+              "value": "=20"
             },
             {
               "name": "order",
-              "value": "created_at.asc"
+              "value": "=created_at.asc"
             }
           ]
         }
@@ -170,7 +170,6 @@
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
         "method": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
         "sendBody": true,
@@ -209,7 +208,6 @@
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
         "method": "DELETE",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}"
       },
@@ -237,7 +235,6 @@
     },
     {
       "parameters": {
-        "authentication": "headerAuth",
         "method": "PATCH",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}",
         "sendBody": true,
