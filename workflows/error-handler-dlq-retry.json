@@ -21,9 +21,10 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "requestMethod": "GET",
+        "method": "GET",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq",
         "sendQuery": true,
+        "specifyQuery": "keypair",
         "queryParameters": {
           "parameters": [
             {
@@ -171,7 +172,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "requestMethod": "POST",
+        "method": "POST",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
         "sendBody": true,
         "contentType": "json",
@@ -211,7 +212,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "requestMethod": "DELETE",
+        "method": "DELETE",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}"
       },
       "id": "delete-from-dlq",
@@ -239,7 +240,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "requestMethod": "PATCH",
+        "method": "PATCH",
         "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}",
         "sendBody": true,
         "contentType": "json",
