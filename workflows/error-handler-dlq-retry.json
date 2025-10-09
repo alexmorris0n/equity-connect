@@ -135,43 +135,42 @@
     },
     {
       "parameters": {
-        "functionCode": "// Retry Pull Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying BatchData pull:', payload);\n\n// Re-trigger BatchData pull workflow\n// This would call the BatchData Pull Worker workflow\nreturn [{\n  json: {\n    retry_success: true,
-    stage: 'pull',\n    dlq_id: $input.item.json.id\n  }\n}];"
+        "jsCode": "// Retry Pull Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying BatchData pull:', payload);\n\n// Re-trigger BatchData pull workflow\n// This would call the BatchData Pull Worker workflow\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'pull',\n    dlq_id: $input.item.json.id\n  }\n}];"
       },
       "id": "retry-pull",
       "name": "Retry Pull",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1050, 100]
     },
     {
       "parameters": {
-        "functionCode": "// Retry Enrichment Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying enrichment:', payload);\n\n// Re-queue for enrichment\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'enrich',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
+        "jsCode": "// Retry Enrichment Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying enrichment:', payload);\n\n// Re-queue for enrichment\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'enrich',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
       },
       "id": "retry-enrich",
       "name": "Retry Enrich",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1050, 250]
     },
     {
       "parameters": {
-        "functionCode": "// Retry Verification Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying verification:', payload);\n\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'verify',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
+        "jsCode": "// Retry Verification Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying verification:', payload);\n\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'verify',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
       },
       "id": "retry-verify",
       "name": "Retry Verify",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1050, 400]
     },
     {
       "parameters": {
-        "functionCode": "// Retry Campaign Add Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying campaign add:', payload);\n\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'campaign',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
+        "jsCode": "// Retry Campaign Add Operation\nconst payload = $input.item.json.payload;\nconsole.log('Retrying campaign add:', payload);\n\nreturn [{\n  json: {\n    retry_success: true,\n    stage: 'campaign',\n    dlq_id: $input.item.json.id,\n    lead_id: payload.lead_id\n  }\n}];"
       },
       "id": "retry-campaign",
       "name": "Retry Campaign",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1050, 550]
     },
     {
@@ -231,12 +230,12 @@
     },
     {
       "parameters": {
-        "functionCode": "// Calculate next retry time with exponential backoff\nconst attempts = $node['Split In Batches'].json.attempts;\nconst backoffMinutes = Math.pow(2, attempts) * 5; // 5, 10, 20 minutes\n\nconst retryAfter = new Date();\nretryAfter.setMinutes(retryAfter.getMinutes() + backoffMinutes);\n\nreturn [{\n  json: {\n    dlq_id: $json.dlq_id,\n    new_attempts: attempts + 1,\n    retry_after: retryAfter.toISOString()\n  }\n}];"
+        "jsCode": "// Calculate next retry time with exponential backoff\nconst attempts = $node['Split In Batches'].json.attempts;\nconst backoffMinutes = Math.pow(2, attempts) * 5; // 5, 10, 20 minutes\n\nconst retryAfter = new Date();\nretryAfter.setMinutes(retryAfter.getMinutes() + backoffMinutes);\n\nreturn [{\n  json: {\n    dlq_id: $json.dlq_id,\n    new_attempts: attempts + 1,\n    retry_after: retryAfter.toISOString()\n  }\n}];"
       },
       "id": "calculate-backoff",
       "name": "Calculate Backoff",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1650, 400]
     },
     {
@@ -277,12 +276,12 @@
     },
     {
       "parameters": {
-        "functionCode": "// Log completion stats\nconst processed = $node['Split In Batches'].context.noItemsLeft ? \n  $node['Split In Batches'].context.currentRunIndex : 0;\n\nconsole.log(`DLQ retry complete: ${processed} items processed`);\n\nreturn [{\n  json: {\n    status: 'success',\n    items_processed: processed,\n    completed_at: new Date().toISOString()\n  }\n}];"
+        "jsCode": "// Log completion stats\nconst processed = $node['Split In Batches'].context.noItemsLeft ? \n  $node['Split In Batches'].context.currentRunIndex : 0;\n\nconsole.log(`DLQ retry complete: ${processed} items processed`);\n\nreturn [{\n  json: {\n    status: 'success',\n    items_processed: processed,\n    completed_at: new Date().toISOString()\n  }\n}];"
       },
       "id": "log-completion",
       "name": "Log Completion",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [2450, 300]
     }
   ],
