@@ -140,8 +140,8 @@
       },
       "id": "retry-pull",
       "name": "Retry Pull",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1050, 100]
     },
     {
@@ -150,8 +150,8 @@
       },
       "id": "retry-enrich",
       "name": "Retry Enrich",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1050, 250]
     },
     {
@@ -160,8 +160,8 @@
       },
       "id": "retry-verify",
       "name": "Retry Verify",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1050, 400]
     },
     {
@@ -170,8 +170,8 @@
       },
       "id": "retry-campaign",
       "name": "Retry Campaign",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1050, 550]
     },
     {
@@ -235,8 +235,8 @@
       },
       "id": "calculate-backoff",
       "name": "Calculate Backoff",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1650, 400]
     },
     {
@@ -281,8 +281,8 @@
       },
       "id": "log-completion",
       "name": "Log Completion",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [2450, 300]
     }
   ],
