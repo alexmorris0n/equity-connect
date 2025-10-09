@@ -20,40 +20,44 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq",
-        "sendQuery": true,
-        "specifyQuery": "keypair",
-        "queriesUi": {
-          "parameter": [
+        "operation": "getAll",
+        "tableId": "dlq",
+        "returnAll": false,
+        "limit": 20,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
             {
-              "name": "retry_after",
-              "value": "=lte.{{ new Date().toISOString() }}"
+              "keyName": "retry_after",
+              "operator": "lte",
+              "value": "={{ new Date().toISOString() }}"
             },
             {
-              "name": "attempts",
-              "value": "=lt.3"
-            },
+              "keyName": "attempts",
+              "operator": "lt",
+              "value": 3
+            }
+          ]
+        },
+        "sort": {
+          "values": [
             {
-              "name": "limit",
-              "value": "=20"
-            },
-            {
-              "name": "order",
-              "value": "=created_at.asc"
+              "key": "created_at",
+              "direction": "asc"
             }
           ]
         }
       },
       "id": "get-dlq-items",
       "name": "Get DLQ Items",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
       "position": [450, 300],
       "credentials": {
-        "httpHeaderAuth": {
+        "supabaseApi": {
           "id": "supabase-auth",
-          "name": "Supabase Service Key"
+          "name": "Supabase account"
         }
       }
     },
@@ -170,21 +174,39 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pipeline_events",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"event_type\": \"{{ $json.stage }}\",\n  \"lead_id\": \"{{ $json.lead_id }}\",\n  \"event_data\": {\"retry_from_dlq\": true},\n  \"status\": \"pending\"\n}"
+        "operation": "create",
+        "tableId": "pipeline_events",
+        "dataMode": "defineBelow",
+        "fieldsUi": {
+          "values": [
+            {
+              "fieldName": "event_type",
+              "fieldValue": "={{ $json.stage }}"
+            },
+            {
+              "fieldName": "lead_id",
+              "fieldValue": "={{ $json.lead_id }}"
+            },
+            {
+              "fieldName": "event_data",
+              "fieldValue": "={{ {retry_from_dlq: true} }}"
+            },
+            {
+              "fieldName": "status",
+              "fieldValue": "pending"
+            }
+          ]
+        }
       },
       "id": "requeue-pipeline-event",
       "name": "Requeue Pipeline Event",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
       "position": [1250, 300],
       "credentials": {
-        "httpHeaderAuth": {
+        "supabaseApi": {
           "id": "supabase-auth",
-          "name": "Supabase Service Key"
+          "name": "Supabase account"
         }
       }
     },
@@ -208,18 +230,29 @@
     },
     {
       "parameters": {
-        "method": "DELETE",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}"
+        "operation": "delete",
+        "tableId": "dlq",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "operator": "eq",
+              "value": "={{ $json.dlq_id }}"
+            }
+          ]
+        }
       },
       "id": "delete-from-dlq",
       "name": "Delete from DLQ",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
       "position": [1650, 200],
       "credentials": {
-        "httpHeaderAuth": {
+        "supabaseApi": {
           "id": "supabase-auth",
-          "name": "Supabase Service Key"
+          "name": "Supabase account"
         }
       }
     },
@@ -235,21 +268,42 @@
     },
     {
       "parameters": {
-        "method": "PATCH",
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/dlq?id=eq.{{ $json.dlq_id }}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"attempts\": {{ $json.new_attempts }},\n  \"retry_after\": \"{{ $json.retry_after }}\"\n}"
+        "operation": "update",
+        "tableId": "dlq",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "operator": "eq",
+              "value": "={{ $json.dlq_id }}"
+            }
+          ]
+        },
+        "dataMode": "defineBelow",
+        "fieldsUi": {
+          "values": [
+            {
+              "fieldName": "attempts",
+              "fieldValue": "={{ $json.new_attempts }}"
+            },
+            {
+              "fieldName": "retry_after",
+              "fieldValue": "={{ $json.retry_after }}"
+            }
+          ]
+        }
       },
       "id": "update-dlq-attempts",
       "name": "Update DLQ Attempts",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
       "position": [1850, 400],
       "credentials": {
-        "httpHeaderAuth": {
+        "supabaseApi": {
           "id": "supabase-auth",
-          "name": "Supabase Service Key"
+          "name": "Supabase account"
         }
       }
     },
