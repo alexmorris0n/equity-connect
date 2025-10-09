@@ -7,7 +7,7 @@ Complete automated workflow for generating 100+ qualified reverse mortgage leads
 - **Daily Lead Generation**: 100+ qualified leads from PropStream Net-New API
 - **Skip-Trace Integration**: Verified contact information for every lead
 - **Multi-Broker Support**: Automated quota management per broker
-- **AI Persona Assignment**: 8 culturally authentic personas
+- **AI Persona Assignment**: 6 culturally authentic personas
 - **Email Campaigns**: 4-step personalized sequences via Instantly
 - **Supabase Database**: Real-time lead tracking and billing
 - **Vue.js/Next.js Frontend**: Modern broker dashboards on Vercel
@@ -106,12 +106,22 @@ TWILIO_ACCOUNT_SID=your-twilio-sid
 - **Voice Calls**: 40-50% connection rates, 15-20% appointment rates
 - **Revenue Projection**: $80,000+ monthly with 20-30x ROI
 
-## 🎨 Cultural Personas
-- **Carlos/Maria Rodriguez**: Latino/Hispanic market
-- **Priya/Rahul Patel**: South Asian market
-- **Marcus/Latoya Washington**: African American market
-- **Michael/Jennifer Anderson**: General American market
-- Plus 4 additional personas for diverse markets
+## 🎨 Cultural Personas (Active in Production)
+
+### 6 Individual Personas Ready to Use:
+1. **Carlos Rodriguez** (Male) - Latino/Hispanic
+2. **Maria Rodriguez** (Female) - Latino/Hispanic
+3. **Rahul Patel** (Male) - South Asian/Indian
+4. **Priya Patel** (Female) - South Asian/Indian
+5. **Marcus Washington** (Male) - African American
+6. **LaToYa Washington** (Female) - African American
+
+### 📧 ZapMail Configuration
+- **30 mailboxes** across **15 domains** (2 per domain)
+- **Each persona** has **5 dedicated mailboxes** for load balancing
+- Gender-matched assignment for authentic communication
+- Full configuration: `docs/ZAPMAIL_MAILBOX_CONFIGURATION.md`
+- Mailbox list: `config/zapmail-mailboxes.tsv`
 
 ## 💡 Key Benefits
 ✅ **Massive Cost Savings**: $5,016/year vs traditional CRM  
@@ -134,6 +144,8 @@ TWILIO_ACCOUNT_SID=your-twilio-sid
 - Regular compliance audits
 
 ## 📚 Documentation
+- **🎯 Production Persona Status**: `docs/PRODUCTION_PERSONA_STATUS.md` ⭐ **READ THIS FIRST**
+- **ZapMail Mailbox Config**: `docs/ZAPMAIL_MAILBOX_CONFIGURATION.md`
 - **Setup Guide**: `docs/SOFTR_IMPLEMENTATION_GUIDE.md`
 - **Waterfall Revenue Model**: `docs/WATERFALL_REVENUE_IMPLEMENTATION.md`
 - **Compliance Framework**: `docs/COMPLIANCE_FRAMEWORK.md`
@@ -141,6 +153,7 @@ TWILIO_ACCOUNT_SID=your-twilio-sid
 - **Deployment Guide**: `docs/DEPLOYMENT_INFRASTRUCTURE.md`
 - **Environment Setup**: `config/environment-template.txt`
 - **API Configs**: `config/api-configurations.json`
+- **Mailbox Data**: `config/zapmail-mailboxes.tsv`
 
 ## 🚨 Critical Success Factors
 1. **Email Warming**: Start 2 weeks before launch

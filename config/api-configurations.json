@@ -97,7 +97,10 @@
       "priya_patel": "indian_female_professional",
       "rahul_patel": "indian_male_authoritative",
       "marcus_washington": "aa_male_strong",
-      "latoya_washington": "aa_female_warm",
+      "latoya_washington": "aa_female_warm"
+    },
+    "voice_profiles_future": {
+      "note": "Additional personas planned but not yet active in production",
       "michael_anderson": "american_male_neutral",
       "jennifer_anderson": "american_female_professional"
     }
