@@ -76,7 +76,6 @@
                 "string": [
                   {
                     "value1": "={{ $json.stage }}",
-                    "operation": "equals",
                     "value2": "pull"
                   }
                 ]
@@ -89,7 +88,6 @@
                 "string": [
                   {
                     "value1": "={{ $json.stage }}",
-                    "operation": "equals",
                     "value2": "enrich"
                   }
                 ]
@@ -102,7 +100,6 @@
                 "string": [
                   {
                     "value1": "={{ $json.stage }}",
-                    "operation": "equals",
                     "value2": "verify"
                   }
                 ]
@@ -115,7 +112,6 @@
                 "string": [
                   {
                     "value1": "={{ $json.stage }}",
-                    "operation": "equals",
                     "value2": "campaign"
                   }
                 ]
