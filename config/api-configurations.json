@@ -1,4 +1,221 @@
 {
+  "propertyradar_api": {
+    "base_url": "https://api.propertyradar.com/v1",
+    "status": "active_primary",
+    "endpoints": {
+      "property_search": "/properties/search",
+      "property_details": "/properties/:radar_id",
+      "bulk_export": "/exports",
+      "saved_searches": "/searches"
+    },
+    "deployment": {
+      "platform": "propertyradar",
+      "status": "production",
+      "deployed_date": "2025-10-10",
+      "migration_from": "batchdata"
+    },
+    "n8n_integration": {
+      "workflow_url": "https://n8n.instaroute.com/workflow/HnPhfA6KCq5VjTCy",
+      "workflow_name": "propertyradar-pull-worker",
+      "node_type": "n8n-nodes-base.httpRequest",
+      "authentication": "bearer_token"
+    },
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "requests_per_hour": 1000,
+      "requests_per_day": 10000,
+      "timeout_seconds": 30
+    },
+    "pricing": {
+      "subscription_monthly": 599,
+      "property_lookup_cost": 0.012,
+      "email_append_cost": 0.04,
+      "phone_append_cost": 0.04,
+      "free_email_quota_monthly": 2500,
+      "free_phone_quota_monthly": 2500,
+      "max_properties_per_month": 50000
+    },
+    "features": {
+      "property_search": true,
+      "age_filtering": true,
+      "equity_filtering": true,
+      "owner_occupied_filtering": true,
+      "contact_append": true,
+      "email_append": true,
+      "phone_append": true,
+      "bulk_export": true,
+      "radar_id_deduplication": true,
+      "pagination": true
+    },
+    "search_filters": {
+      "demographics": [
+        "owner_age_min",
+        "owner_age_max",
+        "owner_occupied"
+      ],
+      "property": [
+        "property_type",
+        "year_built_min",
+        "year_built_max",
+        "bedrooms_min",
+        "bathrooms_min"
+      ],
+      "financial": [
+        "equity_min",
+        "equity_percent_min",
+        "estimated_value_min",
+        "estimated_value_max"
+      ],
+      "location": [
+        "zip_codes",
+        "city",
+        "county",
+        "state"
+      ]
+    },
+    "market_parameters": {
+      "default_page_size": 50,
+      "max_page_size": 100,
+      "reverse_mortgage_defaults": {
+        "owner_age_min": 62,
+        "equity_min": 100000,
+        "owner_occupied": true,
+        "property_type": "single_family"
+      }
+    }
+  },
+  "batchdata_mcp_api": {
+    "status": "deprecated_legacy",
+    "deprecated_date": "2025-10-10",
+    "replacement": "propertyradar_api",
+    "base_url": "https://p01--batchdata-mcp-server--p95wlpxnp2z2.code.run",
+    "endpoints": {
+      "sse": "/sse",
+      "health": "/health",
+      "tools": "/tools"
+    },
+    "deployment": {
+      "platform": "northflank",
+      "project": "n8n-production",
+      "status": "inactive",
+      "deployed_date": "2025-10-10"
+    },
+    "n8n_integration": {
+      "workflow_url": "https://n8n.instaroute.com/workflow/HnPhfA6KCq5VjTCy",
+      "workflow_name": "batchdata-pull-worker",
+      "node_type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "ai_model": "google/gemini-2.5-flash-lite",
+      "ai_provider": "openrouter",
+      "migration_note": "Replaced by PropertyRadar in workflow"
+    },
+    "rate_limits": {
+      "concurrent_connections": 10,
+      "requests_per_minute": 60,
+      "timeout_seconds": 30
+    },
+    "features": {
+      "property_search": true,
+      "bulk_export": true,
+      "market_filtering": true,
+      "mak_deduplication": true,
+      "pagination": true
+    },
+    "market_parameters": {
+      "default_page_size": 100,
+      "max_page_size": 500,
+      "supported_filters": [
+        "owner_occupied",
+        "property_type",
+        "age_min",
+        "equity_min",
+        "zip_codes"
+      ]
+    },
+    "deprecation_reason": "Unsustainable billing model - charges for all search results upfront ($6,200+ per 32-zip query)"
+  },
+  "calcom_api": {
+    "base_url": "https://cal-dot-com.vercel.app",
+    "production_url_target": "https://book.equityconnect.com",
+    "api_version": "v1",
+    "endpoints": {
+      "event_types": "/api/event-types",
+      "bookings": "/api/bookings",
+      "availability": "/api/availability",
+      "users": "/api/users",
+      "webhooks": "/api/webhooks"
+    },
+    "deployment": {
+      "platform": "vercel",
+      "status": "deployed_pending_configuration",
+      "deployed_date": "2025-10-10",
+      "github": "https://github.com/alexmorris0n/cal-dot-com",
+      "local_path": "C:\\Users\\alex\\OneDrive\\Desktop\\Cursor\\cal-dot-com"
+    },
+    "n8n_integration": {
+      "app_url": "https://app.cal.com/apps/n8n",
+      "webhook_base": "https://n8n.instaroute.com/webhook",
+      "triggers": [
+        "booking_created",
+        "booking_cancelled",
+        "booking_rescheduled"
+      ],
+      "actions": [
+        "create_booking",
+        "cancel_booking",
+        "get_booking_details"
+      ]
+    },
+    "event_types": {
+      "equity_call": {
+        "slug": "equity-call",
+        "duration_minutes": 30,
+        "buffer_before_minutes": 15,
+        "buffer_after_minutes": 15,
+        "status": "pending_creation"
+      },
+      "follow_up": {
+        "slug": "follow-up",
+        "duration_minutes": 15,
+        "buffer_before_minutes": 10,
+        "buffer_after_minutes": 10,
+        "status": "pending_creation"
+      },
+      "doc_review": {
+        "slug": "doc-review",
+        "duration_minutes": 45,
+        "buffer_before_minutes": 15,
+        "buffer_after_minutes": 15,
+        "status": "pending_creation"
+      }
+    },
+    "rate_limits": {
+      "api_requests_per_minute": 60,
+      "bookings_per_day": 1000
+    },
+    "features": {
+      "webhooks": true,
+      "api_access": true,
+      "custom_branding": true,
+      "team_scheduling": true,
+      "sms_reminders": true,
+      "email_reminders": true,
+      "timezone_detection": true
+    },
+    "booking_flow": {
+      "consent_to_link": "n8n_workflow",
+      "link_delivery": ["sms", "email"],
+      "confirmation": "webhook_to_supabase",
+      "broker_notification": ["slack", "email"]
+    },
+    "pending_configuration": [
+      "Create event types (equity-call, follow-up, doc-review)",
+      "Configure webhooks to n8n",
+      "Set up broker accounts and calendars",
+      "Configure custom domain (book.equityconnect.com)",
+      "Add API key to n8n credentials",
+      "Test end-to-end booking flow"
+    ]
+  },
   "propstream_api": {
     "base_url": "https://api.propstream.com/v1",
     "endpoints": {

@@ -50,8 +50,45 @@ Production plan with concrete schema, RLS, encryption, ingestion integrity, camp
 ---
 
 ## MCP Usage
-- **MCP-enabled now:** BatchData via `batchdata-mcp-real-estate`; Cursor built-ins (fs/git/shell); optional postgres MCP.
-- **HTTP/Webhook for now:** Melissa, Instantly, VAPI, SignalWire (option: build thin MCP adapters later).
+
+### ✅ BatchData MCP - PRODUCTION DEPLOYED (Oct 10, 2025)
+- **Status:** Active in production
+- **Deployment:** Northflank (same project as n8n)
+- **Base URL:** `https://p01--batchdata-mcp-server--p95wlpxnp2z2.code.run`
+- **SSE Endpoint:** `https://p01--batchdata-mcp-server--p95wlpxnp2z2.code.run/sse`
+- **Integration:** n8n workflow via LangChain AI Agent
+- **Workflow:** https://n8n.instaroute.com/workflow/HnPhfA6KCq5VjTCy
+- **AI Model:** OpenRouter (google/gemini-2.5-flash-lite)
+- **Documentation:** [BATCHDATA_MCP_INTEGRATION.md](./BATCHDATA_MCP_INTEGRATION.md)
+
+### Other MCP Tools
+- **Available:** Cursor built-ins (fs/git/shell); optional postgres MCP
+- **HTTP/Webhook for now:** Melissa, Instantly, VAPI, SignalWire (option: build thin MCP adapters later)
+
+---
+
+## Booking System
+
+### ✅ Cal.com - DEPLOYED (Oct 10, 2025)
+- **Status:** Deployed to Vercel - Configuration pending
+- **Platform:** Vercel (self-hosted open-source)
+- **Current URL:** `https://cal-dot-com.vercel.app/e`
+- **Target URL:** `https://book.equityconnect.com` (pending domain setup)
+- **GitHub Repository:** https://github.com/alexmorris0n/cal-dot-com
+- **Local Path:** `C:\Users\alex\OneDrive\Desktop\Cursor\cal-dot-com`
+- **Integration:** n8n via native Cal.com app (https://app.cal.com/apps/n8n)
+- **Documentation:** [CALCOM_INTEGRATION.md](./CALCOM_INTEGRATION.md)
+
+**Booking Flow:**
+```
+VAPI Call → Consent Signal → n8n → Cal.com Link → Lead Books → Webhook → Update Supabase → Notify Broker
+```
+
+**Pending Configuration:**
+- Event types (equity-call, follow-up, doc-review)
+- Webhook endpoints (n8n integration)
+- Broker calendar connections
+- Custom domain DNS
 
 ---
 
@@ -69,6 +106,12 @@ Production plan with concrete schema, RLS, encryption, ingestion integrity, camp
 ---
 
 ## Launch Checklist
+- [x] **BatchData MCP deployed and integrated** (Oct 10, 2025)
+- [x] **n8n workflow operational** (batchdata-pull-worker)
+- [x] **Cal.com deployed to Vercel** (Oct 10, 2025) - configuration pending
+- [ ] Cal.com event types created (equity-call, follow-up, doc-review)
+- [ ] Cal.com webhooks configured (n8n integration)
+- [ ] Cal.com custom domain setup (book.equityconnect.com)
 - [ ] Columns added (email/phone verified, campaign fields, consent, vapi ids)
 - [ ] pgcrypto enabled + KMS/Vault wiring
 - [ ] Upsert boolean/array merge fixed

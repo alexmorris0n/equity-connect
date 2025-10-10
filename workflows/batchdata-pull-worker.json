@@ -1,5 +1,10 @@
 {
-  "name": "BatchData Pull Worker (Idempotent)",
+  "meta": {
+    "version": "2.0-propertyradar",
+    "updated": "2025-10-10",
+    "migration": "BatchData → ATTOM → PropertyRadar",
+    "workflow_url": "https://n8n.instaroute.com/workflow/HnPhfA6KCq5VjTCy"
+  },
   "nodes": [
     {
       "parameters": {
@@ -18,11 +23,12 @@
       "position": [
         -976,
         -320
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "// Simplified for MCP - just define market criteria\nconst crypto = require('crypto');\n\nconst marketParams = {\n  market: 'hollywood',\n  zip_codes: ['90028', '90038', '90046'],\n  filters: {\n    owner_occupied: true,\n    property_type: 'single_family',\n    age_min: 62,\n    equity_min: 100000\n  },\n  page_size: 100\n};\n\n// Query sig for bookmark tracking\nconst querySigData = {\n  zip_codes: marketParams.zip_codes.sort(),\n  filters: marketParams.filters\n};\nconst querySig = crypto.createHash('sha256').update(JSON.stringify(querySigData)).digest('hex');\n\nreturn [{json: {\n  source: 'batchdata',\n  query_sig: querySig,\n  market: marketParams.market,\n  params: marketParams\n}}];"
+        "jsCode": "// Simplified for MCP - just define market criteria\nconst crypto = require('crypto');\n\nconst marketParams = {\n  market: 'hollywood',\n  zip_codes: ['90028', '90038', '90046'],\n  filters: {\n    owner_occupied: true,\n    property_type: 'single_family',\n    age_min: 62,\n    equity_min: 100000\n  },\n  page_size: 100\n};\n\n// Query sig for bookmark tracking\nconst querySigData = {\n  zip_codes: marketParams.zip_codes.sort(),\n  filters: marketParams.filters\n};\nconst querySig = crypto.createHash('sha256').update(JSON.stringify(querySigData)).digest('hex');\n\nreturn [{json: {\n  source: 'batchdata',\n  query_sig: querySig,\n  market: marketParams.market,\n  params: marketParams\n}}];}"
       },
       "id": "d798c8bc-187c-4c8c-9bb2-d0e73388bf30",
       "name": "Define Market Params",
@@ -238,19 +244,6 @@
     },
     {
       "parameters": {
-        "options": {}
-      },
-      "id": "groq-model",
-      "name": "Groq Chat Model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
-      "typeVersion": 1,
-      "position": [
-        -304,
-        -96
-      ]
-    },
-    {
-      "parameters": {
         "promptType": "define",
         "text": "=Fetch properties from BatchData for market: {{ $('Build Query Signature').first().json.market }}\n\nSearch criteria:\n- Zip codes: {{ $('Build Query Signature').first().json.params.zip_codes.join(', ') }}\n- Owner occupied: true\n- Property type: Single Family\n- Age minimum: 62\n- Equity minimum: $100,000\n- Page: {{ $('Get Bookmark').first().json[0].last_page_fetched + 1 }}\n- Per page: 100\n\nUse the BatchData MCP tools to search properties and return the results with MAK (Master Address Key) for deduplication.",
         "options": {}
@@ -266,27 +259,43 @@
     },
     {
       "parameters": {
+        "model": "google/gemini-2.5-flash-lite",
         "options": {}
       },
-      "id": "batchdata-mcp",
-      "name": "BatchData MCP Tool",
-      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
       "typeVersion": 1,
       "position": [
-        -176,
-        -96
-      ]
+        -336,
+        -112
+      ],
+      "id": "63a28acf-055e-4f9f-b0db-c5395f827059",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "5pEBmsekpDy6GZN0",
+          "name": "OpenRouter n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://p01--batchdata-mcp-server--p95wlpxnp2z2.code.run/sse",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        -144,
+        -112
+      ],
+      "id": "28c23917-2f6c-4c64-a0f4-4be10e88cd46",
+      "name": "MCP Client"
     }
   ],
   "connections": {
     "Cron Trigger": {
       "main": [
         [
-          {
-            "node": "Build Query Signature",
-            "type": "main",
-            "index": 0
-          },
           {
             "node": "Define Market Params",
             "type": "main",
@@ -295,7 +304,7 @@
         ]
       ]
     },
-    "Build Query Signature": {
+    "Define Market Params": {
       "main": [
         [
           {
@@ -439,28 +448,6 @@
         ]
       ]
     },
-    "BatchData MCP Tool": {
-      "ai_tool": [
-        [
-          {
-            "node": "BatchData AI Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Groq Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "BatchData AI Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "BatchData AI Agent": {
       "main": [
         [
@@ -472,20 +459,32 @@
         ]
       ]
     },
-    "Define Market Params": {
-      "main": [
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
         [
           {
-            "node": "Get Bookmark",
-            "type": "main",
+            "node": "BatchData AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Client": {
+      "ai_tool": [
+        [
+          {
+            "node": "BatchData AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
       ]
     }
   },
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "pinData": {}
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4ca45576dabef27a95f92525a5f6415fb3e8061f7037b2ec7fb4ba1bb1cb56c0"
+  }
 }
