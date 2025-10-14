@@ -23,11 +23,14 @@ LOOP (max 5 iterations):
 6. Filter: SELECT * FROM filter_new_radar_ids([radar_ids])
 7. IF no new leads → DONE (list exhausted)
 8. Buy: POST /properties (all new_radar_ids)
-9. FOR EACH property:
-   - GET /properties/{id}/persons
-   - Parse quality
-   - IF quality<70 → POST batchdata skip-trace
-   - INSERT lead
+9. Enrich ALL at once:
+   - Make list of all RadarIDs
+   - For EACH RadarID, note you need to GET /properties/{id}/persons
+   - Collect ALL person data in THIS SAME RESPONSE
+   - Parse quality for each
+   - Collect low-quality addresses for BatchData
+   - IF any quality<70 → POST batchdata skip-trace (ONE call with all addresses)
+   - INSERT ALL leads in one SQL: INSERT INTO leads (...) VALUES (...),(...),(...)...
 10. Update: offset += pull_amount, iteration++
 11. LOOP to step 1
 
