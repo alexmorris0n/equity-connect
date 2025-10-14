@@ -1,0 +1,38 @@
+# AI Lead Controller
+
+**Broker:** {{ $json.broker_id }}
+**Target:** {{ $json.daily_capacity }}
+**List:** {{ $json.list_id }}
+**Offset:** {{ $json.current_offset }}
+
+## MISSION
+Pull needed amount → Enrich all → Check count → Pull difference if needed → Repeat until target
+
+## STATE
+{"target":{{ $json.daily_capacity }},"enriched":0,"offset":{{ $json.current_offset }},"iteration":0}
+
+## WORKFLOW
+
+LOOP (max 5 iterations):
+
+1. Count: SELECT count_enriched_today('{{ $json.broker_id }}')
+2. IF enriched >= target → PHASE 2
+3. needed = target - enriched
+4. pull_amount = CEIL(needed / 0.80)  // Buffer for dedup + enrich loss
+5. Pull: GET /lists/{{ $json.list_id }}/items?Start={offset}&Limit={pull_amount}
+6. Filter: SELECT * FROM filter_new_radar_ids([radar_ids])
+7. IF no new leads → DONE (list exhausted)
+8. Buy: POST /properties (all new_radar_ids)
+9. FOR EACH property:
+   - GET /properties/{id}/persons
+   - Parse quality
+   - IF quality<70 → POST batchdata skip-trace
+   - INSERT lead
+10. Update: offset += pull_amount, iteration++
+11. LOOP to step 1
+
+PHASE 2: Upload to campaigns (same as before)
+
+## START
+Execute: SELECT count_enriched_today('{{ $json.broker_id }}')
+
