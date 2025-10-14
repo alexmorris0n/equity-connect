@@ -1,0 +1,416 @@
+{
+  "name": "AI Daily Lead Acquisition - Pull + Enrich + Campaign",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1, 2, 3, 4, 5],
+              "triggerAtHour": 6,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 400],
+      "id": "daily-trigger",
+      "name": "Daily Trigger (6am PT)"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "brokers",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 400],
+      "id": "fetch-brokers",
+      "name": "Fetch Active Brokers",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 400],
+      "id": "loop-brokers",
+      "name": "Loop Over Brokers"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare broker context for AI agent\nconst broker = $input.first().json;\n\nif (!broker.propertyradar_list_id) {\n  throw new Error(`Broker ${broker.company_name} missing propertyradar_list_id. Create list in PropertyRadar first.`);\n}\n\nconst context = {\n  broker_id: broker.id,\n  broker_name: broker.company_name,\n  broker_contact_name: broker.contact_name || broker.company_name,\n  broker_nmls: broker.nmls_number || '',\n  list_id: broker.propertyradar_list_id,\n  current_offset: broker.propertyradar_offset || 0,\n  daily_capacity: broker.daily_lead_capacity || 250,\n  execution_id: $execution.id,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log(`🚀 Starting AI Workflow`);\nconsole.log(`Broker: ${context.broker_name}`);\nconsole.log(`Target: ${context.daily_capacity} enriched leads`);\nconsole.log(`Current Offset: ${context.current_offset}`);\nconsole.log(`List ID: ${context.list_id}`);\nconsole.log(`Execution: ${context.execution_id}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{ json: context }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400],
+      "id": "prepare-context",
+      "name": "Prepare Broker Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# AI Lead Acquisition Controller\n\nYou are an intelligent agent that acquires and enriches leads for reverse mortgage brokers.\n\n## BROKER CONTEXT\n\nBroker: {{ $json.broker_name }}\nBroker ID: {{ $json.broker_id }}\nTarget: {{ $json.daily_capacity }} enriched leads\nPropertyRadar List: {{ $json.list_id }}\nCurrent Offset: {{ $json.current_offset }}\nExecution ID: {{ $json.execution_id }}\n\n## YOUR MISSION\n\nAcquire EXACTLY {{ $json.daily_capacity }} ENRICHED leads (with email OR phone) by:\n1. Pulling properties from PropertyRadar in batches\n2. Enriching each property (PropertyRadar /persons + BatchData fallback)\n3. Storing in Supabase\n4. Looping until target reached\n5. Assigning campaigns and uploading to Instantly\n\n## AVAILABLE TOOLS\n\n### 💾 Supabase MCP\nexecute_sql - Run any SQL query\n\nKey queries you'll use:\n\n**Count today's enriched:**\n```sql\nSELECT COUNT(*) as count FROM leads \nWHERE assigned_broker_id = '{{ $json.broker_id }}'\nAND DATE(created_at AT TIME ZONE 'America/Los_Angeles') = CURRENT_DATE\nAND (primary_email IS NOT NULL OR primary_phone IS NOT NULL)\n```\n\n**Filter new RadarIDs:**\n```sql\nSELECT radar_id FROM unnest(ARRAY['P123','P456']) AS radar_id\nWHERE NOT EXISTS (\n  SELECT 1 FROM leads WHERE leads.radar_id = radar_id\n)\n```\n\n**Insert lead:**\n```sql\nINSERT INTO leads (radar_id, property_address, property_city, property_state, property_zip,\n  property_value, estimated_equity, first_name, last_name,\n  primary_email, primary_phone, email_verified, phone_verified,\n  assigned_broker_id, enriched_by, enriched_at, quality_score,\n  radar_property_data, batchdata_property_data, best_property_data,\n  source, enrichment_quality, created_at)\nVALUES (...) RETURNING id\n```\n\n**Update broker offset:**\n```sql\nUPDATE brokers SET propertyradar_offset = {{ $json.current_offset }} + X\nWHERE id = '{{ $json.broker_id }}' RETURNING propertyradar_offset\n```\n\n**Get campaign-ready leads:**\n```sql\nSELECT id, first_name, last_name, primary_email, property_address,\n  property_city, property_state, property_zip, property_value, estimated_equity\nFROM leads\nWHERE assigned_broker_id = '{{ $json.broker_id }}'\nAND DATE(created_at AT TIME ZONE 'America/Los_Angeles') = CURRENT_DATE\nAND primary_email IS NOT NULL AND campaign_status IS NULL\n```\n\n**Get campaign IDs:**\n```sql\nSELECT archetype, instantly_campaign_id FROM campaigns WHERE active = true\n```\n\n### 🌐 PropertyRadar HTTP Tool\n\nYou can make HTTP requests to PropertyRadar API.\n\nBase URL: https://api.propertyradar.com/v1\nAuth: Bearer token (already configured)\n\n**Get RadarIDs from list:**\nGET /lists/{{ $json.list_id }}/items?Start={{ offset }}&Limit={{ batch_size }}\n\n**Buy properties:**\nPOST /properties?Purchase=1\nBody: { \"Criteria\": [{ \"name\": \"RadarID\", \"value\": [\"P123\", \"P456\"] }] }\n\n**Enrich /persons:**\nGET /properties/{{ radar_id }}/persons?Purchase=1&Fields=FirstName,LastName,Email,Phone\n\n### 🌐 BatchData HTTP Tool\n\n**Skip trace:**\nPOST /api/v1/property/skip-trace\nBody: {\n  \"requests\": [{\n    \"propertyAddress\": { \"street\": \"123 Main\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90001\" }\n  }]\n}\n\n### 🌐 Instantly HTTP Tool\n\n**Add lead:**\nPOST /api/v1/lead/add\nBody: {\n  \"campaign_id\": \"xxx\",\n  \"email\": \"john@example.com\",\n  \"first_name\": \"John\",\n  \"custom_variables\": { ... }\n}\n\n## WORKFLOW LOGIC\n\n### PHASE 1: PULL & ENRICH LOOP\n\n**Initialize state:**\n```js\nstate = {\n  TARGET: {{ $json.daily_capacity }},\n  offset: {{ $json.current_offset }},\n  iteration: 0,\n  total_pulled: 0,\n  enriched_count: 0,\n  batch_size: {{ $json.daily_capacity }} <= 100 ? 20 : 30\n}\n```\n\n**Each iteration:**\n\n1. COUNT enriched so far via Supabase execute_sql\n2. remaining = TARGET - enriched_count\n3. IF remaining <= 0 → GO TO PHASE 2\n4. Pull RadarIDs: GET /lists/.../items?Start=offset&Limit=batch_size\n5. Filter new: Use Supabase execute_sql with ARRAY comparison\n6. IF all dupes → offset += batch_size, UPDATE broker, LOOP\n7. Buy properties: POST /properties with filtered RadarIDs\n8. FOR EACH property:\n   a. Enrich via GET /properties/{id}/persons\n   b. Parse: extract emails/phones, score quality\n   c. IF quality < 70 → Fallback: BatchData skip-trace\n   d. Merge best email/phone from both sources\n   e. INSERT to Supabase via execute_sql\n   f. IF email OR phone → enriched_count++\n9. offset += batch_size\n10. UPDATE broker offset via execute_sql\n11. iteration++, total_pulled += batch_size\n12. Log progress\n13. Check safety (max 2x TARGET pulls, max 30 iterations)\n14. LOOP to step 1\n\n### PHASE 2: CAMPAIGN UPLOAD\n\n1. Get campaign IDs via execute_sql\n2. Get all enriched leads via execute_sql  \n3. FOR EACH lead:\n   a. equity_pct = (equity / value) * 100\n   b. Assign archetype: >=80% → high_equity, >=50% → cash_unlocked, else → no_more_payments\n   c. Calculate merge fields (equity_50, equity_60)\n   d. POST to Instantly /lead/add\n   e. UPDATE lead: campaign_status='active', campaign_archetype=X, added_to_campaign_at=NOW()\n4. Log final stats\n5. RETURN success\n\n## CRITICAL RULES\n\n1. ALWAYS count enriched BEFORE each pull batch\n2. STOP pulling when enriched_count >= TARGET\n3. Safety: Never pull > 2x TARGET (prevents runaway)\n4. Dedup: ALWAYS filter RadarIDs before buying\n5. Enrichment: Try PR /persons first, fallback to BD if quality < 70\n6. Quality: Only count as \"enriched\" if email OR phone exists\n7. Database: UPDATE offset after EVERY batch\n8. Logging: Console log after each iteration\n9. Cost: PropertyRadar $0.75/property, BatchData $0.75/property\n10. Campaign: Only upload leads with email (Instantly requires email)\n\n## DATA PARSING\n\n### PropertyRadar /persons Response\n```js\nparse_pr_persons(response) {\n  person = response.results[0] || {}\n  \n  emails = (person.Email || [])\n    .filter(e => e.linktext)\n    .map(e => ({\n      email: e.linktext,\n      score: is_personal_domain(e.linktext) ? 40 : 20\n    }))\n    .sort((a,b) => b.score - a.score)\n  \n  phones = (person.Phone || [])\n    .filter(p => p.linktext)\n    .map(p => ({\n      number: clean_phone(p.linktext),\n      score: (p.phoneType === 'Mobile' ? 15 : 5) + (p.status === 'Active' ? 10 : 0)\n    }))\n    .sort((a,b) => b.score - a.score)\n  \n  quality = (person.FirstName ? 30 : 15) + (emails[0]?.score || 0) + (phones[0]?.score || 0)\n  \n  return {\n    first_name: person.FirstName,\n    last_name: person.LastName,\n    primary_email: emails[0]?.email || null,\n    primary_phone: phones[0]?.number || null,\n    email_verified: !!emails[0],\n    phone_verified: !!phones[0],\n    quality_score: quality,\n    enriched_by: 'propertyradar',\n    radar_property_data: { emails, phones, quality }\n  }\n}\n```\n\n### BatchData Response\n```js\nparse_batchdata(response) {\n  person = response.results?.persons?.[0] || {}\n  \n  emails = (person.emails || []).map(e => ({\n    email: e.email,\n    score: is_personal_domain(e.email) ? 40 : 20\n  })).sort((a,b) => b.score - a.score)\n  \n  phones = (person.phoneNumbers || []).map(p => ({\n    number: p.number,\n    score: (p.type === 'Mobile' ? 15 : 5) + (!p.dnc ? 10 : 0)\n  })).sort((a,b) => b.score - a.score)\n  \n  return {\n    first_name: person.name?.first,\n    last_name: person.name?.last,\n    primary_email: emails[0]?.email || null,\n    primary_phone: phones[0]?.number || null,\n    email_verified: !!emails[0],\n    phone_verified: !!phones[0],\n    enriched_by: 'batchdata',\n    batchdata_property_data: { emails, phones }\n  }\n}\n```\n\n### Merge Best\n```js\nmerge_best(pr_data, bd_data) {\n  all_emails = [\n    ...(pr_data.radar_property_data?.emails || []),\n    ...(bd_data.batchdata_property_data?.emails || [])\n  ].sort((a,b) => b.score - a.score)\n  \n  all_phones = [\n    ...(pr_data.radar_property_data?.phones || []),\n    ...(bd_data.batchdata_property_data?.phones || [])\n  ].sort((a,b) => b.score - a.score)\n  \n  return {\n    first_name: pr_data.first_name || bd_data.first_name,\n    last_name: pr_data.last_name || bd_data.last_name,\n    primary_email: all_emails[0]?.email || null,\n    primary_phone: all_phones[0]?.number || null,\n    email_verified: !!all_emails[0],\n    phone_verified: !!all_phones[0],\n    enriched_by: 'merged',\n    quality_score: (all_emails[0]?.score || 0) + (all_phones[0]?.score || 0) + 30,\n    best_property_data: { all_emails, all_phones }\n  }\n}\n```\n\n## EXAMPLE EXECUTION\n\n**Broker: ABC Mortgage (Target: 150 leads)**\n\nIteration 1:\n- Count: 0 enriched, need 150\n- Pull 20 RadarIDs from list (offset 0)\n- Filter: 18 new, 2 dupes\n- Buy 18 properties ($13.50)\n- Enrich 18: PR /persons → 15 good (83%), 3 need BD\n- BD fallback for 3 → 2 more good (17 total enriched)\n- Insert 18 to DB\n- Update offset: 0 → 20\n- enriched_count: 17/150\n\nIteration 2:\n- Count: 17 enriched, need 133\n- Enrichment rate: 17/18 = 94%\n- Batch size: ceil(133/0.94) = 142, cap at 50 → pull 50\n- Pull 50 RadarIDs (offset 20)\n- Filter: 45 new\n- Buy 45 ($33.75)\n- Enrich: 42 good\n- enriched_count: 59/150\n\n... (iterations 3-5)\n\nIteration 5:\n- enriched_count: 151/150 ✅ TARGET REACHED\n- Phase 2: Campaign upload\n\nPhase 2:\n- Get 151 leads from DB\n- Assign campaigns: 82 high_equity, 54 cash_unlocked, 15 no_payment\n- Upload to Instantly (3 campaigns)\n- Update leads: campaign_status='active'\n- Done! ✅\n\n## STATE MANAGEMENT\n\nMaintain these across iterations:\n```js\n{\n  TARGET: {{ $json.daily_capacity }},\n  offset: starts at {{ $json.current_offset }},\n  iteration: 0,\n  total_pulled: 0,\n  enriched_this_run: 0,\n  pr_only: 0,\n  bd_fallback: 0,\n  merged: 0,\n  phase: 'pull_enrich'\n}\n```\n\n## CRITICAL SAFETY LIMITS\n\n- Max pulls: {{ $json.daily_capacity }} * 2 (prevent runaway)\n- Max iterations: 30\n- Max runtime: 60 minutes\n- Stop if enrichment rate drops below 50% (data quality issue)\n\n## SUCCESS CRITERIA\n\n✅ enriched_count >= TARGET (within 5%)\n✅ All enriched leads uploaded to Instantly\n✅ Broker offset updated\n✅ Database complete\n✅ Under 60 minutes\n\n## BEGIN PROCESSING\n\nStart with Phase 1, Step 1: Count current enriched leads.\nUse execute_sql tool now.",
+        "options": {
+          "maxIterations": 100
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1120, 400],
+      "id": "ai-controller",
+      "name": "🤖 AI Controller"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4.5",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [1120, 600],
+      "id": "claude-model",
+      "name": "Claude Sonnet 4.5",
+      "credentials": {
+        "openRouterApi": {
+          "id": "5pEBmsekpDy6GZN0",
+          "name": "OpenRouter n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "include": "all",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [900, 600],
+      "id": "supabase-mcp",
+      "name": "💾 Supabase MCP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "supabase-mcp-creds",
+          "name": "Supabase MCP"
+        }
+      },
+      "notes": "Provides execute_sql, list_tables, get_logs, and 25+ database tools"
+    },
+    {
+      "parameters": {
+        "name": "propertyradar_api",
+        "descriptionType": "manual",
+        "toolDescription": "Make HTTP requests to PropertyRadar API. Base URL: https://api.propertyradar.com/v1. Endpoints: GET /lists/{id}/items (get RadarIDs), POST /properties (buy properties), GET /properties/{id}/persons (enrich with contact data). Auth bearer token configured.",
+        "method": "POST",
+        "url": "https://api.propertyradar.com/v1/properties",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Purchase",
+              "value": "={{ $json.purchase || '1' }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [680, 600],
+      "id": "propertyradar-tool",
+      "name": "🏘️ PropertyRadar API",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "batchdata_api",
+        "descriptionType": "manual",
+        "toolDescription": "Skip-trace API for property contact enrichment. POST to /api/v1/property/skip-trace with property address. Returns emails, phones, demographic data. Use as fallback when PropertyRadar enrichment quality is below 70.",
+        "method": "POST",
+        "url": "https://api.batchdata.com/api/v1/property/skip-trace",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [460, 600],
+      "id": "batchdata-tool",
+      "name": "📊 BatchData API",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "batchdata-creds",
+          "name": "BatchData API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "instantly_api",
+        "descriptionType": "manual",
+        "toolDescription": "Add leads to Instantly email campaigns. POST to /api/v1/lead/add with campaign_id, email, first_name, last_name, and custom_variables for merge fields. Returns lead_id.",
+        "method": "POST",
+        "url": "https://api.instantly.ai/api/v1/lead/add",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "instantlyApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [240, 600],
+      "id": "instantly-tool",
+      "name": "📧 Instantly API",
+      "credentials": {
+        "instantlyApi": {
+          "id": "TSGbMOFEJY9CmhHW",
+          "name": "Instantly account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI controller output and log final results\nconst output = $input.first().json;\nconst brokerContext = $('Prepare Broker Context').first().json;\n\n// Extract output text\nconst agentResponse = output.output || output.text || output.response || JSON.stringify(output);\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('🎉 AI CONTROLLER COMPLETE');\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log(`Broker: ${brokerContext.broker_name}`);\nconsole.log(`Target: ${brokerContext.daily_capacity}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Agent Report:');\nconsole.log(agentResponse);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    success: true,\n    broker_id: brokerContext.broker_id,\n    broker_name: brokerContext.broker_name,\n    target_capacity: brokerContext.daily_capacity,\n    agent_output: agentResponse,\n    execution_id: brokerContext.execution_id,\n    completed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400],
+      "id": "parse-results",
+      "name": "📊 Parse Results"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1340, 580],
+      "id": "broker-complete",
+      "name": "✅ Broker Complete"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 180],
+      "id": "all-brokers-done",
+      "name": "🎉 All Brokers Complete"
+    }
+  ],
+  "connections": {
+    "Daily Trigger (6am PT)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Brokers": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Brokers": {
+      "main": [
+        [
+          {
+            "node": "🎉 All Brokers Complete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Broker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Broker Context": {
+      "main": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI Controller": {
+      "main": [
+        [
+          {
+            "node": "📊 Parse Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet 4.5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Supabase MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏘️ PropertyRadar API": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 BatchData API": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Instantly API": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Parse Results": {
+      "main": [
+        [
+          {
+            "node": "✅ Broker Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Broker Complete": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-14T00:00:00.000Z",
+  "versionId": "1"
+}
+
