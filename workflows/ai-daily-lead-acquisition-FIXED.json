@@ -148,7 +148,7 @@
     },
     {
       "parameters": {
-        "toolDescription": "PropertyRadar API tool. Call with JSON: {\"method\": \"GET\"|\"POST\", \"endpoint\": \"/path?query=params\", \"body\": {}}. Include query params IN the endpoint URL. Examples: {\"method\":\"GET\",\"endpoint\":\"/lists/1104847/items?Start=0&Limit=30\",\"body\":{}}, {\"method\":\"POST\",\"endpoint\":\"/properties?Purchase=1\",\"body\":{\"Criteria\":[{\"name\":\"RadarID\",\"value\":[\"P123\"]}]}}, {\"method\":\"GET\",\"endpoint\":\"/properties/P123ABC/persons?Purchase=1&Fields=FirstName,LastName,Email,Phone\",\"body\":{}}",
+        "toolDescription": "PropertyRadar API tool. Call with JSON: {\"method\": \"GET\"|\"POST\", \"endpoint\": \"/path?query=params\", \"body\": {}}. Include query params IN endpoint URL. Examples: List items: {\"method\":\"GET\",\"endpoint\":\"/lists/1104847/items?Start=703&Limit=30\",\"body\":{}}, Buy properties: {\"method\":\"POST\",\"endpoint\":\"/properties?Purchase=1\",\"body\":{\"Criteria\":[{\"name\":\"RadarID\",\"value\":[\"P123\",\"P456\"]}]}}, Get persons: {\"method\":\"GET\",\"endpoint\":\"/properties/P123ABC/persons?Purchase=1&Fields=FirstName,LastName,Email,Phone\",\"body\":{}}. MUST include Purchase=1 for buy/persons calls.",
         "method": "={{ $fromAI('method', 'GET') }}",
         "url": "={{ 'https://api.propertyradar.com/v1' + ($fromAI('endpoint', '/properties')) }}",
         "authentication": "predefinedCredentialType",
@@ -184,7 +184,7 @@
     },
     {
       "parameters": {
-        "toolDescription": "BatchData skip-trace API. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"addressLine1\": \"123 Main St\", \"city\": \"Los Angeles\", \"state\": \"CA\", \"zip\": \"90001\"}}]}}. Always POST to this exact endpoint with propertyAddress in body.",
+        "toolDescription": "BatchData skip-trace API for enriching contact info. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"addressLine1\": \"123 Main\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90001\"}}, {\"propertyAddress\": {\"addressLine1\": \"456 Oak\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90002\"}}]}}. BATCH multiple addresses in ONE call. Use when PropertyRadar persons data is missing email OR phone.",
         "method": "={{ $fromAI('method', 'POST') }}",
         "url": "={{ 'https://api.batchdata.com' + ($fromAI('endpoint', '/api/v1/property/skip-trace')) }}",
         "authentication": "genericCredentialType",
@@ -279,8 +279,7 @@
     },
     {
       "parameters": {
-        "endpointUrl": "https://mcp.instantly.ai/mcp",
-        "authentication": "headerAuth",
+        "endpointUrl": "https://mcp.instantly.ai/mcp/NTFjMDIzMWMtOTY0NS00NmMzLTk5MmEtZWM4OGI3ODIxMzZkOmp0eE54ZnBxWmlOVQ==",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
@@ -290,13 +289,7 @@
         336
       ],
       "id": "de6327e6-58a0-4e90-9f85-40e2660f2818",
-      "name": "📧 Instantly MCP",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "T3VkmA0F515ckuYB",
-          "name": "Instantly API"
-        }
-      }
+      "name": "📧 Instantly MCP"
     }
   ],
   "connections": {

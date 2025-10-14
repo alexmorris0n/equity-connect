@@ -9,9 +9,9 @@
 Pull needed amount → Enrich all → Check count → Pull difference if needed → Repeat until target
 
 ## TOOLS
-- PropertyRadar: GET /properties/{id}/persons → returns Email/Phone (may be incomplete)
-- BatchData: POST /api/v1/property/skip-trace → skip-trace for missing contact info
-  Example: {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{addressLine1:'123 Main',city:'LA',state:'CA',zip:'90001'}}]}}
+- PropertyRadar: Buy properties and get addresses
+- BatchData: Skip-trace to get email/phone for ALL properties in ONE call
+  Example: {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{addressLine1:'123 Main',city:'LA',state:'CA',zip:'90001'}},{propertyAddress:{addressLine1:'456 Oak',city:'LA',state:'CA',zip:'90002'}}]}}
 
 ## STATE
 {"target":{{ $json.daily_capacity }},"enriched":0,"offset":{{ $json.current_offset }},"iteration":0}
@@ -28,19 +28,14 @@ LOOP (max 5 iterations):
 6. Filter: SELECT * FROM filter_new_radar_ids([radar_ids])
 7. IF no new leads → DONE (list exhausted)
 8. Buy: POST /properties (all new_radar_ids)
-9. Enrich ALL properties:
-   a) FOR EACH RadarID: GET /properties/{id}/persons
-   b) FOR EACH person result, check quality:
-      - HAS email AND phone = GOOD → skip BatchData
-      - MISSING email OR phone = BAD → collect address for BatchData
-   c) IF any BAD properties:
-      - Build requests array with ALL bad addresses: 
-        {requests: [{propertyAddress: {addressLine1, city, state, zip}}, ...]}
-      - POST batchdata skip-trace (ONE call with ALL addresses)
-      - Merge BatchData results with PropertyRadar data
-   d) INSERT ALL leads (good + enhanced): 
+9. Enrich ALL properties with BatchData:
+   a) Extract property addresses from bought properties
+   b) Build BatchData request with ALL addresses in ONE call:
+      {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{addressLine1,city,state,zip}}]}}
+   c) Parse BatchData results (email, phone for each address)
+   d) INSERT ALL leads with enriched data:
       INSERT INTO leads (radar_id, first_name, last_name, primary_email, primary_phone, property_address, property_city, property_state, property_zip, assigned_broker_id, ...) 
-      VALUES (...),(...),(...)...
+      VALUES (...),(...),(...)
 10. Update: offset += pull_amount, iteration++
 11. LOOP to step 1
 
