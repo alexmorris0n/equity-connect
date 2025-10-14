@@ -2,6 +2,7 @@
 
 Broker: {{ $json.broker_id }}
 Target: {{ $json.daily_capacity }} leads
+Surplus: {{ $json.daily_lead_surplus }} (from yesterday)
 List: {{ $json.list_id }}
 Offset: {{ $json.current_offset }}
 
@@ -14,7 +15,8 @@ Call Supabase execute_sql with:
 
 ## STEP 2: PULL
 If count < target:
-- needed = target - count
+- needed = ({{ $json.daily_capacity }} - count) - {{ $json.daily_lead_surplus }}
+- If needed <= 0 → SKIP to PHASE 2 (surplus covers today)
 - pull = CEIL(needed / 0.8)
 - Call PropertyRadar: {method:'GET', endpoint:'/lists/{{ $json.list_id }}/items?Start={{ $json.current_offset }}&Limit={pull}', body:{}}
 
@@ -61,6 +63,10 @@ Group leads by campaign (based on equity %), then call add_leads_to_campaign_or_
 Call Supabase execute_sql with:
 {"query": "UPDATE leads SET campaign_status='active' WHERE assigned_broker_id='{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles')=CURRENT_DATE"}
 
+## STEP 12: UPDATE SURPLUS FOR TOMORROW
+Call Supabase execute_sql with:
+{"query": "UPDATE brokers SET daily_lead_surplus = GREATEST((SELECT COUNT(*) FROM leads WHERE assigned_broker_id='{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles')=CURRENT_DATE) - {{ $json.daily_capacity }}, 0) WHERE id='{{ $json.broker_id }}'"}
+
 ## EXECUTE NOW
-Start with STEP 1. Complete all 11 steps. Do not stop. Do not ask questions.
+Start with STEP 1. Complete all 12 steps. Do not stop. Do not ask questions.
 
