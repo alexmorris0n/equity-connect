@@ -8,10 +8,31 @@
 ## MISSION
 Pull needed amount → Enrich all → Check count → Pull difference if needed → Repeat until target
 
+## CAMPAIGNS (Use These IDs)
+- no_more_payments (<50% equity): 75f3bbfd-17cb-4e28-b28a-975eb6959948
+- cash_unlocked (50-79% equity): 758cb5cc-1857-4ec0-8e39-7eacc1eb3df1
+- high_equity_special (80%+ equity): b7912eeb-ec29-4d33-807c-555128abfdf2
+
 ## TOOLS
-- PropertyRadar: Buy properties and get addresses
-- BatchData: Skip-trace to get email/phone for ALL properties in ONE call
-  Example: {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{addressLine1:'123 Main',city:'LA',state:'CA',zip:'90001'}},{propertyAddress:{addressLine1:'456 Oak',city:'LA',state:'CA',zip:'90002'}}]}}
+
+**Supabase MCP:** Execute SQL queries
+- count_enriched_today('broker_id') → returns count
+- filter_new_radar_ids(['P123','P456']) → returns new radar_ids
+- update_broker_offset('broker_id', increment) → updates offset
+- execute_sql: INSERT INTO leads (...) VALUES (...),(...)
+- execute_sql: UPDATE leads SET campaign_status='active' WHERE ...
+- execute_sql: SELECT * FROM leads WHERE ...
+
+**PropertyRadar:** Buy properties and get addresses
+- GET /lists/{id}/items?Start={offset}&Limit={batch} → get RadarIDs
+- POST /properties?Purchase=1, body:{Criteria:[{name:'RadarID',value:['P123']}]}
+
+**BatchData:** Skip-trace ALL addresses in ONE call
+- POST /api/v1/property/skip-trace, body:{requests:[{propertyAddress:{street:'123 Main St',city:'LA',state:'CA',zip:'90001'}},{propertyAddress:{street:'456 Oak',city:'LA',state:'CA',zip:'90002'}}]}
+- CRITICAL: Use 'street' field, NOT 'addressLine1'
+
+**Instantly MCP:** Upload leads to campaigns
+- create_lead(campaign, email, first_name, last_name, skip_if_in_campaign, custom_variables)
 
 ## STATE
 {"target":{{ $json.daily_capacity }},"enriched":0,"offset":{{ $json.current_offset }},"iteration":0}
@@ -29,18 +50,48 @@ LOOP (max 5 iterations):
 7. IF no new leads → DONE (list exhausted)
 8. Buy: POST /properties (all new_radar_ids)
 9. Enrich ALL properties with BatchData:
-   a) Extract property addresses from bought properties
+   a) Extract addresses from bought properties (use Address, City, State, ZipFive fields)
    b) Build BatchData request with ALL addresses in ONE call:
-      {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{addressLine1,city,state,zip}}]}}
-   c) Parse BatchData results (email, phone for each address)
-   d) INSERT ALL leads with enriched data:
-      INSERT INTO leads (radar_id, first_name, last_name, primary_email, primary_phone, property_address, property_city, property_state, property_zip, assigned_broker_id, ...) 
-      VALUES (...),(...),(...)
-10. Update: offset += pull_amount, iteration++
-11. LOOP to step 1
+      {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{street:'11517 S ST ANDREWS PL',city:'LOS ANGELES',state:'CA',zip:'90047'}},{propertyAddress:{street:'...',city:'...',state:'...',zip:'...'}}]}}
+   c) Parse BatchData results (email, phone for each)
+   d) IMMEDIATELY INSERT ALL leads via Supabase execute_sql:
+      INSERT INTO leads (radar_id, first_name, last_name, primary_email, primary_phone, property_address, property_city, property_state, property_zip, assigned_broker_id) 
+      VALUES ('P123','John','Doe','john@email.com','5551234567','123 Main','LA','CA','90001','{{ $json.broker_id }}'),('P456','Jane','Smith','jane@email.com','5559876543','456 Oak','LA','CA','90002','{{ $json.broker_id }}')
+10. Update offset via Supabase: SELECT update_broker_offset('{{ $json.broker_id }}', {pull_amount})
+11. iteration++, LOOP to step 1
 
-PHASE 2: Upload to campaigns (same as before)
+PHASE 2: Campaign Upload
 
-## START
+1. Get campaigns via Supabase: SELECT archetype, instantly_campaign_id FROM campaigns WHERE active=true
+2. Get today's leads: SELECT radar_id, first_name, last_name, primary_email, property_value, estimated_equity FROM leads WHERE assigned_broker_id='{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles')=CURRENT_DATE AND campaign_status IS NULL AND primary_email IS NOT NULL
+3. For each lead:
+   - Calculate equity % = (estimated_equity / property_value) * 100
+   - IF equity >= 80 → archetype = 'high_equity_special'
+   - ELSE IF equity >= 50 → archetype = 'cash_unlocked'
+   - ELSE → archetype = 'no_more_payments'
+   - Look up campaign_id from step 1 results matching archetype
+   - Call create_lead with EXACT format:
+   {
+     campaign: "campaign_id_here",
+     email: "lead@email.com",
+     first_name: "First",
+     last_name: "Last",
+     skip_if_in_workspace: false,
+     skip_if_in_campaign: true,
+     skip_if_in_list: false,
+     custom_variables: {property_value: "495000", estimated_equity: "395000"}
+   }
+4. Update DB via Supabase execute_sql:
+   UPDATE leads SET campaign_status='active', campaign_archetype=(CASE WHEN estimated_equity/property_value>=0.8 THEN 'high_equity_special' WHEN estimated_equity/property_value>=0.5 THEN 'cash_unlocked' ELSE 'no_more_payments' END) WHERE assigned_broker_id='{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles')=CURRENT_DATE AND campaign_status IS NULL
+5. DONE - Workflow complete
+
+## RULES
+- DO NOT ask questions or wait for permission
+- DO NOT stop until PHASE 2 is complete
+- Execute ALL steps in sequence without pausing
+- Use tool calls, not text responses
+
+## START NOW
 Execute: SELECT count_enriched_today('{{ $json.broker_id }}')
+Then IMMEDIATELY continue the entire workflow without stopping.
 

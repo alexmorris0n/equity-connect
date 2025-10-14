@@ -184,16 +184,20 @@
     },
     {
       "parameters": {
-        "toolDescription": "BatchData skip-trace API for enriching contact info. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"addressLine1\": \"123 Main\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90001\"}}, {\"propertyAddress\": {\"addressLine1\": \"456 Oak\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90002\"}}]}}. BATCH multiple addresses in ONE call. Use when PropertyRadar persons data is missing email OR phone.",
+        "toolDescription": "BatchData skip-trace API for enriching contact info. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"street\": \"123 Main St\", \"city\": \"Los Angeles\", \"state\": \"CA\", \"zip\": \"90001\"}}, {\"propertyAddress\": {\"street\": \"456 Oak Ave\", \"city\": \"Los Angeles\", \"state\": \"CA\", \"zip\": \"90002\"}}]}}. CRITICAL: Use 'street' not 'addressLine1'. BATCH multiple addresses in ONE call.",
         "method": "={{ $fromAI('method', 'POST') }}",
         "url": "={{ 'https://api.batchdata.com' + ($fromAI('endpoint', '/api/v1/property/skip-trace')) }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
               "value": "application/json"
             }
           ]
@@ -212,9 +216,9 @@
       "id": "0e3dae50-5369-4bd9-82d7-be4f2c996e1a",
       "name": "📊 BatchData",
       "credentials": {
-        "httpHeaderAuth": {
+        "httpBearerAuth": {
           "id": "p8VumHgaWWJQT1Wp",
-          "name": "BatchData API"
+          "name": "BatchData API Bearer"
         }
       }
     },

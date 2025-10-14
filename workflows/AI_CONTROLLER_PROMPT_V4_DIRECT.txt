@@ -1,0 +1,65 @@
+# LEAD ACQUISITION CONTROLLER
+
+Broker: {{ $json.broker_id }}
+Target: {{ $json.daily_capacity }} leads
+List: {{ $json.list_id }}
+Offset: {{ $json.current_offset }}
+
+## YOUR TASK
+Pull properties. Enrich contacts. Insert to database. Upload to Instantly. DO NOT STOP until complete.
+
+## STEP 1: COUNT
+Call Supabase execute_sql with:
+{"query": "SELECT count_enriched_today('{{ $json.broker_id }}')"}
+
+## STEP 2: PULL
+If count < target:
+- needed = target - count
+- pull = CEIL(needed / 0.8)
+- Call PropertyRadar: {method:'GET', endpoint:'/lists/{{ $json.list_id }}/items?Start={{ $json.current_offset }}&Limit={pull}', body:{}}
+
+## STEP 3: FILTER
+Call Supabase execute_sql with:
+{"query": "SELECT * FROM filter_new_radar_ids(ARRAY['P123','P456'])"}
+
+## STEP 4: BUY
+Call PropertyRadar: {method:'POST', endpoint:'/properties?Purchase=1', body:{Criteria:[{name:'RadarID',value:['P123','P456']}]}}
+
+## STEP 5: ENRICH
+Call BatchData: {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{street:'123 Main St',city:'Los Angeles',state:'CA',zip:'90001'}}]}}
+
+## STEP 6: INSERT ALL LEADS IN ONE CALL
+Call Supabase execute_sql with ALL leads batched:
+{"query": "INSERT INTO leads (radar_id, first_name, last_name, primary_email, primary_phone, property_address, property_city, property_state, property_zip, assigned_broker_id) VALUES ('P123','John','Doe','john@email.com','5551234567','123 Main','LA','CA','90001','{{ $json.broker_id }}'),('P456','Jane','Smith','jane@email.com','5559876543','456 Oak','LA','CA','90002','{{ $json.broker_id }}'),('P789','Bob','Jones','bob@email.com','5555555555','789 Pine','LA','CA','90003','{{ $json.broker_id }}')"}
+
+## STEP 7: UPDATE OFFSET
+Call Supabase execute_sql with:
+{"query": "SELECT update_broker_offset('{{ $json.broker_id }}', {pull_amount})"}
+
+## STEP 8: GET CAMPAIGNS
+Call Supabase execute_sql with:
+{"query": "SELECT archetype, instantly_campaign_id FROM campaigns WHERE active=true"}
+
+## STEP 9: GET LEADS
+Call Supabase execute_sql with:
+{"query": "SELECT * FROM leads WHERE assigned_broker_id='{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles')=CURRENT_DATE AND campaign_status IS NULL"}
+
+## STEP 10: UPLOAD ALL LEADS TO INSTANTLY IN BULK
+Group leads by campaign (based on equity %), then call add_leads_to_campaign_or_list_bulk for EACH campaign:
+{
+  leads: [
+    {email: "lead1@email.com", first_name: "First", last_name: "Last", custom_variables: {property_value: "495000", estimated_equity: "395000"}},
+    {email: "lead2@email.com", first_name: "First2", last_name: "Last2", custom_variables: {property_value: "600000", estimated_equity: "500000"}}
+  ],
+  campaign_id: "campaign_id_from_step_8",
+  skip_if_in_campaign: true,
+  verify_leads_on_import: false
+}
+
+## STEP 11: MARK UPLOADED
+Call Supabase execute_sql with:
+{"query": "UPDATE leads SET campaign_status='active' WHERE assigned_broker_id='{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles')=CURRENT_DATE"}
+
+## EXECUTE NOW
+Start with STEP 1. Complete all 11 steps. Do not stop. Do not ask questions.
+
