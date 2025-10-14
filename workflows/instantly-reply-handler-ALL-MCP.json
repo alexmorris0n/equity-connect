@@ -1,0 +1,312 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instantly-reply-webhook",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        48,
+        16
+      ],
+      "id": "055653c3-49cd-4494-b9f6-d3c83d308888",
+      "name": "Instantly Reply Webhook",
+      "webhookId": "instantly-reply-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"received\", \"timestamp\": $now.toISO() } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        16
+      ],
+      "id": "125deb60-6900-4fa7-a7a1-1fb19eca4ad5",
+      "name": "✅ Respond 200 OK"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "# ROLE\nYou are an intelligent reply handler for reverse mortgage email campaigns.\n\n# TOOLS AVAILABLE\n1. supabase_execute_sql - Run SQL queries\n2. instantly_reply_to_email - Send email responses\n3. instantly_update_lead - Update lead status\n4. knowledge_base_search - Search 80-chunk KB\n5. vapi_trigger_call - Initiate Barbara AI call\n\n# DECISION TREE\nAnalyze reply → Classify intent → Execute action → Update database\n\nIntent Classification:\n- PHONE_PROVIDED: Extract phone → Trigger VAPI call\n- QUESTION: Search KB → Craft answer → Reply via Instantly → Ask for phone\n- UNSUBSCRIBE: Update Instantly + Supabase → No reply\n- INTEREST: Reply asking for phone → Update status\n- BROKER_REQUEST: Reply confirming → Ask for phone\n\n# WORKFLOW (Execute in this order)\n1. Extract lead_email from input\n2. Query lead: SELECT id, first_name, primary_email, primary_phone, status FROM leads WHERE primary_email = '{email}'\n3. Classify intent from reply_text\n4. Execute appropriate action (see scenarios below)\n5. Update lead status: UPDATE leads SET status='replied', last_reply_at=NOW() WHERE primary_email='{email}'\n6. Log interaction: INSERT INTO interactions (lead_id, type, content, metadata, created_at) VALUES (...)\n\n# SCENARIOS\n\n## PHONE_PROVIDED\nTrigger: Reply contains phone number\nActions:\n- Extract & format phone: XXX-XXX-XXXX\n- Call vapi_trigger_call tool\n- Update: UPDATE leads SET primary_phone='{phone}', status='qualified'\n- Log: metadata = {\"intent\":\"phone_provided\"}\n\n## QUESTION\nTrigger: Contains question words (what, how, when, will, can)\nActions:\n- Search knowledge_base_search for topic\n- Craft <150 word answer\n- Replace {{broker_name}} → \"your specialist\"\n- Send via instantly_reply_to_email\n- Ask: \"What's the best number to reach you?\"\n- Log: metadata = {\"intent\":\"question\", \"topic\":\"{detected_topic}\"}\n\n## UNSUBSCRIBE\nTrigger: \"stop\", \"unsubscribe\", \"remove\", \"not interested\"\nActions:\n- instantly_update_lead: mark unsubscribed\n- UPDATE leads SET status='do_not_contact'\n- Log: metadata = {\"intent\":\"unsubscribe\"}\n- DO NOT SEND REPLY\n\n## INTEREST\nTrigger: \"interested\", \"tell me more\", \"sounds good\"\nActions:\n- instantly_reply_to_email: \"Great! What's your phone number?\"\n- UPDATE leads SET status='qualified'\n- Log: metadata = {\"intent\":\"interest\"}\n\n# CRITICAL RULES\n- ALWAYS query lead first\n- ALWAYS use Knowledge Base for facts\n- ALWAYS ask for phone (unless unsubscribe)\n- ALWAYS update database after actions\n- NEVER make up information\n- Keep emails <150 words\n\n# SQL TEMPLATES\n[Your existing SQL examples - keep these]\n\n# COMPLIANCE\n[Your existing compliance rules - keep these]",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        792,
+        16
+      ],
+      "id": "35b7c931-dacb-456e-add7-32b1419176e3",
+      "name": "🤖 AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4.5",
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        528,
+        240
+      ],
+      "id": "1ca24c1d-b36e-4539-88c3-9f58cebe774a",
+      "name": "Claude Sonnet 4.5",
+      "credentials": {
+        "openRouterApi": {
+          "id": "5pEBmsekpDy6GZN0",
+          "name": "OpenRouter n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.instantly.ai/mcp",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        656,
+        240
+      ],
+      "id": "455a2c35-8fff-45f6-95ac-7acedb0783fd",
+      "name": "📧 Instantly MCP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "T3VkmA0F515ckuYB",
+          "name": "Instantly API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Comprehensive reverse mortgage knowledge base with 80 searchable chunks. Covers: eligibility requirements, fees and costs, objection handling, FAQs, persona explanations (who Carlos/Maria/Rahul/Priya/Marcus/LaToYa are), compliance-approved language, emotional psychology for seniors. Search this for ANY factual questions about reverse mortgages or when leads ask about the outreach team members.",
+        "tableName": {
+          "__rl": true,
+          "value": "vector_embeddings",
+          "mode": "list",
+          "cachedResultName": "vector_embeddings"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        784,
+        240
+      ],
+      "id": "0b1f0571-c1b5-4a30-9f1f-c6983f19824a",
+      "name": "📚 Knowledge Base",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        864,
+        448
+      ],
+      "id": "dec25608-ab4c-47ed-be9a-44e158b6ce84",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "6ixi9uvAMwvxTaVS",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        1072,
+        240
+      ],
+      "id": "aaac6329-bb36-4e16-ac1c-339d20077a22",
+      "name": "💾 Supabase MCP",
+      "notes": "IMPORTANT: Set endpoint URL in Cursor MCP config. This connects to your Supabase instance via MCP protocol. Provides: execute_sql, list_tables, apply_migration, get_logs, and 25+ other tools."
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        240
+      ],
+      "id": "5db24d5c-9b3a-4a35-81dc-4ca4a6187b81",
+      "name": "📞 VAPI MCP",
+      "notes": "VAPI MCP endpoint. Check VAPI MCP docs for exact endpoint URL and available tools for triggering Barbara calls."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI Agent output and log results\nconst agentOutput = $input.first().json;\n\n// Extract the agent's response/actions\nconst output = agentOutput.output || agentOutput.text || agentOutput.response || JSON.stringify(agentOutput);\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✅ AI Agent Processing Complete');\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Agent Actions Taken:');\nconsole.log(output);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Timestamp:', new Date().toISOString());\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\n// Return success with details\nreturn [{\n  json: {\n    success: true,\n    agent_output: output,\n    timestamp: new Date().toISOString(),\n    processing_complete: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        16
+      ],
+      "id": "711ec987-1ac2-4a38-8169-1f3c8568ab4b",
+      "name": "📊 Parse & Log Results"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and normalize Instantly webhook data\nconst webhook = $input.first().json;\n\n// Handle field variations from Instantly webhooks\nconst normalized = {\n  // Email identification\n  lead_email: webhook.from_email || webhook.lead_email || webhook.email,\n  \n  // Reply content\n  reply_text: webhook.body || webhook.message || webhook.text || '',\n  \n  // Email metadata\n  subject: webhook.subject || 'No subject',\n  reply_to_uuid: webhook.email_id || webhook.uuid || webhook.id,\n  sender_account: webhook.to_email || webhook.eaccount || webhook.account_email,\n  \n  // Campaign context\n  campaign_id: webhook.campaign_id || null,\n  instantly_lead_id: webhook.lead_id || null,\n  \n  // Timestamps\n  replied_at: webhook.timestamp || new Date().toISOString(),\n  \n  // Keep raw for debugging\n  raw_webhook: webhook\n};\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('📧 Reply Webhook Received');\nconsole.log(`From: ${normalized.lead_email}`);\nconsole.log(`Subject: ${normalized.subject}`);\nconsole.log(`Preview: ${normalized.reply_text.substring(0, 100)}...`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{ json: normalized }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        16
+      ],
+      "id": "fc87e622-2dc8-41f8-b890-c6a219868cbb",
+      "name": "📦 Extract Webhook Data"
+    }
+  ],
+  "connections": {
+    "Instantly Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "✅ Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Respond 200 OK": {
+      "main": [
+        [
+          {
+            "node": "📦 Extract Webhook Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI Agent": {
+      "main": [
+        [
+          {
+            "node": "📊 Parse & Log Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet 4.5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Instantly MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📚 Knowledge Base": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "📚 Knowledge Base",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Supabase MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📞 VAPI MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Extract Webhook Data": {
+      "main": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4ca45576dabef27a95f92525a5f6415fb3e8061f7037b2ec7fb4ba1bb1cb56c0"
+  }
+}

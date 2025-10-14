@@ -1,3 +1,0 @@
-DVIRs Not linking to repair orders 
-https://fleet.instaroute.com/repairs/e99528a0-ea08-4576-bb04-09ec394c3d38
-shows there are notes, but no linked dvirs
