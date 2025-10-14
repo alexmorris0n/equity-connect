@@ -37,20 +37,22 @@ Log after each iteration:
 LOOP:
 1. Count: SELECT count_enriched_today('{{ $json.broker_id }}')
 2. IF enriched >= target → PHASE 2
-3. remaining = target - enriched, batch = min(30 + iteration*5, 50)
-4. Pull: propertyradar_api {method:'GET', endpoint:'/lists/{{ $json.list_id }}/items?Start={offset}&Limit={batch}', body:{}}
-5. Filter: SELECT * FROM filter_new_radar_ids([...])
-6. IF all_dupes → update_broker_offset, offset+=batch, LOOP
-7. Buy: propertyradar_api {method:'POST', endpoint:'/properties?Purchase=1', body:{Criteria:[{name:'RadarID',value:[...]}]}}
-8. FOR EACH property:
-   - propertyradar_api {method:'GET', endpoint:'/properties/{radar_id}/persons?Purchase=1&Fields=FirstName,LastName,Email,Phone', body:{}}
-   - Parse: extract best email/phone, calc quality (0-100)
-   - IF quality<70 → batchdata_api {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[...]}}
-   - Merge best, INSERT INTO leads (radar_id, first_name, last_name, primary_email, primary_phone, ...)
-9. Update: SELECT update_broker_offset({{ $json.broker_id }}, {batch})
-10. iteration++, offset+=batch
-11. IF iteration>=30 OR pulled>=target*2 → PHASE 2
-12. Log state, LOOP to step 1
+3. remaining = target - enriched
+4. batch = remaining * 3 (pull 3x to account for dupes/bad data, max 100)
+5. Pull: propertyradar_api {method:'GET', endpoint:'/lists/{{ $json.list_id }}/items?Start={offset}&Limit={batch}', body:{}}
+6. Filter: SELECT * FROM filter_new_radar_ids([...])
+7. IF all_dupes → update_broker_offset, offset+=batch, LOOP
+8. Buy ALL: propertyradar_api {method:'POST', endpoint:'/properties?Purchase=1', body:{Criteria:[{name:'RadarID',value:[...ALL_IDS...]}]}}
+9. Enrich ALL in parallel: FOR EACH property in SAME CALL:
+   - GET /properties/{radar_id}/persons (batch all URLs)
+   - Parse ALL responses, calc quality for each
+   - IF quality<70 → collect for BatchData
+10. BatchData skip-trace ALL low-quality at once: {method:'POST', body:{requests:[...ALL_ADDRESSES...]}}
+11. INSERT ALL leads in single SQL: INSERT INTO leads (...) VALUES (...),(...),(...)
+12. Update offset: SELECT update_broker_offset({{ $json.broker_id }}, {batch})
+13. iteration++, offset+=batch
+14. IF iteration>=5 OR pulled>=target*4 → PHASE 2
+15. Log state, LOOP to step 1
 ```
 
 **PHASE 2: CAMPAIGN UPLOAD**
