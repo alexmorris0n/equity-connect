@@ -1,7 +1,9 @@
-# Consent Management System Guide
+# TCPA Consent Management Guide (Phone Calls Only)
 
 ## 🎯 Overview
-This guide covers our secure, senior-friendly consent management system that uses signed tokens and pre-filled forms to maximize conversion rates while maintaining compliance.
+This guide covers TCPA-compliant consent collection for PHONE CALLS. This system is triggered ONLY when a lead replies with interest to a cold email campaign.
+
+**IMPORTANT:** This is NOT needed for cold email. Email campaigns only require CAN-SPAM compliance (unsubscribe link), which Instantly.ai handles automatically.
 
 ---
 
@@ -32,11 +34,25 @@ This guide covers our secure, senior-friendly consent management system that use
 
 ---
 
-## 📧 Email Link Generation
+## 📧 When to Send Consent Forms
 
-### **n8n Workflow: Consent Token Generation**
+### **Trigger: Lead Replies to Cold Email**
 
-#### **Input Payload**
+**Flow:**
+```
+1. Cold email sent via Instantly (NO consent needed)
+2. Lead replies "YES" or "I'm interested"
+3. Instantly webhook → n8n
+4. n8n detects positive intent
+5. n8n generates consent token
+6. n8n sends follow-up email with consent form
+7. Lead clicks & submits form
+8. Consent recorded → lead is now callable
+```
+
+### **n8n Workflow: Reply Handler + Consent Token Generation**
+
+#### **Input Payload (from Instantly webhook)**
 ```json
 {
   "lead_id": "lead_12345",
@@ -44,10 +60,8 @@ This guide covers our secure, senior-friendly consent management system that use
   "first_name": "Mary",
   "last_name": "Garcia",
   "email": "mary@example.com",
-  "phone": "+14085551234",
-  "utm_campaign": "rm-oct",
-  "utm_source": "email",
-  "utm_medium": "email"
+  "reply_text": "YES - I'd like more information",
+  "replied_at": "2025-10-11T14:30:00Z"
 }
 ```
 

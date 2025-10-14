@@ -1,0 +1,211 @@
+{
+  "name": "PropertyRadar - Broker Setup Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "propertyradar-setup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [100, 300],
+      "webhookId": "propertyradar-broker-setup"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate incoming webhook payload\nconst body = $input.first().json.body || $input.first().json;\n\nconst required = ['broker_id', 'broker_name', 'zip_codes'];\nfor (const field of required) {\n  if (!body[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nif (!Array.isArray(body.zip_codes) || body.zip_codes.length === 0) {\n  throw new Error('zip_codes must be a non-empty array');\n}\n\nconsole.log(`Creating PropertyRadar list for: ${body.broker_name}`);\nconsole.log(`ZIPs: ${body.zip_codes.length} total`);\n\nconst listName = `RM_${body.broker_name.replace(/[^a-zA-Z0-9]/g, '_')}`;\n\nreturn [{\n  json: {\n    broker_id: body.broker_id,\n    broker_name: body.broker_name,\n    zip_codes: body.zip_codes,\n    list_name: listName,\n    daily_capacity: body.daily_capacity || 250\n  }\n}];"
+      },
+      "id": "validate-payload",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.propertyradar.com/v1/lists",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  ListName: $json.list_name,\n  Criteria: [\n    {name: 'ZipFive', value: $json.zip_codes},\n    {name: 'Age', value: [[62, null]]},\n    {name: 'AvailableEquity', value: [[100000, null]]},\n    {name: 'EquityPercent', value: [[40, null]]},\n    {name: 'isSameMailingOrExempt', value: [1]},\n    {name: 'PropertyType', value: [{name: 'PType', value: ['SFR', 'TWN', 'DPX', 'TPX', 'FPX']}]},\n    {name: 'AVM', value: [[400000, 3000000]]},\n    {name: 'CLTV', value: [[null, 60]]}\n  ]\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "create-pr-list",
+      "name": "Create PropertyRadar List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract list ID and prepare database update\nconst prResponse = $input.first().json;\nconst brokerData = $('Validate Payload').first().json;\n\nconst listId = prResponse.id || prResponse.ListID;\n\nif (!listId) {\n  throw new Error('PropertyRadar did not return a list ID: ' + JSON.stringify(prResponse));\n}\n\nconsole.log(`✓ List created: ${listId}`);\n\nreturn [{\n  json: {\n    broker_id: brokerData.broker_id,\n    list_id: listId,\n    list_name: brokerData.list_name,\n    broker_name: brokerData.broker_name\n  }\n}];"
+      },
+      "id": "extract-list-id",
+      "name": "Extract List ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/update_broker_list_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p_broker_id\": $json.broker_id, \"p_list_id\": $json.list_id } }}",
+        "options": {}
+      },
+      "id": "update-broker",
+      "name": "Update Broker in Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare success response for Vercel UI\nconst listData = $('Extract List ID').first().json;\n\nconsole.log('=================================');\nconsole.log('✓ Broker Setup Complete');\nconsole.log(`List ID: ${listData.list_id}`);\nconsole.log(`Broker: ${listData.broker_name}`);\nconsole.log('=================================');\n\nreturn [{\n  json: {\n    success: true,\n    message: 'PropertyRadar list created and broker updated',\n    data: {\n      broker_id: listData.broker_id,\n      broker_name: listData.broker_name,\n      list_id: listData.list_id,\n      list_name: listData.list_name\n    }\n  }\n}];"
+      },
+      "id": "prepare-response",
+      "name": "Prepare Success Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1300, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Payload": {
+      "main": [
+        [
+          {
+            "node": "Create PropertyRadar List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create PropertyRadar List": {
+      "main": [
+        [
+          {
+            "node": "Extract List ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract List ID": {
+      "main": [
+        [
+          {
+            "node": "Update Broker in Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Broker in Supabase": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Success Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}
+

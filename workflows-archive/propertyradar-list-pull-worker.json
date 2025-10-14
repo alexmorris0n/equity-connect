@@ -1,0 +1,479 @@
+{
+  "name": "PropertyRadar List Pull Worker (Production)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "id": "daily-trigger",
+      "name": "Daily Trigger (6am)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "brokers",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "id": "fetch-brokers",
+      "name": "Fetch Active Brokers",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [300, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare broker state for list pull\nconst broker = $input.first().json;\nconst sessionId = $execution.id;\n\nif (!broker.propertyradar_list_id) {\n  throw new Error(`Broker ${broker.company_name} missing propertyradar_list_id. Create a dynamic list in PropertyRadar first.`);\n}\n\nconsole.log('=================================');\nconsole.log(`PropertyRadar Pull: ${broker.company_name}`);\nconsole.log(`Execution: ${sessionId}`);\nconsole.log(`List ID: ${broker.propertyradar_list_id}`);\nconsole.log(`Daily Capacity: ${broker.daily_lead_capacity || 250}`);\nconsole.log('=================================');\n\nreturn [{\n  json: {\n    session_id: sessionId,\n    broker_id: broker.id,\n    broker_name: broker.company_name,\n    list_id: broker.propertyradar_list_id,\n    daily_capacity: broker.daily_lead_capacity || 250\n  }\n}];"
+      },
+      "id": "prep-broker",
+      "name": "Prepare Broker State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.propertyradar.com/v1/lists/{{ $json.list_id }}/items",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Start",
+              "value": "0"
+            },
+            {
+              "name": "Limit",
+              "value": "={{ $json.daily_capacity }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-radar-ids",
+      "name": "Get RadarIDs from List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract RadarIDs from list response\nconst listResponse = $input.first().json;\nconst brokerState = $('Prepare Broker State').first().json;\n\nconst items = listResponse.items || [];\nconst radarIds = items.map(item => item.RadarID || item).filter(Boolean);\n\nif (radarIds.length === 0) {\n  throw new Error('No properties in PropertyRadar list');\n}\n\nconsole.log(`Got ${radarIds.length} RadarIDs from list`);\n\nreturn [{\n  json: {\n    ...brokerState,\n    radar_ids: radarIds,\n    original_count: radarIds.length\n  }\n}];"
+      },
+      "id": "extract-ids",
+      "name": "Extract RadarIDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/filter_new_radar_ids",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"ids\": $json.radar_ids } }}",
+        "options": {}
+      },
+      "id": "filter-new-ids",
+      "name": "Filter New RadarIDs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check filtered results and calculate savings\nconst filterResponse = $input.first().json;\nconst brokerState = $('Extract RadarIDs').first().json;\n\nconst newIds = (Array.isArray(filterResponse) ? filterResponse : []).map(r => r.radar_id).filter(Boolean);\n\nif (newIds.length === 0) {\n  const saved = (brokerState.original_count * 0.75).toFixed(2);\n  throw new Error(`All ${brokerState.original_count} RadarIDs already exist (saved $${saved})`);\n}\n\nconst duplicates = brokerState.original_count - newIds.length;\nconst saved = (duplicates * 0.75).toFixed(2);\n\nconsole.log(`Filtered: ${brokerState.original_count} → ${newIds.length} new IDs (skipped ${duplicates} dupes, saved $${saved})`);\n\nreturn [{\n  json: {\n    ...brokerState,\n    radar_ids: newIds,\n    count: newIds.length,\n    duplicates_skipped: duplicates,\n    cost_saved: parseFloat(saved)\n  }\n}];"
+      },
+      "id": "check-filtered",
+      "name": "Check Filtered Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/broker_leads_today",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p_broker\": $json.broker_id } }}",
+        "options": {}
+      },
+      "id": "get-leads-today",
+      "name": "Get Broker Leads Today",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1500, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Trim to remaining daily capacity\nconst brokerState = $('Check Filtered Results').first().json;\nconst alreadyPulled = parseInt($input.first().json) || 0;\nconst remaining = Math.max(0, brokerState.daily_capacity - alreadyPulled);\n\nif (remaining === 0) {\n  throw new Error(`Broker ${brokerState.broker_name} already at capacity (${alreadyPulled}/${brokerState.daily_capacity})`);\n}\n\nconst trimmed = brokerState.radar_ids.slice(0, remaining);\n\nconsole.log(`Capacity: ${alreadyPulled} pulled today, ${remaining} remaining → will pull ${trimmed.length}`);\n\nreturn [{\n  json: {\n    ...brokerState,\n    radar_ids: trimmed,\n    count: trimmed.length,\n    already_pulled_today: alreadyPulled,\n    remaining_capacity: remaining\n  }\n}];"
+      },
+      "id": "trim-capacity",
+      "name": "Trim to Remaining Capacity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.propertyradar.com/v1/properties",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Purchase",
+              "value": "0"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({Criteria: [{name: 'RadarID', value: $json.radar_ids}], Fieldsets: ['Grid', 'GridOptional']}) }}",
+        "options": {}
+      },
+      "id": "preview-purchase",
+      "name": "Preview Purchase (Purchase=0)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1900, 300],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log preview results and pass through state\nconst preview = $input.first().json;\nconst brokerState = $('Trim to Remaining Capacity').first().json;\n\nconsole.log(`Preview: ${preview.totalResultCount} properties, Cost: $${preview.totalCost}`);\n\nif (preview.totalResultCount === 0) {\n  throw new Error('Preview returned 0 properties. Check RadarIDs.');\n}\n\nreturn [{\n  json: {\n    ...brokerState,\n    preview_count: preview.totalResultCount,\n    preview_cost: parseFloat(preview.totalCost || 0)\n  }\n}];"
+      },
+      "id": "check-preview",
+      "name": "Check Preview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.propertyradar.com/v1/properties",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Purchase",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({Criteria: [{name: 'RadarID', value: $json.radar_ids}], Fieldsets: ['Grid', 'GridOptional']}) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "purchase-properties",
+      "name": "Purchase Properties (Purchase=1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2300, 300],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse PropertyRadar results and compute SHA-256 dedup keys\nconst response = $input.first().json;\nconst properties = response.results || [];\nconst brokerState = $('Trim to Remaining Capacity').first().json;\n\nif (properties.length === 0) {\n  console.log('No properties returned from purchase');\n  return [];\n}\n\n// SHA-256 hash function for address deduplication\nconst crypto = require('crypto');\n\nfunction makeAddrHash(line1, city, state, zip) {\n  const key = `${(line1 || '').trim().toUpperCase()}|${(city || '').trim().toUpperCase()}|${(state || '').trim().toUpperCase()}|${(zip || '').slice(0, 5)}`;\n  return crypto.createHash('sha256').update(key).digest('hex');\n}\n\nconst leads = properties.map(prop => {\n  const hash = makeAddrHash(prop.Address, prop.City, prop.State, prop.ZipFive);\n\n  return {\n    radar_id: prop.RadarID,\n    apn: prop.APN || null,\n    county_fips: prop.FIPS || null,\n    addr_hash: hash,\n    property_address: prop.Address,\n    property_city: prop.City,\n    property_state: prop.State,\n    property_zip: prop.ZipFive,\n    property_value: prop.AVM,\n    estimated_equity: prop.AvailableEquity,\n    age: prop.Age || null,\n    owner_occupied: prop.isSameMailingOrExempt === 1,\n    phone_available: (prop.PhoneAvailability || 0) > 0,\n    email_available: (prop.EmailAvailability || 0) > 0,\n    assigned_broker_id: brokerState.broker_id,\n    source: 'propertyradar',\n    radar_property_data: prop,\n    radar_api_version: 'v1'\n  };\n});\n\nconsole.log('=================================');\nconsole.log('PropertyRadar Purchase Complete');\nconsole.log(`Broker: ${brokerState.broker_name}`);\nconsole.log(`Purchased: ${properties.length} properties`);\nconsole.log(`Cost: $${response.totalCost}`);\nconsole.log(`Parsed with SHA-256 dedup keys`);\nconsole.log('=================================');\n\nreturn leads.map(lead => ({ json: lead }));"
+      },
+      "id": "parse-results",
+      "name": "Parse & Hash Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/upsert_lead_from_radar",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"p\": {\n    \"radar_id\": $json.radar_id,\n    \"apn\": $json.apn,\n    \"county_fips\": $json.county_fips,\n    \"addr_hash\": $json.addr_hash,\n    \"address_line1\": $json.property_address,\n    \"city\": $json.property_city,\n    \"state\": $json.property_state,\n    \"postal_code\": $json.property_zip,\n    \"property_value\": $json.property_value,\n    \"estimated_equity\": $json.estimated_equity,\n    \"age\": $json.age,\n    \"owner_occupied\": $json.owner_occupied,\n    \"phone_available\": $json.phone_available,\n    \"email_available\": $json.email_available,\n    \"assigned_broker_id\": $json.assigned_broker_id,\n    \"radar_property_data\": $json.radar_property_data,\n    \"radar_api_version\": $json.radar_api_version,\n    \"source\": \"propertyradar\"\n  }\n}\n}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "upsert-lead",
+      "name": "Upsert Lead to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2700, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger (6am)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Brokers": {
+      "main": [
+        [
+          {
+            "node": "Prepare Broker State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Broker State": {
+      "main": [
+        [
+          {
+            "node": "Get RadarIDs from List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get RadarIDs from List": {
+      "main": [
+        [
+          {
+            "node": "Extract RadarIDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract RadarIDs": {
+      "main": [
+        [
+          {
+            "node": "Filter New RadarIDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New RadarIDs": {
+      "main": [
+        [
+          {
+            "node": "Check Filtered Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Filtered Results": {
+      "main": [
+        [
+          {
+            "node": "Get Broker Leads Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Broker Leads Today": {
+      "main": [
+        [
+          {
+            "node": "Trim to Remaining Capacity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trim to Remaining Capacity": {
+      "main": [
+        [
+          {
+            "node": "Preview Purchase (Purchase=0)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preview Purchase (Purchase=0)": {
+      "main": [
+        [
+          {
+            "node": "Check Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Preview": {
+      "main": [
+        [
+          {
+            "node": "Purchase Properties (Purchase=1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Purchase Properties (Purchase=1)": {
+      "main": [
+        [
+          {
+            "node": "Parse & Hash Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Hash Results": {
+      "main": [
+        [
+          {
+            "node": "Upsert Lead to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

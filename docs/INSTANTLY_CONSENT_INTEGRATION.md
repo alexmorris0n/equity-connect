@@ -1,7 +1,9 @@
-# Instantly.ai Consent Token Integration Guide
+# Instantly.ai Cold Email Campaign Guide
 
 ## 🎯 Overview
-This guide shows how to integrate consent tokens with Instantly.ai email campaigns, allowing you to send personalized, secure consent links to leads.
+This guide shows how to set up CAN-SPAM compliant cold email campaigns via Instantly.ai for reverse mortgage leads.
+
+**IMPORTANT:** Cold email does NOT require consent forms. Consent is only needed for PHONE CALLS after a lead replies with interest.
 
 ---
 
@@ -9,38 +11,42 @@ This guide shows how to integrate consent tokens with Instantly.ai email campaig
 
 ### **Step 1: Configure Custom Fields in Instantly**
 
-In your Instantly.ai campaign, add these custom fields:
+In your Instantly.ai campaign, add these custom fields for personalization:
 
-1. **`consent_token`** - The signed JWT token
-2. **`consent_url`** - The secure consent form URL
-3. **`simple_consent_url`** - Fallback URL with parameters
-4. **`broker_name`** - Broker's name for personalization
-5. **`property_address`** - Lead's property address
-6. **`estimated_equity`** - Estimated equity amount
+1. **`first_name`** - Lead's first name (for {{firstName}})
+2. **`last_name`** - Lead's last name (for {{lastName}})
+3. **`broker_name`** - Broker's name for personalization
+4. **`property_address`** - Lead's property address
+5. **`estimated_equity`** - Estimated equity amount (formatted: "$300,000")
+6. **`property_value`** - Property value (formatted: "$650,000")
 
 ### **Step 2: Email Template Variables**
 
-Use these variables in your Instantly email templates:
+Use these variables in your Instantly cold email templates:
 
 ```html
 <!-- Personalized greeting -->
-Hello <strong>{{firstName}} {{lastName}}</strong>,
+Hello {{firstName}},
 
-<!-- Broker information -->
-<div class="broker-info">
-    <div class="broker-name">{{broker_name}}</div>
-    <div class="broker-company">Your Reverse Mortgage Specialist</div>
-</div>
+<!-- Value proposition -->
+<p>I noticed your property at {{property_address}} has approximately {{estimated_equity}} in equity.</p>
 
-<!-- Consent button with token -->
-<a href="{{consent_url}}" class="consent-button">
-    Yes, you may contact me
-</a>
+<p>Many homeowners over 62 are using reverse mortgages to:</p>
+<ul>
+  <li>Eliminate monthly mortgage payments</li>
+  <li>Access tax-free cash</li>
+  <li>Stay in their home for life</li>
+</ul>
 
-<!-- Fallback option -->
-<div class="fallback-text">
-    <strong>Prefer email?</strong> Just reply <span class="highlight">YES</span> and we'll take it from there.
-</div>
+<!-- Call to action - NO CONSENT FORM -->
+<p><strong>Interested in learning more?</strong> Just reply "YES" and I'll send you a personalized analysis.</p>
+
+<!-- Signature -->
+<p>Best regards,<br>
+{{broker_name}}<br>
+Licensed Reverse Mortgage Specialist</p>
+
+<!-- CAN-SPAM compliance (Instantly handles unsubscribe automatically) -->
 ```
 
 ---
@@ -54,70 +60,57 @@ Hello <strong>{{firstName}} {{lastName}}</strong>,
 | `{{firstName}}` | Lead's first name | Mary |
 | `{{lastName}}` | Lead's last name | Garcia |
 | `{{email}}` | Lead's email | mary@example.com |
-| `{{consent_url}}` | Secure token URL | https://form.equityconnect.com/consent?token=eyJ... |
-| `{{simple_consent_url}}` | Fallback URL | https://form.equityconnect.com/consent?first=Mary&last=Garcia... |
 | `{{broker_name}}` | Broker's name | John Smith |
-| `{{property_address}}` | Property address | 123 Main St, San Francisco, CA |
+| `{{property_address}}` | Property address | 123 Main St, Los Angeles, CA 90043 |
+| `{{property_value}}` | Property value | $650,000 |
 | `{{estimated_equity}}` | Estimated equity | $300,000 |
 
-### **Sample Email Template**
+### **Sample Cold Email Template (Initial Outreach)**
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Confirm Your Interest in Reverse Mortgage Information</title>
-    <style>
-        /* Your CSS styles here */
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Confirm Your Interest</h1>
-        
-        <p>Hello <strong>{{firstName}} {{lastName}}</strong>,</p>
-        
-        <p>Thank you for your interest in reverse mortgage information. To keep you safe and compliant with federal rules, we need your permission to contact you.</p>
+```
+Subject: Your {{property_address}} Property - Equity Options
 
-        <div class="broker-info">
-            <div class="broker-name">{{broker_name}}</div>
-            <div class="broker-company">Your Reverse Mortgage Specialist</div>
-        </div>
+Hi {{firstName}},
 
-        <div style="text-align: center;">
-            <a href="{{consent_url}}" class="consent-button">
-                Yes, you may contact me
-            </a>
-        </div>
+I noticed your home at {{property_address}} and wanted to reach out about a financial option many homeowners over 62 are using.
 
-        <div class="fallback-text">
-            <strong>Prefer email?</strong> Just reply <span class="highlight">YES</span> and we'll take it from there.
-        </div>
-    </div>
-</body>
-</html>
+Your property has approximately {{estimated_equity}} in available equity.
+
+A reverse mortgage could help you:
+• Eliminate monthly mortgage payments
+• Access tax-free cash (up to {{estimated_equity}})
+• Stay in your home for life
+• Never owe more than your home's value
+
+Would you like a free, no-obligation analysis?
+
+Just reply "YES" and I'll send you a personalized breakdown.
+
+Best regards,
+{{broker_name}}
+NMLS Licensed Reverse Mortgage Specialist
+
+---
+This email is CAN-SPAM compliant. Unsubscribe link automatically included by Instantly.
 ```
 
 ---
 
 ## ⚙️ n8n Workflow Integration
 
-### **Updated Workflow Flow**
+### **Campaign Feeder Flow**
 
 ```
-PropStream Lead → Supabase Creation → Consent Token Generation → Instantly Import
+Daily 8am Trigger
+  ↓
+Get Campaign-Ready Leads (enriched with email)
+  ↓
+Format for Instantly (add broker info, format currency)
+  ↓
+Send to Instantly Campaign
+  ↓
+Mark leads as 'queued' in Supabase
 ```
-
-### **Consent Token Generation Node**
-
-The workflow now includes a "Generate Consent Token" node that:
-
-1. **Creates JWT payload** with lead data
-2. **Generates HMAC signature** for security
-3. **Creates consent URLs** (both token and simple)
-4. **Passes data to Instantly** as custom fields
 
 ### **Instantly Import Configuration**
 
@@ -130,40 +123,50 @@ The workflow now includes a "Generate Consent Token" node that:
     "lastName": "{{lastName}}",
     "customFields": {
       "property_address": "{{property_address}}",
-      "estimated_equity": "{{estimated_equity}}",
-      "broker": "{{broker}}",
-      "consent_token": "{{consent_token}}",
-      "consent_url": "{{consent_url}}",
-      "simple_consent_url": "{{simple_consent_url}}",
-      "broker_name": "{{broker_name}}"
+      "property_value": "${{property_value}}",
+      "estimated_equity": "${{estimated_equity}}",
+      "broker_name": "{{broker_name}}",
+      "broker_nmls": "{{broker_nmls}}"
     }
   }
 }
 ```
 
+**NO consent tokens in cold email - those are only for reply follow-ups!**
+
 ---
 
-## 🔐 Security Considerations
+## 🔐 Compliance & Security
 
-### **Token Security**
-- **HMAC-SHA256** signatures prevent tampering
-- **7-day expiration** for security
-- **Server-side verification** required
-- **Environment variable** for secret key
+### **CAN-SPAM Compliance (Cold Email)**
 
-### **Environment Variables**
+**Required in EVERY email (Instantly handles automatically):**
+- ✅ Clear "From" name (broker or company name)
+- ✅ Accurate subject line (no deception)
+- ✅ Physical mailing address (footer)
+- ✅ One-click unsubscribe link
+- ✅ Honor unsubscribe within 10 days
+
+**NOT required for cold email:**
+- ❌ Consent forms
+- ❌ Opt-in before sending
+- ❌ DNC registry check (that's for phone calls)
+
+### **TCPA Compliance (Phone Calls - AFTER Reply)**
+
+**Only needed when lead shows interest:**
+1. Lead replies "YES" or "Interested" to email
+2. n8n detects reply → triggers consent workflow
+3. Send consent form: "May we call you?"
+4. Lead submits form → consent recorded
+5. NOW you can call them (VAPI/broker)
+
+**Environment Variables (for reply handling):**
 ```bash
-# Add to your n8n environment
+# Only needed when building reply handler (Monday)
 FORM_LINK_SECRET=your-strong-secret-key-here
 CONSENT_FORM_URL=https://form.equityconnect.com
 ```
-
-### **Token Verification**
-The consent form will verify tokens by:
-1. **Checking signature** with HMAC
-2. **Validating expiration** timestamp
-3. **Extracting lead data** from payload
-4. **Pre-filling form** with verified data
 
 ---
 
@@ -174,7 +177,7 @@ The consent form will verify tokens by:
 1. **Go to Instantly.ai** dashboard
 2. **Click "Create Campaign"**
 3. **Choose "Email Sequence"**
-4. **Select your email template**
+4. **Name:** "Reverse Mortgage - Initial Outreach"
 
 ### **2. Configure Custom Fields**
 
@@ -183,59 +186,72 @@ The consent form will verify tokens by:
 3. **Add the following fields**:
 
 ```
-consent_token (Text)
-consent_url (Text)
-simple_consent_url (Text)
 broker_name (Text)
 property_address (Text)
-estimated_equity (Number)
+property_value (Text) - Format: "$650,000"
+estimated_equity (Text) - Format: "$300,000"
+broker_nmls (Text) - Format: "NMLS #123456"
 ```
 
 ### **3. Set Up Email Sequence**
 
-1. **Email 1**: Consent request (immediate)
-2. **Email 2**: Follow-up (24 hours later)
-3. **Email 3**: Final reminder (72 hours later)
+**Email 1 (Day 0):** Initial value proposition
+- Subject: "Your {{property_address}} - Equity Options"
+- Content: Brief intro, equity amount, 3 benefits
+- CTA: "Reply YES for free analysis"
 
-### **4. Configure Triggers**
+**Email 2 (Day 3):** Educational follow-up
+- Subject: "How Reverse Mortgages Work - Quick Guide"
+- Content: Common questions answered
+- CTA: "Reply with questions"
 
-- **Send immediately** when lead is imported
-- **Pause sequence** if consent is given
-- **Resume sequence** if no response after 7 days
+**Email 3 (Day 7):** Final reminder
+- Subject: "Last chance - Your ${{estimated_equity}} equity analysis"
+- Content: Soft close, deadline urgency
+- CTA: "Reply YES to claim"
+
+### **4. Configure Campaign Settings**
+
+- **Daily send limit:** 50-100 per day (warm start)
+- **Sending schedule:** 8am-5pm recipient timezone
+- **Stop on reply:** YES (pause sequence when they respond)
+- **Track opens:** YES
+- **Track clicks:** YES (for future microsite links)
 
 ---
 
 ## 🧪 Testing the Integration
 
-### **1. Test Token Generation**
+### **1. Test Campaign Feeder Workflow**
 
-```bash
-# Test the n8n workflow
-curl -X POST https://your-n8n.com/webhook/propstream-lead \
-  -H "Content-Type: application/json" \
-  -d '{
-    "lead_id": "test-lead-123",
-    "broker_id": "test-broker",
-    "first_name": "Test",
-    "last_name": "User",
-    "email": "test@example.com",
-    "phone": "+14085551234"
-  }'
-```
+Run the `campaign-feeder-daily.json` workflow manually:
+1. Check it fetches enriched leads (with email + first_name)
+2. Verify it formats data correctly for Instantly
+3. Confirm leads appear in Instantly campaign
 
-### **2. Verify Instantly Import**
+### **2. Test Instantly Import**
 
-Check that the lead appears in Instantly with all custom fields populated:
-- `consent_token` - Should be a long JWT string
-- `consent_url` - Should be a valid URL with token
-- `broker_name` - Should match the broker configuration
+Send yourself a test email:
+1. Add your email as a test lead
+2. Run campaign feeder
+3. Check Instantly dashboard - lead should appear
+4. Verify all custom fields populated correctly
 
 ### **3. Test Email Delivery**
 
-1. **Send test email** from Instantly
-2. **Click consent link** to verify it works
-3. **Check form pre-filling** with lead data
-4. **Test consent submission** end-to-end
+1. **Send test email** from Instantly to yourself
+2. **Check personalization** (firstName, property_address, equity)
+3. **Verify unsubscribe link** works (Instantly auto-adds)
+4. **Reply "YES"** to test reply detection (build Monday)
+
+### **4. Test Reply Detection** (Build Monday)
+
+When lead replies:
+1. Instantly webhook → n8n
+2. n8n detects "YES" or positive intent
+3. n8n sends TCPA consent form: "May we call you?"
+4. Lead submits → consent recorded
+5. Lead marked as callable
 
 ---
 
@@ -243,36 +259,40 @@ Check that the lead appears in Instantly with all custom fields populated:
 
 ### **A/B Testing Variables**
 
-Test different approaches:
+Test different email approaches:
 
-1. **Token vs Simple URL**
-   - A: `{{consent_url}}` (signed token)
-   - B: `{{simple_consent_url}}` (parameters)
+1. **Subject Lines**
+   - A: "Your {{property_address}} - Equity Options"
+   - B: "Unlock ${{estimated_equity}} from Your Home"
 
-2. **Button Text**
-   - A: "Yes, you may contact me"
-   - B: "Confirm My Interest"
+2. **Value Proposition**
+   - A: Focus on eliminating mortgage payments
+   - B: Focus on accessing cash
 
-3. **Broker Personalization**
-   - A: Include broker photo
-   - B: Just broker name
+3. **Urgency**
+   - A: No deadline pressure
+   - B: Limited availability messaging
 
-### **Conversion Tracking**
+### **Key Metrics to Track**
 
-Monitor these metrics:
+**Email Performance:**
+- **Open rate** (target: 25-35% for cold email)
+- **Reply rate** (target: 3-5% positive replies)
+- **Unsubscribe rate** (keep below 0.5%)
+- **Bounce rate** (keep below 2%)
 
-- **Email open rates** by template
-- **Consent link click rates** by method
-- **Form completion rates** by pre-fill status
-- **Overall consent rates** by broker
+**Lead Engagement:**
+- **Replies saying "YES"** or showing interest
+- **Time to first reply** (median)
+- **Sequence completion rate** (% who get all 3 emails)
 
-### **Instantly Analytics**
+### **Instantly Analytics Dashboard**
 
 Use Instantly's built-in analytics to track:
-- **Open rates** for each email in sequence
-- **Click rates** on consent buttons
-- **Reply rates** for "YES" responses
-- **Unsubscribe rates** and reasons
+- **Open rates** per email in sequence
+- **Reply rates** by email step
+- **Unsubscribe patterns** by timing
+- **A/B test winners** by variant
 
 ---
 
@@ -280,73 +300,95 @@ Use Instantly's built-in analytics to track:
 
 ### **Common Issues**
 
-#### **1. Tokens Not Generating**
-- **Check environment variables** are set
-- **Verify n8n workflow** is running
-- **Check Supabase connection** is working
+#### **1. Leads Not Importing to Instantly**
+- **Check campaign feeder workflow** execution logs
+- **Verify Instantly API key** is valid
+- **Check campaign ID** is correct
+- **Verify leads have email addresses** (enrichment completed)
 
 #### **2. Custom Fields Not Populating**
-- **Verify field names** match exactly
-- **Check JSON formatting** in n8n
-- **Test Instantly API** connection
+- **Verify field names** match exactly (case-sensitive!)
+- **Check data formatting** in n8n (currency with $, addresses formatted)
+- **Test with sample lead** before batch import
 
-#### **3. Consent Links Not Working**
-- **Verify token signature** is correct
-- **Check expiration** timestamps
-- **Test form URL** is accessible
+#### **3. Low Open Rates (<15%)**
+- **Check sender domain** reputation (use email warmup)
+- **Verify SPF/DKIM** records configured
+- **Test subject lines** with A/B testing
+- **Check send timing** (avoid weekends/late nights)
+
+#### **4. High Bounce Rates (>5%)**
+- **Verify enrichment quality** (PDL email validation)
+- **Check email format** validation in workflow
+- **Remove obvious invalid** emails (test@, noreply@, etc.)
 
 ### **Debug Steps**
 
-1. **Check n8n execution logs** for errors
-2. **Verify Supabase data** is being created
-3. **Test Instantly import** with sample data
-4. **Validate email template** variables
-5. **Test consent form** functionality
+1. **Check campaign feeder** execution logs
+2. **Verify enriched leads** have all required fields
+3. **Test Instantly import** with 1-2 leads manually
+4. **Review email template** for broken variables
+5. **Monitor Instantly dashboard** for delivery issues
 
 ---
 
 ## 🎯 Best Practices
 
-### **1. Email Design**
-- **Use large, clear buttons** for consent
-- **Include trust elements** (broker info, company details)
-- **Provide multiple ways** to give consent
-- **Test on mobile devices** for seniors
+### **1. Email Design for Seniors**
+- **Large fonts** (16px minimum)
+- **Simple language** (avoid jargon)
+- **Short paragraphs** (2-3 sentences max)
+- **Clear call-to-action** ("Reply YES")
+- **Mobile-friendly** (60% of seniors use mobile)
 
-### **2. Token Management**
-- **Rotate secret keys** regularly
-- **Monitor token usage** for abuse
-- **Set reasonable expiration** times
-- **Log all token operations** for audit
+### **2. Sender Reputation**
+- **Warm up email accounts** before high volume (start 10/day, increase slowly)
+- **Monitor spam reports** (keep below 0.1%)
+- **Use proper DNS** records (SPF, DKIM, DMARC)
+- **Rotate sending accounts** (don't blast from one account)
 
-### **3. Campaign Management**
-- **Start with small batches** for testing
-- **Monitor conversion rates** closely
-- **Adjust timing** based on response patterns
-- **Personalize content** by broker/region
+### **3. Campaign Pacing**
+- **Start small:** 50 emails/day per broker
+- **Monitor engagement:** Scale up if open rates >25%
+- **Pause if issues:** High bounces or spam reports
+- **Test constantly:** A/B test subject lines, CTAs
+
+### **4. Lead Quality**
+- **Only send to enriched leads** (verified email addresses)
+- **Segment by engagement:** Re-engage opens who didn't reply
+- **Remove hard bounces** immediately
+- **Honor unsubscribes** globally (across all campaigns)
 
 ---
 
 ## 🚀 Deployment Checklist
 
-### **Pre-Launch**
-- [ ] **Environment variables** configured
-- [ ] **n8n workflows** tested and deployed
-- [ ] **Instantly custom fields** created
-- [ ] **Email templates** designed and tested
-- [ ] **Consent form** deployed and functional
+### **Saturday: Enrichment Workflows**
+- [ ] Build PropertyRadar `/persons` enrichment (get owner names + emails)
+- [ ] Build PDL fallback enrichment (for leads without PropertyRadar emails)
+- [ ] Test both workflows with 10 sample leads
+- [ ] Verify 85%+ email coverage after both passes
 
-### **Launch**
-- [ ] **Start with test leads** first
-- [ ] **Monitor conversion rates** closely
-- [ ] **Check for errors** in n8n logs
-- [ ] **Verify Instantly delivery** is working
+### **Sunday: Campaign Setup**
+- [ ] Verify campaign feeder workflow (`campaign-feeder-daily.json`)
+- [ ] Create Instantly campaign with 3-email sequence
+- [ ] Configure custom fields (broker_name, property_address, equity)
+- [ ] Write email templates (value prop, education, reminder)
+- [ ] Test with 5-10 real leads
 
-### **Post-Launch**
-- [ ] **Analyze performance** data
-- [ ] **Optimize based on results**
-- [ ] **Scale up gradually**
-- [ ] **Monitor for issues**
+### **Monday: Reply Handler (Consent for Calls)**
+- [ ] Build Instantly reply webhook handler
+- [ ] Detect "YES" or positive intent in replies
+- [ ] Send TCPA consent form (for phone calls only)
+- [ ] Record consent in database
+- [ ] Enable VAPI/broker calling for consented leads
+
+### **Tuesday: Production Launch**
+- [ ] Set campaign feeder to daily 8am
+- [ ] Start with 50 leads/day per broker
+- [ ] Monitor open rates (target: 25%+)
+- [ ] Monitor reply rates (target: 3%+)
+- [ ] Scale up if metrics are good
 
 ---
 

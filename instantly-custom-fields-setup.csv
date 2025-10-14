@@ -1,0 +1,2 @@
+email,firstName,lastName,property_address,property_city,property_value,property_value_range,estimated_equity,equity_50_percent,equity_60_percent,equity_formatted_short,estimated_monthly_payment,broker_name,broker_nmls
+test3@example.com,Phillip,DeMarko,5753 Oak Street,Beverly Hills,"$850,000","$765K-$935K","$625,000","$312,500","$375,000",$625K,"$2,400",Walter Richards,NMLS #ML123456

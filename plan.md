@@ -1,9 +1,11 @@
 # 🧭 Equity Connect — Data Sourcing & Enrichment Strategy
 
-## 🎯 Goal
-Pull **net-new property records** from **PropertyRadar API**, enrich with contact data via **PeopleDataLabs (Tier-1)** and **Melissa Data (Tier-2)**, and deliver only verified leads to broker campaigns.
+**⚠️ NOTE:** This document describes the enrichment STRATEGY. For current implementation status, see [docs/MASTER_PRODUCTION_PLAN.md](docs/MASTER_PRODUCTION_PLAN.md)
 
-**Key Change:** Migrated from BatchData to PropertyRadar due to superior filtering (age 62+, equity, owner-occupied) and lower cost per lead.
+## 🎯 Goal
+Pull **net-new property records** from **PropertyRadar API**, enrich with contact data via **PropertyRadar Persons API (Tier-1)** and **PeopleDataLabs (Tier-2)**, and deliver only verified leads to broker campaigns.
+
+**Current Status (Oct 11, 2025):** PropertyRadar pull workflow COMPLETE. Enrichment workflows building this weekend.
 
 ---
 

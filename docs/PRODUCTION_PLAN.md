@@ -1,13 +1,15 @@
-# /config/plan.md
+# Production Plan - Database Schema & Architecture
+
+**⚠️ NOTE:** This document describes database schema and architecture patterns. For complete current system status, see [MASTER_PRODUCTION_PLAN.md](MASTER_PRODUCTION_PLAN.md)
 
 **Project:** Equity Connect  
-**Version:** 2025-10-06-final  
+**Version:** 2025-10-06 (Schema) + Oct 11 (Implementation Updates)  
 **Owner:** Architecture
 
 ---
 
 ## Executive Summary
-Production plan with concrete schema, RLS, encryption, ingestion integrity, campaign pacing, and observability. Implements the previously agreed punch‑list.
+Database schema, RLS policies, encryption, and architectural patterns. This is the technical reference for the production database. For workflow implementation status, see MASTER_PRODUCTION_PLAN.md.
 
 ---
 

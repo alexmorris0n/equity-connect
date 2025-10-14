@@ -1,0 +1,33 @@
+# Instantly.ai Domain List - Equity Connect
+# All domains configured with SPF, DMARC, DKIM, MX Records
+# Status: Active, 2 mailboxes per domain (30 total)
+# Last verified: October 11, 2025
+
+equityconnecthome.com
+askequityconnect.com
+equityconnectnow.com
+equityconnectlending.com
+equityconnectpro.com
+equityconnectsolutions.com
+getequityconnect.com
+yourequityconnect.com
+equityconnectadvisor.com
+equityconnecthq.com
+equityconnectreverse.com
+goequityconnect.com
+equityconnectinfo.com
+equityconnecthelp.com
+equityconnectcenter.com
+
+# Sending Capacity:
+# 15 domains × 2 mailboxes = 30 sending accounts
+# 30 mailboxes × 50 emails/day = 1,500 emails/day max
+# Current need: 250 leads/day = 17% capacity utilization
+# Headroom: Can scale to 6 brokers before capacity issues
+
+# Domain Rotation Strategy:
+# Instantly automatically rotates sending across all domains
+# This protects sender reputation - if one domain gets flagged, others continue
+# Industry best practice: 50-100 emails/domain/day max
+# Our rate: 250 ÷ 15 = 16.7 emails/domain/day (well below limit)
+

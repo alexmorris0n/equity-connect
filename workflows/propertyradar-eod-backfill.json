@@ -1,0 +1,375 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 17
+            }
+          ]
+        }
+      },
+      "id": "trigger-10pm",
+      "name": "Daily at 10pm",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "brokers",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "id": "fetch-active-brokers",
+      "name": "Fetch Active Brokers",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        432,
+        576
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "split-brokers",
+      "name": "Split Into Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        656,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/broker_successful_enrichments_today",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p_broker\": $json.id } }}",
+        "options": {}
+      },
+      "id": "count-enrichments",
+      "name": "Count Successful Enrichments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        592
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/broker_pending_enrichments_today",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"p_broker\": $('Split Into Batches').first().json.id } }}",
+        "options": {}
+      },
+      "id": "count-pending",
+      "name": "Count Pending Enrichments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        784
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge successful and pending counts for EOD check (no minimum threshold)\nconst broker = $('Split Into Batches').first().json;\nconst enrichedCount = parseInt($('Count Successful Enrichments').first().json) || 0;\nconst pendingCount = parseInt($('Count Pending Enrichments').first().json) || 0;\nconst dailyCapacity = broker.daily_lead_capacity || 250;\n\n// In-flight total = enriched + still being processed\nconst inFlightTotal = enrichedCount + pendingCount;\n\n// True shortfall accounts for leads that are still enriching\nconst trueShortfall = Math.max(0, dailyCapacity - inFlightTotal);\nconst completionPct = dailyCapacity > 0 ? ((enrichedCount / dailyCapacity) * 100).toFixed(1) : 0;\n\nconsole.log('=================================');\nconsole.log('EOD BACKFILL CHECK');\nconsole.log(`Broker: ${broker.company_name}`);\nconsole.log(`Target: ${dailyCapacity}`);\nconsole.log(`Enriched: ${enrichedCount}`);\nconsole.log(`Pending: ${pendingCount}`);\nconsole.log(`In-Flight Total: ${inFlightTotal}`);\nconsole.log(`True Shortfall: ${trueShortfall}`);\nconsole.log(`Completion: ${completionPct}%`);\nconsole.log('=================================');\n\nreturn [{\n  json: {\n    broker_id: broker.id,\n    broker_name: broker.company_name,\n    daily_capacity: dailyCapacity,\n    enriched_today: enrichedCount,\n    pending_today: pendingCount,\n    in_flight_total: inFlightTotal,\n    shortfall: trueShortfall,\n    completion_percentage: parseFloat(completionPct),\n    needs_backfill: trueShortfall > 0,\n    eod_check: true\n  }\n}];"
+      },
+      "id": "calculate-shortfall",
+      "name": "Merge Counts & Calculate Shortfall (EOD)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.shortfall }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-threshold",
+      "name": "Any Shortfall?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.instaroute.com/webhook/c215e71d-f2d8-415a-b24a-a1662e3f1e2f",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"broker_id\": $json.broker_id, \"override_count\": $json.shortfall, \"reason\": \"backfill_eod\" } }}",
+        "options": {}
+      },
+      "id": "trigger-webhook-eod",
+      "name": "Trigger Pull Worker via Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        576
+      ],
+      "notes": "EOD pulls any shortfall, no matter how small"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log EOD backfill execution with detailed stats\nconst backfillData = $('Merge Counts & Calculate Shortfall (EOD)').first().json;\nconst execution = $execution;\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✓ EOD BACKFILL TRIGGERED');\nconsole.log(`  Broker: ${backfillData.broker_name}`);\nconsole.log(`  Will pull: ${backfillData.shortfall} additional leads`);\nconsole.log(`  Target: ${backfillData.daily_capacity}`);\nconsole.log(`  Enriched: ${backfillData.enriched_today}`);\nconsole.log(`  Pending: ${backfillData.pending_today}`);\nconsole.log(`  In-Flight: ${backfillData.in_flight_total}`);\nconsole.log(`  Completion: ${backfillData.completion_percentage}%`);\nconsole.log(`  Execution ID: ${execution.id}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    ...backfillData,\n    execution_id: execution.id,\n    backfill_executed: true,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-backfill-success",
+      "name": "Log EOD Backfill Triggered",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log broker at target capacity (no backfill needed)\nconst data = $input.first().json;\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✓ TARGET MET - NO BACKFILL NEEDED');\nconsole.log(`  Broker: ${data.broker_name}`);\nconsole.log(`  Target: ${data.daily_capacity}`);\nconsole.log(`  Enriched: ${data.enriched_today}`);\nconsole.log(`  Pending: ${data.pending_today}`);\nconsole.log(`  In-Flight: ${data.in_flight_total}`);\nconsole.log(`  Completion: ${data.completion_percentage}%`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    ...data,\n    backfill_executed: false,\n    target_met: true,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "f41ccc11-d453-4182-bc55-14fd7dfe3a82",
+      "name": "Log Target Met",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all broker results for final EOD report\nconst allResults = $input.all().map(item => item.json);\nconst totalBrokers = allResults.length;\nconst backfilledBrokers = allResults.filter(b => b.backfill_executed).length;\nconst metTargetBrokers = allResults.filter(b => b.target_met).length;\nconst totalShortfallFilled = allResults\n  .filter(b => b.backfill_executed)\n  .reduce((sum, b) => sum + (b.shortfall || 0), 0);\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('EOD BACKFILL REPORT - FINAL');\nconsole.log(`Total Active Brokers: ${totalBrokers}`);\nconsole.log(`Already at Target: ${metTargetBrokers}`);\nconsole.log(`Required Backfill: ${backfilledBrokers}`);\nconsole.log(`Total Additional Leads Pulled: ${totalShortfallFilled}`);\nconsole.log(`Time: ${new Date().toISOString()}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    report_type: 'eod_backfill_summary',\n    total_brokers: totalBrokers,\n    met_target: metTargetBrokers,\n    backfilled: backfilledBrokers,\n    total_leads_pulled: totalShortfallFilled,\n    timestamp: new Date().toISOString(),\n    broker_details: allResults\n  }\n}];"
+      },
+      "id": "c533146c-0581-4eb0-a672-1aedf7b7b809",
+      "name": "Generate EOD Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        416
+      ]
+    }
+  ],
+  "connections": {
+    "Daily at 10pm": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Brokers": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Batches": {
+      "main": [
+        [
+          {
+            "node": "Generate EOD Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Count Successful Enrichments",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Count Pending Enrichments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Successful Enrichments": {
+      "main": [
+        [
+          {
+            "node": "Merge Counts & Calculate Shortfall (EOD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Pending Enrichments": {
+      "main": [
+        [
+          {
+            "node": "Merge Counts & Calculate Shortfall (EOD)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Counts & Calculate Shortfall (EOD)": {
+      "main": [
+        [
+          {
+            "node": "Any Shortfall?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Shortfall?": {
+      "main": [
+        [
+          {
+            "node": "Trigger Pull Worker via Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Target Met",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Pull Worker via Webhook": {
+      "main": [
+        [
+          {
+            "node": "Log EOD Backfill Triggered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log EOD Backfill Triggered": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Target Met": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "4ca45576dabef27a95f92525a5f6415fb3e8061f7037b2ec7fb4ba1bb1cb56c0"
+  }
+}

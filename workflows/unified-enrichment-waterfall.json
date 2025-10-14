@@ -1,0 +1,790 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "errorMessage": "=BatchData insufficient balance. Please add credits to continue enrichment. Current lead: {{ $('Get Lead Details').item.json.id }}"
+      },
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        720,
+        208
+      ],
+      "id": "d43c2e4d-2cef-45e3-9551-2986b6726208",
+      "name": "Insufficient Credits"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "58824daf-5e61-488a-b85d-62f83544e0ba",
+              "leftValue": "={{ $json.error && $json.error.status === 403 }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        496,
+        304
+      ],
+      "id": "ef0aef44-c2cc-4dc2-966a-4a0bd79aa764",
+      "name": "Check BatchData Error"
+    },
+    {
+      "parameters": {
+        "content": "## BatchData\n",
+        "height": 432,
+        "width": 1376,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        176
+      ],
+      "id": "8d71eab1-4825-4593-a5d1-cc46db8b8881",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## PropertyRadar\n",
+        "height": 256,
+        "width": 1376
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        -96
+      ],
+      "id": "99d25b03-895c-468d-a41c-4721b8a22e2c",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {},
+      "id": "8fae608e-3ebe-43ac-a6cb-4f87bf2fb6d5",
+      "name": "Loop Back to Next Lead",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/pipeline_events?lead_id=eq.{{ $json.id }}&event_type=eq.enrich_propertyradar&status=eq.pending",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"complete\",\n  \"completed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "de30be91-c0cd-4598-aa06-44e5c860d21f",
+      "name": "Mark Complete (After Merge)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "first_name",
+              "fieldValue": "={{ $json.first_name }}"
+            },
+            {
+              "fieldId": "last_name",
+              "fieldValue": "={{ $json.last_name }}"
+            },
+            {
+              "fieldId": "primary_email",
+              "fieldValue": "={{ $json.primary_email }}"
+            },
+            {
+              "fieldId": "primary_phone",
+              "fieldValue": "={{ $json.primary_phone }}"
+            },
+            {
+              "fieldId": "email_verified",
+              "fieldValue": "={{ $json.email_verified }}"
+            },
+            {
+              "fieldId": "phone_verified",
+              "fieldValue": "={{ $json.phone_verified }}"
+            },
+            {
+              "fieldId": "enriched_by",
+              "fieldValue": "={{ $json.enriched_by }}"
+            },
+            {
+              "fieldId": "enriched_at",
+              "fieldValue": "={{ $json.enriched_at }}"
+            },
+            {
+              "fieldId": "batchdata_property_data",
+              "fieldValue": "={{ JSON.stringify($json.batchdata_property_data) }}"
+            },
+            {
+              "fieldId": "best_property_data",
+              "fieldValue": "={{ JSON.stringify($json.best_property_data) }}"
+            },
+            {
+              "fieldId": "quality_score",
+              "fieldValue": "={{ $json.quality_score }}"
+            },
+            {
+              "fieldId": "enrichment_quality",
+              "fieldValue": "={{ ($json.first_name && $json.last_name && $json.primary_email) ? 'complete' : 'incomplete' }}"
+            }
+          ]
+        }
+      },
+      "id": "0740bbbd-7204-48a4-bfa0-ee703b1cff6c",
+      "name": "Update Lead (Merged Best Data)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        400
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge PropertyRadar and BatchData - pick best from each source\nconst prData = $('Parse PropertyRadar + Score').first().json;\nconst bdData = $input.first().json;\n\n// Get all emails from both sources\nconst prEmails = prData.radar_property_data?.emails || [];\nconst bdEmails = bdData.batchdata_property_data?.emails || [];\nconst allEmails = [...prEmails, ...bdEmails].sort((a, b) => b.score - a.score);\nallEmails.forEach((e, i) => e.rank = i + 1);\n\n// Get all phones from both sources  \nconst prPhones = prData.radar_property_data?.phones || [];\nconst bdPhones = bdData.batchdata_property_data?.phones || [];\nconst allPhones = [...prPhones, ...bdPhones].sort((a, b) => b.score - a.score);\nallPhones.forEach((p, i) => p.rank = i + 1);\n\n// Pick best email and phone\nconst bestEmail = allEmails[0]?.email || null;\nconst bestPhone = allPhones[0]?.number || null;\nconst emailSource = allEmails[0]?.source || 'none';\nconst phoneSource = allPhones[0]?.source || 'none';\n\n// Calculate final quality score\nconst nameScore = (prData.first_name && prData.last_name) ? 30 : 15;\nconst finalEmailScore = allEmails[0]?.score || 0;\nconst finalPhoneScore = allPhones[0]?.score || 0;\nconst finalQualityScore = nameScore + finalEmailScore + finalPhoneScore;\n\n// Build best_property_data (merged result)\nconst bestPropertyData = {\n  selected_email: bestEmail,\n  selected_phone: bestPhone,\n  email_source: emailSource,\n  phone_source: phoneSource,\n  email_score: finalEmailScore,\n  phone_score: finalPhoneScore,\n  all_emails: allEmails,\n  all_phones: allPhones,\n  quality_score: finalQualityScore,\n  merged_at: new Date().toISOString(),\n  sources_used: [emailSource, phoneSource].filter(s => s !== 'none')\n};\n\nreturn [{\n  json: {\n    lead_id: prData.lead_id,\n    first_name: prData.first_name || bdData.bd_first_name,\n    last_name: prData.last_name || bdData.bd_last_name,\n    primary_email: bestEmail,\n    primary_phone: bestPhone,\n    email_verified: !!bestEmail,\n    phone_verified: !!bestPhone,\n    enriched_by: `${emailSource}+${phoneSource}`,\n    enriched_at: new Date().toISOString(),\n    batchdata_property_data: bdData.batchdata_property_data,\n    best_property_data: bestPropertyData,\n    quality_score: finalQualityScore\n  }\n}];"
+      },
+      "id": "3d0520a6-3aa2-4aed-a764-28b75c6fb655",
+      "name": "Merge Best of Both Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse BatchData response with quality scoring\nconst leadId = $('Parse PropertyRadar + Score').first().json.lead_id;\nconst response = $input.first().json;\n\nconst persons = response?.results?.persons || [];\nconst person = persons[0] || {};\n\n// Parse name from BatchData\nconst bdFirstName = person.name?.first || null;\nconst bdLastName = person.name?.last || null;\nconst bdFullName = person.name?.full || '';\n\n// Parse emails with quality scoring\nconst emails = person.emails || [];\nconst personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'me.com'];\n\nconst emailsWithScores = emails.map(e => {\n  const address = e.email || '';\n  const domain = address.toLowerCase().split('@')[1] || '';\n  const score = personalDomains.includes(domain) ? 40 : 20;\n  return { email: address, score, source: 'batchdata', tested: e.tested };\n}).sort((a, b) => b.score - a.score);\n\nconst bdBestEmail = emailsWithScores[0]?.email || null;\nconst bdEmailScore = emailsWithScores[0]?.score || 0;\n\n// Parse phones with quality scoring\nconst phones = person.phoneNumbers || [];\nconst phonesWithScores = phones.map(p => {\n  let calcScore = 0;\n  if (p.type === 'Mobile') calcScore += 15;\n  if (!p.dnc) calcScore += 10;\n  if (p.reachable) calcScore += 5;\n  // Use BatchData's score if higher\n  const finalScore = Math.max(calcScore, Math.min(p.score / 10, 30));\n  \n  return {\n    number: p.number,\n    type: p.type,\n    dnc: p.dnc || false,\n    reachable: p.reachable || false,\n    score: finalScore,\n    source: 'batchdata',\n    carrier: p.carrier\n  };\n}).sort((a, b) => b.score - a.score);\n\nconst bdBestPhone = phonesWithScores[0]?.number || null;\nconst bdPhoneScore = phonesWithScores[0]?.score || 0;\n\n// Calculate BatchData quality score\nconst bdNameScore = (bdFirstName && bdLastName) ? 30 : 15;\nconst bdQualityScore = bdNameScore + bdEmailScore + bdPhoneScore;\n\n// Build BatchData data object\nconst batchdataPropertyData = {\n  name: person.name,\n  emails: emailsWithScores,\n  phones: phonesWithScores,\n  selected_email: bdBestEmail,\n  selected_phone: bdBestPhone,\n  email_score: bdEmailScore,\n  phone_score: bdPhoneScore,\n  quality_score: bdQualityScore,\n  dnc_status: person.dnc,\n  enriched_at: new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    lead_id: leadId,\n    batchdata_property_data: batchdataPropertyData,\n    bd_first_name: bdFirstName,\n    bd_last_name: bdLastName,\n    bd_email: bdBestEmail,\n    bd_phone: bdBestPhone,\n    bd_email_score: bdEmailScore,\n    bd_phone_score: bdPhoneScore,\n    bd_quality_score: bdQualityScore\n  }\n}];"
+      },
+      "id": "bf25a9ac-7f31-479a-bc3f-7c11886a92cd",
+      "name": "Parse BatchData + Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.batchdata.com/api/v1/property/skip-trace",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"requests\": [{\n    \"propertyAddress\": {\n      \"street\": \"{{ $('Get Lead Details').first().json.property_address }}\",\n      \"city\": \"{{ $('Get Lead Details').first().json.property_city }}\",\n      \"state\": \"{{ $('Get Lead Details').first().json.property_state }}\",\n      \"zip\": \"{{ $('Get Lead Details').first().json.property_zip }}\"\n    }\n  }]\n}",
+        "options": {}
+      },
+      "id": "a6e3d57b-6124-41f1-9c73-f6353e1936a4",
+      "name": "Call BatchData Skip Trace",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        288,
+        304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "p8VumHgaWWJQT1Wp",
+          "name": "BatchData API"
+        },
+        "httpBearerAuth": {
+          "id": "IQkqLsv5gA6wvGnf",
+          "name": "BatchData API"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/pipeline_events?lead_id=eq.{{ $json.id }}&event_type=eq.enrich_propertyradar&status=eq.pending\n\n",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"complete\",\n  \"completed_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "6475b4b6-3468-4ea1-a5ac-f1369ab83020",
+      "name": "Mark Complete (High Quality)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1424,
+        -32
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "59df988c-f790-47f8-94f3-a74f6dcc0b20",
+              "leftValue": "={{ $json.email_verified }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9a4bea5e-9f12-4062-be17-b5a51a7aa749",
+      "name": "Quality Score < 70?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "first_name",
+              "fieldValue": "={{ $json.first_name }}"
+            },
+            {
+              "fieldId": "last_name",
+              "fieldValue": "={{ $json.last_name }}"
+            },
+            {
+              "fieldId": "primary_email",
+              "fieldValue": "={{ $json.primary_email }}"
+            },
+            {
+              "fieldId": "primary_phone",
+              "fieldValue": "={{ $json.primary_phone }}"
+            },
+            {
+              "fieldId": "email_verified",
+              "fieldValue": "={{ $json.email_verified }}"
+            },
+            {
+              "fieldId": "phone_verified",
+              "fieldValue": "={{ $json.phone_verified }}"
+            },
+            {
+              "fieldId": "enriched_by",
+              "fieldValue": "={{ $json.enriched_by }}"
+            },
+            {
+              "fieldId": "enriched_at",
+              "fieldValue": "={{ $json.enriched_at }}"
+            },
+            {
+              "fieldId": "radar_property_data",
+              "fieldValue": "={{ JSON.stringify($json.radar_property_data) }}"
+            },
+            {
+              "fieldId": "quality_score",
+              "fieldValue": "={{ $json.quality_score }}"
+            },
+            {
+              "fieldId": "enrichment_quality",
+              "fieldValue": "={{ ($json.first_name && $json.last_name && $json.primary_email) ? 'complete' : 'incomplete' }}"
+            }
+          ]
+        }
+      },
+      "id": "2383d8cd-630d-46db-bf34-f2fc97f89f19",
+      "name": "Update Lead (PropertyRadar Data)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        960,
+        -48
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse PropertyRadar /persons response - check for actual contact data via linktext field\nconst leadData = $('Get Lead Details').first().json;\nconst leadId = leadData.id;\nconst response = $input.first().json;\n\n// Extract first result and person\nconst results = response?.results || [];\nconst firstResult = results[0] || {};\n\n// Parse name from PropertyRadar\nconst firstName = firstResult.FirstName || null;\nconst lastName = firstResult.LastName || null;\nconst fullName = firstName && lastName ? `${firstName} ${lastName}` : (firstName || lastName || '');\n\n// Parse emails - check for linktext (actual data) vs href-only (no data)\nconst emails = firstResult.Email || [];\nconst personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'me.com'];\n\nconst emailsWithScores = emails\n  .filter(e => e.linktext)  // Only include emails with actual data\n  .map(e => {\n    const address = e.linktext || '';\n    const domain = address.toLowerCase().split('@')[1] || '';\n    const score = personalDomains.includes(domain) ? 40 : 20;\n    return { email: address, score, source: 'propertyradar', status: e.status };\n  })\n  .sort((a, b) => b.score - a.score);\n\nconst bestEmail = emailsWithScores[0]?.email || null;\nconst emailScore = emailsWithScores[0]?.score || 0;\n\n// Parse phones - check for linktext (actual data)\nconst phones = firstResult.Phone || [];\nconst phonesWithScores = phones\n  .filter(p => p.linktext)  // Only include phones with actual data\n  .map(p => {\n    let score = 0;\n    if (p.phoneType === 'mobile' || p.phoneType === 'Mobile') score += 15;\n    if (p.status === 'Active') score += 10;\n    // Extract just digits from linktext\n    const cleanNumber = (p.linktext || '').replace(/\\D/g, '');\n    return {\n      number: cleanNumber,\n      type: p.phoneType,\n      status: p.status,\n      score,\n      source: 'propertyradar'\n    };\n  })\n  .sort((a, b) => b.score - a.score);\n\nconst bestPhone = phonesWithScores[0]?.number || null;\nconst phoneScore = phonesWithScores[0]?.score || 0;\n\n// Calculate overall quality score\nconst nameScore = (firstName && lastName) ? 30 : (firstName || lastName) ? 15 : 0;\nconst qualityScore = nameScore + emailScore + phoneScore;\n\n// Check if PropertyRadar has usable contact data\nconst hasContactData = emailsWithScores.length > 0 || phonesWithScores.length > 0;\n\n// Build PropertyRadar data object\nconst radarPropertyData = {\n  name: { first: firstName, last: lastName, full: fullName },\n  emails: emailsWithScores,\n  phones: phonesWithScores,\n  selected_email: bestEmail,\n  selected_phone: bestPhone,\n  email_score: emailScore,\n  phone_score: phoneScore,\n  quality_score: qualityScore,\n  has_contact_data: hasContactData,\n  enriched_at: new Date().toISOString()\n};\n\nreturn [{\n  json: {\n    lead_id: leadId,\n    first_name: firstName,\n    last_name: lastName,\n    primary_email: bestEmail,\n    primary_phone: bestPhone,\n    email_verified: !!bestEmail,\n    phone_verified: !!bestPhone,\n    enriched_by: 'propertyradar_persons',\n    enriched_at: new Date().toISOString(),\n    radar_property_data: radarPropertyData,\n    quality_score: qualityScore,\n    has_name: !!(firstName && lastName),\n    has_email: !!bestEmail,\n    has_contact_data: hasContactData,\n    // Store for BatchData and merge\n    lead_address_line1: leadData.address_line1,\n    lead_city: leadData.property_city,\n    lead_state: leadData.property_state,\n    lead_zip: leadData.property_zip\n  }\n}];"
+      },
+      "id": "9dba0ff0-b47f-4dd5-9fcf-ad70c5e0a39b",
+      "name": "Parse PropertyRadar + Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.propertyradar.com/v1/properties/{{ $json.radar_id }}/persons",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Purchase",
+              "value": "1"
+            },
+            {
+              "name": "Fields",
+              "value": "FirstName,LastName,Email,Phone,Age,Gender"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "331edd1f-0cf5-4707-aed2-4fa69d34dccb",
+      "name": "Call PropertyRadar Persons API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        -48
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        }
+      },
+      "id": "09800474-eaeb-4aa0-b02b-fc5a0cf647c9",
+      "name": "Get Lead Details",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -48
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "9d271d7d-d8f1-40cc-af0d-25a490a419c0",
+      "name": "Split Into Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        64,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "pipeline_events",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "event_type",
+              "condition": "eq",
+              "keyValue": "enrich_propertyradar"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "pending"
+            }
+          ]
+        }
+      },
+      "id": "625a388f-84a7-4aea-883d-59f2d950dee6",
+      "name": "Get Pending Enrichment Events",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        -160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "777a38c4-2c67-4d20-bae6-c9c47cd8eef6",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -384,
+        -240
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -48
+      ],
+      "id": "5a7ff21f-61d2-4ac8-8092-d84828337f03",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "connections": {
+    "Check BatchData Error": {
+      "main": [
+        [
+          {
+            "node": "Insufficient Credits",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse BatchData + Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Complete (After Merge)": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead (Merged Best Data)": {
+      "main": [
+        [
+          {
+            "node": "Mark Complete (After Merge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Best of Both Sources": {
+      "main": [
+        [
+          {
+            "node": "Update Lead (Merged Best Data)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse BatchData + Score": {
+      "main": [
+        [
+          {
+            "node": "Merge Best of Both Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call BatchData Skip Trace": {
+      "main": [
+        [
+          {
+            "node": "Check BatchData Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Complete (High Quality)": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Score < 70?": {
+      "main": [
+        [
+          {
+            "node": "Call BatchData Skip Trace",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Complete (High Quality)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead (PropertyRadar Data)": {
+      "main": [
+        [
+          {
+            "node": "Quality Score < 70?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PropertyRadar + Score": {
+      "main": [
+        [
+          {
+            "node": "Update Lead (PropertyRadar Data)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call PropertyRadar Persons API": {
+      "main": [
+        [
+          {
+            "node": "Parse PropertyRadar + Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Lead Details": {
+      "main": [
+        [
+          {
+            "node": "Call PropertyRadar Persons API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Batches": {
+      "main": [
+        [
+          {
+            "node": "Loop Back to Next Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Lead Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Enrichment Events": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Enrichment Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Enrichment Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "4ca45576dabef27a95f92525a5f6415fb3e8061f7037b2ec7fb4ba1bb1cb56c0"
+  }
+}

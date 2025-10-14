@@ -1,0 +1,319 @@
+{
+  "name": "PropertyRadar Persons Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM pipeline_events WHERE event_type = 'enrich_propertyradar' AND status = 'pending' ORDER BY created_at ASC LIMIT 50"
+      },
+      "id": "b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
+      "name": "Get Pending PropertyRadar Enrichments",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [480, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012",
+      "name": "Split Into Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT id, radar_id, address_line1, property_city, property_state, property_zip FROM leads WHERE id = '{{ $json.lead_id }}'"
+      },
+      "id": "d4e5f6a7-b8c9-0123-d4e5-f6a7b8c90123",
+      "name": "Get Lead Details",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [960, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.propertyradar.com/v1/properties/{{ $json.radar_id }}/persons",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Purchase",
+              "value": "1"
+            },
+            {
+              "name": "Fields",
+              "value": "default"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e5f6a7b8-c9d0-1234-e5f6-a7b8c9d01234",
+      "name": "Call PropertyRadar Persons API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PropertyRadar_API",
+          "name": "PropertyRadar API"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse PropertyRadar /persons response\nconst leadId = $('Get Lead Details').first().json.id;\nconst response = $input.first().json;\n\n// Extract first person's data\nconst persons = response?.Persons || [];\nconst firstPerson = persons[0] || {};\n\n// Parse name\nconst fullName = firstPerson.NameFull || '';\nconst nameParts = fullName.split(' ');\nconst firstName = nameParts[0] || null;\nconst lastName = nameParts.slice(1).join(' ') || null;\n\n// Parse email (take first email if available)\nconst emails = firstPerson.Emails || [];\nconst primaryEmail = emails.length > 0 ? emails[0].Address : null;\n\n// Parse phone (prioritize mobile, non-DNC)\nconst phones = firstPerson.Phones || [];\nconst mobilePhone = phones.find(p => p.Type === 'Mobile');\nconst primaryPhone = mobilePhone ? mobilePhone.Number : (phones[0]?.Number || null);\n\n// Determine if we need PDL fallback\nconst needsPDL = !primaryEmail;\n\nreturn [{\n  json: {\n    lead_id: leadId,\n    first_name: firstName,\n    last_name: lastName,\n    primary_email: primaryEmail,\n    primary_phone: primaryPhone,\n    email_verified: !!primaryEmail,\n    phone_verified: !!primaryPhone,\n    enriched_by: 'propertyradar_persons',\n    enriched_at: new Date().toISOString(),\n    radar_person_data: JSON.stringify(firstPerson),\n    needs_pdl_fallback: needsPDL\n  }\n}];"
+      },
+      "id": "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345",
+      "name": "Parse PropertyRadar Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE leads SET first_name = '{{ $json.first_name }}', last_name = '{{ $json.last_name }}', primary_email = {{ $json.primary_email ? \"'\" + $json.primary_email + \"'\" : \"NULL\" }}, primary_phone = {{ $json.primary_phone ? \"'\" + $json.primary_phone + \"'\" : \"NULL\" }}, email_verified = {{ $json.email_verified }}, phone_verified = {{ $json.phone_verified }}, enriched_by = '{{ $json.enriched_by }}', enriched_at = '{{ $json.enriched_at }}', radar_person_data = '{{ $json.radar_person_data }}'::jsonb WHERE id = '{{ $json.lead_id }}'"
+      },
+      "id": "a7b8c9d0-e1f2-3456-a7b8-c9d0e1f23456",
+      "name": "Update Lead in Database",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1680, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_pdl_fallback }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "b8c9d0e1-f2a3-4567-b8c9-d0e1f2a34567",
+      "name": "Needs PDL Fallback?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1920, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO pipeline_events (lead_id, broker_id, event_type, status) SELECT '{{ $json.lead_id }}', broker_id, 'enrich_pdl', 'pending' FROM pipeline_events WHERE lead_id = '{{ $json.lead_id }}' AND event_type = 'enrich_propertyradar' LIMIT 1"
+      },
+      "id": "c9d0e1f2-a3b4-5678-c9d0-e1f2a3b45678",
+      "name": "Queue PDL Enrichment",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2160, 180],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE pipeline_events SET status = 'complete', completed_at = NOW() WHERE lead_id = '{{ $json.lead_id }}' AND event_type = 'enrich_propertyradar'"
+      },
+      "id": "d0e1f2a3-b4c5-6789-d0e1-f2a3b4c56789",
+      "name": "Mark PropertyRadar Complete",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2400, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "e1f2a3b4-c5d6-7890-e1f2-a3b4c5d67890",
+      "name": "NoOp",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2640, 300]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Pending PropertyRadar Enrichments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending PropertyRadar Enrichments": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Batches": {
+      "main": [
+        [
+          {
+            "node": "Get Lead Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoOp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Lead Details": {
+      "main": [
+        [
+          {
+            "node": "Call PropertyRadar Persons API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call PropertyRadar Persons API": {
+      "main": [
+        [
+          {
+            "node": "Parse PropertyRadar Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PropertyRadar Response": {
+      "main": [
+        [
+          {
+            "node": "Update Lead in Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead in Database": {
+      "main": [
+        [
+          {
+            "node": "Needs PDL Fallback?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs PDL Fallback?": {
+      "main": [
+        [
+          {
+            "node": "Queue PDL Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark PropertyRadar Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue PDL Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Mark PropertyRadar Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark PropertyRadar Complete": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "pinData": {}
+}
+
