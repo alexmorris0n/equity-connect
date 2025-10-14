@@ -1,43 +1,87 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** October 12, 2025  
-**Status:** Active Development  
-**Current Phase:** Enrichment + Backfill System Complete, Campaign Setup Next
+**Last Updated:** October 14, 2025  
+**Status:** Production Ready  
+**Current Phase:** AI Agentic Workflows Deployed - 5 Workflows Replaced by 1 AI Agent
 
 ---
 
 ## 🎯 System Overview
 
-Equity Connect is an automated lead generation and nurturing platform for reverse mortgage brokers. The system pulls qualified property leads, enriches them with contact data, and manages compliant multi-channel outreach campaigns.
+Equity Connect is an AI-powered lead generation and nurturing platform for reverse mortgage brokers. The system uses AI agents to autonomously pull qualified property leads, enrich them with contact data, and manage compliant multi-channel outreach campaigns.
+
+**Key Innovation:** Model Context Protocol (MCP) architecture enables one AI agent to orchestrate 4+ external services, replacing 135 deterministic workflow nodes with 13 intelligent nodes.
+
+**Tech Stack:**
+- **AI:** Claude Haiku 3 via OpenRouter
+- **Orchestration:** n8n (self-hosted)
+- **Database:** Supabase (PostgreSQL + pgvector)
+- **Data Sources:** PropertyRadar API, BatchData API
+- **Outreach:** Instantly.ai (email), VAPI.ai (voice)
+- **Integration:** MCP servers for Supabase, Instantly, VAPI
 
 ---
 
 ## 📊 Current Production Status
 
-### ✅ COMPLETE (As of Oct 11, 2025)
+### ✅ COMPLETE (As of Oct 14, 2025)
 
-**1. PropertyRadar Pull Workflow** (`workflows/propertyradar-list-pull-worker.json`)
-- Pulls leads from PropertyRadar dynamic lists (configurable daily_capacity per broker)
-- Triple-layer deduplication (radar_id → apn → addr_hash)
-- Auto-advancing pagination through 49k+ property list
-- Cost protection: ~$150-200/day saved via pre-purchase dedup
-- Multi-broker support (daily schedule loops all, webhook processes one)
-- Webhook trigger for backfill requests (accepts override_count parameter)
-- Handles all-duplicates gracefully (updates offset without purchasing)
-- Queue enrichment events per lead
-- **Status:** Production-ready, active in n8n (ID: CTJmLVrXOJ4kqRRx)
-- **Current offset:** 434 (properly advancing)
+**1. AI Daily Lead Acquisition** (`workflows/AI_Daily_Lead_Pull.json`) ⭐ NEW
+- **REPLACES 5 WORKFLOWS:** Pull Worker, Enrichment Waterfall, Campaign Feeder, Q2H Backfill, EOD Backfill
+- AI Agent (Claude Haiku 3) orchestrates entire lead generation pipeline
+- 13 nodes (vs 135 in old system) - 90% reduction
+- Completes in 2-3 minutes (vs all-day with old system)
+- **Tools:** Supabase MCP, PropertyRadar HTTP, BatchData HTTP, Instantly MCP
+- **Features:**
+  - Autonomous pull + enrich + insert + upload loop
+  - Surplus tracking (adjusts next day's pull based on over/under delivery)
+  - Batch operations (multi-row INSERT, bulk Instantly upload)
+  - Dynamic capacity per broker
+  - Self-healing error recovery
+- **Cost:** ~$0.10/run in AI costs (Claude), ~$15/day total (mostly PropertyRadar)
+- **Status:** ✅ Production-ready, scheduled 6am PT Mon-Fri
+- **Current offset:** 722 (Walter Richards)
 
-**2. PropertyRadar List Management**
-- Helper workflow to create broker-specific dynamic lists
-- Webhook for Vercel UI integration (broker self-service)
-- Update workflow for ZIP code changes
-- **Status:** Working, used to create List ID 1104668
+**2. Instantly Reply Handler** (`workflows/instantly-reply-handler-ALL-MCP.json`) ⭐ NEW
+- **ALL-MCP Architecture:** Pure agentic with 4 MCP servers
+- Responds 200 OK immediately (no Instantly timeouts)
+- AI Agent orchestrates intelligent replies using:
+  - Vector Store KB (80-chunk semantic search)
+  - Supabase MCP (lead data)
+  - Instantly MCP (reply via email)
+  - VAPI MCP (trigger Barbara calls) - needs endpoint config
+- **Features:**
+  - Context-aware responses (searches KB for accurate answers)
+  - Broker-agnostic language (uses {{broker_name}} placeholders)
+  - Persona-based explanations (Carlos, Maria, Rahul, Priya, Marcus, LaToYa)
+  - Triggers pre-qual calls when phone provided
+- **Status:** ✅ Ready except VAPI MCP endpoint configuration
 
-**3. Database Schema**
-- Leads table with enrichment tracking fields (using `primary_email`/`primary_phone`)
+**3. Vector Store Knowledge Base** ⭐ NEW
+- **80 searchable chunks** uploaded to Supabase pgvector
+- Reverse mortgage knowledge (eligibility, psychology, objections, personas)
+- Broker-agnostic ({{broker_name}}, {{broker_nmls}} placeholders)
+- Compliance-approved language
+- **Schema:** `vector_embeddings` table with HNSW index
+- **Upload:** Via `kb-vector-upload-GITHUB.json` workflow
+- **Status:** ✅ Live in production database
+
+**4. PropertyRadar List Management**
+- Helper workflows for broker-specific dynamic lists
+- Webhook for Vercel UI integration
+- Update workflow for territory changes
+- **Status:** Working, List ID 1104847 (Walter)
+
+**5. Database Schema & SQL Functions**
+- **Leads table:** Enrichment tracking, campaign history, archetype assignment
+- **Brokers table:** list_id, offset, daily_capacity, **daily_lead_surplus** (NEW)
+- **Campaigns table:** Archetype mappings to Instantly campaign IDs
+- **SQL Helper Functions:**
+  - `count_enriched_today(broker_id)` → Returns count
+  - `filter_new_radar_ids(ids[])` → Dedup before purchasing
+  - `update_broker_offset(broker_id, increment)` → Auto-increment pagination
+  - `broker_leads_today(broker_id)` → Total leads pulled
 - Pipeline events queue for async processing
-- Broker configuration (list_id, offset, daily_capacity)
 - Deduplication functions and indexes
 - Backfill support functions (successful/pending enrichment counts)
 - Attribution dashboard view (vw_broker_daily_attribution)
