@@ -126,7 +126,7 @@
     },
     {
       "parameters": {
-        "endpointUrl": "https://mcp.supabase.com/mcp",
+        "endpointUrl": "https://mcp.supabase.com/mcp?project_ref=mxnqfwuhvurajrgoefyg",
         "authentication": "headerAuth",
         "options": {}
       },
