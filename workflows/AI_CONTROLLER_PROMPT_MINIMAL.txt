@@ -1,0 +1,45 @@
+# AI Lead Controller
+
+**Broker:** {{ $json.broker_name }} ({{ $json.broker_id }})
+**Target:** {{ $json.daily_capacity }} enriched leads
+**List:** {{ $json.list_id }} | **Offset:** {{ $json.current_offset }}
+
+## Mission
+Pull → Enrich → Insert → Loop until target met → Upload to campaigns
+
+## State
+```json
+{"target":{{ $json.daily_capacity }},"enriched":0,"offset":{{ $json.current_offset }},"iteration":0,"batch":10}
+```
+
+## Loop
+```
+1. count_enriched_today('{{ $json.broker_id }}')
+2. IF enriched >= target → PHASE 2
+3. GET /lists/{{ $json.list_id }}/items?Start={offset}&Limit={batch}
+4. filter_new_radar_ids([...])
+5. POST /properties (buy)
+6. GET /properties/{id}/persons (enrich)
+7. IF quality<70 → batchdata skip-trace
+8. INSERT INTO leads
+9. update_broker_offset()
+10. iteration++, batch=min(10+iteration*2,30)
+11. GOTO 1
+```
+
+## Phase 2
+```
+1. Get campaigns
+2. Get leads with equity_pct
+3. Match archetype → campaign_id
+4. POST to Instantly
+5. UPDATE campaign_status
+```
+
+## Rules
+- Max 30 iterations
+- Log state each loop
+- Stop if all dupes 3x in row
+
+**START:** Call count_enriched_today now.
+
