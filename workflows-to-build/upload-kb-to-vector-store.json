@@ -1,0 +1,93 @@
+{
+  "name": "Upload Knowledge Base to Vector Store",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read all 4 section files from the REVERSE_MORTGAGE_VECTOR_DATABASE folder\nconst fs = require('fs');\nconst path = require('path');\n\nconst docsPath = path.join(__dirname, '../../docs/REVERSE_MORTGAGE_VECTOR_DATABASE');\n\nconst files = [\n  'reverse_mortgage_kb_section_1.md',\n  'reverse_mortgage_kb_section_2.md',\n  'reverse_mortgage_kb_section_3.md',\n  'reverse_mortgage_kb_section_4.md'\n];\n\nconst documents = [];\n\nfor (const file of files) {\n  const filePath = path.join(docsPath, file);\n  const content = fs.readFileSync(filePath, 'utf8');\n  \n  // Extract section number and title from filename\n  const sectionMatch = file.match(/section_(\\d+)/);\n  const sectionNumber = sectionMatch ? sectionMatch[1] : 'unknown';\n  \n  // Split by markdown headers to create chunks\n  // Each ### heading becomes a separate chunk\n  const chunks = content.split(/\\n(?=###\\s)/);\n  \n  chunks.forEach((chunk, index) => {\n    if (chunk.trim().length > 100) { // Only chunks with substantial content\n      const titleMatch = chunk.match(/###\\s+(.+?)\\n/);\n      const title = titleMatch ? titleMatch[1].trim() : `Section ${sectionNumber} - Part ${index + 1}`;\n      \n      documents.push({\n        pageContent: chunk.trim(),\n        metadata: {\n          source_file: file,\n          section: `section_${sectionNumber}`,\n          title: title,\n          content_type: 'reverse_mortgage_kb',\n          chunk_index: index,\n          created_at: new Date().toISOString()\n        }\n      });\n    }\n  });\n}\n\nconsole.log(`✅ Prepared ${documents.length} knowledge base chunks for embedding`);\n\n// Return as separate items for n8n processing\nreturn documents.map(doc => ({ json: doc }));"
+      },
+      "id": "read-kb-files",
+      "name": "Read KB Files & Chunk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-ada-002"
+      },
+      "id": "openai-embeddings",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [640, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableName": "vector_embeddings",
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "id": "supabase-vector-store",
+      "name": "Supabase Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [840, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-credentials",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✅ Knowledge Base Upload Complete');\nconsole.log(`Total chunks embedded: ${items.length}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    success: true,\n    chunks_uploaded: items.length,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "summary",
+      "name": "Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Read KB Files & Chunk", "type": "main", "index": 0 }]]
+    },
+    "Read KB Files & Chunk": {
+      "main": [[{ "node": "OpenAI Embeddings", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Embeddings": {
+      "main": [[{ "node": "Supabase Vector Store", "type": "main", "index": 0 }]]
+    },
+    "Supabase Vector Store": {
+      "main": [[{ "node": "Summary", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-13T00:00:00.000Z",
+  "versionId": "1"
+}
+
