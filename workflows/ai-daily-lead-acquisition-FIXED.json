@@ -184,7 +184,7 @@
     },
     {
       "parameters": {
-        "toolDescription": "BatchData skip-trace API. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"addressLine1\": \"123 Main\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90001\"}}]}}",
+        "toolDescription": "BatchData skip-trace API. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"addressLine1\": \"123 Main St\", \"city\": \"Los Angeles\", \"state\": \"CA\", \"zip\": \"90001\"}}]}}. Always POST to this exact endpoint with propertyAddress in body.",
         "method": "={{ $fromAI('method', 'POST') }}",
         "url": "={{ 'https://api.batchdata.com' + ($fromAI('endpoint', '/api/v1/property/skip-trace')) }}",
         "authentication": "genericCredentialType",
