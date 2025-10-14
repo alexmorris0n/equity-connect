@@ -28,8 +28,9 @@ Call PropertyRadar: {method:'POST', endpoint:'/properties?Purchase=1', body:{Cri
 ## STEP 5: ENRICH
 Call BatchData: {method:'POST', endpoint:'/api/v1/property/skip-trace', body:{requests:[{propertyAddress:{street:'123 Main St',city:'Los Angeles',state:'CA',zip:'90001'}}]}}
 
-## STEP 6: INSERT ALL LEADS IN ONE CALL
-Call Supabase execute_sql with ALL leads batched:
+## STEP 6: INSERT ALL LEADS IN ONE SQL CALL
+CRITICAL: Insert ALL leads in ONE execute_sql call using multi-row VALUES syntax.
+DO NOT call execute_sql multiple times. Build ONE query with ALL leads:
 {"query": "INSERT INTO leads (radar_id, first_name, last_name, primary_email, primary_phone, property_address, property_city, property_state, property_zip, assigned_broker_id) VALUES ('P123','John','Doe','john@email.com','5551234567','123 Main','LA','CA','90001','{{ $json.broker_id }}'),('P456','Jane','Smith','jane@email.com','5559876543','456 Oak','LA','CA','90002','{{ $json.broker_id }}'),('P789','Bob','Jones','bob@email.com','5555555555','789 Pine','LA','CA','90003','{{ $json.broker_id }}')"}
 
 ## STEP 7: UPDATE OFFSET
