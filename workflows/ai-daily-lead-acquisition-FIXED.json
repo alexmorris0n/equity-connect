@@ -148,7 +148,7 @@
     },
     {
       "parameters": {
-        "toolDescription": "PropertyRadar API tool. Pass JSON: {method: 'GET'|'POST', endpoint: '/path', query: {key:val}, body: {}}. Base URL https://api.propertyradar.com/v1 auto-added. Auth configured.",
+        "toolDescription": "PropertyRadar API tool. Call with JSON: {\"method\": \"GET\"|\"POST\", \"endpoint\": \"/path\", \"query_params\": [{\"name\": \"key\", \"value\": \"val\"}], \"body\": {}}. Example: {\"method\":\"GET\",\"endpoint\":\"/lists/123/items\",\"query_params\":[{\"name\":\"Start\",\"value\":\"0\"},{\"name\":\"Limit\",\"value\":\"30\"}]}",
         "method": "={{ $fromAI('method', 'GET') }}",
         "url": "={{ 'https://api.propertyradar.com/v1' + ($fromAI('endpoint', '/properties')) }}",
         "authentication": "predefinedCredentialType",
@@ -188,7 +188,7 @@
     },
     {
       "parameters": {
-        "toolDescription": "BatchData skip-trace API. Pass: {method: 'POST', endpoint: '/api/v1/property/skip-trace', body: {requests: [{propertyAddress: {...}}]}}. Base URL https://api.batchdata.com auto-added.",
+        "toolDescription": "BatchData skip-trace API. Call with JSON: {\"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": {\"requests\": [{\"propertyAddress\": {\"addressLine1\": \"123 Main\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90001\"}}]}}",
         "method": "={{ $fromAI('method', 'POST') }}",
         "url": "={{ 'https://api.batchdata.com' + ($fromAI('endpoint', '/api/v1/property/skip-trace')) }}",
         "authentication": "genericCredentialType",
