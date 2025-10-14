@@ -5,6 +5,14 @@
         "rule": {
           "interval": [
             {
+              "field": "weeks",
+              "triggerAtDay": [
+                5,
+                4,
+                3,
+                2,
+                1
+              ],
               "triggerAtHour": 6
             }
           ]
@@ -370,41 +378,6 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/update_broker_offset",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{\n{\n  \"p_broker_id\": $json.broker_id,\n  \"p_increment\": $json.leads_inserted\n}\n}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1296,
-        1008
-      ],
-      "id": "1b6a1833-ac3d-4035-a3bd-4f6f680f7734",
-      "name": "Update Broker Offset",
-      "credentials": {
-        "supabaseApi": {
-          "id": "pvE2B3BDrLhctd5B",
-          "name": "SupaBase Equity Connect"
-        }
-      }
-    },
-    {
-      "parameters": {
         "tableId": "pipeline_events",
         "fieldsUi": {
           "fieldValues": [
@@ -507,41 +480,6 @@
       ],
       "id": "1ca3c0f7-2460-4bca-b900-a4c2140ad4a7",
       "name": "Should Process?"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/update_broker_offset",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{\n{\n  \"p_broker_id\": $json.broker_id,\n  \"p_increment\": $json.offset_increment\n}\n}}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1088,
-        528
-      ],
-      "id": "4b6da960-beac-41e1-8a66-ed4fa8d6292a",
-      "name": "Update Broker Offset1",
-      "credentials": {
-        "supabaseApi": {
-          "id": "pvE2B3BDrLhctd5B",
-          "name": "SupaBase Equity Connect"
-        }
-      }
     },
     {
       "parameters": {
@@ -682,6 +620,76 @@
       ],
       "id": "6bae1876-a67e-447b-87f3-15b247d8bf70",
       "name": "Check If Should Loop"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/update_broker_offset",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"p_broker_id\": $json.broker_id,\n  \"p_increment\": $json.offset_increment\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1088,
+        528
+      ],
+      "id": "4b6da960-beac-41e1-8a66-ed4fa8d6292a",
+      "name": "Update Offset (Skip Processing)",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mxnqfwuhvurajrgoefyg.supabase.co/rest/v1/rpc/update_broker_offset",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  \"p_broker_id\": $json.broker_id,\n  \"p_increment\": $json.offset_increment\n}\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1296,
+        1008
+      ],
+      "id": "1b6a1833-ac3d-4035-a3bd-4f6f680f7734",
+      "name": "Update Offset (Processing Path)",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
     }
   ],
   "connections": {
@@ -839,17 +847,6 @@
         ]
       ]
     },
-    "Update Broker Offset": {
-      "main": [
-        [
-          {
-            "node": "Check If Should Loop",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Que for Enrichment": {
       "main": [
         [
@@ -883,7 +880,7 @@
       "main": [
         [
           {
-            "node": "Update Broker Offset",
+            "node": "Update Offset (Processing Path)",
             "type": "main",
             "index": 0
           }
@@ -901,18 +898,7 @@
         ],
         [
           {
-            "node": "Update Broker Offset1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Update Broker Offset1": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Items",
+            "node": "Update Offset (Skip Processing)",
             "type": "main",
             "index": 0
           }
@@ -968,6 +954,28 @@
         [
           {
             "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Offset (Skip Processing)": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Offset (Processing Path)": {
+      "main": [
+        [
+          {
+            "node": "Check If Should Loop",
             "type": "main",
             "index": 0
           }

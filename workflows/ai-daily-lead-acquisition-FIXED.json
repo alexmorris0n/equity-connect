@@ -1,0 +1,463 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1120,
+        48
+      ],
+      "id": "e7295c31-bb47-4593-a7e9-2315159387cf",
+      "name": "Daily Trigger (6am PT)"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "brokers",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        48
+      ],
+      "id": "789b8d5e-9202-4e7b-adbf-cc1e996b89ee",
+      "name": "Fetch Active Brokers",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -672,
+        48
+      ],
+      "id": "7695f2fe-7eec-45be-b849-727a45db74c5",
+      "name": "Loop Over Brokers"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare broker context for AI agent\nconst broker = $input.first().json;\n\nif (!broker.propertyradar_list_id) {\n  throw new Error(`Broker ${broker.company_name} missing propertyradar_list_id. Create list in PropertyRadar first.`);\n}\n\nconst context = {\n  broker_id: broker.id,\n  broker_name: broker.company_name,\n  broker_contact_name: broker.contact_name || broker.company_name,\n  broker_nmls: broker.nmls_number || '',\n  list_id: broker.propertyradar_list_id,\n  current_offset: broker.propertyradar_offset || 0,\n  daily_capacity: broker.daily_lead_capacity || 250,\n  execution_id: $execution.id,\n  timestamp: new Date().toISOString()\n};\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log(`🚀 Starting AI Workflow`);\nconsole.log(`Broker: ${context.broker_name}`);\nconsole.log(`Target: ${context.daily_capacity} enriched leads`);\nconsole.log(`Current Offset: ${context.current_offset}`);\nconsole.log(`List ID: ${context.list_id}`);\nconsole.log(`Execution: ${context.execution_id}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{ json: context }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        64
+      ],
+      "id": "cf9d2b3f-1569-43bd-8f05-f6f2fefd554a",
+      "name": "Prepare Broker Context"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# AI Lead Acquisition Controller\n\nBroker: {{ $json.broker_name }} (ID: {{ $json.broker_id }})\nTARGET: {{ $json.daily_capacity }} enriched leads (email OR phone)\nList ID: {{ $json.list_id }}\nCurrent Offset: {{ $json.current_offset }}\n\n## YOUR MISSION\n\nAcquire EXACTLY {{ $json.daily_capacity }} enriched leads through:\nPull batch → Enrich → Insert DB → Check count → Loop until target → Upload campaigns\n\n## AVAILABLE TOOLS & HOW TO USE THEM\n\n### 1. Supabase MCP (execute_sql)\n\nCall with: { \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"SQL HERE\" }\n\n**Count enriched today:**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"SELECT count_enriched_today('{{ $json.broker_id }}')\" }\n\n**Filter new RadarIDs:**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"SELECT * FROM filter_new_radar_ids(ARRAY['P123','P456'])\" }\n\n**Update broker offset:**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"SELECT update_broker_offset('{{ $json.broker_id }}', 30)\" }\n\n**Insert lead (use this exact format):**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"INSERT INTO leads (radar_id, property_address, property_city, property_state, property_zip, property_value, estimated_equity, first_name, last_name, primary_email, primary_phone, email_verified, phone_verified, assigned_broker_id, enriched_by, enriched_at, quality_score, radar_property_data, source, status, created_at) VALUES ('P6AB', '123 Main St', 'Los Angeles', 'CA', '90001', 750000, 600000, 'John', 'Smith', 'john@example.com', '555-1234', true, true, '{{ $json.broker_id }}', 'propertyradar', NOW(), 85, '{\\\"quality\\\": 85}'::jsonb, 'propertyradar', 'enriched', NOW()) RETURNING id\" }\n\n**Get campaign-ready leads:**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"SELECT id, first_name, last_name, primary_email, property_address, property_city, property_value, estimated_equity, ROUND((estimated_equity::numeric / NULLIF(property_value::numeric, 0) * 100)::numeric, 2) as equity_pct, ROUND(estimated_equity * 0.50) as equity_50, ROUND(estimated_equity * 0.60) as equity_60 FROM leads WHERE assigned_broker_id = '{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles') = CURRENT_DATE AND primary_email IS NOT NULL AND campaign_status IS NULL\" }\n\n**Get campaigns:**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"SELECT archetype, instantly_campaign_id FROM campaigns WHERE active = true\" }\n\n**Bulk update campaign status:**\n{ \"project_id\": \"mxnqfwuhvurajrgoefyg\", \"query\": \"UPDATE leads SET campaign_status = 'active', campaign_archetype = CASE WHEN (estimated_equity/property_value*100) >= 80 THEN 'high_equity_special' WHEN (estimated_equity/property_value*100) >= 50 THEN 'cash_unlocked' ELSE 'no_more_payments' END, added_to_campaign_at = NOW() WHERE assigned_broker_id = '{{ $json.broker_id }}' AND DATE(created_at AT TIME ZONE 'America/Los_Angeles') = CURRENT_DATE AND primary_email IS NOT NULL AND campaign_status IS NULL\" }\n\n### 2. PropertyRadar HTTP Tool\n\nCall with dynamic parameters:\n\n**Get RadarIDs:**\n{ \"method\": \"GET\", \"endpoint\": \"/lists/{{ $json.list_id }}/items\", \"query\": { \"Start\": offset, \"Limit\": batch_size } }\n\n**Buy properties:**\n{ \"method\": \"POST\", \"endpoint\": \"/properties\", \"query\": { \"Purchase\": \"1\" }, \"body\": { \"Criteria\": [{ \"name\": \"RadarID\", \"value\": [\"P123\"] }] } }\n\n**Enrich /persons:**\n{ \"method\": \"GET\", \"endpoint\": \"/properties/{radar_id}/persons\", \"query\": { \"Purchase\": \"1\", \"Fields\": \"FirstName,LastName,Email,Phone\" } }\n\n### 3. BatchData HTTP Tool\n\n**Skip trace:**\n{ \"method\": \"POST\", \"endpoint\": \"/api/v1/property/skip-trace\", \"body\": { \"requests\": [{ \"propertyAddress\": { \"street\": \"123 Main\", \"city\": \"LA\", \"state\": \"CA\", \"zip\": \"90001\" } }] } }\n\n### 4. Instantly HTTP Tool\n\n**Add lead:**\n{ \"method\": \"POST\", \"endpoint\": \"/api/v1/lead/add\", \"body\": { \"api_key\": \"use_from_creds\", \"campaign_id\": \"xxx\", \"email\": \"john@example.com\", \"first_name\": \"John\", \"last_name\": \"Smith\", \"custom_variables\": { \"property_value\": \"$750,000\", \"estimated_equity\": \"$600,000\", \"equity_50_percent\": \"$300,000\", \"equity_60_percent\": \"$360,000\", \"broker_name\": \"{{ $json.broker_contact_name }}\", \"broker_nmls\": \"{{ $json.broker_nmls }}\" } } }\n\n## WORKFLOW STEPS\n\n### PHASE 1: PULL & ENRICH LOOP\n\nInitialize state:\n{ TARGET: {{ $json.daily_capacity }}, offset: {{ $json.current_offset }}, iteration: 0, enriched: 0, batch_size: 30 }\n\nLOOP:\n1. Count enriched: call count_enriched_today\n2. IF enriched >= TARGET → GO TO PHASE 2\n3. remaining = TARGET - enriched\n4. batch_size = min(30 + iteration*5, 50)\n5. Get RadarIDs: propertyradar GET /lists/.../items\n6. Filter: call filter_new_radar_ids(radar_ids)\n7. IF all dupes → update offset, LOOP\n8. Buy: propertyradar POST /properties  \n9. FOR EACH property:\n   - GET /properties/{id}/persons\n   - Parse: extract best email/phone, score quality\n   - IF quality < 70 → batchdata skip-trace\n   - Merge best from both\n   - INSERT to leads via execute_sql\n10. Update offset: call update_broker_offset\n11. iteration++, LOOP to step 1\n\n### PHASE 2: CAMPAIGN UPLOAD\n\n1. Get campaigns: execute_sql\n2. Get leads with equity_pct calculated: execute_sql\n3. FOR EACH lead:\n   - Determine archetype from equity_pct\n   - Match to campaign_id\n   - POST to Instantly\n4. Bulk update: execute_sql campaign_status UPDATE\n5. Done!\n\n## CRITICAL RULES\n\n- Use SQL functions where available (count_enriched_today, filter_new_radar_ids, update_broker_offset)\n- ALWAYS check enriched count BEFORE pulling\n- Max pulls: {{ $json.daily_capacity }} * 2\n- Max iterations: 30\n- Log every action to console\n- Single quotes in SQL strings\n\n## BEGIN\n\nCall count_enriched_today first.",
+        "options": {
+          "maxIterations": 100
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -208,
+        64
+      ],
+      "id": "3883af67-22bc-4b51-a439-c3a6a32de42d",
+      "name": "🤖 AI Controller"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4.5",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        336
+      ],
+      "id": "bd51eaf3-4e1a-437d-9c31-67a68348434b",
+      "name": "Claude Sonnet 4.5",
+      "credentials": {
+        "openRouterApi": {
+          "id": "5pEBmsekpDy6GZN0",
+          "name": "OpenRouter n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.supabase.com/mcp",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        -272,
+        336
+      ],
+      "id": "fdd7478a-8994-4763-9979-f566d0a87fb5",
+      "name": "💾 Supabase MCP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "uDlSOCPkKkn2ug5S",
+          "name": "SupaBase MCP"
+        }
+      },
+      "notes": "SQL functions ready: count_enriched_today(), filter_new_radar_ids(), update_broker_offset()"
+    },
+    {
+      "parameters": {
+        "toolDescription": "PropertyRadar API tool. Pass JSON: {method: 'GET'|'POST', endpoint: '/path', query: {key:val}, body: {}}. Base URL https://api.propertyradar.com/v1 auto-added. Auth configured.",
+        "method": "={{ $fromAI('method', 'GET') }}",
+        "url": "={{ 'https://api.propertyradar.com/v1' + ($fromAI('endpoint', '/properties')) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": "={{ $fromAI('query_params', []) }}"
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $fromAI('body', {}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        -144,
+        336
+      ],
+      "id": "300ac601-9acc-4ac2-ab90-93df5d3931e8",
+      "name": "🏘️ PropertyRadar",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "81i7WbQilIMSh4E3",
+          "name": "PropertyRadar"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "BatchData skip-trace API. Pass: {method: 'POST', endpoint: '/api/v1/property/skip-trace', body: {requests: [{propertyAddress: {...}}]}}. Base URL https://api.batchdata.com auto-added.",
+        "method": "={{ $fromAI('method', 'POST') }}",
+        "url": "={{ 'https://api.batchdata.com' + ($fromAI('endpoint', '/api/v1/property/skip-trace')) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $fromAI('body', {}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2,
+      "position": [
+        -16,
+        336
+      ],
+      "id": "0e3dae50-5369-4bd9-82d7-be4f2c996e1a",
+      "name": "📊 BatchData",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "p8VumHgaWWJQT1Wp",
+          "name": "BatchData API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json;\nconst context = $('Prepare Broker Context').first().json;\n\nconst result = output.output || output.text || JSON.stringify(output);\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✅ AI CONTROLLER COMPLETE');\nconsole.log(`Broker: ${context.broker_name}`);\nconsole.log(`Target: ${context.daily_capacity}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log(result);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    success: true,\n    broker_id: context.broker_id,\n    broker_name: context.broker_name,\n    target: context.daily_capacity,\n    output: result,\n    completed_at: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        64
+      ],
+      "id": "af3153ca-b706-4c59-b978-76ecf77e58a4",
+      "name": "📊 Parse Results"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        368,
+        64
+      ],
+      "id": "02102cdd-4c48-42e1-8d39-914644ae552b",
+      "name": "✅ Broker Complete"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -128
+      ],
+      "id": "e19daf9f-3a07-474a-a818-9cee4eecaa25",
+      "name": "🎉 All Brokers Done"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        368
+      ],
+      "id": "d69a3348-d6f1-4370-89f9-71a3e96d400f",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\nconst broker = $('Prepare Broker Context').first()?.json;\n\nconsole.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.error('❌ AI CONTROLLER ERROR');\nconsole.error(`Broker: ${broker?.broker_name || 'Unknown'}`);\nconsole.error(`Error: ${error.message}`);\nconsole.error(`Node: ${error.node?.name}`);\nconsole.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\n// TODO: Send alert (Slack, email, SMS)\n\nreturn [{\n  json: {\n    error: true,\n    broker_id: broker?.broker_id,\n    broker_name: broker?.broker_name,\n    error_message: error.message,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        368
+      ],
+      "id": "cbddc7c1-bbe4-4a67-8989-c5e8a46545da",
+      "name": "❌ Log Error"
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://mcp.instantly.ai/mcp",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        112,
+        336
+      ],
+      "id": "de6327e6-58a0-4e90-9f85-40e2660f2818",
+      "name": "📧 Instantly MCP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "T3VkmA0F515ckuYB",
+          "name": "Instantly API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger (6am PT)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Active Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Active Brokers": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Brokers": {
+      "main": [
+        [
+          {
+            "node": "🎉 All Brokers Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Broker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Broker Context": {
+      "main": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 AI Controller": {
+      "main": [
+        [
+          {
+            "node": "📊 Parse Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Sonnet 4.5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Supabase MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏘️ PropertyRadar": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 BatchData": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Parse Results": {
+      "main": [
+        [
+          {
+            "node": "✅ Broker Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Broker Complete": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Brokers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "❌ Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📧 Instantly MCP": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4ca45576dabef27a95f92525a5f6415fb3e8061f7037b2ec7fb4ba1bb1cb56c0"
+  }
+}
