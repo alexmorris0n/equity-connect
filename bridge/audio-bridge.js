@@ -70,6 +70,12 @@ class AudioBridge {
       console.log('🤖 OpenAI Realtime connected!');
       this.logger.info('🤖 OpenAI Realtime connected');
       this.configureSession();
+      
+      // Trigger immediate greeting for inbound calls
+      setTimeout(() => {
+        console.log('🔵 Triggering initial response after 1 second...');
+        this.startConversation();
+      }, 1000);
     });
 
     this.openaiSocket.on('message', async (data) => {
@@ -267,13 +273,17 @@ class AudioBridge {
    * Start conversation with initial greeting
    */
   startConversation() {
+    console.log('🔵 startConversation() called, OpenAI ready:', this.openaiSocket?.readyState === WebSocket.OPEN);
+    
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
       // Inject call context if available
-      let contextPrompt = 'Greet the caller warmly.';
+      let contextPrompt = 'Greet the caller warmly and say hello.';
       
       if (this.callContext.leadName) {
         contextPrompt = `The caller is ${this.callContext.leadName}. Greet them warmly and confirm their identity.`;
       }
+
+      console.log('🔵 Sending response.create with prompt:', contextPrompt);
 
       this.openaiSocket.send(JSON.stringify({
         type: 'response.create',
@@ -283,7 +293,10 @@ class AudioBridge {
         }
       }));
       
+      console.log('✅ Conversation trigger sent!');
       this.logger.info('🎯 Conversation started');
+    } else {
+      console.error('❌ Cannot start conversation - OpenAI socket not ready');
     }
   }
 
