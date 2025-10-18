@@ -294,25 +294,31 @@ class AudioBridge {
     console.log('🔵 startConversation() called, OpenAI ready:', this.openaiSocket?.readyState === WebSocket.OPEN);
     
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
-      // Inject call context if available
-      let contextPrompt = 'Greet the caller warmly and say hello.';
-      
-      if (this.callContext.leadName) {
-        contextPrompt = `The caller is ${this.callContext.leadName}. Greet them warmly and confirm their identity.`;
-      }
+      console.log('🔵 Sending call_connected trigger to force Barbara to speak first');
 
-      console.log('🔵 Sending response.create with prompt:', contextPrompt);
-
+      // Step 1: Create a conversation item that triggers Barbara's greeting
+      // This is the proper way per OpenAI Realtime API docs
       this.openaiSocket.send(JSON.stringify({
-        type: 'response.create',
-        response: {
-          modalities: ['audio', 'text'],
-          instructions: contextPrompt
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{
+            type: 'input_text',
+            text: 'call_connected'  // Trigger phrase Barbara will recognize from her prompt
+          }]
         }
       }));
       
-      console.log('✅ Conversation trigger sent!');
-      this.logger.info('🎯 Conversation started');
+      console.log('✅ Step 1: conversation.item.create sent (call_connected trigger)');
+
+      // Step 2: Request response generation (this makes Barbara actually speak)
+      this.openaiSocket.send(JSON.stringify({
+        type: 'response.create'
+      }));
+      
+      console.log('✅ Step 2: response.create sent (Barbara should now speak!)');
+      this.logger.info('🎯 Conversation started with explicit greeting trigger');
     } else {
       console.error('❌ Cannot start conversation - OpenAI socket not ready');
     }
