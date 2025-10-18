@@ -150,9 +150,11 @@ class AudioBridge {
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 500
-        },
-        tools: toolDefinitions,
-        tool_choice: 'auto'
+        }
+        // TEMPORARILY REMOVED: tools cause static per OpenAI forum issue
+        // Will add back after confirming audio works
+        // tools: toolDefinitions,
+        // tool_choice: 'auto'
       }
     };
 
