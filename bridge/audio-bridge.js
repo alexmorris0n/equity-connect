@@ -160,11 +160,9 @@ class AudioBridge {
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 2000  // 2 full seconds - prevents Barbara from interrupting
-        }
-        // TEMPORARILY REMOVED: tools cause static per OpenAI forum issue
-        // Will add back after confirming audio works
-        // tools: toolDefinitions,
-        // tool_choice: 'auto'
+        },
+        tools: toolDefinitions,
+        tool_choice: 'auto'
       }
     };
 
