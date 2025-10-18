@@ -75,7 +75,7 @@
       "parameters": {
         "repository": "https://github.com/alexmorris0n/equity-connect",
         "branch": "master",
-        "filePaths": "docs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_1_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_2_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_3_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_4_UPDATED.md",
+        "filePaths": "docs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_1_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_2_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_3_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_4_UPDATED.md\ndocs/REVERSE_MORTGAGE_VECTOR_DATABASE/reverse_mortgage_kb_section_5_EXPANDED.md",
         "additionalOptions": {}
       },
       "type": "@n8n/n8n-nodes-langchain.documentGithubLoader",
