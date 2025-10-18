@@ -34,12 +34,15 @@ class AudioBridge {
    * Initialize OpenAI Realtime connection
    */
   async connect() {
+    console.log('🔵 AudioBridge.connect() called');
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
+      console.error('❌ Missing OPENAI_API_KEY');
       throw new Error('Missing OPENAI_API_KEY');
     }
 
+    console.log('🔵 Creating OpenAI WebSocket connection...');
     this.openaiSocket = new WebSocket(
       'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
       {
@@ -50,15 +53,21 @@ class AudioBridge {
       }
     );
 
+    console.log('🔵 Setting up OpenAI handlers...');
     this.setupOpenAIHandlers();
+    console.log('🔵 Setting up SignalWire handlers...');
     this.setupSignalWireHandlers();
+    console.log('🔵 AudioBridge.connect() complete');
   }
 
   /**
    * Setup OpenAI WebSocket event handlers
    */
   setupOpenAIHandlers() {
+    console.log('🔵 setupOpenAIHandlers called, socket exists:', !!this.openaiSocket);
+    
     this.openaiSocket.on('open', () => {
+      console.log('🤖 OpenAI Realtime connected!');
       this.logger.info('🤖 OpenAI Realtime connected');
       this.configureSession();
     });
@@ -87,6 +96,8 @@ class AudioBridge {
    * Setup SignalWire WebSocket event handlers
    */
   setupSignalWireHandlers() {
+    console.log('🔵 setupSignalWireHandlers called, socket exists:', !!this.swSocket, 'has .on?:', typeof this.swSocket?.on);
+    
     this.swSocket.on('message', (message) => {
       try {
         const msg = JSON.parse(message.toString());
