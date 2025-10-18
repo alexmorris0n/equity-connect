@@ -233,7 +233,7 @@ Total: ~3.5 minutes per broker
 - [x] Offset tracking working (0 → 250)
 - [x] Enrichment queueing working (250 events created)
 - [ ] PropertyRadar persons enrichment workflow (tomorrow)
-- [ ] PDL fallback enrichment workflow (phase 2)
+- [x] PropertyRadar contact enrichment via /persons API (complete)
 - [ ] Activate workflow for daily 6am runs
 - [ ] Monitor first week of production runs
 

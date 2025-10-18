@@ -1,173 +1,168 @@
-# Equity Connect - Automated Reverse Mortgage Lead System
+# Equity Connect
 
-## 🎯 Overview
-Complete automated workflow for generating 100+ qualified reverse mortgage leads daily using PropStream API, skip-tracing, and Supabase database integration with Vue.js/Next.js frontend.
+**AI-Powered Lead Generation Platform for Reverse Mortgage Brokers**
 
-## 🚀 Key Features
-- **Daily Lead Generation**: 100+ qualified leads from PropStream Net-New API
-- **Skip-Trace Integration**: Verified contact information for every lead
-- **Multi-Broker Support**: Automated quota management per broker
-- **AI Persona Assignment**: 6 culturally authentic personas
-- **Email Campaigns**: 4-step personalized sequences via Instantly
-- **Supabase Database**: Real-time lead tracking and billing
-- **Vue.js/Next.js Frontend**: Modern broker dashboards on Vercel
+Equity Connect uses AI agents to autonomously pull qualified property leads, enrich them with contact data, and manage compliant multi-channel outreach campaigns. Built with Model Context Protocol (MCP) architecture, replacing 135+ deterministic workflow nodes with 13 intelligent nodes.
 
-## 📁 Project Structure
+## 🎯 What It Does
+
+- **Daily Lead Acquisition:** AI orchestrates PropertyRadar → enrichment → database → campaign upload
+- **Intelligent Reply Handling:** AI responds to email replies, searches knowledge base, triggers phone calls
+- **Voice Outreach:** Barbara AI assistant handles consultative sales calls with seniors
+- **Phone Pool Management:** Dynamic SignalWire number assignment with race-condition protection
+- **Multi-Broker Support:** Scales to 100+ brokers with per-broker territories and capacity
+
+## 🛠 Tech Stack
+
+- **AI:** Gemini 2.5 Flash via OpenRouter (orchestration)
+- **Workflows:** n8n (self-hosted)
+- **Database:** Supabase (PostgreSQL + pgvector)
+- **Data:** PropertyRadar API (property + contact enrichment)
+- **Email:** Instantly.ai (cold outreach)
+- **Voice:** VAPI.ai + SignalWire (AI phone calls)
+- **MCP Servers:** Supabase, Instantly, VAPI (AI tool integration)
+
+## 📊 Current Status
+
+**Production Ready ✅** (October 2025)
+
+- ✅ AI Daily Lead Pull (6am PT Mon-Fri)
+- ✅ Instantly Reply Handler (email + phone detection)
+- ✅ Barbara Voice Assistant (VAPI + SignalWire)
+- ✅ SignalWire Phone Pool (5 numbers, atomic assignment)
+- ✅ Vector Knowledge Base (80 chunks, compliance-approved)
+- 🚧 Broker Portal (planned - custom build, not GoHighLevel)
+
+**See [MASTER_PRODUCTION_PLAN.md](MASTER_PRODUCTION_PLAN.md) for complete details.**
+
+## 💰 Economics
+
+**Per Broker (100 leads/day):**
+- Monthly cost: $133 (PropertyRadar + enrichment)
+- Monthly revenue: $6,160 (0.8 shows/day × $350)
+- Monthly profit: **$6,027** (97.8% margin)
+
+**At 100 Brokers:**
+- Monthly profit: **$602,700**
+- Annual profit: **$7.2M**
+
+## 🗂 Repository Structure
 
 ```
 equity-connect/
-├── workflows/
-│   ├── propstream-supabase-workflow.json       # Main PropStream + Supabase workflow
-│   ├── broker-acquisition-workflow.json        # Broker acquisition
-│   ├── callrail-verification-workflow.json     # CallRail integration
-│   └── rework-funnel-workflow.json             # Rework campaigns
-├── config/
-│   ├── supabase-database-schema.json           # Supabase database schema
-│   ├── api-configurations.json                 # External API configs
-│   └── environment-template.txt                # Environment variables
-├── frontend/                                   # Vue.js/Next.js frontend
-│   ├── src/
-│   ├── components/
-│   ├── pages/
-│   └── utils/
-├── templates/
-│   ├── email/persona-email-templates.json      # Email templates
-│   └── microsite/                              # Microsite templates
-├── prompts/
-│   └── persona-assignment-prompts.json         # AI prompts
-├── algorithms/
-│   └── lead-scoring.js                         # Lead scoring algorithm
-├── scripts/
-│   └── deploy-microsite.js                     # Microsite deployment
-└── docs/
-    ├── SUPABASE_IMPLEMENTATION_GUIDE.md        # Supabase setup guide
-    ├── BROKER_ACQUISITION_GUIDE.md             # Broker acquisition system
-    ├── PRICING_STRUCTURE.md                    # Complete pricing model
-    ├── VAPI_AI_VOICE_INTEGRATION.md            # AI voice calling system
-    ├── COMPLIANCE_FRAMEWORK.md                 # Legal compliance
-    ├── TESTING_QA_FRAMEWORK.md                 # Testing procedures
-    └── DEPLOYMENT_INFRASTRUCTURE.md            # Deployment guide
+├── MASTER_PRODUCTION_PLAN.md          # 📘 Single source of truth
+├── README.MD                          # This file - project overview
+├── prompts/                           # AI prompts for all workflows
+│   ├── BarbaraVapiPrompt             # VAPI assistant system prompt
+│   ├── DailyLeadPullPrompt           # Daily lead acquisition
+│   └── InstalyReplyPrompt            # Email reply handler
+├── workflows/                         # n8n workflow JSON files
+│   ├── 01_AI_Daily_Lead_Puller.json
+│   ├── 02_AI_Instantly_Reply_Handler.json
+│   └── AI_Work_Week_Activate_Deactivate.json
+├── database/                          # Supabase migrations & functions
+│   ├── migrations/                    # SQL migration files
+│   ├── functions/                     # PostgreSQL functions
+│   └── schema/                        # Schema documentation
+├── config/                            # API configs & environment templates
+├── docs/                              # Technical documentation
+└── scripts/                           # Helper scripts & utilities
 ```
-
-## 🛠 Tech Stack
-- **Workflow Engine**: n8n
-- **Data Source**: PropStream API (Net-New leads + Skip-trace)
-- **Database**: Supabase (PostgreSQL)
-- **Email Platform**: Instantly.ai
-- **Frontend**: Vue.js/Next.js on Vercel
-- **AI Services**: OpenAI GPT-4, ElevenLabs
-- **Data Enrichment**: People Data Labs (optional)
-- **Voice Platform**: Twilio, ElevenLabs
-
-## 💰 Cost Structure
-- **PropStream**: $97/month (includes 250k leads exported)
-- **PropStream Skip-trace**: $27/month (unlimited, ~40% success rate)
-- **Supabase**: $25/month (Pro plan)
-- **Instantly**: $37/month (Starter plan)
-- **Vercel**: $20/month (Pro plan)
-- **SignalWire**: $15/month (call pool management)
-- **People Data Labs**: $0-50/month (optional, pay-per-use)
-- **Total**: ~$221-271/month vs $500+ with traditional CRM
-- **Savings**: $279+/month ($3,348+/year)
-- **ROI**: 20-30x return on investment
 
 ## 🚀 Quick Start
 
-### 1. Set Up Supabase Database
-1. Create Supabase project: "Equity Connect Lead Management"
-2. Import database schema from `config/supabase-database-schema.json`
-3. Configure Row Level Security (RLS) policies
-4. Set up real-time subscriptions
+### For New Team Members
 
-### 2. Configure n8n Workflows
-1. Import `workflows/propstream-supabase-workflow.json`
-2. Add API credentials for all services
-3. Configure broker quotas and search IDs
+1. **Read the plan:** Start with [MASTER_PRODUCTION_PLAN.md](MASTER_PRODUCTION_PLAN.md)
+2. **Understand the workflows:** Review `/workflows/README.md`
+3. **Set up environment:**
+   ```bash
+   cp config/environment-template.txt .env
+   # Fill in your API keys
+   ```
+4. **Deploy database:**
+   ```bash
+   # Run migrations in database/migrations/ via Supabase dashboard
+   ```
+5. **Import workflows:** Load JSON files from `/workflows/` into n8n
 
-### 3. Set Up API Keys
-```env
-PROPSTREAM_API_KEY=your-propstream-key
-SUPABASE_URL=your-supabase-url
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-INSTANTLY_API_KEY=your-instantly-key
-OPENAI_API_KEY=your-openai-key
-ELEVENLABS_API_KEY=your-elevenlabs-key
-TWILIO_ACCOUNT_SID=your-twilio-sid
-```
+### For Brokers
 
-### 4. Create Dashboards
-- Master dashboard for operations
-- Individual broker portals
-- Billing and revenue tracking
-
-## 📊 Expected Performance
-- **Daily Volume**: 100+ qualified leads
-- **Email Performance**: 25-35% open rates, 3-5% reply rates
-- **Voice Calls**: 40-50% connection rates, 15-20% appointment rates
-- **Revenue Projection**: $80,000+ monthly with 20-30x ROI
-
-## 🎨 Cultural Personas (Active in Production)
-
-### 6 Individual Personas Ready to Use:
-1. **Carlos Rodriguez** (Male) - Latino/Hispanic
-2. **Maria Rodriguez** (Female) - Latino/Hispanic
-3. **Rahul Patel** (Male) - South Asian/Indian
-4. **Priya Patel** (Female) - South Asian/Indian
-5. **Marcus Washington** (Male) - African American
-6. **LaToYa Washington** (Female) - African American
-
-### 📧 ZapMail Configuration
-- **30 mailboxes** across **15 domains** (2 per domain)
-- **Each persona** has **5 dedicated mailboxes** for load balancing
-- Gender-matched assignment for authentic communication
-- Full configuration: `docs/ZAPMAIL_MAILBOX_CONFIGURATION.md`
-- Mailbox list: `config/zapmail-mailboxes.tsv`
-
-## 💡 Key Benefits
-✅ **Massive Cost Savings**: $5,016/year vs traditional CRM  
-✅ **Purpose-Built**: Exactly what you need, nothing more  
-✅ **Real-Time Tracking**: Every interaction captured  
-✅ **Automated Billing**: Track every penny automatically  
-✅ **Broker Portals**: Self-service dashboards  
-✅ **Cultural Authenticity**: AI-powered persona assignment  
-
-## 📈 Implementation Timeline
-- **Week 1**: Softr setup and database configuration
-- **Week 2**: n8n workflow import and testing
-- **Week 3**: Dashboard creation and broker portals
-- **Week 4**: Production deployment and team training
-
-## 🔧 Maintenance
-- Monitor daily performance metrics
-- Update persona templates as needed
-- Scale infrastructure based on lead volume
-- Regular compliance audits
+Contact us to get onboarded. We'll create:
+- PropertyRadar dynamic list (your ZIP code territories)
+- Instantly email inboxes (matching your market demographics)
+- SignalWire phone numbers (local presence)
+- Custom campaign archetypes (3 data-driven angles)
 
 ## 📚 Documentation
-- **🎯 Production Persona Status**: `docs/PRODUCTION_PERSONA_STATUS.md` ⭐ **READ THIS FIRST**
-- **ZapMail Mailbox Config**: `docs/ZAPMAIL_MAILBOX_CONFIGURATION.md`
-- **Setup Guide**: `docs/SOFTR_IMPLEMENTATION_GUIDE.md`
-- **Waterfall Revenue Model**: `docs/WATERFALL_REVENUE_IMPLEMENTATION.md`
-- **Compliance Framework**: `docs/COMPLIANCE_FRAMEWORK.md`
-- **Testing & QA**: `docs/TESTING_QA_FRAMEWORK.md`
-- **Deployment Guide**: `docs/DEPLOYMENT_INFRASTRUCTURE.md`
-- **Environment Setup**: `config/environment-template.txt`
-- **API Configs**: `config/api-configurations.json`
-- **Mailbox Data**: `config/zapmail-mailboxes.tsv`
 
-## 🚨 Critical Success Factors
-1. **Email Warming**: Start 2 weeks before launch
-2. **Cultural Testing**: Validate personas with native speakers
-3. **Compliance**: TCPA consent, NMLS licensing
-4. **Performance Monitoring**: Real-time error alerting
+- **[MASTER_PRODUCTION_PLAN.md](MASTER_PRODUCTION_PLAN.md)** - Complete system overview & status
+- **[docs/](docs/)** - Technical guides (database, compliance, integrations)
+- **[workflows/README.md](workflows/README.md)** - Workflow documentation
 
-## 🎯 Next Steps
-1. Create Softr app and import database schema
-2. Set up API credentials in n8n
-3. Import workflows and test integration
-4. Create dashboards and broker portals
-5. Deploy to production and scale
+## 🔐 Compliance
+
+- **Email (CAN-SPAM):** Unsubscribe links, physical address (Instantly handles)
+- **Phone (TCPA):** Consent required before calling, DNC registry checks
+- **AI Disclosure:** Barbara identifies as "scheduling assistant" (compliant)
+- **No Lead Profiling:** 3 campaign archetypes based on property/financial data only
+
+## 📞 Key Features
+
+### AI Daily Lead Acquisition
+- Replaces 5 manual workflows with 1 AI-orchestrated flow
+- 90% fewer nodes (13 vs 135)
+- Completes in 2-3 minutes (vs all-day)
+- Self-healing error recovery
+- Real-time cost tracking
+
+### Reply Handler
+- Instant 200 OK response (no Instantly timeouts)
+- Searches 80-chunk knowledge base for accurate answers
+- Detects phone numbers, triggers Barbara calls
+- Atomic phone assignment from SignalWire pool
+
+### Barbara Voice Assistant
+- GPT-4o powered, ElevenLabs voice
+- 28 variables for full personalization
+- Consultative selling (emotion first, numbers second)
+- KB-powered (never hallucinates fees/rules)
+- Handles objections, schedules appointments
+
+## 💡 Key Innovation: MCP Architecture
+
+**Before:** 135 deterministic n8n nodes with hardcoded logic
+**After:** 13 nodes + AI agent that orchestrates external tools
+
+The AI can:
+- Query databases dynamically
+- Make decisions based on data
+- Search knowledge bases
+- Send emails with context
+- Trigger phone calls with full lead history
+
+This means the system is **self-adapting** - no workflow edits needed when rules change.
+
+## 🤝 Contributing
+
+This is a production system. Changes require:
+1. Testing in n8n development environment
+2. Database migrations via proper SQL files
+3. Documentation updates in MASTER_PRODUCTION_PLAN.md
+4. No ethnic profiling or demographic-based lead segmentation
+
+## 📊 Monitoring
+
+See [MASTER_PRODUCTION_PLAN.md - Monitoring & Observability](MASTER_PRODUCTION_PLAN.md#-monitoring--observability) for:
+- Key metrics to track
+- Success criteria
+- Performance targets
+- Cost per lead benchmarks
 
 ---
 
-**Ready to launch?** Start with the Softr Implementation Guide and you'll be generating leads within 2 weeks! 🚀
+**Status:** Production Ready ✅  
+**Last Updated:** October 17, 2025  
+**Current Phase:** Phone Pool System Complete - scales to 100+ brokers
+
+For questions or onboarding, see [MASTER_PRODUCTION_PLAN.md](MASTER_PRODUCTION_PLAN.md) for complete details.

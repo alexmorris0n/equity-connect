@@ -210,7 +210,7 @@ const penaltyStructure = {
 
 ### **Lead Generation Costs:**
 - **Estated API**: $0.50-1.00 per lead
-- **Clay Enrichment**: $0.25-0.50 per lead
+- **PropertyRadar Contact Enrichment**: $0.04 per contact lookup
 - **Email Campaigns**: $0.01-0.05 per email
 - **AI Voice Calls**: $1-5 per call
 - **Total Cost per Lead**: $2-7

@@ -1,5 +1,5 @@
 Baldwin Hills	90016
-Park	90018
+Jefferson Park	90018
 Baldwin Village	90008
 Vermont Harbor	90037
 New Park	90062
@@ -27,6 +27,6 @@ Compton	90248
 North Redondo	90506
 Florence-Graham	90001
 Huntington Park	90255
-Lynwood	(partial)
+Lynwood	90262
 South Gate	90280
 Winchester	90045

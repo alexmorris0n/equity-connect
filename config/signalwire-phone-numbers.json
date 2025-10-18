@@ -1,0 +1,89 @@
+{
+  "documentation": "SignalWire phone numbers registered with VAPI for Barbara outbound calling",
+  "last_updated": "2025-10-17",
+  "sip_trunk_credential_id": "b446678e-0ce8-4e69-b66b-366ccda96608",
+  "sip_domain": "reversebot-barbara.dapp.signalwire.com",
+  "numbers": [
+    {
+      "number": "+14244851544",
+      "vapi_phone_number_id": "701f7d5d-7422-488a-bf61-3dcdfd731e72",
+      "name": "MyReverseOptions1",
+      "status": "active",
+      "assigned_broker_company": "My Reverse Options",
+      "territories": null,
+      "notes": "Pool number 1 for My Reverse Options",
+      "date_registered": "2025-10-17"
+    },
+    {
+      "number": "+14245502888",
+      "vapi_phone_number_id": "d61688ef-4a28-4c88-837e-e768b9280e4c",
+      "name": "MyReverseOptions2",
+      "status": "active",
+      "assigned_broker_company": "My Reverse Options",
+      "territories": null,
+      "notes": "Pool number 2 for My Reverse Options",
+      "date_registered": "2025-10-17"
+    },
+    {
+      "number": "+14245502229",
+      "vapi_phone_number_id": "d93c014d-fea4-4efc-ae4f-dd5d33cebc70",
+      "name": "MyReverseOptions3",
+      "status": "active",
+      "assigned_broker_company": "My Reverse Options",
+      "territories": null,
+      "notes": "Pool number 3 for My Reverse Options",
+      "date_registered": "2025-10-17"
+    },
+    {
+      "number": "+14245502223",
+      "vapi_phone_number_id": "da4c29a7-a61c-44ad-9247-3ac01a16678e",
+      "name": "MyReverseOptions4",
+      "status": "active",
+      "assigned_broker_company": "My Reverse Options",
+      "territories": null,
+      "notes": "Pool number 4 for My Reverse Options",
+      "date_registered": "2025-10-17"
+    },
+    {
+      "number": "+14246724222",
+      "vapi_phone_number_id": "f1e75c04-9e63-43eb-878f-a72f93b6698c",
+      "name": "MyReverseOptions5",
+      "status": "active",
+      "assigned_broker_company": "My Reverse Options",
+      "territories": null,
+      "notes": "Pool number 5 for My Reverse Options",
+      "date_registered": "2025-10-17"
+    }
+  ],
+  "pending_purchase": [],
+  "setup_instructions": {
+    "step_1": "Create SWML script in SignalWire (see config/signalwire-vapi-outbound-script.yaml)",
+    "step_2": "Generate SIP domain and request password from SignalWire support",
+    "step_3": "Run credential creation command (see config/signalwire-vapi-setup-commands.sh)",
+    "step_4": "Save credential ID in 'sip_trunk_credential_id' field above",
+    "step_5": "Run phone number registration command for each number",
+    "step_6": "Save each phone number ID in 'vapi_phone_number_id' field above",
+    "step_7": "Update n8n workflow to use phone number IDs"
+  },
+  "pool_management": {
+    "description": "Dynamic phone number pool with assignment and release logic",
+    "current_behavior": "Numbers assigned to broker companies, rotated using least-recently-used",
+    "assignment_logic": [
+      "Numbers belong to broker companies, not individual brokers",
+      "All leads for a broker use that company's pool",
+      "Least-recently-used rotation ensures even distribution",
+      "Numbers held 18 hours by default, extended if appointment booked"
+    ],
+    "release_logic": [
+      "Booked appointment: Hold until 24 hours after appointment",
+      "No booking: Release same day (18 hours)",
+      "No answer: Retry same day, then release"
+    ],
+    "planned_enhancements": [
+      "Territory-based routing by ZIP code",
+      "Load balancing with performance tracking",
+      "Automatic scaling to 15 numbers per broker in production"
+    ]
+  }
+}
+

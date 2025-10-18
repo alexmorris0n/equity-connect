@@ -1,0 +1,43 @@
+{
+  "variableValues": {
+    "_comment_lead_identity": "=== LEAD IDENTITY (with fallbacks) ===",
+    "lead_first_name": "${lead_record.first_name || 'there'}",
+    "lead_last_name": "${lead_record.last_name || ''}",
+    "lead_full_name": "${lead_record.first_name || ''} ${lead_record.last_name || ''}".trim(),
+    "lead_email": "${lead_record.primary_email || ''}",
+    "lead_phone": "${lead_record.primary_phone || ''}",
+    
+    "_comment_property": "=== PROPERTY INFO (with fallbacks) ===",
+    "property_address": "${lead_record.property_address || 'your property'}",
+    "property_city": "${lead_record.property_city || 'your area'}",
+    "property_state": "${lead_record.property_state || ''}",
+    "property_zipcode": "${lead_record.property_zipcode || ''}",
+    "property_value": "${lead_record.property_value || 0}",
+    "property_value_formatted": "${formatAsWords(lead_record.property_value) || 'an unknown amount'}",
+    
+    "_comment_equity": "=== EQUITY CALCULATIONS (pre-calculated, with fallbacks) ===",
+    "estimated_equity": "${lead_record.estimated_equity || 0}",
+    "estimated_equity_formatted": "${formatAsWords(lead_record.estimated_equity) || 'an unknown amount'}",
+    "equity_50_percent": "${Math.floor((lead_record.estimated_equity || 0) * 0.5)}",
+    "equity_50_formatted": "${formatAsWords(Math.floor((lead_record.estimated_equity || 0) * 0.5)) || 'an unknown amount'}",
+    "equity_60_percent": "${Math.floor((lead_record.estimated_equity || 0) * 0.6)}",
+    "equity_60_formatted": "${formatAsWords(Math.floor((lead_record.estimated_equity || 0) * 0.6)) || 'an unknown amount'}",
+    
+    "_comment_campaign": "=== CAMPAIGN CONTEXT ===",
+    "campaign_archetype": "${lead_record.campaign_archetype || 'direct'}",
+    "persona_assignment": "${lead_record.persona_assignment || 'general'}",
+    
+    "_comment_broker": "=== BROKER INFORMATION (with fallbacks) ===",
+    "broker_company": "${lead_record.broker_company || 'our partner company'}",
+    "broker_first_name": "${lead_record.broker_first_name || 'your'}",
+    "broker_last_name": "${lead_record.broker_last_name || 'specialist'}",
+    "broker_full_name": "${lead_record.broker_first_name || 'your'} ${lead_record.broker_last_name || 'specialist'}".trim(),
+    "broker_nmls": "${lead_record.broker_nmls || 'licensed'}",
+    "broker_phone": "${lead_record.broker_phone || ''}",
+    "broker_display": "${lead_record.broker_first_name || ''} ${lead_record.broker_last_name || ''}, NMLS ${lead_record.broker_nmls || 'licensed'}".trim(),
+    
+    "_comment_call_context": "=== CALL METADATA ===",
+    "call_context": "outbound"
+  }
+}
+

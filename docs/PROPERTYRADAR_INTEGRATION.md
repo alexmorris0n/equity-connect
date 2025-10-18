@@ -394,7 +394,7 @@ PropertyRadar lead with NO contact
 Check: Has email/phone from PropertyRadar?
   ├─ YES (70%) → Skip enrichment, go to campaign queue
   └─ NO (30%) ↓
-      PDL Person Enrich ($0.05)
+      PropertyRadar Contact Lookup ($0.04)
         ├─ HIT (60% of 30% = 18%) → Save, go to campaign queue
         └─ MISS (12%) ↓
             Melissa Contact Append ($0.15)
@@ -542,7 +542,7 @@ if (error.httpCode === 429) {
 3. Review `contact.email_confidence` and `contact.phone_confidence`
 4. Some properties genuinely have no contact info available
 
-**Solution:** Route to PDL/Melissa waterfall as designed
+**Solution:** PropertyRadar /persons API provides contact enrichment
 
 ### Issue: Deduplication Not Working
 

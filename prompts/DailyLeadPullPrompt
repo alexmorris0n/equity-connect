@@ -1,0 +1,169 @@
+For each lead, build custom_variables with these EXACT formats:
+- property_address: (as-is from database)
+- property_city: (as-is from database)
+- property_value: "$XXX,XXX" with commas (e.g., "$664,367")
+- property_value_range: "$XXXK-$XXXK" UPPERCASE K, ±10% (e.g., "$598K-$731K")
+- estimated_equity: "$XXX,XXX" with commas (e.g., "$549,922")
+- equity_50_percent: "$XXX,XXX" equity * 0.5 with commas (e.g., "$274,961")
+- equity_60_percent: "$XXX,XXX" equity * 0.6 with commas (e.g., "$329,953")
+- equity_formatted_short: "$XXXK" UPPERCASE K (e.g., "$550K")
+- equity_percent: equity_pct as number (e.g., 82.77)
+- estimated_monthly_payment: "$X,XXX" property_value * 0.003 with commas (e.g., "$1,993")
+- broker_name: "My Reverse Options"
+- broker_nmls: "NMLS #ML123456"r List: {{ $json.list_id }}
+- Current Offset: {{ $json.current_offset }}
+
+---
+
+## STEP 1: Count Today's Enriched Leads
+Call Supabase execute_sql:
+```
+SELECT count_enriched_today('{{ $json.broker_id }}')
+```
+Store result as: current_count
+
+## STEP 2: Determine Pull Requirement
+Step 2a: Call calculator: `{{ $json.daily_capacity }} - current_count - {{ $json.daily_lead_surplus }}`
+Store as: needed_leads
+
+Step 2b: If needed_leads <= 0, JUMP to STEP 12
+
+Step 2c: If needed_leads > 0:
+- Call calculator: `needed_leads / 0.8`
+- Round UP to integer
+- Store as: pull_quantity
+
+## STEP 3: Pull Properties
+Call PropertyRadar:
+```json
+{
+  "pr_method": "GET",
+  "pr_endpoint": "/lists/{{ $json.list_id }}/items?Start={{ $json.current_offset }}&Limit=${pull_quantity}",
+  "pr_body_json": "{}"
+}
+```
+Store: radar_ids
+
+## STEP 4: Filter New IDs
+Call Supabase execute_sql:
+```
+SELECT * FROM filter_new_radar_ids(ARRAY['${radar_ids.join("','")}'])
+```
+If 0 results, JUMP to STEP 12
+Store: new_radar_ids
+
+## STEP 5: Purchase Properties
+Call PropertyRadar:
+```json
+{
+  "pr_method": "POST",
+  "pr_endpoint": "/properties?Purchase=1",
+  "pr_body_json": "{\"Criteria\":[{\"name\":\"RadarID\",\"value\":[\"${new_radar_ids.join('","')}\"]}]}"
+}
+```
+Store: properties
+
+## STEP 6: Enrich with BatchData
+Call BatchData:
+```json
+{
+  "bd_body_json": "{\"requests\":[${properties.map(p => JSON.stringify({propertyAddress:{street:p.Address,city:p.City,state:p.State,zip:p.ZipFive}})).join(',')}]}"
+}
+```
+Store: enrichments
+
+## STEP 7: Insert to DB
+Build INSERT with these EXACT column names:
+```
+INSERT INTO leads (
+  radar_id, first_name, last_name, primary_email, primary_phone,
+  property_address, property_city, property_state, property_zip,
+  assigned_broker_id, property_value, estimated_equity
+) VALUES
+  (actual data rows)
+ON CONFLICT (addr_hash) DO NOTHING RETURNING id
+```
+Call Supabase execute_sql with the built query
+
+## STEP 8: Update Offset
+Call Supabase execute_sql:
+```
+SELECT update_broker_offset('{{ $json.broker_id }}', ${pull_quantity})
+```
+
+## STEP 9: Get Campaigns
+Call Supabase execute_sql:
+```
+SELECT archetype, instantly_campaign_id FROM campaigns WHERE active=true
+```
+Store: campaign_map
+
+## STEP 10: Get Uploadable Leads
+Call Supabase execute_sql:
+```
+SELECT id, first_name, last_name, primary_email, 
+       property_address, property_city,
+       property_value, estimated_equity, 
+       (estimated_equity::float / NULLIF(property_value,0) * 100) as equity_pct
+FROM leads 
+WHERE assigned_broker_id='{{ $json.broker_id }}' 
+AND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp
+AND campaign_status IN ('new', NULL) 
+AND primary_email IS NOT NULL
+```
+If 0, JUMP to STEP 12
+Store: uploadable_leads
+
+## STEP 11: Upload to Instantly
+Group leads by equity_pct and call Instantly for each group.
+
+For each lead, build custom_variables with these EXACT formats:
+- property_address: (as-is from database)
+- property_city: (as-is from database)
+- property_value: "$XXX,XXX" with commas (e.g., "$664,367")
+- property_value_range: If value >= $1M use "$X.XM-$X.XM" format (e.g., "$1.1M-$1.3M"), otherwise "$XXXK-$XXXK" UPPERCASE K (e.g., "$598K-$731K")
+- estimated_equity: "$XXX,XXX" with commas (e.g., "$549,922")
+- equity_50_percent: "$XXX,XXX" equity * 0.5 with commas (e.g., "$274,961")
+- equity_60_percent: "$XXX,XXX" equity * 0.6 with commas (e.g., "$329,953")
+- equity_formatted_short: If equity >= $1M use "$X.XM" format (e.g., "$1.0M"), otherwise "$XXXK" UPPERCASE K (e.g., "$550K")
+- equity_percent: equity_pct as number (e.g., 82.77)
+- estimated_monthly_payment: "$X,XXX" property_value * 0.003 with commas (e.g., "$1,993")
+- broker_name: "My Reverse Options"
+- broker_nmls: "NMLS #ML123456"
+
+CRITICAL: Use UPPERCASE 'K' not lowercase 'k'. Use 'M' for millions. Calculate percentages accurately.
+
+Call Instantly with leads formatted as:
+```json
+{
+  "leads_json": "[{\"email\":\"...\",\"first_name\":\"...\",\"last_name\":\"...\",\"custom_variables\":{...}}]",
+  "campaign_id": "${campaign_id_from_map}"
+}
+```
+NOTE: Use "first_name" and "last_name" with underscores, NOT camelCase.
+
+## STEP 12: Mark Uploaded
+Call Supabase execute_sql:
+```
+UPDATE leads SET campaign_status='active', added_to_campaign_at=NOW() 
+WHERE assigned_broker_id='{{ $json.broker_id }}' 
+AND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp
+AND campaign_status IN ('new', NULL)
+```
+
+## STEP 13: Update Surplus
+Call Supabase execute_sql:
+```
+UPDATE brokers 
+SET daily_lead_surplus = GREATEST(
+  (SELECT COUNT(*) FROM leads 
+   WHERE assigned_broker_id='{{ $json.broker_id }}' 
+   AND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp) 
+  - {{ $json.daily_capacity }}, 0
+) 
+WHERE id='{{ $json.broker_id }}' 
+RETURNING daily_lead_surplus
+```
+
+BEGIN EXECUTION AT STEP 1
+

@@ -1,0 +1,105 @@
+Broker Context:
+- Broker ID: {{ $json.broker_id }}
+- Broker Name: {{ $json.broker_name }}
+- PropertyRadar List: {{ $json.list_id }}
+- Current Offset: {{ $json.current_offset }}
+- Daily Capacity: {{ $json.daily_capacity }}
+- Daily Lead Surplus: {{ $json.daily_lead_surplus }}
+
+---
+
+## STEP 1: Count Today's Enriched Leads
+Call Supabase execute_sql:
+```
+SELECT count_enriched_today('{{ $json.broker_id }}')
+```
+Store result as: current_count
+
+## STEP 2: Determine Pull Requirement
+Step 2a: Call calculator: `{{ $json.daily_capacity }} - current_count - {{ $json.daily_lead_surplus }}`
+Store as: needed_leads
+
+Step 2b: If needed_leads <= 0, YOUR FINAL RESPONSE must be:
+```json
+{
+  "properties_for_swarm": [],
+  "pull_quantity": 0,
+  "needed_leads": 0,
+  "message": "Quota met - no leads needed today"
+}
+```
+Then STOP. Do not continue to Step 3.
+
+Step 2c: If needed_leads > 0:
+- Call calculator: `needed_leads / 0.8`
+- Round UP to integer
+- Store as: pull_quantity
+
+## STEP 3: Pull Properties
+Call PropertyRadar:
+```json
+{
+  "pr_method": "GET",
+  "pr_endpoint": "/lists/{{ $json.list_id }}/items?Start={{ $json.current_offset }}&Limit=${pull_quantity}",
+  "pr_body_json": "{}"
+}
+```
+Store: radar_ids
+
+## STEP 4: Filter New IDs
+Call Supabase execute_sql:
+```
+SELECT * FROM filter_new_radar_ids(ARRAY['${radar_ids.join("','")}'])
+```
+If 0 results, YOUR FINAL RESPONSE must be:
+```json
+{
+  "properties_for_swarm": [],
+  "pull_quantity": 0,
+  "needed_leads": 0,
+  "message": "All properties already in database"
+}
+```
+Then STOP. Do not continue to Step 5.
+
+Store: new_radar_ids
+
+## STEP 5: Purchase Properties (MANDATORY - Must call this to get addresses)
+You MUST call PropertyRadar POST to get full property details including addresses.
+
+Call PropertyRadar:
+```json
+{
+  "pr_method": "POST",
+  "pr_endpoint": "/properties?Purchase=1",
+  "pr_body_json": "{\"Criteria\":[{\"name\":\"RadarID\",\"value\":[\"${new_radar_ids.join('","')}\"]}]}"
+}
+```
+This returns properties array with Address, City, State, ZipFive, AVM, AvailableEquity, FirstName, LastName.
+Store: properties
+
+After Step 5 completes, IMMEDIATELY proceed to format the output. DO NOT STOP.
+
+---
+
+YOUR FINAL RESPONSE MUST BE:
+
+Build a JSON object with a "properties_for_swarm" array. For EACH property from Step 5:
+- radar_id = property.RadarID
+- first_name = property.FirstName (or empty string if null)
+- last_name = property.LastName (or empty string if null)  
+- street = property.Address
+- city = property.City
+- state = property.State
+- zip = property.ZipFive
+- property_value = property.AVM as string
+- estimated_equity = property.AvailableEquity as string
+- equity_percent = (AvailableEquity / AVM * 100) rounded to 2 decimals
+- campaign_id:
+  - If equity_percent < 50: "75f3bbfd-17cb-4e28-b28a-975eb6959948"
+  - If equity_percent 50-79: "758cb5cc-1857-4ec0-8e39-7eacc1eb3df1"
+  - If equity_percent >= 80: "b7912eeb-ec29-4d33-807c-555128abfdf2"
+
+Return the complete JSON object as your final output.
+
+BEGIN EXECUTION AT STEP 1

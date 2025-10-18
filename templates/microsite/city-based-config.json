@@ -1,0 +1,353 @@
+{
+  "city_microsite_structure": {
+    "strategy": "geo_based_with_tokens",
+    "domain_configuration": {
+      "base_domains": [
+        "equityconnecthq.com",
+        "askequityconnect.com",
+        "getequityconnect.com"
+      ],
+      "calculator_subdomain": "calculator.equityconnect.com",
+      "url_format": "{domain}?key={encrypted_token}",
+      "ssl_enabled": true,
+      "cdn_enabled": true,
+      "geo_detection": "vercel_edge_automatic"
+    },
+    "seo_configuration": {
+      "title_template": "Reverse Mortgage in {city_name}, {state_code} | {broker_company}",
+      "description_template": "Access ${avg_equity_formatted} from your {city_name} home equity. Licensed specialists serving {city_name} homeowners 62+. Free consultation.",
+      "keywords_template": [
+        "reverse mortgage {city_name}",
+        "{city_name} home equity",
+        "{city_name} senior housing",
+        "HECM {state_code}"
+      ],
+      "og_title_template": "{city_name} Reverse Mortgage Specialists | {broker_company}",
+      "og_description_template": "Helping {city_name} homeowners access tax-free cash from home equity"
+    },
+    "hero_section": {
+      "headline_template": "Welcome, {city_name} Homeowners!",
+      "subheadline_template": "Access tax-free cash from your home equity. Licensed specialists serving {city_name} for 15+ years.",
+      "personalized_greeting": "Hi {lead_first_name}, see what you could access from your {property_address}.",
+      "cta": {
+        "primary": "See Your Equity Estimate",
+        "secondary": "Schedule Free Consultation",
+        "primary_action": "scroll_to_calculator",
+        "secondary_action": "open_calendar_widget"
+      }
+    },
+    "city_stats_section": {
+      "headline_template": "Reverse Mortgages in {city_name}",
+      "stats_display": [
+        {
+          "label": "Average Home Value",
+          "value": "{city_avg_home_value}",
+          "format": "currency"
+        },
+        {
+          "label": "Average Equity Access",
+          "value": "{city_avg_equity_60_percent}",
+          "format": "currency",
+          "note": "Based on 60% of equity"
+        },
+        {
+          "label": "Homeowners 62+",
+          "value": "{city_total_homeowners}",
+          "format": "number"
+        },
+        {
+          "label": "Families We've Helped",
+          "value": "500+",
+          "format": "text"
+        }
+      ],
+      "local_facts": "{city_local_facts}",
+      "facts_display": "bullet_list"
+    },
+    "equity_calculator_section": {
+      "show_if": "lead_data_available",
+      "headline": "Your Estimated Equity",
+      "inputs": [
+        {
+          "field": "property_value",
+          "label": "Estimated Home Value",
+          "prefill": "{lead_property_value}",
+          "type": "currency_display",
+          "editable": false
+        },
+        {
+          "field": "estimated_equity",
+          "label": "Estimated Equity",
+          "prefill": "{lead_estimated_equity}",
+          "type": "currency_display",
+          "editable": false
+        }
+      ],
+      "results_display": {
+        "highlight_text": "You Could Access:",
+        "range_50": "{lead_equity_50_formatted}",
+        "range_60": "{lead_equity_60_formatted}",
+        "format": "{range_50} - {range_60}",
+        "disclaimer": "*Estimated. Actual amount depends on age, property type, and FHA lending limits."
+      },
+      "cta": {
+        "text": "Schedule Your Free Consultation",
+        "action": "open_calendar",
+        "secondary_text": "Or call us: {broker_phone}"
+      }
+    },
+    "trust_signals_section": {
+      "headline_template": "Why {city_name} Homeowners Choose {broker_company}",
+      "signals": [
+        {
+          "icon": "license",
+          "text": "Licensed & Insured (NMLS #{broker_nmls})"
+        },
+        {
+          "icon": "experience",
+          "text": "15+ Years Serving {city_name} Seniors"
+        },
+        {
+          "icon": "rating",
+          "text": "4.9/5 Star Rating from Local Homeowners"
+        },
+        {
+          "icon": "no_cost",
+          "text": "No Upfront Costs - All Fees Financed"
+        },
+        {
+          "icon": "stay_home",
+          "text": "Stay in Your Home - Never Move"
+        },
+        {
+          "icon": "no_payments",
+          "text": "No Monthly Mortgage Payments Required"
+        }
+      ]
+    },
+    "testimonials": [
+      {
+        "name": "Anonymous Homeowner",
+        "location": "{city_name}, {state_code}",
+        "quote": "The process was straightforward and the team was incredibly patient with all my questions. I was able to access the equity I needed without monthly payments.",
+        "amount_accessed": "Confidential",
+        "use_case": "Home repairs and medical expenses",
+        "rating": 5,
+        "verified": true
+      },
+      {
+        "name": "Senior Homeowner",
+        "location": "{city_name}, {state_code}",
+        "quote": "I appreciated the no-pressure approach. They explained everything clearly and helped me understand all my options.",
+        "amount_accessed": "Confidential",
+        "use_case": "Supplement retirement income",
+        "rating": 5,
+        "verified": true
+      }
+    ],
+    "faq_section": {
+      "headline": "Common Questions from {city_name} Homeowners",
+      "faqs": [
+        {
+          "question": "Do I have to be 62 or older?",
+          "answer": "Yes, at least one borrower must be 62 or older. If you're married, only one spouse needs to meet the age requirement."
+        },
+        {
+          "question": "Will I lose my home?",
+          "answer": "No. You retain ownership and can live in your home as long as you maintain it, pay property taxes, and keep homeowners insurance."
+        },
+        {
+          "question": "Do I need to make monthly payments?",
+          "answer": "No monthly mortgage payments are required. The loan is repaid when you sell the home, move out, or pass away."
+        },
+        {
+          "question": "What if I still owe on my current mortgage?",
+          "answer": "That's fine. The reverse mortgage will pay off your existing mortgage first, and you receive the remaining equity."
+        },
+        {
+          "question": "How much can I access?",
+          "answer": "Typically 50-60% of your home's equity, depending on your age, property value, and current FHA lending limits. {broker_full_name} can calculate your exact amount."
+        }
+      ]
+    },
+    "how_it_works_section": {
+      "headline": "How Reverse Mortgages Work",
+      "steps": [
+        {
+          "step": 1,
+          "title": "Free Consultation",
+          "description": "Speak with {broker_full_name} to see if you qualify and learn your exact numbers.",
+          "icon": "phone"
+        },
+        {
+          "step": 2,
+          "title": "Application & Approval",
+          "description": "Complete a simple application. FHA counseling required (we help arrange this).",
+          "icon": "document"
+        },
+        {
+          "step": 3,
+          "title": "Closing",
+          "description": "Sign documents and receive your funds. All closing costs can be financed.",
+          "icon": "handshake"
+        },
+        {
+          "step": 4,
+          "title": "Enjoy Your Equity",
+          "description": "Use funds however you want. No monthly payments required while you live in your home.",
+          "icon": "home"
+        }
+      ]
+    },
+    "footer_section": {
+      "broker_info": {
+        "company_name": "{broker_company}",
+        "nmls": "NMLS #{broker_nmls}",
+        "phone": "{broker_phone}",
+        "email": "info@{domain}",
+        "address": "Licensed to serve {state_code}"
+      },
+      "legal_links": [
+        "Privacy Policy",
+        "Terms of Service",
+        "NMLS Consumer Access",
+        "Fair Housing",
+        "Equal Credit Opportunity"
+      ],
+      "compliance_text": "This material is not from HUD or FHA and has not been approved by HUD or a government agency. Licensed by the Department of Financial Protection and Innovation under the California Residential Mortgage Lending Act. NMLS #{broker_nmls}."
+    }
+  },
+  "calculator_microsite_structure": {
+    "page_title": "Equity Calculator | {broker_company}",
+    "headline": "See What You Could Access",
+    "personalized_intro": "Hi {lead_first_name}, based on your {property_city} property at {property_address}, here's what you could potentially access:",
+    "calculator_inputs": [
+      {
+        "field": "home_value",
+        "label": "Estimated Home Value",
+        "type": "currency_slider",
+        "min": 200000,
+        "max": 3000000,
+        "step": 10000,
+        "default": "{lead_property_value}",
+        "editable": true
+      },
+      {
+        "field": "mortgage_balance",
+        "label": "Current Mortgage Balance",
+        "type": "currency_slider",
+        "min": 0,
+        "max": "{home_value}",
+        "step": 5000,
+        "default": 0,
+        "editable": true
+      },
+      {
+        "field": "access_percent",
+        "label": "Equity Access Percentage",
+        "type": "percent_slider",
+        "min": 50,
+        "max": 60,
+        "step": 1,
+        "default": 55,
+        "editable": true,
+        "help_text": "Typically 50-60% based on age and property"
+      }
+    ],
+    "results_section": {
+      "calculated_equity": {
+        "formula": "home_value - mortgage_balance",
+        "display": "Your Estimated Equity: ${calculated_equity}"
+      },
+      "access_amount": {
+        "formula": "calculated_equity * (access_percent / 100)",
+        "display": "You Could Access: ${access_amount}",
+        "highlight": true,
+        "disclaimer": "*Estimated. Actual amount depends on age, property type, FHA limits, and lender requirements."
+      }
+    },
+    "cta_section": {
+      "headline": "Ready to Learn Your Exact Numbers?",
+      "primary_cta": {
+        "text": "Schedule Free Consultation with {broker_full_name}",
+        "action": "open_calendar_widget",
+        "tracking": "calculator_conversion"
+      },
+      "secondary_cta": {
+        "text": "Call Now: {broker_phone}",
+        "action": "tel:{broker_phone}",
+        "tracking": "calculator_phone_click"
+      },
+      "reassurance": [
+        "No obligation",
+        "Licensed specialists",
+        "15+ years experience",
+        "Free consultation"
+      ]
+    }
+  },
+  "deployment_configuration": {
+    "vercel_setup": {
+      "project_name": "equity-connect-microsites",
+      "framework": "nextjs",
+      "build_command": "npm run build",
+      "output_directory": ".next",
+      "install_command": "npm install"
+    },
+    "environment_variables": {
+      "NEXT_PUBLIC_SUPABASE_URL": "https://mxnqfwuhvurajrgoefyg.supabase.co",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "{anon_key}",
+      "SUPABASE_SERVICE_ROLE_KEY": "{service_key}",
+      "MICROSITE_SECRET_KEY": "{256_bit_secret}",
+      "NEXT_PUBLIC_GTM_ID": "GTM-XXXXX"
+    },
+    "domains_to_configure": {
+      "note": "Configure all 15 rotating email domains + calculator subdomain",
+      "base_domains": "See config/SpaceshipDomains.tsv for complete list",
+      "calculator": "calculator.equityconnect.com",
+      "dns_setup": "Point A record to Vercel IPs, no wildcard needed"
+    },
+    "edge_runtime": {
+      "enabled": true,
+      "regions": ["iad1", "sfo1", "lax1"],
+      "geo_detection": true,
+      "middleware": "Required for token decrypt + geo"
+    }
+  },
+  "token_generation": {
+    "encryption": {
+      "algorithm": "AES-256-GCM",
+      "key_length": 256,
+      "iv_length": 16,
+      "auth_tag_length": 16
+    },
+    "payload_structure": {
+      "lead_id": "UUID",
+      "created_at": "unix_timestamp",
+      "type": "city_page | calculator",
+      "domain": "which_domain_used"
+    },
+    "expiration": "90 days from creation",
+    "hash_algorithm": "SHA-256",
+    "url_encoding": "base64url"
+  },
+  "no_ethnic_profiling": {
+    "removed_variables": [
+      "persona.heritage",
+      "culturalReference",
+      "culturalOrganization",
+      "culturalColorScheme",
+      "culturallyMatchedName",
+      "primaryLanguage (ethnic-based)"
+    ],
+    "replaced_with": [
+      "city_name",
+      "broker_company",
+      "broker_full_name",
+      "city_local_facts",
+      "generic_trust_signals"
+    ],
+    "principle": "Personalization based on GEOGRAPHY and PROPERTY DATA, not demographics"
+  }
+}
+

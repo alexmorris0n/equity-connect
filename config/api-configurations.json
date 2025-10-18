@@ -246,32 +246,10 @@
       "sort_order": "desc"
     }
   },
-  "people_data_labs": {
-    "base_url": "https://api.peopledatalabs.com/v5",
-    "endpoints": {
-      "person_enrichment": "/person/enrich",
-      "bulk_enrichment": "/person/bulk",
-      "search": "/person/search",
-      "retrieve": "/person/retrieve"
-    },
-    "rate_limits": {
-      "requests_per_month": 10000,
-      "requests_per_day": 500,
-      "requests_per_hour": 100
-    },
-    "enrichment_fields": [
-      "emails",
-      "phone_numbers",
-      "demographics",
-      "ethnicity",
-      "social_profiles",
-      "interests",
-      "income_estimate",
-      "education",
-      "job_title",
-      "company",
-      "location"
-    ]
+  "people_data_labs_deprecated": {
+    "status": "DEPRECATED - No longer used",
+    "reason": "Removed ethnic profiling and unnecessary demographic data collection",
+    "replacement": "PropertyRadar contact enrichment only"
   },
   "openai_api": {
     "base_url": "https://api.openai.com/v1",
@@ -286,13 +264,11 @@
       "requests_per_month": 50000
     },
     "models": {
-      "persona_assignment": "gpt-4",
       "email_generation": "gpt-4",
       "content_optimization": "gpt-3.5-turbo",
       "embeddings": "text-embedding-ada-002"
     },
     "temperature_settings": {
-      "persona_assignment": 0.7,
       "email_generation": 0.8,
       "content_optimization": 0.6
     }
@@ -309,17 +285,8 @@
       "requests_per_minute": 20
     },
     "voice_profiles": {
-      "carlos_rodriguez": "spanish_male_warm",
-      "maria_rodriguez": "spanish_female_friendly",
-      "priya_patel": "indian_female_professional",
-      "rahul_patel": "indian_male_authoritative",
-      "marcus_washington": "aa_male_strong",
-      "latoya_washington": "aa_female_warm"
-    },
-    "voice_profiles_future": {
-      "note": "Additional personas planned but not yet active in production",
-      "michael_anderson": "american_male_neutral",
-      "jennifer_anderson": "american_female_professional"
+      "note": "Voice profiles determined dynamically by broker company and inbox configuration",
+      "barbara_assistant": "professional_female_warm_senior_friendly"
     }
   },
   "instantly_api": {

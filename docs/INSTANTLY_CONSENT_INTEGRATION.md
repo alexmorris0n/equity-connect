@@ -318,7 +318,7 @@ Use Instantly's built-in analytics to track:
 - **Check send timing** (avoid weekends/late nights)
 
 #### **4. High Bounce Rates (>5%)**
-- **Verify enrichment quality** (PDL email validation)
+- **Verify enrichment quality** (PropertyRadar contact validation)
 - **Check email format** validation in workflow
 - **Remove obvious invalid** emails (test@, noreply@, etc.)
 
@@ -365,7 +365,7 @@ Use Instantly's built-in analytics to track:
 
 ### **Saturday: Enrichment Workflows**
 - [ ] Build PropertyRadar `/persons` enrichment (get owner names + emails)
-- [ ] Build PDL fallback enrichment (for leads without PropertyRadar emails)
+- [ ] Verify PropertyRadar contact enrichment coverage (target 70-85%)
 - [ ] Test both workflows with 10 sample leads
 - [ ] Verify 85%+ email coverage after both passes
 

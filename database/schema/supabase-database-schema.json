@@ -1,0 +1,714 @@
+{
+  "supabase_database_schema": {
+    "tables": {
+      "leads": {
+        "description": "Main leads table - stores all lead data and tracking",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique lead identifier"
+          },
+          "first_name": {
+            "type": "text",
+            "description": "Lead's first name"
+          },
+          "last_name": {
+            "type": "text", 
+            "description": "Lead's last name"
+          },
+          "email": {
+            "type": "text",
+            "description": "Primary email address"
+          },
+          "phone": {
+            "type": "text",
+            "description": "Primary phone number"
+          },
+          "property_address": {
+            "type": "text",
+            "description": "Full property address"
+          },
+          "property_city": {
+            "type": "text",
+            "description": "Property city"
+          },
+          "property_state": {
+            "type": "text",
+            "description": "Property state"
+          },
+          "property_zip": {
+            "type": "text",
+            "description": "Property ZIP code"
+          },
+          "property_value": {
+            "type": "numeric",
+            "description": "Estimated property value"
+          },
+          "estimated_equity": {
+            "type": "numeric",
+            "description": "Estimated home equity"
+          },
+          "age": {
+            "type": "integer",
+            "description": "Lead's age"
+          },
+          "owner_occupied": {
+            "type": "boolean",
+            "description": "Is property owner-occupied"
+          },
+          "assigned_broker_id": {
+            "type": "uuid",
+            "foreign_key": "brokers.id",
+            "description": "Assigned broker"
+          },
+          "assigned_persona": {
+            "type": "text",
+            "description": "DEPRECATED - No longer used. Personas determined by inbox sender identity only."
+          },
+          "lead_score": {
+            "type": "integer",
+            "description": "Lead quality score (0-100)"
+          },
+          "status": {
+            "type": "text",
+            "enum": ["new", "contacted", "replied", "qualified", "appointment_set", "showed", "application", "funded", "closed_lost"],
+            "description": "Current lead status"
+          },
+          "microsite_url": {
+            "type": "text",
+            "description": "Generated microsite URL"
+          },
+          "enrichment_data": {
+            "type": "jsonb",
+            "description": "JSON data from PropertyRadar contact enrichment"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Lead creation timestamp"
+          },
+          "last_contact": {
+            "type": "timestamp with time zone",
+            "description": "Last contact attempt"
+          },
+          "last_engagement": {
+            "type": "timestamp with time zone",
+            "description": "Last engagement activity"
+          },
+          "interaction_count": {
+            "type": "integer",
+            "default": 0,
+            "description": "Total number of interactions"
+          },
+          "engagement_actions": {
+            "type": "jsonb",
+            "description": "JSON array of engagement actions"
+          },
+          "source": {
+            "type": "text",
+            "description": "Lead source (PropStream API, BatchData, etc.)"
+          },
+          "mak": {
+            "type": "text",
+            "description": "BatchData Master Address Key (primary dedup)"
+          },
+          "apn": {
+            "type": "text",
+            "description": "County Assessor Parcel Number (secondary dedup)"
+          },
+          "addr_hash": {
+            "type": "text",
+            "description": "SHA256 hash of address+city+state+zip (fallback dedup)"
+          },
+          "batchdata_payload": {
+            "type": "jsonb",
+            "description": "Full raw BatchData JSON payload for auditing"
+          },
+          "notes": {
+            "type": "text",
+            "description": "Internal notes"
+          },
+          "consent": {
+            "type": "boolean",
+            "default": false,
+            "description": "Has lead given consent to be contacted"
+          },
+          "consented_at": {
+            "type": "timestamp with time zone",
+            "description": "When consent was given"
+          },
+          "consent_method": {
+            "type": "text",
+            "enum": ["form", "reply_yes", "voice", "manual"],
+            "description": "How consent was obtained"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Lead creation timestamp"
+          },
+          "updated_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "brokers": {
+        "description": "Broker information and billing settings",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique broker identifier"
+          },
+          "company_name": {
+            "type": "text",
+            "description": "Broker's company name"
+          },
+          "contact_name": {
+            "type": "text",
+            "description": "Primary contact name"
+          },
+          "email": {
+            "type": "text",
+            "description": "Primary email"
+          },
+          "phone": {
+            "type": "text",
+            "description": "Primary phone"
+          },
+          "nmls_number": {
+            "type": "text",
+            "description": "NMLS license number"
+          },
+          "license_states": {
+            "type": "text",
+            "description": "Comma-separated licensed states"
+          },
+          "pricing_model": {
+            "type": "text",
+            "enum": ["performanceBased", "leadPurchase", "hybrid", "territoryExclusive"],
+            "description": "Billing model type"
+          },
+          "current_balance": {
+            "type": "numeric",
+            "default": 0,
+            "description": "Current outstanding balance"
+          },
+          "invoice_threshold": {
+            "type": "numeric",
+            "description": "Auto-invoice threshold amount"
+          },
+          "status": {
+            "type": "text",
+            "enum": ["active", "inactive", "suspended"],
+            "description": "Broker status"
+          },
+          "territory_zip_codes": {
+            "type": "text",
+            "description": "Comma-separated ZIP codes for territory"
+          },
+          "max_leads_per_week": {
+            "type": "integer",
+            "description": "Maximum leads to assign per week"
+          },
+          "performance_score": {
+            "type": "integer",
+            "description": "Overall performance score (0-100)"
+          },
+          "conversion_rate": {
+            "type": "numeric",
+            "description": "Lead to funding conversion rate"
+          },
+          "show_rate": {
+            "type": "numeric",
+            "description": "Appointment show rate percentage"
+          },
+          "weekly_revenue": {
+            "type": "numeric",
+            "default": 0,
+            "description": "Revenue generated this week"
+          },
+          "monthly_revenue": {
+            "type": "numeric",
+            "default": 0,
+            "description": "Revenue generated this month"
+          },
+          "sms_notifications": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable SMS notifications"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Broker registration date"
+          },
+          "last_metrics_update": {
+            "type": "timestamp with time zone",
+            "description": "Last performance metrics update"
+          }
+        }
+      },
+      "interactions": {
+        "description": "All lead interactions and touchpoints",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique interaction identifier"
+          },
+          "lead_id": {
+            "type": "uuid",
+            "foreign_key": "leads.id",
+            "description": "Associated lead"
+          },
+          "broker_id": {
+            "type": "uuid",
+            "foreign_key": "brokers.id",
+            "description": "Associated broker"
+          },
+          "type": {
+            "type": "text",
+            "enum": ["email_sent", "email_opened", "email_clicked", "email_replied", "ai_call", "appointment", "sms_sent", "sms_replied"],
+            "description": "Interaction type"
+          },
+          "direction": {
+            "type": "text",
+            "enum": ["inbound", "outbound"],
+            "description": "Direction of interaction"
+          },
+          "subject": {
+            "type": "text",
+            "description": "Email subject or call topic"
+          },
+          "content": {
+            "type": "text",
+            "description": "Email content or call transcript"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "description": "Call duration in seconds"
+          },
+          "outcome": {
+            "type": "text",
+            "enum": ["positive", "neutral", "negative", "no_response", "appointment_booked", "not_interested"],
+            "description": "Interaction outcome"
+          },
+          "metadata": {
+            "type": "jsonb",
+            "description": "JSON metadata (sentiment, key_moments, etc.)"
+          },
+          "scheduled_for": {
+            "type": "timestamp with time zone",
+            "description": "For appointments - scheduled time"
+          },
+          "meeting_link": {
+            "type": "text",
+            "description": "Meeting/call link"
+          },
+          "recording_url": {
+            "type": "text",
+            "description": "Call recording URL"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Interaction timestamp"
+          }
+        }
+      },
+      "billing_events": {
+        "description": "All billable events for broker billing",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique billing event identifier"
+          },
+          "broker_id": {
+            "type": "uuid",
+            "foreign_key": "brokers.id",
+            "description": "Associated broker"
+          },
+          "lead_id": {
+            "type": "uuid",
+            "foreign_key": "leads.id",
+            "description": "Associated lead"
+          },
+          "event_type": {
+            "type": "text",
+            "enum": ["qualified_lead", "appointment_set", "appointment_showed", "application_submitted", "deal_funded"],
+            "description": "Type of billable event"
+          },
+          "amount": {
+            "type": "numeric",
+            "description": "Billable amount"
+          },
+          "status": {
+            "type": "text",
+            "enum": ["pending", "invoiced", "paid", "reversed"],
+            "description": "Billing status"
+          },
+          "invoice_id": {
+            "type": "text",
+            "description": "Associated invoice number"
+          },
+          "original_event_id": {
+            "type": "uuid",
+            "description": "For reversals - original event ID"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Event timestamp"
+          },
+          "reversed_at": {
+            "type": "timestamp with time zone",
+            "description": "Reversal timestamp if applicable"
+          }
+        }
+      },
+      "campaigns": {
+        "description": "Email campaign tracking and performance",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique campaign identifier"
+          },
+          "lead_id": {
+            "type": "uuid",
+            "foreign_key": "leads.id",
+            "description": "Associated lead"
+          },
+          "campaign_name": {
+            "type": "text",
+            "description": "Campaign name"
+          },
+          "persona": {
+            "type": "text",
+            "description": "Persona used for campaign"
+          },
+          "sequence_step": {
+            "type": "integer",
+            "description": "Email sequence step (1-4)"
+          },
+          "subject_line": {
+            "type": "text",
+            "description": "Email subject line"
+          },
+          "sent_at": {
+            "type": "timestamp with time zone",
+            "description": "Email send timestamp"
+          },
+          "opened_at": {
+            "type": "timestamp with time zone",
+            "description": "Email open timestamp"
+          },
+          "clicked_at": {
+            "type": "timestamp with time zone",
+            "description": "Email click timestamp"
+          },
+          "replied_at": {
+            "type": "timestamp with time zone",
+            "description": "Email reply timestamp"
+          },
+          "instantly_campaign_id": {
+            "type": "text",
+            "description": "Instantly campaign ID"
+          },
+          "instantly_lead_id": {
+            "type": "text",
+            "description": "Instantly lead ID"
+          },
+          "status": {
+            "type": "text",
+            "enum": ["scheduled", "sent", "delivered", "opened", "clicked", "replied", "bounced", "unsubscribed"],
+            "description": "Campaign status"
+          }
+        }
+      },
+      "microsites": {
+        "description": "Generated microsite tracking",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique microsite identifier"
+          },
+          "lead_id": {
+            "type": "uuid",
+            "foreign_key": "leads.id",
+            "description": "Associated lead"
+          },
+          "subdomain": {
+            "type": "text",
+            "description": "Generated subdomain"
+          },
+          "full_url": {
+            "type": "text",
+            "description": "Complete microsite URL"
+          },
+          "persona": {
+            "type": "text",
+            "description": "Persona used for microsite"
+          },
+          "neighborhood": {
+            "type": "text",
+            "description": "Target neighborhood"
+          },
+          "visits": {
+            "type": "integer",
+            "default": 0,
+            "description": "Total page visits"
+          },
+          "unique_visitors": {
+            "type": "integer",
+            "default": 0,
+            "description": "Unique visitors"
+          },
+          "time_on_site": {
+            "type": "integer",
+            "default": 0,
+            "description": "Average time on site (seconds)"
+          },
+          "calculator_completions": {
+            "type": "integer",
+            "default": 0,
+            "description": "Calculator form completions"
+          },
+          "form_submissions": {
+            "type": "integer",
+            "default": 0,
+            "description": "Contact form submissions"
+          },
+          "deployment_status": {
+            "type": "text",
+            "enum": ["pending", "deployed", "failed", "updated"],
+            "description": "Deployment status"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "Microsite creation timestamp"
+          },
+          "last_updated": {
+            "type": "timestamp with time zone",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "phone_numbers": {
+        "description": "SignalWire phone number pool management",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique phone number identifier"
+          },
+          "number": {
+            "type": "text",
+            "description": "Phone number (E.164 format)"
+          },
+          "signalwire_id": {
+            "type": "text",
+            "description": "SignalWire phone number ID"
+          },
+          "broker_id": {
+            "type": "uuid",
+            "foreign_key": "brokers.id",
+            "description": "Broker this number belongs to"
+          },
+          "is_active": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether number is active in pool"
+          },
+          "last_used_at": {
+            "type": "timestamp with time zone",
+            "description": "Last time this number was used"
+          },
+          "health_score": {
+            "type": "integer",
+            "default": 100,
+            "description": "Health score (0-100) based on performance"
+          },
+          "call_count": {
+            "type": "integer",
+            "default": 0,
+            "description": "Total calls made from this number"
+          },
+          "answer_rate": {
+            "type": "numeric",
+            "default": 0,
+            "description": "Answer rate percentage for this number"
+          },
+          "area_code": {
+            "type": "text",
+            "description": "Area code for local presence"
+          },
+          "state": {
+            "type": "text",
+            "description": "State this number is from"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "When number was added to pool"
+          }
+        }
+      },
+      "lead_number_assignments": {
+        "description": "Lead to phone number assignments with status tracking",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique assignment identifier"
+          },
+          "lead_id": {
+            "type": "uuid",
+            "foreign_key": "leads.id",
+            "description": "Assigned lead"
+          },
+          "number_id": {
+            "type": "uuid",
+            "foreign_key": "phone_numbers.id",
+            "description": "Assigned phone number"
+          },
+          "broker_id": {
+            "type": "uuid",
+            "foreign_key": "brokers.id",
+            "description": "Broker handling this lead"
+          },
+          "status": {
+            "type": "text",
+            "enum": ["active", "booked_locked", "unreachable", "released"],
+            "default": "active",
+            "description": "Assignment status"
+          },
+          "assigned_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "When number was assigned to lead"
+          },
+          "released_at": {
+            "type": "timestamp with time zone",
+            "description": "When number was released back to pool"
+          },
+          "call_attempts": {
+            "type": "integer",
+            "default": 0,
+            "description": "Number of call attempts made"
+          },
+          "last_call_at": {
+            "type": "timestamp with time zone",
+            "description": "Last call attempt timestamp"
+          },
+          "first_answered_at": {
+            "type": "timestamp with time zone",
+            "description": "When lead first answered a call"
+          },
+          "booked_at": {
+            "type": "timestamp with time zone",
+            "description": "When appointment was booked"
+          },
+          "max_attempts": {
+            "type": "integer",
+            "default": 5,
+            "description": "Maximum call attempts before marking unreachable"
+          },
+          "notes": {
+            "type": "text",
+            "description": "Assignment notes and context"
+          }
+        }
+      },
+      "lead_consent_audit": {
+        "description": "Audit trail for lead consent tracking",
+        "fields": {
+          "id": {
+            "type": "uuid",
+            "default": "gen_random_uuid()",
+            "primary_key": true,
+            "description": "Unique audit identifier"
+          },
+          "lead_id": {
+            "type": "uuid",
+            "foreign_key": "leads.id",
+            "description": "Lead who gave consent"
+          },
+          "consent": {
+            "type": "boolean",
+            "description": "Whether consent was given"
+          },
+          "method": {
+            "type": "text",
+            "enum": ["form", "reply_yes", "voice", "manual"],
+            "description": "How consent was obtained"
+          },
+          "ip_address": {
+            "type": "text",
+            "description": "IP address of consent"
+          },
+          "user_agent": {
+            "type": "text",
+            "description": "User agent string"
+          },
+          "token_hash": {
+            "type": "text",
+            "description": "Hash of the consent token used"
+          },
+          "utm_campaign": {
+            "type": "text",
+            "description": "UTM campaign that generated consent"
+          },
+          "utm_source": {
+            "type": "text",
+            "description": "UTM source of consent"
+          },
+          "utm_medium": {
+            "type": "text",
+            "description": "UTM medium of consent"
+          },
+          "created_at": {
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "description": "When consent was recorded"
+          }
+        }
+      }
+    },
+    "indexes": {
+      "leads": ["email", "assigned_broker_id", "status", "created_at"],
+      "brokers": ["email", "status", "pricing_model"],
+      "interactions": ["lead_id", "broker_id", "type", "created_at"],
+      "billing_events": ["broker_id", "status", "created_at"],
+      "campaigns": ["lead_id", "status", "sent_at"],
+      "microsites": ["lead_id", "subdomain", "deployment_status"],
+      "phone_numbers": ["broker_id", "is_active", "health_score", "area_code"],
+      "lead_number_assignments": ["lead_id", "number_id", "status", "broker_id"],
+      "lead_consent_audit": ["lead_id", "method", "created_at"]
+    },
+    "row_level_security": {
+      "enabled": true,
+      "policies": {
+        "leads": "Brokers can only see their assigned leads",
+        "brokers": "Brokers can only see their own data",
+        "interactions": "Brokers can only see interactions for their leads",
+        "billing_events": "Brokers can only see their billing events"
+      }
+    }
+  }
+}

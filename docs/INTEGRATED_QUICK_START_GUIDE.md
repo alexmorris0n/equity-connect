@@ -20,7 +20,7 @@
 ### API Keys Required
 - [ ] **Supabase** - URL and Service Key
 - [ ] **Estated API Key** - Property data
-- [ ] **Clay API Key** - Lead enrichment
+- [ ] **PropertyRadar API Key** - Lead enrichment (via /persons endpoint)
 - [ ] **Melissa API Key** - Address validation
 - [ ] **Instantly API Key** - Email campaigns
 - [ ] **VAPI API Key** - AI voice calls
@@ -98,7 +98,7 @@ FORM_LINK_SECRET=your-64-char-form-secret
 
 # API Keys
 ESTATED_API_KEY=your-estated-key
-CLAY_API_KEY=your-clay-key
+# CLAY_API_KEY - DEPRECATED (no longer used)
 INSTANTLY_API_KEY=your-instantly-key
 VAPI_API_KEY=your-vapi-key
 CALENDLY_API_KEY=your-calendly-key

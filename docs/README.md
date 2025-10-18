@@ -28,11 +28,15 @@
 - [COMPLIANCE_SIMPLE_GUIDE.md](COMPLIANCE_SIMPLE_GUIDE.md) - Email vs calls cheat sheet
 - [COMPLIANCE_FRAMEWORK.md](COMPLIANCE_FRAMEWORK.md) - Full compliance details
 - [CONSENT_MANAGEMENT_GUIDE.md](CONSENT_MANAGEMENT_GUIDE.md) - TCPA consent for phone calls
-- [COMPLIANCE_CORRECTIONS.md](COMPLIANCE_CORRECTIONS.md) - What we fixed in docs
+
+**Phone Number Pool (SignalWire + VAPI):**
+- [SIGNALWIRE_PHONE_POOL_GUIDE.md](SIGNALWIRE_PHONE_POOL_GUIDE.md) - ⭐ **Production-ready pool management (scales to 100+ brokers)**
+- [SIGNALWIRE_INTEGRATION_GUIDE.md](SIGNALWIRE_INTEGRATION_GUIDE.md) - Initial setup
+- [VAPI_AI_VOICE_INTEGRATION.md](VAPI_AI_VOICE_INTEGRATION.md) - Barbara AI assistant
 
 **Campaign Setup:**
 - [INSTANTLY_CONSENT_INTEGRATION.md](INSTANTLY_CONSENT_INTEGRATION.md) - Cold email campaign guide
-- [WEEKEND_ROADMAP.md](WEEKEND_ROADMAP.md) - Sat: Enrichment, Sun: Campaigns, Mon: Reply handler
+- [COMPLIANCE_CORRECTIONS.md](COMPLIANCE_CORRECTIONS.md) - What we fixed in docs
 
 ---
 

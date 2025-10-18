@@ -1,120 +1,125 @@
-# Workflows To Build
+# Workflows To Build - Test & Utility Workflows
 
-This folder contains **planned workflows** for future implementation phases. These are not deprecated - they're part of the roadmap!
-
-## 🔜 Phase 2: Compliance & Consent (Coming Soon)
-
-### `consent-processing-workflow.json`
-- **Purpose:** Process and validate user consent for outreach
-- **Triggers:** Lead form submissions, reply-yes detection, voice consent
-- **Updates:** `leads.consent`, `leads.consented_at`, `leads.consent_method`
-- **Integration:** Updates campaign eligibility in real-time
-- **Status:** Design complete, awaiting implementation
-
-### `consent-token-generation-workflow.json`
-- **Purpose:** Generate unique consent tokens for one-click opt-in
-- **Triggers:** Manual request, microsite visit, email link
-- **Creates:** `consent_tokens` with nonce hash
-- **Integration:** Email templates, SMS links
-- **Status:** Design complete, awaiting implementation
+This folder contains **test and utility workflows** for the Equity Connect platform. Most planned workflows were replaced by the agentic MCP architecture (see `/workflows/` for production workflows).
 
 ---
 
-## 🔜 Phase 3: Voice & Call Processing (Q1 2026)
+## 📁 Current Contents
 
-### `ai-voice-call-workflow.json`
-- **Purpose:** AI-powered voice calling via VAPI or SignalWire
-- **Triggers:** Campaign-ready leads, appointment reminders, follow-ups
-- **Features:**
-  - Persona-matched voice agents
-  - Real-time objection handling
-  - Appointment scheduling
-  - Call recording & transcription
-- **Integration:** Updates `interactions`, `leads.call_outcome`, schedules callbacks
-- **Dependencies:** SignalWire API, VAPI integration
-- **Status:** Draft workflow exists, needs testing
-
-### `call-outcome-processing-workflow.json`
-- **Purpose:** Process AI call results and route next actions
-- **Triggers:** Call completion webhook from VAPI/SignalWire
-- **Features:**
-  - Sentiment analysis
-  - Appointment extraction
-  - Objection categorization
-  - Auto-reschedule logic
-- **Integration:** Updates `interactions`, triggers follow-up workflows
-- **Status:** Draft workflow exists, needs API integration
+### `test-instantly-mcp.json`
+- **Purpose:** Test the Instantly MCP server integration
+- **Type:** Testing utility
+- **Use:** Verify Instantly MCP is working before deploying reply handler
+- **Status:** Available for testing
 
 ---
 
-## 🔜 Phase 4: Broker & Funnel Management (Q2 2026)
+## 🎯 What Happened to the Other Workflows?
 
-### `broker-acquisition-workflow.json`
-- **Purpose:** Onboard and manage performance-based brokers
-- **Triggers:** Broker application form, manual admin action
-- **Features:**
-  - NMLS verification
-  - License validation
-  - Pricing tier assignment
-  - Compliance checks
-- **Integration:** Creates `brokers`, assigns leads, tracks billing
-- **Status:** Draft workflow exists, needs compliance review
+### ✅ Replaced by Agentic Architecture
 
-### `rework-funnel-workflow.json`
-- **Purpose:** Re-engage leads that didn't convert initially
-- **Triggers:** Lead marked as "closed_lost", no reply in 30 days
-- **Features:**
-  - Waiting period logic
-  - New persona assignment
-  - Fresh microsite generation
-  - Alternative pitch sequences
-- **Integration:** Updates `leads.status`, creates new `interactions`
-- **Status:** Draft workflow exists, needs strategy refinement
+Most workflows planned for this folder were **replaced by AI agents with MCP tools**:
 
----
+1. **AI Voice Call Workflow** → Replaced by:
+   - Barbara VAPI assistant (configured)
+   - Reply handler MCP integration (triggers calls with 28 variables)
+   - SignalWire phone pool (atomic assignment)
 
-## Implementation Priority
+2. **Call Outcome Processing** → Will be replaced by:
+   - VAPI webhook → AI agent (when needed)
+   - Agentic decision-making (not deterministic nodes)
 
-1. **Phase 2 (Q4 2025):** Consent workflows - Required for compliance
-2. **Phase 3 (Q1 2026):** Voice calling - Scale outreach efficiency
-3. **Phase 4 (Q2 2026):** Broker management - Revenue model expansion
+3. **Consent Processing** → Replaced by:
+   - Reply handler detects phone numbers
+   - Auto-stores consent when phone provided
+   - No standalone form needed
+
+4. **Broker Acquisition** → Premature
+   - Will build custom broker portal when scaling to 100 brokers
+   - Not needed for current single-broker operation
+
+5. **Rework Funnel** → Premature
+   - Build re-engagement campaigns later if needed
+   - Will use agentic approach (not deterministic)
 
 ---
 
-## Current Production Workflows
+## 🚀 Production Workflows
 
-Active workflows in `/workflows/`:
-1. ✅ `batchdata-pull-worker.json` - Hourly property ingestion
-2. ✅ `enrichment-pipeline-waterfall.json` - BatchData→Melissa skip-trace
-3. ✅ `campaign-feeder-daily.json` - Daily Instantly campaign feed
-4. ✅ `error-handler-dlq-retry.json` - DLQ retry handler
+Active workflows are in `/workflows/`:
 
----
+### **Core Production Workflows:**
+1. ✅ `AI_Daily_Lead_Pull.json` - AI orchestrates entire acquisition pipeline (13 nodes, replaces 5 workflows)
+2. ✅ `instantly-reply-handler-ALL-MCP.json` - AI handles email replies, triggers calls (4 MCP servers)
+3. ✅ `error-handler-dlq-retry.json` - DLQ retry handler
+4. ✅ `propertyradar-broker-setup-webhook.json` - Helper for list creation
+5. ✅ `propertyradar-create-list-helper.json` - PropertyRadar list management
 
-## Development Notes
-
-- All workflows in this folder are **drafts** and may need significant updates
-- Review for n8n version compatibility before implementation
-- Update credentials/environment variables per workflow requirements
-- Test thoroughly in n8n staging environment before production
-- Consider MCP integration where applicable
+### **Utility Workflows:**
+6. ✅ `kb-vector-upload-utility.json` - One-time KB upload to vector store (moved from this folder)
 
 ---
 
-## Moving to Production
+## 📚 Documentation
 
-When ready to implement a workflow:
-
-```bash
-# Move from to-build to active workflows
-git mv workflows-to-build/[workflow-name].json workflows/
-
-# Test in n8n, then activate
-# Document in main README.md
-```
+- **Production Status:** [MASTER_PRODUCTION_PLAN.md](../MASTER_PRODUCTION_PLAN.md)
+- **Vector Store Testing:** [docs/VECTOR_STORE_TESTING.md](../docs/VECTOR_STORE_TESTING.md)
+- **Workflow Details:** [workflows/README.md](../workflows/README.md)
 
 ---
 
-**Last Updated:** 2025-10-09  
-**Status:** Design/Draft - Awaiting Implementation
+## 💡 Architecture Philosophy
 
+**Why We Replaced Workflows with AI Agents:**
+
+### Before (Deterministic):
+- 135+ nodes for lead acquisition
+- Hardcoded logic in every node
+- Needed workflow edits for any rule change
+- Complex error handling
+- Brittle integrations
+
+### After (Agentic MCP):
+- 13 nodes for lead acquisition
+- AI makes decisions dynamically
+- Rules live in prompts (easy to change)
+- Self-healing error recovery
+- AI orchestrates external tools via MCP
+
+**Result:** 90% fewer nodes, 2-3 minute completion vs all-day, self-adapting system.
+
+---
+
+## 🔮 Future Workflows
+
+When we need new functionality, we'll build it **agentic-first**:
+
+### Example: VAPI Call Outcome Handler (when needed)
+Instead of 50+ deterministic nodes, we'll build:
+- Webhook trigger (1 node)
+- AI Agent with MCP tools (1 node)
+- Error handler (1 node)
+
+The AI will:
+- Analyze call sentiment
+- Extract appointment details
+- Update database
+- Decide next actions
+- Route to appropriate workflow
+
+**Total:** ~3 nodes vs 50+ in old approach
+
+---
+
+## 📋 Migration Notes
+
+If you find old workflow files in git history:
+- They're not obsolete, they're **replaced by better architecture**
+- Don't try to "fix" them - the agentic versions are superior
+- Check [MASTER_PRODUCTION_PLAN.md](../MASTER_PRODUCTION_PLAN.md) for current implementation
+
+---
+
+**Last Updated:** October 17, 2025  
+**Architecture:** Agentic MCP (Model Context Protocol)  
+**Status:** Test utilities only - production workflows in `/workflows/`

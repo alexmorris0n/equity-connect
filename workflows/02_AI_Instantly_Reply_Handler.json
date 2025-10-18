@@ -9,7 +9,7 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        48,
+        784,
         16
       ],
       "id": "055653c3-49cd-4494-b9f6-d3c83d308888",
@@ -18,81 +18,415 @@
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { \"status\": \"received\", \"timestamp\": $now.toISO() } }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        272,
-        16
-      ],
-      "id": "125deb60-6900-4fa7-a7a1-1fb19eca4ad5",
-      "name": "✅ Respond 200 OK"
-    },
-    {
-      "parameters": {
         "promptType": "define",
-        "text": "# ROLE\nYou are an intelligent reply handler for reverse mortgage email campaigns.\n\n# TOOLS AVAILABLE\n1. supabase_execute_sql - Run SQL queries\n2. instantly_reply_to_email - Send email responses\n3. instantly_update_lead - Update lead status\n4. knowledge_base_search - Search 80-chunk KB\n5. vapi_trigger_call - Initiate Barbara AI call\n\n# DECISION TREE\nAnalyze reply → Classify intent → Execute action → Update database\n\nIntent Classification:\n- PHONE_PROVIDED: Extract phone → Trigger VAPI call\n- QUESTION: Search KB → Craft answer → Reply via Instantly → Ask for phone\n- UNSUBSCRIBE: Update Instantly + Supabase → No reply\n- INTEREST: Reply asking for phone → Update status\n- BROKER_REQUEST: Reply confirming → Ask for phone\n\n# WORKFLOW (Execute in this order)\n1. Extract lead_email from input\n2. Query lead: SELECT id, first_name, primary_email, primary_phone, status FROM leads WHERE primary_email = '{email}'\n3. Classify intent from reply_text\n4. Execute appropriate action (see scenarios below)\n5. Update lead status: UPDATE leads SET status='replied', last_reply_at=NOW() WHERE primary_email='{email}'\n6. Log interaction: INSERT INTO interactions (lead_id, type, content, metadata, created_at) VALUES (...)\n\n# SCENARIOS\n\n## PHONE_PROVIDED\nTrigger: Reply contains phone number\nActions:\n- Extract & format phone: XXX-XXX-XXXX\n- Call vapi_trigger_call tool\n- Update: UPDATE leads SET primary_phone='{phone}', status='qualified'\n- Log: metadata = {\"intent\":\"phone_provided\"}\n\n## QUESTION\nTrigger: Contains question words (what, how, when, will, can)\nActions:\n- Search knowledge_base_search for topic\n- Craft <150 word answer\n- Replace {{broker_name}} → \"your specialist\"\n- Send via instantly_reply_to_email\n- Ask: \"What's the best number to reach you?\"\n- Log: metadata = {\"intent\":\"question\", \"topic\":\"{detected_topic}\"}\n\n## UNSUBSCRIBE\nTrigger: \"stop\", \"unsubscribe\", \"remove\", \"not interested\"\nActions:\n- instantly_update_lead: mark unsubscribed\n- UPDATE leads SET status='do_not_contact'\n- Log: metadata = {\"intent\":\"unsubscribe\"}\n- DO NOT SEND REPLY\n\n## INTEREST\nTrigger: \"interested\", \"tell me more\", \"sounds good\"\nActions:\n- instantly_reply_to_email: \"Great! What's your phone number?\"\n- UPDATE leads SET status='qualified'\n- Log: metadata = {\"intent\":\"interest\"}\n\n# CRITICAL RULES\n- ALWAYS query lead first\n- ALWAYS use Knowledge Base for facts\n- ALWAYS ask for phone (unless unsubscribe)\n- ALWAYS update database after actions\n- NEVER make up information\n- Keep emails <150 words\n\n# SQL TEMPLATES\n[Your existing SQL examples - keep these]\n\n# COMPLIANCE\n[Your existing compliance rules - keep these]",
-        "options": {}
+        "text": "# INSTANTLY REPLY HANDLER - OPTIMIZED FOR GEMINI FLASH\n\nYou are Gemini Flash - an AI orchestrator specialized in handling email replies for reverse mortgage leads.\n\n**CRITICAL EXECUTION RULES:**\n1. **NEVER stop after classification** - always complete ALL steps for the intent\n2. **MUST execute database updates, email sending, and logging** - these are required\n3. **DO NOT summarize or explain** - execute the workflow fully\n4. **Complete the entire workflow** before outputting final summary\n5. **ERROR HANDLING** - If any tool call fails, log the error and continue with remaining steps (don't stop the entire workflow)\n\n## YOUR CAPABILITIES\n\n**YOU (Gemini Flash) handle:**\n- Orchestrate the workflow\n- Query database\n- Classify intent\n- Extract phone numbers\n- Search Knowledge Base\n- **Compose emails directly** (optimized for your capabilities)\n- Call tools (Supabase MCP, Instantly MCP, VAPI MCP)\n- Make decisions\n- **EXECUTE ALL STEPS - DO NOT STOP EARLY**\n\n**Input from previous node contains:** lead_email, reply_text, campaign_id, reply_to_uuid, sender_account\n\n---\n\n## COMPLIANCE & DISCLOSURE\n\n**Barbara Introduction (TCPA + AI Disclosure Compliant):**\n- Email: \"I'll have Barbara, our scheduling assistant, give you a quick call...\"\n- Phone: \"Hi, this is Barbara, the scheduling assistant with My Reverse Options\"\n- Avoid: \"AI assistant\", \"automated bot\", \"artificial intelligence\"\n- Use: \"scheduling assistant\", \"team member\", \"specialist\"\n\n**Compliance Language:**\n- Use: \"approximately\", \"estimated\", \"potential\", \"may qualify\"\n- Avoid: \"guaranteed\", \"will receive\", \"definitely\"\n- Always refer to {{broker_name}} for exact figures\n\n**TCPA Consent Disclosure (for forms):**\n*\"By providing your phone number, you agree to receive calls from our scheduling assistant (which may include automated or recorded technology) to help connect you with a licensed specialist. Standard messaging rates may apply.\"*\n\n---\n\n## STEP 1: Query Database for Lead (UPDATED - ALL FIELDS)\n\nCall Supabase execute_sql:\n```\nSELECT \n  l.id, \n  l.first_name, \n  l.last_name, \n  l.primary_email, \n  l.primary_phone, \n  l.status,\n  l.property_address,\n  l.property_city,\n  l.property_state,\n  l.property_zip,\n  l.property_value,\n  l.estimated_equity,\n  l.campaign_archetype,\n  l.assigned_persona,\n  l.persona_sender_name,\n  b.id as broker_id,\n  b.company_name as broker_company,\n  b.contact_name as broker_contact_name,\n  b.nmls_number as broker_nmls,\n  b.phone as broker_phone\nFROM leads l \nLEFT JOIN brokers b ON l.assigned_broker_id = b.id \nWHERE l.primary_email = '{{ $json.lead_email }}' \nLIMIT 1\n```\n\nIf no result: output \"Lead not found for {{ $json.lead_email }}\" and STOP\nStore result as: lead_record\n\n---\n\n## STEP 2: Classify Reply Intent & Execute Workflow\n\nAnalyze {{ $json.reply_text }} to determine intent (check in this order):\n\n**1. PHONE_PROVIDED** - Contains 10-digit phone number (XXX-XXX-XXXX, (XXX) XXX-XXXX, etc.)\n\n**2. UNSUBSCRIBE** - Contains: \"unsubscribe\", \"remove me\", \"stop emailing\", \"opt out\", \"not interested\"\n\n**3. QUESTION** - Contains question words: what, how, when, where, why + question mark\n\n**4. INTEREST** - Contains: \"interested\", \"tell me more\", \"sounds good\", \"more info\"\n\nStore as: intent\n\n**CRITICAL: After classifying intent, immediately proceed to STEP 3 and execute ALL required actions for that intent. DO NOT stop after classification.**\n\n---\n\n## STEP 3: Execute Based on Intent\n\n### IF PHONE_PROVIDED:\n\n**3A. Extract phone number:**\nSearch {{ $json.reply_text }} for phone, extract 10 digits, format as XXX-XXX-XXXX\nStore as: extracted_phone\n\n**3B. Update database:**\nCall Supabase execute_sql:\n```\nUPDATE leads SET \n  primary_phone = '${extracted_phone}', \n  status = 'qualified', \n  persona_sender_name = '{{ $json.persona_sender_name }}',
+  last_reply_at = NOW() 
+WHERE primary_email = '{{ $json.lead_email }}' 
+RETURNING id
+```
+
+**3C. Trigger Barbara Call (VAPI MCP):**
+
+**3C.1 Get Available Broker Phone Number:**
+Call VAPI MCP `list_phone_numbers` with no parameters to get all available phone numbers. Then find the first phone number where the "name" field contains "${lead_record.broker_company}" and store its "id" as selected_phone_number_id.
+
+**3C.2 VERIFY PHONE NUMBER:**
+**If `selected_phone_number_id` is empty or null, STOP EXECUTION and output the error: "No available phone number found for broker: ${lead_record.broker_company}".**
+
+**3C.3 Assign Phone Number to Lead:**
+Update the lead record to assign the phone number:
+```sql
+UPDATE leads SET assigned_phone_number_id = '${selected_phone_number_id}', phone_assigned_at = NOW() WHERE id = '${lead_record.id}' RETURNING id
+```
+
+**3C.4 Create VAPI Call:**
+First, convert phone to E.164 format:
+- If ${extracted_phone} is "650-530-0051", convert to "+16505300051" (add +1, remove dashes)
+
+The VAPI MCP Server is connected. Call create_call with these EXACT parameters:
+```json
+{
+  "assistantId": "cc783b73-004f-406e-a047-9783dfa23efe",
+  "phoneNumberId": "${selected_phone_number_id}",
+  "customer": {
+    "phoneNumber": "+1${extracted_phone_digits_only}"
+  },
+  "assistantOverrides": {
+    "variableValues": {
+      "lead_first_name": "${lead_record.first_name || 'there'}",
+      "lead_last_name": "${lead_record.last_name || ''}",
+      "lead_full_name": "${lead_record.first_name || ''} ${lead_record.last_name || ''}",
+      "lead_email": "${lead_record.primary_email || ''}",
+      "lead_phone": "${extracted_phone}",
+      "property_address": "${lead_record.property_address || 'your property'}",
+      "property_city": "${lead_record.property_city || 'the area'}",
+      "property_state": "${lead_record.property_state || ''}",
+      "property_zipcode": "${lead_record.property_zip || ''}",
+      "property_value": "${lead_record.property_value || '0'}",
+      "property_value_formatted": "${(lead_record.property_value || 0) >= 1000000 ? ((lead_record.property_value / 1000000).toFixed(1) + 'M') : (Math.round((lead_record.property_value || 0) / 1000) + 'K')}",
+      "estimated_equity": "${lead_record.estimated_equity || '0'}",
+      "estimated_equity_formatted": "${(lead_record.estimated_equity || 0) >= 1000000 ? ((lead_record.estimated_equity / 1000000).toFixed(1) + 'M') : (Math.round((lead_record.estimated_equity || 0) / 1000) + 'K')}",
+      "equity_50_percent": "${Math.floor((lead_record.estimated_equity || 0) * 0.5)}",
+      "equity_50_formatted": "${((lead_record.estimated_equity || 0) * 0.5) >= 1000000 ? (((lead_record.estimated_equity * 0.5) / 1000000).toFixed(1) + 'M') : (Math.round((lead_record.estimated_equity || 0) * 0.5 / 1000) + 'K')}",
+      "equity_60_percent": "${Math.floor((lead_record.estimated_equity || 0) * 0.6)}",
+      "equity_60_formatted": "${((lead_record.estimated_equity || 0) * 0.6) >= 1000000 ? (((lead_record.estimated_equity * 0.6) / 1000000).toFixed(1) + 'M') : (Math.round((lead_record.estimated_equity || 0) * 0.6 / 1000) + 'K')}",
+      "campaign_archetype": "${lead_record.campaign_archetype || 'direct'}",
+      "persona_assignment": "${lead_record.assigned_persona || 'general'}",
+      "broker_company": "${lead_record.broker_company || 'our partner company'}",
+      "broker_full_name": "${lead_record.broker_contact_name || 'your specialist'}",
+      "broker_nmls": "${lead_record.broker_nmls || 'licensed'}",
+      "broker_phone": "${lead_record.broker_phone || ''}",
+      "broker_display": "${lead_record.broker_contact_name || 'your specialist'}, NMLS ${lead_record.broker_nmls || 'licensed'}",
+      "persona_sender_name": "{{ $json.persona_sender_name }}",
+      "call_context": "outbound"
+    }
+  }
+}
+```
+
+**NOTE:** We are NOT passing broker_first_name or persona_first_name to avoid schema errors. Barbara will extract first names from the full name variables herself.
+
+**CRITICAL: VAPI MCP Server uses "phoneNumber" NOT "number" in customer object**
+
+**COMPLIANCE NOTE:** Barbara will introduce herself as "Hi, this is Barbara, the scheduling assistant with {{broker_company}}" using the dynamic broker variable (compliant positioning per TCPA + AI disclosure guidelines).
+
+NOTE: If VAPI call fails, log the error but continue to next step (don't stop workflow)
+
+**3D. Log inbound interaction:**
+Call Supabase execute_sql:
+```
+INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
+VALUES (
+  '${lead_record.id}',
+  'email_replied',
+  'inbound',
+  'Reply: phone provided',
+  jsonb_build_object(
+    'intent', 'phone_provided',
+    'phone', '${extracted_phone}',
+    'campaign_id', '{{ $json.campaign_id }}',
+    'email_id', '{{ $json.reply_to_uuid }}'
+  )::jsonb,
+  NOW()
+)
+RETURNING id
+```
+
+NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is available in Instantly's system.
+
+**3E. DO NOT send email reply** - Barbara will call them instead
+
+---
+
+### IF UNSUBSCRIBE:
+
+**3A. Update lead status:**
+Call Supabase execute_sql:
+```
+UPDATE leads SET status = 'do_not_contact', campaign_status = 'unsubscribed', last_reply_at = NOW() WHERE primary_email = '{{ $json.lead_email }}' RETURNING id
+```
+
+**3B. Log interaction:**
+Call Supabase execute_sql:
+```
+INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
+SELECT 
+  '${lead_record.id}',
+  'email_replied',
+  'inbound',
+  'Unsubscribe request',
+  jsonb_build_object(
+    'intent', 'unsubscribe',
+    'campaign_id', '{{ $json.campaign_id }}',
+    'reply_text', $escape${{ $json.reply_text }}$escape$
+  ),
+  NOW()
+RETURNING id
+```
+
+**3C. DO NOT send email** - Honor request immediately
+
+---
+
+### IF QUESTION:
+
+**3A. Determine question topic:**
+Analyze {{ $json.reply_text }} for keywords:
+- costs/fees → topic: "costs and fees"
+- qualify/eligible/age → topic: "eligibility requirements"
+- how does/process → topic: "process and mechanics"
+- equity/money → topic: "equity calculation"
+Store as: question_topic
+
+**3B. Search Knowledge Base:**
+Call the tool named **_Knowledge_Base** (this is the Vector Store with reverse mortgage information).
+
+Use a specific search query based on topic:
+- If topic is "costs and fees" → Call _Knowledge_Base with input: "costs fees origination mortgage insurance"
+- If topic is "eligibility requirements" → Call _Knowledge_Base with input: "eligibility age 62 requirements"
+- If topic is "process and mechanics" → Call _Knowledge_Base with input: "how reverse mortgage works process"
+- If topic is "equity calculation" → Call _Knowledge_Base with input: "equity calculation principal limit"
+
+The KB will return 3-5 chunks. Store as: kb_results
+
+**IMPORTANT:** The KB search should return relevant chunks. If it doesn't, still compose a helpful response acknowledging their question and directing them to Barbara for specific details.
+
+**3C. Compose email response:**
+
+Using the KB results from ${kb_results}, compose an email response.
+
+**CRITICAL REQUIREMENTS:**
+
+**HTML STRUCTURE (MANDATORY):**
+- Use <p> tags for paragraphs
+- Use <br> tags for line breaks  
+- **CRITICAL: Use <ul><li> tags for listing costs/fees** - DO NOT list them as plain text
+- Use <strong> for emphasis
+- NO plain text formatting
+
+**CONTENT REQUIREMENTS:**
+- Address ${lead_record.first_name} by name
+- Answer their question using SPECIFIC line items from KB results
+- **CRITICAL: Format costs as HTML bullet points:** Start with <ul>, then each cost as <li><strong>Cost name:</strong> description</li>, end with </ul>
+- Include these fee items if discussing costs: origination fee, mortgage insurance premium (MIP), third-party costs
+- Use compliance language: "approximately", "estimated", "typically"
+- Keep under 100 words total
+
+**STICKER SHOCK PREVENTION:**
+- Context costs: "Like any mortgage, there are closing costs that can be financed"
+- Emphasize benefit: "Most costs are financed into the loan"
+- NO specific percentages (not even 2%)
+- NO dollar amounts
+- Redirect to conversation: "Barbara can explain how the numbers work for your specific situation"
+
+**BARBARA DISCLOSURE:**
+- Mention Barbara ONCE only
+- Always include her role: "Barbara, our scheduling assistant"
+- Explain purpose: "can give you a quick call to answer any basic questions and help connect you with the right specialist"
+
+**TONE & STYLE:**
+- Polite but direct
+- No fluff or filler words
+- Simple, clear language
+- Example: "Here are the main costs:" not "Here's what you should know about the various fees and expenses..."
+
+**CLOSING:**
+- Ask: "What's the best phone number to reach you?" (polite form)
+- Sign with {{accountSignature}}
+
+Store the composed email as: email_body
+
+**3D. Send email via Instantly MCP:**
+The Instantly MCP tool is already connected.
+Call reply_to_email with this exact JSON structure:
+```json
+{
+  "reply_to_uuid": "{{ $json.reply_to_uuid }}",
+  "eaccount": "{{ $json.sender_account }}",
+  "subject": "Re: Your Home Equity",
+  "body": {
+    "html": "{{ $json.email_body }}"
+  }
+}
+```
+
+**3E. Log inbound interaction:**
+Call Supabase execute_sql:
+```
+INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
+VALUES (
+  '${lead_record.id}',
+  'email_replied',
+  'inbound',
+  'Reply: question about ${question_topic}',
+  '{}'::jsonb,
+  NOW()
+)
+RETURNING id
+```
+
+**3F. Update lead status:**
+Call Supabase execute_sql:
+```
+UPDATE leads SET status = 'replied', last_reply_at = NOW() WHERE primary_email = '{{ $json.lead_email }}' RETURNING id
+```
+
+NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is available in Instantly's system.
+
+---
+
+### IF INTEREST:
+
+**YOU MUST COMPLETE ALL 5 STEPS BELOW - DO NOT STOP AFTER STEP 3A**
+
+**3A. Compose brief email response:**
+
+**CRITICAL REQUIREMENTS:**
+
+**HTML STRUCTURE (MANDATORY):**
+- Use <p> tags for paragraphs
+- Use <br> tags for signature line break
+- NO plain text formatting
+
+**CONTENT REQUIREMENTS:**
+- Thank ${lead_record.first_name} for their interest
+- Mention Barbara ONCE: "Barbara, our scheduling assistant"
+- Explain purpose: "give you a quick call to answer any basic questions and help connect you with a licensed specialist"
+- Keep under 80 words total
+
+**CLOSING:**
+- Ask: "What's the best phone number to reach you?"
+- Sign with {{accountSignature}}
+
+Store the composed email as: email_body
+
+**3B. Send email via Instantly MCP:**
+Call reply_to_email with this exact JSON structure:
+```json
+{
+  "reply_to_uuid": "{{ $json.reply_to_uuid }}",
+  "eaccount": "{{ $json.sender_account }}",
+  "subject": "Re: Your Home Equity",
+  "body": {
+    "html": "{{ $json.email_body }}"
+  }
+}
+```
+
+**3C. Log inbound interaction:**
+Call Supabase execute_sql:
+```
+INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
+VALUES (
+  '${lead_record.id}',
+  'email_replied',
+  'inbound',
+  'Reply: expressed interest',
+  '{}'::jsonb,
+  NOW()
+)
+RETURNING id
+```
+
+**3D. Update lead status:**
+Call Supabase execute_sql:
+```
+UPDATE leads SET status = 'qualified', last_reply_at = NOW() WHERE primary_email = '{{ $json.lead_email }}' RETURNING id
+```
+
+NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is available in Instantly's system.
+
+---
+
+**CRITICAL CHECKPOINT:**
+Before proceeding to STEP 4, verify you have completed ALL required steps for the intent:
+- PHONE_PROVIDED: 5 steps (extract, update DB, VAPI call, log inbound, NO email)
+- UNSUBSCRIBE: 3 steps (update DB, log interaction, NO email)
+- QUESTION: 7 steps (topic, KB search, compose email, send email, log inbound, log outbound, update DB)
+- INTEREST: 5 steps (compose email, send email, log inbound, log outbound, update DB)
+
+If you have NOT completed all steps, GO BACK and complete them now.
+
+---
+
+## STEP 4: Output Summary
+
+After completing ALL steps for the intent, return ONLY this simple text:
+
+"Reply processed successfully. Intent: [PHONE_PROVIDED/QUESTION/INTEREST/UNSUBSCRIBE]"
+
+DO NOT include any other details, variables, or complex formatting. Keep it simple.
+
+---
+
+## IMPORTANT NOTES
+
+**Using $escape$ for text fields:**
+The $escape$ delimiter in PostgreSQL allows multi-line text without quote escaping.
+This prevents SQL injection and handles apostrophes automatically.
+
+**JSONB metadata benefits:**
+- Stores full reply text safely
+- Easy to query: metadata->>'phone'
+- Flexible for future fields
+- AI can read conversation history
+
+**When VAPI is configured:**
+Barbara will query interactions table before calling:
+```sql
+SELECT content, metadata FROM interactions 
+WHERE lead_id = '...' 
+ORDER BY created_at DESC LIMIT 5
+```
+She'll see: email conversation, phone number, intent, context
+
+---
+
+## SETTINGS
+
+- Set Max Iterations to 50 in the AI Agent node options
+- Enable "Return Intermediate Steps" for debugging
+
+## MODEL CONFIGURATION
+
+**Gemini Flash (Primary Model):**
+- **Temperature: 0.4** (consistent, professional emails)
+- **topP: 0.95** (default)
+- **maxOutputTokens: 500** (sufficient for email responses)
+- Fast orchestration and tool calling
+- Decision making and intent classification
+- Database queries and data extraction
+- **Email composition** (optimized for your capabilities)
+
+**In n8n:** Configure these parameters in the Gemini Flash Chat Model node settings.
+
+---
+
+**EXECUTION COMMAND:**
+
+BEGIN EXECUTION AT STEP 1 AND COMPLETE ALL STEPS FOR THE CLASSIFIED INTENT.
+
+DO NOT STOP UNTIL YOU HAVE:
+1. Queried the database (STEP 1)
+2. Classified the intent (STEP 2)
+3. Executed ALL substeps for that intent (STEP 3A through 3E/3G)
+4. Returned the summary JSON (STEP 4)
+
+START NOW.
+",
+        "options": {
+          "maxIterations": 50,
+          "returnIntermediateSteps": true
+        }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 2.2,
       "position": [
-        792,
+        1264,
         16
       ],
       "id": "35b7c931-dacb-456e-add7-32b1419176e3",
-      "name": "🤖 AI Agent"
+      "name": "🤖 AI Agent",
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
-        "model": "anthropic/claude-sonnet-4.5",
-        "options": {
-          "temperature": 0.4
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
-      "typeVersion": 1,
-      "position": [
-        528,
-        240
-      ],
-      "id": "1ca24c1d-b36e-4539-88c3-9f58cebe774a",
-      "name": "Claude Sonnet 4.5",
-      "credentials": {
-        "openRouterApi": {
-          "id": "5pEBmsekpDy6GZN0",
-          "name": "OpenRouter n8n"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "endpointUrl": "https://mcp.instantly.ai/mcp",
-        "authentication": "headerAuth",
+        "endpointUrl": "https://mcp.instantly.ai/mcp/NTFjMDIzMWMtOTY0NS00NmMzLTk5MmEtZWM4OGI3ODIxMzZkOmp0eE54ZnBxWmlOVQ==",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "typeVersion": 1.2,
       "position": [
-        656,
+        1120,
         240
       ],
       "id": "455a2c35-8fff-45f6-95ac-7acedb0783fd",
-      "name": "📧 Instantly MCP",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "T3VkmA0F515ckuYB",
-          "name": "Instantly API"
-        }
-      }
+      "name": "📧 Instantly MCP"
     },
     {
       "parameters": {
         "mode": "retrieve-as-tool",
-        "toolDescription": "Comprehensive reverse mortgage knowledge base with 80 searchable chunks. Covers: eligibility requirements, fees and costs, objection handling, FAQs, persona explanations (who Carlos/Maria/Rahul/Priya/Marcus/LaToYa are), compliance-approved language, emotional psychology for seniors. Search this for ANY factual questions about reverse mortgages or when leads ask about the outreach team members.",
+        "toolDescription": "Comprehensive reverse mortgage knowledge base with 80 searchable chunks. Covers: eligibility requirements, fees and costs, objection handling, FAQs, compliance-approved language, emotional psychology for seniors. Search this for ANY factual questions about reverse mortgages.",
         "tableName": {
           "__rl": true,
           "value": "vector_embeddings",
@@ -104,7 +438,7 @@
       "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "typeVersion": 1.3,
       "position": [
-        784,
+        1248,
         240
       ],
       "id": "0b1f0571-c1b5-4a30-9f1f-c6983f19824a",
@@ -118,13 +452,14 @@
     },
     {
       "parameters": {
+        "model": "text-embedding-ada-002",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.2,
       "position": [
-        864,
-        448
+        1344,
+        368
       ],
       "id": "dec25608-ab4c-47ed-be9a-44e158b6ce84",
       "name": "Embeddings OpenAI",
@@ -137,74 +472,230 @@
     },
     {
       "parameters": {
+        "endpointUrl": "https://mcp.supabase.com/mcp?project_ref=mxnqfwuhvurajrgoefyg",
         "authentication": "headerAuth",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "typeVersion": 1.2,
       "position": [
-        1072,
+        1536,
         240
       ],
       "id": "aaac6329-bb36-4e16-ac1c-339d20077a22",
       "name": "💾 Supabase MCP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "uDlSOCPkKkn2ug5S",
+          "name": "SupaBase MCP"
+        }
+      },
       "notes": "IMPORTANT: Set endpoint URL in Cursor MCP config. This connects to your Supabase instance via MCP protocol. Provides: execute_sql, list_tables, apply_migration, get_logs, and 25+ other tools."
     },
     {
       "parameters": {
+        "endpointUrl": "https://mcp.vapi.ai/mcp",
         "authentication": "headerAuth",
+        "include": "selected",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "typeVersion": 1.2,
       "position": [
-        1200,
+        1664,
         240
       ],
       "id": "5db24d5c-9b3a-4a35-81dc-4ca4a6187b81",
       "name": "📞 VAPI MCP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "zyrETIPcKqDzBzw4",
+          "name": "Vapi Header"
+        }
+      },
       "notes": "VAPI MCP endpoint. Check VAPI MCP docs for exact endpoint URL and available tools for triggering Barbara calls."
     },
     {
       "parameters": {
-        "jsCode": "// Parse AI Agent output and log results\nconst agentOutput = $input.first().json;\n\n// Extract the agent's response/actions\nconst output = agentOutput.output || agentOutput.text || agentOutput.response || JSON.stringify(agentOutput);\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✅ AI Agent Processing Complete');\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Agent Actions Taken:');\nconsole.log(output);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Timestamp:', new Date().toISOString());\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\n// Return success with details\nreturn [{\n  json: {\n    success: true,\n    agent_output: output,\n    timestamp: new Date().toISOString(),\n    processing_complete: true\n  }\n}];"
+        "jsCode": "// Parse AI Agent output and log results\nconst agentOutput = $input.first().json;\n\n// Extract the agent's response/actions\nconst output = agentOutput.output || agentOutput.text || agentOutput.response || JSON.stringify(agentOutput);\n\n// Calculate total token usage across all steps\nlet totalPromptTokens = 0;\nlet totalCompletionTokens = 0;\nlet totalTokens = 0;\nlet stepCount = 0;\n\nif (agentOutput.intermediateSteps && Array.isArray(agentOutput.intermediateSteps)) {\n  agentOutput.intermediateSteps.forEach(step => {\n    if (step.action?.messageLog?.[0]?.kwargs?.response_metadata?.tokenUsage) {\n      const usage = step.action.messageLog[0].kwargs.response_metadata.tokenUsage;\n      totalPromptTokens += usage.promptTokens || 0;\n      totalCompletionTokens += usage.completionTokens || 0;\n      totalTokens += usage.totalTokens || 0;\n      stepCount++;\n    }\n  });\n}\n\n// Calculate cost (Gemini Flash pricing: $0.075 per 1M input, $0.30 per 1M output)\nconst inputCost = (totalPromptTokens / 1000000) * 0.075;\nconst outputCost = (totalCompletionTokens / 1000000) * 0.30;\nconst totalCost = inputCost + outputCost;\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('✅ AI Agent Processing Complete');\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Agent Actions Taken:');\nconsole.log(output);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('📊 Token Usage:');\nconsole.log(`   Steps: ${stepCount}`);\nconsole.log(`   Input Tokens: ${totalPromptTokens.toLocaleString()}`);\nconsole.log(`   Output Tokens: ${totalCompletionTokens.toLocaleString()}`);\nconsole.log(`   Total Tokens: ${totalTokens.toLocaleString()}`);\nconsole.log(`   💰 Cost: $${totalCost.toFixed(4)}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('Timestamp:', new Date().toISOString());\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\n// Return success with details including token usage\nreturn [{\n  json: {\n    success: true,\n    agent_output: output,\n    timestamp: new Date().toISOString(),\n    processing_complete: true,\n    tokens: {\n      steps: stepCount,\n      input: totalPromptTokens,\n      output: totalCompletionTokens,\n      total: totalTokens,\n      cost: totalCost\n    }\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1376,
-        16
+        1664,
+        -176
       ],
       "id": "711ec987-1ac2-4a38-8169-1f3c8568ab4b",
       "name": "📊 Parse & Log Results"
     },
     {
       "parameters": {
-        "jsCode": "// Extract and normalize Instantly webhook data\nconst webhook = $input.first().json;\n\n// Handle field variations from Instantly webhooks\nconst normalized = {\n  // Email identification\n  lead_email: webhook.from_email || webhook.lead_email || webhook.email,\n  \n  // Reply content\n  reply_text: webhook.body || webhook.message || webhook.text || '',\n  \n  // Email metadata\n  subject: webhook.subject || 'No subject',\n  reply_to_uuid: webhook.email_id || webhook.uuid || webhook.id,\n  sender_account: webhook.to_email || webhook.eaccount || webhook.account_email,\n  \n  // Campaign context\n  campaign_id: webhook.campaign_id || null,\n  instantly_lead_id: webhook.lead_id || null,\n  \n  // Timestamps\n  replied_at: webhook.timestamp || new Date().toISOString(),\n  \n  // Keep raw for debugging\n  raw_webhook: webhook\n};\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('📧 Reply Webhook Received');\nconsole.log(`From: ${normalized.lead_email}`);\nconsole.log(`Subject: ${normalized.subject}`);\nconsole.log(`Preview: ${normalized.reply_text.substring(0, 100)}...`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{ json: normalized }];"
+        "jsCode": "// Extract Webhook Data - Neutral sender identity\n// This goes in the \"📦 Extract Webhook Data\" Code Node\n\nconst webhookBody = $input.item.json.body;\n\n// Extract sender name from email account display name or default to team\nconst emailAccount = webhookBody.email_account || '';\nconst fromName = webhookBody.from_name || 'Our Team';\n\n// Use the display name from the email account (set in Instantly)\nconst personaSenderName = fromName || 'Equity Connect Team';\n\n// Extract first name for personalized replies\nconst personaFirstName = personaSenderName.split(' ')[0];\n\n// Extract all webhook data\nconst extractedData = {\n  lead_email: webhookBody.lead_email || webhookBody.email,\n  reply_text: webhookBody.reply_text,\n  subject: webhookBody.reply_subject,\n  reply_to_uuid: webhookBody.email_id,\n  sender_account: webhookBody.email_account,\n  campaign_id: webhookBody.campaign_id,\n  instantly_lead_id: webhookBody.lead_id || null,\n  \n  // Persona information\n  persona_sender_name: personaSenderName,      // Full name: \"Carlos Rodriguez\"\n  persona_first_name: personaFirstName,        // First name only: \"Carlos\"\n  persona_email_account: webhookBody.email_account,\n  \n  // Metadata\n  replied_at: webhookBody.timestamp,\n  event_type: webhookBody.event_type,\n  workspace: webhookBody.workspace,\n  campaign_name: webhookBody.campaign_name,\n  unibox_url: webhookBody.unibox_url,\n  \n  // Store full webhook for debugging\n  raw_webhook: $input.item.json\n};\n\nreturn extractedData;"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        496,
+        1008,
         16
       ],
       "id": "fc87e622-2dc8-41f8-b890-c6a219868cbb",
-      "name": "📦 Extract Webhook Data"
+      "name": "📦 Extract Webhook Data",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C09FJL00SB0",
+          "mode": "list",
+          "cachedResultName": "n8n-erros"
+        },
+        "text": "=🎉 *New Reply Received!*\n\n*Lead:* {{ $('📦 Extract Webhook Data').item.json.lead_email }}\n*Intent:* {{ $('🤖 AI Agent').item.json.output }}\n*Campaign:* {{ $('📦 Extract Webhook Data').item.json.campaign_name }}\n\n📊 *AI Performance:*\n• Steps: {{ $('📊 Parse & Log Results').item.json.tokens.steps }}\n• Tokens: {{ $('📊 Parse & Log Results').item.json.tokens.total.toLocaleString() }} ({{ $('📊 Parse & Log Results').item.json.tokens.input.toLocaleString() }} in / {{ $('📊 Parse & Log Results').item.json.tokens.output.toLocaleString() }} out)\n• Cost: ${{ $('📊 Parse & Log Results').item.json.tokens.cost.toFixed(4) }}\n\n✅ Processing Complete\n⏰ {{ $now.format('MMM D, YYYY h:mm A') }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1888,
+        -176
+      ],
+      "id": "277deac8-aa1d-4c9c-8aeb-0f068cebc609",
+      "name": "Send a message",
+      "webhookId": "6a19101a-2d68-41f6-918c-4f77a258da20",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "PRCtEXCO4z0rjk0n",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2112,
+        -176
+      ],
+      "id": "810816dc-0ef7-416f-80d1-0db707fe9dc0",
+      "name": "🐛 Debug - Slack Sent"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        -176
+      ],
+      "id": "97f6e9d3-d9a9-462f-bb8a-30476492560b",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        32
+      ],
+      "id": "7e8561c8-a837-4a01-a3f8-a4d8e2b572bf",
+      "name": "🐛 Debug - Error"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C09FJL00SB0",
+          "mode": "list",
+          "cachedResultName": "n8n-erros"
+        },
+        "text": "=🚨 *WORKFLOW ERROR - Reply Handler*\n\n*Workflow:* Instantly Reply Handler\n*Execution ID:* {{ $execution.id }}\n\n*Failed Node:* {{ $json.node?.name || 'Unknown' }}\n*Error Type:* {{ $json.error?.name || 'Error' }}\n\n*Error Message:*\n```{{ $json.error?.message || $json.error?.description || JSON.stringify($json.error) }}```\n\n*Lead Context:*\nEmail: {{ $('📦 Extract Webhook Data')?.item?.json?.lead_email || 'N/A' }}\nCampaign: {{ $('📦 Extract Webhook Data')?.item?.json?.campaign_name || 'N/A' }}\n\n⚠️ *Action Required:* Manual review needed\n\n⏰ {{ $now.format('MMM D, YYYY h:mm A') }}\n🔗 View: https://n8n.instaroute.com/workflow/MOtbYjaDYIF4IJwY/executions/{{ $execution.id }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1392,
+        -176
+      ],
+      "id": "98f6d6d5-4727-4a77-92ca-aa21305419a3",
+      "name": "Slack - Crash Alert",
+      "webhookId": "6a19101a-2d68-41f6-918c-4f77a258da20",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "PRCtEXCO4z0rjk0n",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C09FJL00SB0",
+          "mode": "list",
+          "cachedResultName": "n8n-erros"
+        },
+        "text": "=🚨 *WORKFLOW ERROR - Reply Handler*\n\n*Workflow:* Instantly Reply Handler\n*Execution ID:* {{ $execution.id }}\n\n*Failed Node:* {{ $json.node?.name || 'Unknown' }}\n*Error Type:* {{ $json.error?.name || 'Error' }}\n\n*Error Message:*\n```{{ $json.error?.message || $json.error?.description || JSON.stringify($json.error) }}```\n\n*Lead Context:*\nEmail: {{ $('📦 Extract Webhook Data')?.item?.json?.lead_email || 'N/A' }}\nCampaign: {{ $('📦 Extract Webhook Data')?.item?.json?.campaign_name || 'N/A' }}\n\n⚠️ *Action Required:* Manual review needed\n\n⏰ {{ $now.format('MMM D, YYYY h:mm A') }}\n🔗 View: https://n8n.instaroute.com/workflow/MOtbYjaDYIF4IJwY/executions/{{ $execution.id }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1664,
+        32
+      ],
+      "id": "1b560841-ae0b-422b-84b4-eea4edd875b2",
+      "name": "Slack Error Alert",
+      "webhookId": "6a19101a-2d68-41f6-918c-4f77a258da20",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "PRCtEXCO4z0rjk0n",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "value": "barbara-475319",
+          "mode": "list",
+          "cachedResultName": "Barbara"
+        },
+        "modelName": "gemini-2.5-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        960,
+        240
+      ],
+      "id": "4944bc2a-63df-4a19-a20e-0011d4465764",
+      "name": "Google Vertex Chat Model1",
+      "credentials": {
+        "googleApi": {
+          "id": "0bomuCpAYz9wAcbE",
+          "name": "Gemini Vertex (Barbara)"
+        }
+      }
     }
   ],
   "connections": {
     "Instantly Reply Webhook": {
-      "main": [
-        [
-          {
-            "node": "✅ Respond 200 OK",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "✅ Respond 200 OK": {
       "main": [
         [
           {
@@ -223,15 +714,11 @@
             "type": "main",
             "index": 0
           }
-        ]
-      ]
-    },
-    "Claude Sonnet 4.5": {
-      "ai_languageModel": [
+        ],
         [
           {
-            "node": "🤖 AI Agent",
-            "type": "ai_languageModel",
+            "node": "Slack Error Alert",
+            "type": "main",
             "index": 0
           }
         ]
@@ -292,6 +779,17 @@
         ]
       ]
     },
+    "📊 Parse & Log Results": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "📦 Extract Webhook Data": {
       "main": [
         [
@@ -302,9 +800,106 @@
           }
         ]
       ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "🐛 Debug - Slack Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Slack - Crash Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Error Alert": {
+      "main": [
+        [
+          {
+            "node": "🐛 Debug - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "pinData": {},
+  "pinData": {
+    "Instantly Reply Webhook": [
+      {
+        "headers": {
+          "host": "n8n.instaroute.com",
+          "accept": "application/json, text/plain, */*",
+          "content-type": "application/json",
+          "user-agent": "axios/0.21.4",
+          "content-length": "2878",
+          "x-forwarded-for": "52.205.214.0",
+          "x-forwarded-proto": "https",
+          "x-envoy-external-address": "52.205.214.0",
+          "x-request-id": "f5f3cc77-6bcf-4f3e-ac39-258d2c949d83",
+          "x-envoy-attempt-count": "1"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "timestamp": "2025-10-16T07:13:26.250Z",
+          "event_type": "reply_received",
+          "workspace": "51c0231c-9645-46c3-992a-ec88b782136d",
+          "campaign_id": "1e24d68f-3645-42ac-a253-8b64ee61feee",
+          "unibox_url": "https://app.instantly.ai/app/unibox?thread_search=thread:1e-_YxjGJ12yV28gihc52T_oQP&selected_wks=51c0231c-9645-46c3-992a-ec88b782136d",
+          "campaign_name": "TEST - Reply Handler",
+          "email_account": "c.rodriguez@equityconnecthq.com",
+          "reply_text_snippet": "Thanks for the email carlos.  i do have a few questions.  how long is the reverse mortgage.  what happens if i have t go tohospice care?  when i die who sales the house the bank or my faimly?\nOn October 15, 2025 at 11:54 PM, Carlos Rodriguez (c.rodriguez@equityconnecthq.com) wrote:",
+          "lead_email": "alex@amorrison.email",
+          "email": "alex@amorrison.email",
+          "lastName": "McTesterson",
+          "firstName": "Testy",
+          "broker_name": "My Reverse Options",
+          "broker_nmls": "NMLS #ML123456",
+          "property_city": "Inglewood",
+          "equity_percent": "83.3",
+          "property_value": "$1,200,000",
+          "estimated_equity": "$1,000,000",
+          "property_address": "1234 Jumpoff St",
+          "equity_50_percent": "$500,000",
+          "equity_60_percent": "$600,000",
+          "property_value_range": "$1.0M-$1.3M",
+          "equity_formatted_short": "$1.0M",
+          "estimated_monthly_payment": "$3,600",
+          "step": 1,
+          "variant": 1,
+          "email_id": "0199ebdd-cdf8-760a-af23-8176795247aa",
+          "reply_subject": "Re: Your Home Equity",
+          "reply_text": "Thanks for the email carlos.  i do have a few questions.  how long is the reverse mortgage.  what happens if i have t go tohospice care?  when i die who sales the house the bank or my faimly?\n\nOn October 15, 2025 at 11:54 PM, Carlos Rodriguez (\nc.rodriguez@equityconnecthq.com) wrote:\n\nHi Testy,\nThanks for your questions! It typically takes approximately thirty to\nforty-five days from application to closing. You can spend the money on\nalmost anything you need, as it's converted into cash for you to use.\nBarbara, our scheduling assistant, can give you a quick call to answer any\nbasic questions and help connect you with the right specialist who can\nexplain how the numbers work for your specific situation.\nWhat's the best phone number to reach you?\n\n\nBest,\nCarlos Rodriguez\nEquity Connect\n",
+          "reply_html": "<div><div>Thanks for the email carlos.  i do have a few questions.  how long is the reverse mortgage.  what happens if i have t go tohospice care?  when i die who sales the house the bank or my faimly?</div><div><br></div><div>On October 15, 2025 at 11:54 PM, Carlos Rodriguez (<a href=\"mailto:c.rodriguez@equityconnecthq.com\">c.rodriguez@equityconnecthq.com</a>) wrote:</div><div class=\"missive_quote\"><blockquote style=\"margin-top:0;margin-bottom:0\" type=\"cite\"><div>Hi Testy,</div><div>Thanks for your questions! It typically takes approximately thirty to forty-five days from application to closing. You can spend the money on almost anything you need, as it&#39;s converted into cash for you to use.</div><div>Barbara,our scheduling assistant, can give you a quick call to answer any basic questions and help connect you with the right specialist who can explain how the numbers work for your specific situation.</div><div>What&#39;s the best phone number to reach you?</div><div><br><br></div><div>Best,</div><div>Carlos Rodriguez</div><div>Equity Connect</div></blockquote></div></div>\n"
+        },
+        "webhookUrl": "https://n8n.instaroute.com:5678/webhook/instantly-reply-webhook",
+        "executionMode": "production"
+      }
+    ]
+  },
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "4ca45576dabef27a95f92525a5f6415fb3e8061f7037b2ec7fb4ba1bb1cb56c0"

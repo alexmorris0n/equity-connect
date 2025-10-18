@@ -41,9 +41,9 @@ SUPABASE_ANON_KEY=your_supabase_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 
 
-# People Data Labs (Demographic Data - Optional)
-PDL_API_KEY=your_pdl_api_key_here
-PDL_BASE_URL=https://api.peopledatalabs.com/v5
+# People Data Labs - DEPRECATED (No longer used)
+# PDL_API_KEY=your_pdl_api_key_here
+# PDL_BASE_URL=https://api.peopledatalabs.com/v5
 
 # ============================================
 # AI SERVICES
@@ -76,6 +76,14 @@ TWILIO_PHONE_NUMBER=your_twilio_phone_number_here
 SIGNALWIRE_PROJECT_ID=your_signalwire_project_id_here
 SIGNALWIRE_API_TOKEN=your_signalwire_api_token_here
 SIGNALWIRE_SPACE_URL=https://your-space.signalwire.com
+SIGNALWIRE_SIP_DOMAIN=your-space.dapp.signalwire.com
+SIGNALWIRE_SIP_PASSWORD=request_from_signalwire_support
+
+# VAPI (Voice AI Platform for Barbara)
+VAPI_API_KEY=your_vapi_private_api_key_here
+VAPI_ASSISTANT_ID=cc783b73-004f-406e-a047-9783dfa23efe
+VAPI_SIGNALWIRE_CREDENTIAL_ID=7d3ef262-c276-4e5b-be89-76191a5e3179
+VAPI_SIGNALWIRE_PHONE_ID=45b2f2bb-5d0f-4c96-b43f-673584207d9d
 
 # ============================================
 # FRONTEND DEPLOYMENT

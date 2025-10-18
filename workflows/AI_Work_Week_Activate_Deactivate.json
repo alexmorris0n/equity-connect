@@ -1,0 +1,145 @@
+{
+  "name": "AI Work Week Activate / Deactivate",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 5,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -336,
+        -368
+      ],
+      "id": "24d66620-1865-47b0-9f96-b766850dfa6f",
+      "name": "Activate EC Workflows"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                5
+              ],
+              "triggerAtHour": 22,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -336,
+        -144
+      ],
+      "id": "3037d7c1-ec73-4778-b6eb-a7114e28fcdd",
+      "name": "Dectivate EC Workflows"
+    },
+    {
+      "parameters": {
+        "operation": "deactivate",
+        "workflowId": {
+          "__rl": true,
+          "value": "4KYUnVgwQiJhoWYz",
+          "mode": "list",
+          "cachedResultName": "AI Daily Lead Puller Final (#4KYUnVgwQiJhoWYz)"
+        },
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        -144
+      ],
+      "id": "ea257196-64f0-4734-b076-268121082013",
+      "name": "Deactivate a workflow4",
+      "credentials": {
+        "n8nApi": {
+          "id": "kTSignEj0dpMCNTO",
+          "name": "n8n for trigggers"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "activate",
+        "workflowId": {
+          "__rl": true,
+          "value": "4KYUnVgwQiJhoWYz",
+          "mode": "list",
+          "cachedResultName": "AI Daily Lead Puller Final (#4KYUnVgwQiJhoWYz)"
+        },
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        -368
+      ],
+      "id": "39eb04fc-e7cd-427d-be1f-a72a8f39d0b1",
+      "name": "Activate a workflow4",
+      "credentials": {
+        "n8nApi": {
+          "id": "kTSignEj0dpMCNTO",
+          "name": "n8n for trigggers"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Activate EC Workflows": {
+      "main": [
+        [
+          {
+            "node": "Activate a workflow4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dectivate EC Workflows": {
+      "main": [
+        [
+          {
+            "node": "Deactivate a workflow4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "node:Activate EC Workflows": {
+      "recurrenceRules": []
+    },
+    "node:Dectivate EC Workflows": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
+

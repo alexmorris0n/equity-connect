@@ -10,7 +10,7 @@
 
 **You CAN:**
 - ✅ Send cold emails without asking permission first
-- ✅ Buy email lists (like from PropertyRadar/PDL)
+- ✅ Buy email lists (like from PropertyRadar)
 - ✅ Send to anyone with a business inquiry
 - ✅ Follow up multiple times (but include unsubscribe)
 

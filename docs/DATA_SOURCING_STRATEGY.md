@@ -1,11 +1,11 @@
 # 🧭 Equity Connect — Data Sourcing & Enrichment Strategy
 
-**⚠️ NOTE:** This document describes the enrichment STRATEGY. For current implementation status, see [docs/MASTER_PRODUCTION_PLAN.md](docs/MASTER_PRODUCTION_PLAN.md)
+**⚠️ NOTE:** This document describes the technical enrichment STRATEGY. For current implementation status, see [MASTER_PRODUCTION_PLAN.md](../MASTER_PRODUCTION_PLAN.md)
 
 ## 🎯 Goal
-Pull **net-new property records** from **PropertyRadar API**, enrich with contact data via **PropertyRadar Persons API (Tier-1)** and **PeopleDataLabs (Tier-2)**, and deliver only verified leads to broker campaigns.
+Pull **net-new property records** from **PropertyRadar API**, enrich with contact data via **PropertyRadar Persons API**, and deliver only verified leads to broker campaigns.
 
-**Current Status (Oct 11, 2025):** PropertyRadar pull workflow COMPLETE. Enrichment workflows building this weekend.
+**Current Status (Oct 17, 2025):** PropertyRadar pull workflow COMPLETE. Contact enrichment via PropertyRadar /persons API active. PDL/Clay references removed - we use 3 campaign archetypes only, no lead profiling.
 
 ---
 
@@ -49,12 +49,12 @@ CREATE UNIQUE INDEX uq_leads_addr_hash
 
 ---
 
-## ⚙️ Three-Tier Enrichment Waterfall
+## ⚙️ PropertyRadar Contact Enrichment Strategy
 
-### Tier 0: PropertyRadar Property Data ($0.012/property + $0.04/contact)
+### PropertyRadar Property + Contact Data ($0.012/property + $0.04/contact)
 
 **Purpose:** Get property details, owner info, AND contact data (email/phone)  
-**API:** PropertyRadar Search API  
+**API:** PropertyRadar Search API + /persons API  
 **Cost:** 
 - $0.012 per property lookup
 - $0.04 per email append (FREE first 2,500/month)
@@ -66,31 +66,12 @@ CREATE UNIQUE INDEX uq_leads_addr_hash
 - ✅ Returns ONLY qualified leads (no wasted API calls)
 - ✅ Includes contact data in same call
 - ✅ Free contact append quota (2,500 emails + 2,500 phones/month)
+- ✅ 70-85% contact coverage (no additional enrichment services needed)
 
-### Tier 1: PeopleDataLabs ($0.05/lookup, 40-60% hit rate)
-
-**Purpose:** Low-cost contact enrichment for PropertyRadar misses  
-**API:** PDL Person Enrich API  
-**Input:** Address + owner name from PropertyRadar  
-**Cost:** $0.05 per lookup  
-**Output:** Email, phone, confidence scores  
-**Hit rate:** 40-60% of PropertyRadar misses get verified contact
-**When to use:** ONLY when PropertyRadar returns no email/phone
-
-### Tier 2: Melissa Data ($0.15/lookup, +20-30% lift)
-
-**Purpose:** Verified contact append for PDL misses  
-**API:** Melissa Personator Contact Append  
-**Input:** Address + name (for PDL misses only)  
-**Cost:** $0.15 per append  
-**Output:** Verified email, verified phone, validation codes  
-**Hit rate:** Catches 20-30% of PDL misses
-**When to use:** ONLY when PropertyRadar AND PDL both miss
-
-### DLQ: No Contact Found (~8%)
-
-**Outcome:** Lead stored but flagged for manual review  
-**Action:** Hold for alternative enrichment or exclude from campaigns
+**Contact Coverage:**
+- Target: 70-85% of leads with verified email or phone
+- Quality: PropertyRadar validates contact data against multiple sources
+- Fallback: BatchData skip trace for remaining leads (future enhancement)
 
 ---
 
@@ -195,38 +176,24 @@ Body:
 }
 ```
 
-**3. PDL Person Enrich (for PropertyRadar misses):**
+**3. PropertyRadar /persons API (contact enrichment):**
 
 ```http
-POST https://api.peopledatalabs.com/v5/person/enrich
+POST https://api.propertyradar.com/v1/persons
 Headers:
-  X-API-Key: YOUR_PDL_API_KEY
+  Authorization: Bearer YOUR_PROPERTYRADAR_API_KEY
   Content-Type: application/json
 Body:
 {
-  "street_address": "{{ property_address }}",
-  "locality": "{{ property_city }}",
-  "region": "{{ property_state }}",
-  "postal_code": "{{ property_zip }}",
-  "name": "{{ first_name }} {{ last_name }}",
-  "min_likelihood": 6
+  "address": "{{ property_address }}",
+  "city": "{{ property_city }}",
+  "state": "{{ property_state }}",
+  "zip": "{{ property_zip }}",
+  "name": "{{ first_name }} {{ last_name }}"
 }
 ```
 
-**4. Melissa Contact Append (for PDL misses):**
-
-```http
-POST https://personator.melissadata.net/v3/WEB/ContactAppend/doContactAppend
-Query Params:
-  id={{ MELISSA_LICENSE_KEY }}
-  format=json
-  ff={{ first_name }} {{ last_name }}
-  a1={{ property_address }}
-  city={{ property_city }}
-  state={{ property_state }}
-  postal={{ property_zip }}
-  cols=Email,Phone
-```
+**Note:** PDL and Melissa enrichment removed. PropertyRadar /persons API provides 70-85% contact coverage, which is sufficient for our needs. We use 3 campaign archetypes only (no lead profiling or ethnic-based personas).
 
 ---
 
@@ -319,71 +286,48 @@ WHERE id = ANY(ARRAY[lead_ids_from_campaign_feeder]);
 
 ### PropertyRadar + Waterfall Strategy
 
-**Scenario 1: PropertyRadar Hit (70% of leads)**
+**Scenario 1: PropertyRadar Hit (70-85% of leads)**
 ```
 PropertyRadar: $0.012 (property)
-Email:         $0.04  (FREE first 2,500)
-Phone:         $0.04  (FREE first 2,500)
-PDL:           $0.00  (not needed)
-Melissa:       $0.00  (not needed)
+Contact Data:  $0.04  (email/phone via /persons - FREE first 2,500)
 ─────────────────────────────────────
-Total:         $0.092 per lead
+Total:         $0.052 per lead with contact
 ```
 
-**Scenario 2: PDL Hit (20% of leads)**
+**Scenario 2: PropertyRadar Miss (15-30% of leads)**
 ```
 PropertyRadar: $0.012 (property, no contact)
-PDL:           $0.05
-Melissa:       $0.00  (not needed)
+Skip Trace:    TBD (BatchData future enhancement)
 ─────────────────────────────────────
-Total:         $0.062 per lead
+Total:         $0.012 per lead (property only)
 ```
 
-**Scenario 3: Melissa Hit (8% of leads)**
-```
-PropertyRadar: $0.012 (property, no contact)
-PDL:           $0.05  (miss)
-Melissa:       $0.15
-─────────────────────────────────────
-Total:         $0.212 per lead
-```
+**Note:** We accept 70-85% contact coverage from PropertyRadar only. Additional enrichment services (PDL, Melissa) removed - not needed for our 3-archetype campaign strategy.
 
-**Scenario 4: All Miss (2% of leads)**
-```
-PropertyRadar: $0.012 (property, no contact)
-PDL:           $0.05  (miss)
-Melissa:       $0.15  (miss)
-DLQ:           Manual review
-─────────────────────────────────────
-Total:         $0.212 per lead (no contact)
-```
-
-### Blended Average Cost
+### Blended Average Cost (PropertyRadar Only)
 
 ```
-70% × $0.092 = $0.0644
-20% × $0.062 = $0.0124
- 8% × $0.212 = $0.0170
- 2% × $0.212 = $0.0042
+80% × $0.052 = $0.0416
+20% × $0.012 = $0.0024  (property only, no contact)
 ─────────────────────────
-Average:       $0.098 per lead (~10 cents!)
+Average:       $0.044 per lead (~4.4 cents!)
 ```
 
 **For 250 leads/day:**
-- **$24.50/day**
-- **$735/month**
-- **98% enrichment rate**
+- **$11/day**
+- **$330/month**
+- **80% enrichment rate** (target: 70-85%)
 
 ### Comparison
 
 | Provider | Cost/Lead | Monthly (250/day) | Enrichment Rate |
 |----------|-----------|-------------------|-----------------|
-| **PropertyRadar + Waterfall** | **$0.098** | **$735** | **98%** |
-| ATTOM + PDL + Melissa | $0.21 | $1,575 | 90% |
+| **PropertyRadar Only** | **$0.044** | **$330** | **70-85%** |
+| PropertyRadar + PDL (old) | $0.098 | $735 | 98% |
 | BatchData (deprecated) | $24.80 | $186,000 | 95% |
 
-**Savings vs ATTOM:** $840/month (53% reduction)  
-**Savings vs BatchData:** $185,265/month (99.6% reduction)
+**Savings vs old PDL approach:** $405/month (55% reduction)  
+**Savings vs BatchData:** $185,670/month (99.8% reduction)
 
 ---
 
@@ -403,12 +347,14 @@ Average:       $0.098 per lead (~10 cents!)
 * Zero duplicate skip-traces
 * Scalable by ZIP or broker
 * Self-healing with cursor state
-* 53% cost savings vs ATTOM
-* 70% of leads enriched at source (no waterfall needed)
+* 55% cost savings vs old PDL approach
+* 70-85% of leads enriched at source (PropertyRadar only)
+* No ethnic profiling - 3 campaign archetypes only
+* Simplified architecture - no PDL/Clay dependencies
 
 ---
 
 **Status:** Production Ready ✅  
 **Owner:** Data Automation  
-**Updated:** 2025-10-10  
-**Data Source:** PropertyRadar API
+**Updated:** 2025-10-17  
+**Data Source:** PropertyRadar API only (PDL/Clay removed)

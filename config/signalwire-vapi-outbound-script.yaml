@@ -1,0 +1,34 @@
+version: 1.0.0
+sections:
+  main:
+    - connect:
+        answer_on_bridge: true
+        from: +14244851544
+        to: '%{call.to.replace(/^sip:/i, '''').replace(/@.*/, '''')}'
+
+# ====================================================================
+# SIGNALWIRE SWML SCRIPT FOR VAPI BARBARA OUTBOUND CALLS
+# ====================================================================
+#
+# SETUP INSTRUCTIONS:
+#
+# 1. Go to SignalWire Dashboard → Resources → Add → Script → SWML Script
+# 2. Name: "vapi-barbara-outbound"
+# 3. Copy the YAML content above (lines 1-6)
+# 4. Replace "+1YourSignalWireNumber" with your actual SignalWire number
+#    Example: from: +15035551234
+# 5. Save the script
+# 6. Assign this script to your SignalWire phone number:
+#    - Go to Phone Numbers → Select your number
+#    - Under "Handle Calls Using" → Select "SWML Script"
+#    - Choose "vapi-barbara-outbound"
+#    - Save
+#
+# WHAT THIS DOES:
+# - Routes outbound calls from VAPI through SignalWire
+# - Uses "answer_on_bridge: true" to wait for customer to answer
+# - Extracts destination number from SIP URI
+# - Displays your SignalWire number as caller ID
+#
+# ====================================================================
+
