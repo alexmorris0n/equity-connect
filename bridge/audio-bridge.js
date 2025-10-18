@@ -122,8 +122,11 @@ class AudioBridge {
    * Configure OpenAI Realtime session
    */
   configureSession() {
+    console.log('🔵 configureSession() called');
+    
     // Use custom instructions from n8n if provided, otherwise use default Barbara prompt
     const instructions = this.callContext.instructions || BARBARA_PROMPT;
+    console.log('🔵 Instructions length:', instructions.length, 'Custom:', !!this.callContext.instructions);
     
     const sessionConfig = {
       type: 'session.update',
@@ -147,8 +150,13 @@ class AudioBridge {
       }
     };
 
+    console.log('🔵 Sending session.update to OpenAI...');
+    console.log('🔵 Session config:', JSON.stringify(sessionConfig).substring(0, 500));
+    
     this.openaiSocket.send(JSON.stringify(sessionConfig));
     this.sessionConfigured = true;
+    
+    console.log('✅ Session configuration sent!');
     
     const hasCustomInstructions = !!this.callContext.instructions;
     this.logger.info({ 
@@ -161,6 +169,9 @@ class AudioBridge {
    * Handle OpenAI events
    */
   async handleOpenAIEvent(event) {
+    // Log ALL events for debugging (including audio)
+    console.log('🤖 OpenAI event:', event.type);
+    
     // Log important events (skip frequent audio chunks)
     if (!['response.audio.delta', 'input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped'].includes(event.type)) {
       this.logger.info({ type: event.type }, '🤖 OpenAI event');
@@ -205,9 +216,12 @@ class AudioBridge {
    * Handle SignalWire events
    */
   handleSignalWireEvent(msg) {
+    console.log('📞 SignalWire event:', msg.event);
+    
     switch (msg.event) {
       case 'start':
         this.callSid = msg.start.callSid;
+        console.log('📞 Call started, CallSid:', this.callSid);
         this.logger.info({ callSid: this.callSid }, '📞 Call started');
         
         // Trigger initial greeting
