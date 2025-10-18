@@ -81,13 +81,16 @@ class AudioBridge {
     this.openaiSocket.on('message', async (data) => {
       try {
         const event = JSON.parse(data.toString());
+        console.log('📨 Raw OpenAI event type:', event.type);
         await this.handleOpenAIEvent(event);
       } catch (err) {
+        console.error('❌ Error processing OpenAI message:', err);
         this.logger.error({ err }, 'Error processing OpenAI message');
       }
     });
 
     this.openaiSocket.on('error', (err) => {
+      console.error('❌ OpenAI WebSocket error:', err);
       this.logger.error({ err }, '❌ OpenAI WebSocket error');
       this.cleanup();
     });
@@ -215,6 +218,7 @@ class AudioBridge {
         break;
 
       case 'error':
+        console.error('❌ OpenAI error event:', JSON.stringify(event.error));
         this.logger.error({ error: event.error }, '❌ OpenAI error');
         break;
     }
@@ -260,6 +264,8 @@ class AudioBridge {
    * Send media (audio) to SignalWire
    */
   sendMediaToSignalWire(audioData) {
+    console.log('🔊 Sending audio to SignalWire, length:', audioData?.length, 'callSid:', this.callSid, 'socketOpen:', this.swSocket.readyState === WebSocket.OPEN);
+    
     if (this.swSocket.readyState === WebSocket.OPEN) {
       this.swSocket.send(JSON.stringify({
         event: 'media',
@@ -268,6 +274,9 @@ class AudioBridge {
           payload: audioData
         }
       }));
+      console.log('✅ Audio sent to SignalWire');
+    } else {
+      console.error('❌ Cannot send audio - SignalWire socket not open, state:', this.swSocket.readyState);
     }
   }
 
