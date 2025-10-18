@@ -247,15 +247,23 @@ app.post('/call-status', async (request, reply) => {
  */
 app.register(async function (fastify) {
   fastify.get('/audiostream', { websocket: true }, async (connection, req) => {
-    // In @fastify/websocket, the socket is connection.socket
-    const swSocket = connection.socket;
+    // In @fastify/websocket, connection IS the WebSocket
+    const swSocket = connection;
     const { callId } = req.query;
     
-    app.log.info({ callId }, '🔌 WebSocket connected from SignalWire');
+    app.log.info({ 
+      callId,
+      hasSocket: !!swSocket,
+      socketType: typeof swSocket,
+      hasOn: typeof swSocket?.on
+    }, '🔌 WebSocket connected from SignalWire');
     
-    // Verify socket exists
-    if (!swSocket) {
-      app.log.error('❌ WebSocket socket is undefined');
+    // Verify socket exists and has event methods
+    if (!swSocket || typeof swSocket.on !== 'function') {
+      app.log.error({ 
+        hasSocket: !!swSocket,
+        socketKeys: swSocket ? Object.keys(swSocket).slice(0, 10) : []
+      }, '❌ WebSocket connection invalid');
       return;
     }
     
