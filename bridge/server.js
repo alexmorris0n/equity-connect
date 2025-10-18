@@ -96,7 +96,7 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream" codec="L16@16000h" track="both_tracks" realtime="true" />
+    <Stream url="${wsUrl}/audiostream" />
   </Connect>
 </Response>`;
 
@@ -120,7 +120,7 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${streamUrl}" codec="L16@16000h" track="both_tracks" realtime="true" />
+    <Stream url="${streamUrl}" />
   </Connect>
 </Response>`;
 
