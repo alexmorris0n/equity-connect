@@ -86,7 +86,6 @@ class AudioBridge {
     this.openaiSocket.on('message', async (data) => {
       try {
         const event = JSON.parse(data.toString());
-        console.log('📨 Raw OpenAI event type:', event.type);
         await this.handleOpenAIEvent(event);
       } catch (err) {
         console.error('❌ Error processing OpenAI message:', err);
@@ -185,11 +184,11 @@ class AudioBridge {
    * Handle OpenAI events
    */
   async handleOpenAIEvent(event) {
-    // Log ALL events for debugging (including audio)
-    console.log('🤖 OpenAI event:', event.type);
+    // Only log important events (skip frequent audio frames)
+    const audioEvents = ['response.audio.delta', 'input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped', 'input_audio_buffer.committed'];
     
-    // Log important events (skip frequent audio chunks)
-    if (!['response.audio.delta', 'input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped'].includes(event.type)) {
+    if (!audioEvents.includes(event.type)) {
+      console.log('🤖 OpenAI event:', event.type);
       this.logger.info({ type: event.type }, '🤖 OpenAI event');
     }
 
@@ -233,7 +232,10 @@ class AudioBridge {
    * Handle SignalWire events
    */
   handleSignalWireEvent(msg) {
-    console.log('📞 SignalWire event:', msg.event);
+    // Only log important events (not media frames)
+    if (msg.event !== 'media') {
+      console.log('📞 SignalWire event:', msg.event);
+    }
     
     switch (msg.event) {
       case 'start':
@@ -248,7 +250,7 @@ class AudioBridge {
         break;
 
       case 'media':
-        // Send audio to OpenAI
+        // Send audio to OpenAI (silent - happens every 20ms)
         if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
           this.openaiSocket.send(JSON.stringify({
             type: 'input_audio_buffer.append',
