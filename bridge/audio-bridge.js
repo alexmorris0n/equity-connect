@@ -10,8 +10,13 @@ const { toolDefinitions, executeTool } = require('./tools');
 const fs = require('fs');
 const path = require('path');
 
-// Load Barbara's system prompt
-const BARBARA_PROMPT = fs.readFileSync(
+// Load Barbara's system prompts
+const BARBARA_INBOUND_PROMPT = fs.readFileSync(
+  path.join(__dirname, '../prompts/BarbaraInboundPrompt'),
+  'utf8'
+);
+
+const BARBARA_OUTBOUND_PROMPT = fs.readFileSync(
   path.join(__dirname, '../prompts/BarbaraVapiPrompt_V2_Realtime_Optimized'),
   'utf8'
 );
@@ -133,8 +138,10 @@ class AudioBridge {
   configureSession() {
     console.log('🔵 configureSession() called');
     
-    // Use custom instructions from n8n if provided, otherwise use default Barbara prompt
-    const instructions = this.callContext.instructions || BARBARA_PROMPT;
+    // Use custom instructions from n8n if provided
+    // Otherwise use inbound prompt (for when people call us)
+    // n8n will send full outbound prompt when making calls
+    const instructions = this.callContext.instructions || BARBARA_INBOUND_PROMPT;
     console.log('🔵 Instructions length:', instructions.length, 'Custom:', !!this.callContext.instructions);
     
     const sessionConfig = {
