@@ -282,21 +282,30 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 
 ### 🔄 IN PROGRESS (Ready to Deploy)
 
-**7. OpenAI Realtime Bridge Deployment** (Tomorrow Morning - 30 minutes)
-- [ ] Push bridge code to GitHub
-- [ ] Create Northflank service (combined build + runtime)
-- [ ] Set environment variables (OpenAI, SignalWire, Supabase)
-- [ ] Deploy Docker container
-- [ ] Update `BRIDGE_URL` environment variable
-- [ ] Point one SignalWire test number to bridge
-- [ ] Test inbound call (dial number, Barbara answers)
+**7. OpenAI Realtime Bridge Deployment** ⭐ COMPLETED OCT 18
+- [x] Push bridge code to GitHub
+- [x] Create Northflank service (combined build + runtime)
+- [x] Set environment variables (OpenAI, SignalWire, Supabase)
+- [x] Deploy Docker container
+- [x] Fixed codec mismatch (L16@24000h for clear audio)
+- [x] Point one SignalWire test number to bridge
+- [x] Test inbound call - **WORKING!** Clear audio, Barbara speaks
+- [ ] Re-enable 7 Supabase tools (carefully to avoid static bug)
 - [ ] Test outbound call (n8n triggers call)
 - [ ] Verify all 7 tools execute correctly
 - [ ] Create n8n workflows (email, microsite, inbound)
 - [ ] Run parallel testing (Vapi vs Bridge) for 1 week
 - [ ] Migrate all numbers to bridge
 - [ ] Disable Vapi account
-- **Expected Outcome:** 74% cost reduction, full infrastructure ownership
+- **Status:** Inbound calls working! Audio clear. Tools disabled temporarily.
+- **Next:** Re-enable tools, test outbound, create n8n workflows
+
+**TODO: Inbound Call Improvements** (After Stable)
+- [ ] Add DB lookup: Query `phone_numbers` table by "To" number
+- [ ] Get broker info from database
+- [ ] Inject broker company name into inbound greeting
+- [ ] Barbara greets: "Thank you for calling [Broker Company], this is Barbara..."
+- [ ] Currently using generic: "Equity Connect" (works for all brokers)
 
 **8. BatchData Cost Optimization** (Planned)
 - **Replace BatchData with The Swarm Corporation API**
