@@ -159,7 +159,7 @@ class AudioBridge {
           type: 'server_vad',
           threshold: 0.5,
           prefix_padding_ms: 300,
-          silence_duration_ms: 500
+          silence_duration_ms: 1500  // Increased for seniors who pause to think
         }
         // TEMPORARILY REMOVED: tools cause static per OpenAI forum issue
         // Will add back after confirming audio works
