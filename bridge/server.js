@@ -247,10 +247,17 @@ app.post('/call-status', async (request, reply) => {
  */
 app.register(async function (fastify) {
   fastify.get('/audiostream', { websocket: true }, async (connection, req) => {
+    // In @fastify/websocket, the socket is connection.socket
     const swSocket = connection.socket;
     const { callId } = req.query;
     
     app.log.info({ callId }, '🔌 WebSocket connected from SignalWire');
+    
+    // Verify socket exists
+    if (!swSocket) {
+      app.log.error('❌ WebSocket socket is undefined');
+      return;
+    }
     
     // Get call context from pending calls if this is an outbound call
     let callContext = {};
@@ -277,7 +284,9 @@ app.register(async function (fastify) {
       app.log.info('✅ Audio bridge established');
     } catch (err) {
       app.log.error({ err }, '❌ Failed to establish audio bridge');
-      swSocket.close();
+      if (swSocket && typeof swSocket.close === 'function') {
+        swSocket.close();
+      }
     }
   });
 });
