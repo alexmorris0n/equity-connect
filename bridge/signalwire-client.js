@@ -11,7 +11,7 @@ class SignalWireClient {
     this.projectId = projectId;
     this.authToken = authToken;
     this.space = space;
-    this.baseUrl = `https://${space}/api/relay/rest`;
+    this.baseUrl = `https://${space}/api/laml/2010-04-01/Accounts/${projectId}`;
   }
 
   /**
@@ -36,7 +36,7 @@ class SignalWireClient {
       })
     });
 
-    const apiUrl = `${this.baseUrl}/calls`;
+    const apiUrl = `${this.baseUrl}/Calls.json`;
     console.log('📞 SignalWire API Request:', {
       url: apiUrl,
       from,
