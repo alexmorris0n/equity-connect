@@ -18,8 +18,9 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 import httpx
+import uvicorn
 from fastmcp import Context, FastMCP
-from fastmcp.server.transports.sse import SSETransport
+from fastmcp.server.http import create_sse_app
 from pydantic import BaseModel, Field, ValidationError, root_validator
 
 
@@ -491,32 +492,20 @@ async def batch_skip_trace(
         return BatchSkipTraceResponse(successful=successful, failed=failed, stats=stats).dict()
 
 
-def _bearer_auth_middleware(transport: SSETransport) -> SSETransport:
-    token = config.get("bearer_token")
-    if not token:
-        return transport
-
-    original_handle_request = transport.handle_request
-
-    async def handle_request(request):
-        auth = request.headers.get("authorization") or ""
-        if auth.lower() != f"bearer {token.lower()}":
-            return transport.response_class(status_code=401, body=b"Unauthorized")
-        return await original_handle_request(request)
-
-    transport.handle_request = handle_request
-    return transport
-
-
-async def app():
-    transport = SSETransport(host=config["host"], port=config["port"])
-    transport = _bearer_auth_middleware(transport)
-    await mcp.serve(transport)
+app = create_sse_app(
+    server=mcp,
+    message_path="/mcp/messages",
+    sse_path="/mcp/sse",
+    auth=None,
+    debug=config["enable_debug"],
+)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(app())
-    except KeyboardInterrupt:
-        pass
+    uvicorn.run(
+        app,
+        host=config["host"],
+        port=config["port"],
+        log_level="debug" if config["enable_debug"] else "info",
+    )
 
