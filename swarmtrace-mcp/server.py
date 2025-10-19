@@ -22,6 +22,8 @@ import uvicorn
 from fastmcp import Context, FastMCP
 from fastmcp.server.http import create_sse_app
 from pydantic import BaseModel, Field, ValidationError, root_validator
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
 
 
 logger = logging.getLogger(__name__)
@@ -492,12 +494,17 @@ async def batch_skip_trace(
         return BatchSkipTraceResponse(successful=successful, failed=failed, stats=stats).dict()
 
 
+def healthcheck(_request):
+    return PlainTextResponse("ok")
+
+
 app = create_sse_app(
     server=mcp,
     message_path="/mcp/messages",
     sse_path="/mcp/sse",
     auth=None,
     debug=config["enable_debug"],
+    routes=[Route("/health", endpoint=healthcheck, methods=["GET"])],
 )
 
 
