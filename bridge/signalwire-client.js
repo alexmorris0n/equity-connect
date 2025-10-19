@@ -33,7 +33,15 @@ class SignalWireClient {
       ...(statusCallback && { StatusCallback: statusCallback })
     });
 
-    const response = await fetch(`${this.baseUrl}/Calls.json`, {
+    const apiUrl = `${this.baseUrl}/Calls.json`;
+    console.log('📞 SignalWire API Request:', {
+      url: apiUrl,
+      from,
+      to,
+      callbackUrl: url
+    });
+
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -42,8 +50,15 @@ class SignalWireClient {
       body: body.toString()
     });
 
+    console.log('📡 SignalWire API Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type')
+    });
+
     if (!response.ok) {
       const error = await response.text();
+      console.error('❌ SignalWire API Error:', error);
       throw new Error(`SignalWire API error: ${response.status} - ${error}`);
     }
 
