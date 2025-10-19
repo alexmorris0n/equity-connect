@@ -218,6 +218,12 @@ class AudioBridge {
         this.logger.info('🔊 AI finished speaking');
         break;
       
+      case 'response.output_item.done':
+        // Barbara finished speaking an item (could be mid-response)
+        this.lastResponseAt = Date.now();
+        console.log('✅ Output item completed, tracking for auto-resume');
+        break;
+      
       case 'response.done':
       case 'response.completed':
         // Track when Barbara finished speaking
@@ -226,19 +232,21 @@ class AudioBridge {
         break;
       
       case 'response.interrupted':
-        // Barbara was interrupted - track it and allow auto-resume
-        this.lastResponseAt = Date.now();
-        console.log('⚠️ Response interrupted, will auto-resume if caller stays silent');
+        // Barbara was interrupted - don't auto-resume immediately, let VAD handle it
+        console.log('⚠️ Response interrupted, VAD will handle resume');
+        // Don't reset lastResponseAt here - let auto-resume work after VAD timeout
         break;
       
       case 'input_audio_buffer.speech_started':
         // User started speaking
         this.userSpeaking = true;
+        console.log('👤 User started speaking');
         break;
       
       case 'input_audio_buffer.speech_stopped':
         // User stopped speaking
         this.userSpeaking = false;
+        console.log('👤 User stopped speaking');
         break;
 
       case 'response.function_call_arguments.done':
@@ -324,17 +332,21 @@ class AudioBridge {
     this.autoResumeInterval = setInterval(() => {
       const idleTime = Date.now() - this.lastResponseAt;
       
-      // If Barbara stopped talking more than 1.5 seconds ago
+      // If Barbara stopped talking more than 3.5 seconds ago
       // and user is NOT currently speaking
+      // and Barbara has spoken at least once (lastResponseAt > 0)
       // auto-resume the conversation
-      if (idleTime > 1500 && !this.userSpeaking && this.lastResponseAt > 0) {
+      // 
+      // Why 3.5s? VAD silence_duration is 2s, so we wait 1.5s after VAD
+      // would have triggered to ensure we don't interrupt seniors who pause to think
+      if (idleTime > 3500 && !this.userSpeaking && this.lastResponseAt > 0) {
         console.log('🔄 Auto-resuming conversation after', idleTime, 'ms idle');
         this.resumeConversation();
         this.lastResponseAt = 0; // Reset to prevent rapid re-triggers
       }
     }, 500);
     
-    console.log('✅ Auto-resume monitor started');
+    console.log('✅ Auto-resume monitor started (3.5s threshold)');
   }
   
   /**
