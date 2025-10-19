@@ -242,12 +242,14 @@ async function getLeadContext({ phone }) {
   
   // Normalize phone number (strip non-digits)
   const normalizedPhone = phone.replace(/\D/g, '');
+  const last10 = normalizedPhone.slice(-10);
   
-  // Query lead by phone (partial match on last 10 digits)
+  // Query lead by phone - try multiple formats since database might have dashes
+  // Match patterns: 6505300051, 650-530-0051, +16505300051, (650) 530-0051
   const { data: leads, error: leadError } = await sb
     .from('leads')
     .select('*, brokers(*)')
-    .or(`primary_phone.ilike.%${normalizedPhone.slice(-10)}`)
+    .or(`primary_phone.ilike.%${last10}%,primary_phone.ilike.%${last10.slice(0,3)}-${last10.slice(3,6)}-${last10.slice(6)}%`)
     .limit(1);
   
   if (leadError) {
