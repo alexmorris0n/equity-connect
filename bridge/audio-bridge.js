@@ -329,8 +329,19 @@ class AudioBridge {
     switch (msg.event) {
       case 'start':
         this.callSid = msg.start.callSid;
+        
+        // Extract caller phone from SignalWire customParameters
+        const cp = msg.start?.customParameters || {};
+        if (cp.from) {
+          this.callContext.from = cp.from;
+          console.log('📞 Caller phone extracted:', cp.from);
+        }
+        if (cp.to) {
+          this.callContext.to = cp.to;
+        }
+        
         console.log('📞 Call started, CallSid:', this.callSid);
-        this.logger.info({ callSid: this.callSid }, '📞 Call started');
+        this.logger.info({ callSid: this.callSid, from: this.callContext.from }, '📞 Call started');
         
         // Trigger initial greeting
         if (this.sessionConfigured) {
@@ -435,6 +446,89 @@ class AudioBridge {
   }
 
   /**
+   * Force lead context lookup and inject as system message
+   * This guarantees Barbara has real data before her second turn
+   */
+  async forceLeadContextLookup() {
+    const phone = this.callContext.from;
+    
+    if (!phone) {
+      console.log('⚠️ No caller phone available - skipping lead lookup');
+      return;
+    }
+    
+    console.log('🔍 Force-calling get_lead_context for phone:', phone);
+    this.logger.info({ phone }, '🔍 Forcing lead context lookup');
+    
+    try {
+      const { executeTool } = require('./tools');
+      const result = await executeTool('get_lead_context', { phone });
+      
+      console.log('✅ Lead context retrieved:', JSON.stringify(result).substring(0, 200));
+      this.logger.info({ result }, '✅ Lead context retrieved');
+      
+      // Build silent system message with real data
+      let contextMessage = 'CALLER INFORMATION (use this real data, do not make up names or details):\n';
+      
+      if (result?.found) {
+        contextMessage += `- First name: ${result.raw?.first_name || 'Unknown'}\n`;
+        contextMessage += `- Last name: ${result.raw?.last_name || 'Unknown'}\n`;
+        contextMessage += `- City: ${result.raw?.property_city || 'Unknown'}\n`;
+        contextMessage += `- Status: ${result.raw?.status || 'new'}\n`;
+        
+        if (result.broker_id) {
+          // Extract broker first name from context or fetch it
+          const brokerMatch = result.context?.match(/broker.*?([A-Z][a-z]+)/i);
+          const brokerName = brokerMatch ? brokerMatch[1] : 'Unknown';
+          contextMessage += `- Assigned broker first name: ${brokerName}\n`;
+        }
+        
+        contextMessage += '\nCRITICAL: This is a RETURNING CALLER. Use their real name and city. Follow the STATUS flow in your instructions.';
+        
+        // Store IDs for later tool calls
+        this.callContext.lead_id = result.lead_id;
+        this.callContext.broker_id = result.broker_id;
+      } else {
+        contextMessage += '- Status: NEW CALLER (not in database)\n';
+        contextMessage += '\nThis is a first-time caller. Ask for their name and continue with Step 1.';
+      }
+      
+      // Inject as silent system message
+      this.openaiSocket.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'system',
+          content: [{
+            type: 'input_text',
+            text: contextMessage
+          }]
+        }
+      }));
+      
+      console.log('💉 Lead context injected into conversation');
+      this.logger.info('💉 Lead context injected successfully');
+      
+    } catch (err) {
+      console.error('❌ Force lead lookup failed:', err.message);
+      this.logger.error({ err }, '❌ Force lead lookup failed');
+      
+      // Inject fallback message
+      this.openaiSocket.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'system',
+          content: [{
+            type: 'input_text',
+            text: 'Lead data unavailable. Treat as new caller - ask for their name.'
+          }]
+        }
+      }));
+    }
+  }
+
+  /**
    * Start conversation with initial greeting
    */
   startConversation() {
@@ -481,6 +575,9 @@ class AudioBridge {
         this.responseInProgress = true;  // Track that response is starting
         console.log('✅ Step 2: response.create sent (Barbara should now speak!)');
         this.logger.info('🎯 Conversation started with explicit greeting trigger');
+        
+        // Step 3: Force lead lookup in parallel so context is ready for turn 2
+        setTimeout(() => this.forceLeadContextLookup(), 50);
       }, 500);
     } else {
       console.error('❌ Cannot start conversation - OpenAI socket not ready');

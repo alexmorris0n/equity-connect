@@ -91,7 +91,10 @@ app.get('/healthz', async (request, reply) => {
  * SignalWire calls this when an inbound call arrives
  */
 app.get('/public/inbound-xml', async (request, reply) => {
+  const { From, To } = request.query || {};
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+  
+  fastify.log.info({ From, To }, '📞 Inbound call XML requested');
   
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -99,6 +102,8 @@ app.get('/public/inbound-xml', async (request, reply) => {
     <Stream url="${wsUrl}/audiostream" codec="L16@24000h">
       <Parameter name="track" value="both_tracks" />
       <Parameter name="silenceDetection" value="false" />
+      ${From ? `<Parameter name="from" value="${From}" />` : ''}
+      ${To ? `<Parameter name="to" value="${To}" />` : ''}
     </Stream>
   </Connect>
 </Response>`;
