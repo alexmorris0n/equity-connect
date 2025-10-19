@@ -515,17 +515,19 @@ def healthcheck(_request):
     return PlainTextResponse("ok")
 
 
+MESSAGE_PATH = "/mcp/messages/"
+SSE_PATH = "/mcp/sse"
+
+
 app = create_sse_app(
     server=mcp,
-    message_path="/mcp/messages",
-    sse_path="/mcp/sse",
+    message_path=MESSAGE_PATH,
+    sse_path=SSE_PATH,
     auth=None,
     debug=config["enable_debug"],
     routes=[Route("/health", endpoint=healthcheck, methods=["GET"])],
     middleware=[Middleware(EnsureJsonContentTypeMiddleware)],
 )
-
-app.router.redirect_slashes = False
 
 
 if __name__ == "__main__":
