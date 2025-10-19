@@ -23,13 +23,14 @@ class SignalWireClient {
    * @param {string} [params.statusCallback] - Webhook for call status updates
    * @returns {Promise<object>} - Call details
    */
-  async createCall({ to, from, url, statusCallback }) {
+  async createCall({ to, from, url, statusCallback, resourceId }) {
     const auth = Buffer.from(`${this.projectId}:${this.authToken}`).toString('base64');
     
     const body = new URLSearchParams({
       From: from,
       To: to,
       Url: url,
+      ...(resourceId && { Application: resourceId }),
       ...(statusCallback && { StatusCallback: statusCallback })
     });
 
@@ -39,6 +40,7 @@ class SignalWireClient {
       from,
       to,
       callbackUrl: url,
+      resourceId,
       authHeader: `Basic ${auth}`,
       bodyLength: body.toString().length
     });

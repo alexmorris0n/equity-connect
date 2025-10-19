@@ -377,7 +377,8 @@ app.post('/api/outbound-call', async (request, reply) => {
       to: normalizedPhone,
       from: selectedNumber.number,
       url: `${BRIDGE_URL}/public/outbound-xml?call_id=${callId}`,
-      statusCallback: `${BRIDGE_URL}/api/call-status`
+      statusCallback: `${BRIDGE_URL}/api/call-status`,
+      resourceId: '2a75dd38-4f1a-4670-8776-1d13c3b25985' // Barbara Outbound resource ID
     });
 
     // Store by SignalWire CallSid for status callbacks
