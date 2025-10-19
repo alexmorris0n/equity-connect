@@ -228,7 +228,7 @@ async function getLeadContext({ phone }) {
   const { data: leads, error: leadError } = await sb
     .from('leads')
     .select('*, brokers(*)')
-    .or(`phone.ilike.%${normalizedPhone.slice(-10)}`)
+    .or(`primary_phone.ilike.%${normalizedPhone.slice(-10)}`)
     .limit(1);
   
   if (leadError) {

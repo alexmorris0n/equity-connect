@@ -151,7 +151,7 @@ class AudioBridge {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
-        voice: 'shimmer',
+        voice: 'sage',
         instructions: instructions,
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
