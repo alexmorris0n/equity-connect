@@ -320,6 +320,14 @@ class AudioBridge {
       case 'error':
         console.error('❌ OpenAI error event:', JSON.stringify(event.error));
         this.logger.error({ error: event.error }, '❌ OpenAI error');
+        
+        // Handle rate limit errors specifically
+        if (event.error?.code === 'rate_limit_exceeded') {
+          console.error('🚨 RATE LIMIT EXCEEDED - Too many calls to OpenAI API');
+          this.logger.error('🚨 Rate limit exceeded - check OpenAI account tier and usage');
+          // Gracefully end the call
+          this.cleanup();
+        }
         break;
     }
   }
