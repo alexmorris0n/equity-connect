@@ -46,7 +46,8 @@ const toolDefinitions = [
           description: 'Phone number of the lead (E.164 format or any format)'
         }
       },
-      required: ['phone']
+      required: ['phone'],
+      additionalProperties: false
     }
   },
   {
@@ -61,7 +62,8 @@ const toolDefinitions = [
           description: 'The question or topic to search for (e.g., "what if they still have a mortgage", "costs and fees", "will they lose their home")'
         }
       },
-      required: ['question']
+      required: ['question'],
+      additionalProperties: false
     }
   },
   {
@@ -76,7 +78,8 @@ const toolDefinitions = [
           description: 'Lead UUID from get_lead_context'
         }
       },
-      required: ['lead_id']
+      required: ['lead_id'],
+      additionalProperties: false
     }
   },
   {
@@ -115,7 +118,8 @@ const toolDefinitions = [
           description: 'Whether property is owner-occupied primary residence'
         }
       },
-      required: ['lead_id']
+      required: ['lead_id'],
+      additionalProperties: false
     }
   },
   {
@@ -140,7 +144,8 @@ const toolDefinitions = [
           description: 'Preferred time of day if lead expressed preference'
         }
       },
-      required: ['broker_id']
+      required: ['broker_id'],
+      additionalProperties: false
     }
   },
   {
@@ -167,7 +172,8 @@ const toolDefinitions = [
           description: 'Any notes about the appointment or lead preferences'
         }
       },
-      required: ['lead_id', 'broker_id', 'scheduled_for']
+      required: ['lead_id', 'broker_id', 'scheduled_for'],
+      additionalProperties: false
     }
   },
   {
@@ -203,7 +209,8 @@ const toolDefinitions = [
           description: 'SignalWire recording URL if available'
         }
       },
-      required: ['lead_id', 'outcome']
+      required: ['lead_id', 'outcome'],
+      additionalProperties: false
     }
   }
 ];
