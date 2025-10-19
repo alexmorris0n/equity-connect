@@ -19,7 +19,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 from fastmcp import Context, FastMCP
-# from fastmcp.server.transports.sse import SSETransport
+from fastmcp.server.transports.sse import SSETransport
 from pydantic import BaseModel, Field, ValidationError, root_validator
 
 
