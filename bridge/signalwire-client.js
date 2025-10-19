@@ -30,11 +30,13 @@ class SignalWireClient {
       From: from,
       To: to,
       Url: url,
-      ...(resourceId && { Application: resourceId }),
-      ...(statusCallback && { StatusCallback: statusCallback })
+      ...(statusCallback && { 
+        StatusCallback: statusCallback,
+        StatusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
+      })
     });
 
-    const apiUrl = `${this.baseUrl}/Calls.json`;
+    const apiUrl = `${this.baseUrl}/calls`;
     console.log('📞 SignalWire API Request:', {
       url: apiUrl,
       from,
