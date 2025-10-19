@@ -129,15 +129,14 @@ app.get('/public/outbound-xml', async (request, reply) => {
   
   app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested (GET)');
   
-  // Use exact same format as working inbound
+  // Use exact same format as working inbound (minimal parameters only)
+  const safeCallId = call_id || '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="L16@24000h">
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@24000h">
       <Parameter name="track" value="both_tracks" />
       <Parameter name="silenceDetection" value="false" />
-      <Parameter name="from" value="${From}" />
-      <Parameter name="to" value="${To}" />
     </Stream>
   </Connect>
 </Response>`;
@@ -154,15 +153,14 @@ app.post('/public/outbound-xml', async (request, reply) => {
   
   app.log.info({ call_id, from: From, to: To, body: request.body }, '📞 Outbound call LaML requested (POST)');
   
-  // Return LaML XML for bidirectional streaming (exact match to working inbound format)
+  // Return LaML XML for bidirectional streaming (minimal - match inbound exactly)
+  const safeCallId = call_id || '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="L16@24000h">
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@24000h">
       <Parameter name="track" value="both_tracks" />
       <Parameter name="silenceDetection" value="false" />
-      <Parameter name="from" value="${From}" />
-      <Parameter name="to" value="${To}" />
     </Stream>
   </Connect>
 </Response>`;
