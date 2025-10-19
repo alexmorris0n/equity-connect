@@ -124,6 +124,25 @@ const toolDefinitions = [
   },
   {
     type: 'function',
+    name: 'find_broker_by_territory',
+    description: 'Find the appropriate broker for a lead based on their city or ZIP code. Use this for new callers who need broker assignment before booking.',
+    parameters: {
+      type: 'object',
+      properties: {
+        city: {
+          type: 'string',
+          description: 'City name (e.g., "Inglewood", "Tampa")'
+        },
+        zip_code: {
+          type: 'string',
+          description: 'ZIP code if known'
+        }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    type: 'function',
     name: 'check_broker_availability',
     description: 'Check broker calendar availability for appointment scheduling. Returns available time slots for the next 7 days.',
     parameters: {
@@ -321,6 +340,66 @@ async function updateLeadInfo({ lead_id, ...updates }) {
     message: 'Lead information updated',
     updated_fields: Object.keys(updates)
   };
+}
+
+/**
+ * Tool Handler: Find Broker by Territory
+ */
+async function findBrokerByTerritory({ city, zip_code }) {
+  const sb = initSupabase();
+  
+  try {
+    // Query broker_territories table
+    let query = sb
+      .from('broker_territories')
+      .select('broker_id, brokers(id, contact_name, company_name, phone)')
+      .eq('active', true);
+    
+    // Search by ZIP code first (most precise)
+    if (zip_code) {
+      query = query.eq('zip_code', zip_code);
+    } 
+    // Fallback to city/market name
+    else if (city) {
+      query = query.or(`market_name.ilike.%${city}%,neighborhood_name.ilike.%${city}%`);
+    }
+    
+    const { data, error } = await query.limit(1).single();
+    
+    if (error || !data) {
+      // Default to Walter if no territory match
+      const defaultBroker = await sb
+        .from('brokers')
+        .select('id, contact_name, company_name')
+        .eq('id', '6a3c5ed5-664a-4e13-b019-99fe8db74174')
+        .single();
+      
+      return {
+        found: true,
+        broker_id: defaultBroker.data.id,
+        broker_name: defaultBroker.data.contact_name.split(' ')[0], // First name only
+        company_name: defaultBroker.data.company_name,
+        message: `Assigned to default broker ${defaultBroker.data.contact_name} (no specific territory match for ${city || zip_code})`
+      };
+    }
+    
+    const broker = data.brokers;
+    return {
+      found: true,
+      broker_id: broker.id,
+      broker_name: broker.contact_name.split(' ')[0], // First name only
+      company_name: broker.company_name,
+      territory: city || zip_code,
+      message: `Found broker ${broker.contact_name} for territory ${city || zip_code}`
+    };
+    
+  } catch (err) {
+    return { 
+      found: false, 
+      error: err.message,
+      message: 'Unable to assign broker - will use default'
+    };
+  }
 }
 
 /**
@@ -593,6 +672,8 @@ async function executeTool(functionName, args) {
       return await checkConsentDNC(args);
     case 'update_lead_info':
       return await updateLeadInfo(args);
+    case 'find_broker_by_territory':
+      return await findBrokerByTerritory(args);
     case 'check_broker_availability':
       return await checkBrokerAvailability(args);
     case 'book_appointment':

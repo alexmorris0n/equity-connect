@@ -450,19 +450,77 @@ class AudioBridge {
    * This guarantees Barbara has real data before her second turn
    */
   async forceLeadContextLookup() {
-    const phone = this.callContext.from;
+    const callerPhone = this.callContext.from;
+    const signalwireNumber = this.callContext.to;
     
-    if (!phone) {
+    if (!callerPhone) {
       console.log('⚠️ No caller phone available - skipping lead lookup');
       return;
     }
     
-    console.log('🔍 Force-calling get_lead_context for phone:', phone);
-    this.logger.info({ phone }, '🔍 Forcing lead context lookup');
+    // Store caller phone for booking/logging
+    this.callerPhone = callerPhone;
+    
+    console.log('🔍 Force-calling get_lead_context for phone:', callerPhone);
+    console.log('📞 SignalWire number called:', signalwireNumber);
+    this.logger.info({ callerPhone, signalwireNumber }, '🔍 Forcing lead context lookup');
     
     try {
-      const { executeTool } = require('./tools');
-      const result = await executeTool('get_lead_context', { phone });
+      const { executeTool, initSupabase } = require('./tools');
+      
+      // First, look up which broker owns this SignalWire number
+      let assignedBrokerId = null;
+      let assignedBrokerName = null;
+      const DEFAULT_BROKER_ID = '6a3c5ed5-664a-4e13-b019-99fe8db74174'; // Walter - fallback
+      const DEFAULT_BROKER_NAME = 'Walter';
+      
+      if (signalwireNumber) {
+        const sb = initSupabase();
+        
+        try {
+          const { data: swNumber, error: swError } = await sb
+            .from('signalwire_phone_numbers')
+            .select('assigned_broker_company')
+            .eq('number', signalwireNumber)
+            .single();
+          
+          if (swError) {
+            console.log('⚠️ SignalWire number not found in database, using default broker');
+            assignedBrokerId = DEFAULT_BROKER_ID;
+            assignedBrokerName = DEFAULT_BROKER_NAME;
+          } else if (swNumber?.assigned_broker_company) {
+            const { data: broker, error: brokerError } = await sb
+              .from('brokers')
+              .select('id, contact_name')
+              .eq('company_name', swNumber.assigned_broker_company)
+              .eq('status', 'active')
+              .single();
+            
+            if (brokerError || !broker) {
+              console.log('⚠️ Broker not found for company, using default');
+              assignedBrokerId = DEFAULT_BROKER_ID;
+              assignedBrokerName = DEFAULT_BROKER_NAME;
+            } else {
+              assignedBrokerId = broker.id;
+              assignedBrokerName = broker.contact_name.split(' ')[0]; // First name only
+              console.log('🏢 Broker assigned by SignalWire number:', assignedBrokerName);
+              this.logger.info({ brokerId: assignedBrokerId, brokerName: assignedBrokerName }, '🏢 Broker assigned by phone number');
+            }
+          }
+        } catch (err) {
+          console.error('❌ Broker lookup error, using default:', err.message);
+          assignedBrokerId = DEFAULT_BROKER_ID;
+          assignedBrokerName = DEFAULT_BROKER_NAME;
+        }
+      } else {
+        // No SignalWire number available, use default
+        console.log('⚠️ No SignalWire number in context, using default broker');
+        assignedBrokerId = DEFAULT_BROKER_ID;
+        assignedBrokerName = DEFAULT_BROKER_NAME;
+      }
+      
+      // Now look up the lead
+      const result = await executeTool('get_lead_context', { phone: callerPhone });
       
       console.log('✅ Lead context retrieved:', JSON.stringify(result).substring(0, 200));
       this.logger.info({ result }, '✅ Lead context retrieved');
@@ -471,26 +529,46 @@ class AudioBridge {
       let contextMessage = 'CALLER INFORMATION (use this real data, do not make up names or details):\n';
       
       if (result?.found) {
+        // RETURNING CALLER - Use their existing data
         contextMessage += `- First name: ${result.raw?.first_name || 'Unknown'}\n`;
         contextMessage += `- Last name: ${result.raw?.last_name || 'Unknown'}\n`;
+        contextMessage += `- Phone: ${callerPhone}\n`;
         contextMessage += `- City: ${result.raw?.property_city || 'Unknown'}\n`;
         contextMessage += `- Status: ${result.raw?.status || 'new'}\n`;
         
-        if (result.broker_id) {
-          // Extract broker first name from context or fetch it
-          const brokerMatch = result.context?.match(/broker.*?([A-Z][a-z]+)/i);
-          const brokerName = brokerMatch ? brokerMatch[1] : 'Unknown';
-          contextMessage += `- Assigned broker first name: ${brokerName}\n`;
+        // Use lead's assigned broker if they have one, otherwise use SignalWire number's broker
+        const finalBrokerId = result.broker_id || assignedBrokerId;
+        const finalBrokerName = result.broker_id 
+          ? (result.context?.match(/broker.*?([A-Z][a-z]+)/i)?.[1] || assignedBrokerName)
+          : assignedBrokerName;
+        
+        if (finalBrokerId) {
+          contextMessage += `- Assigned broker first name: ${finalBrokerName}\n`;
+          contextMessage += `- Broker ID for booking: ${finalBrokerId}\n`;
+          this.callContext.broker_id = finalBrokerId;
         }
         
         contextMessage += '\nCRITICAL: This is a RETURNING CALLER. Use their real name and city. Follow the STATUS flow in your instructions.';
         
-        // Store IDs for later tool calls
+        // Store lead ID and phone for tool calls
         this.callContext.lead_id = result.lead_id;
-        this.callContext.broker_id = result.broker_id;
+        this.callContext.caller_phone = callerPhone;
       } else {
+        // NEW CALLER - Create minimal lead record and use SignalWire number's broker
         contextMessage += '- Status: NEW CALLER (not in database)\n';
-        contextMessage += '\nThis is a first-time caller. Ask for their name and continue with Step 1.';
+        contextMessage += `- Phone: ${callerPhone}\n`;
+        
+        if (assignedBrokerId) {
+          contextMessage += `- Assigned broker: ${assignedBrokerName}\n`;
+          contextMessage += `- Broker ID for booking: ${assignedBrokerId}\n`;
+          this.callContext.broker_id = assignedBrokerId;
+        }
+        
+        contextMessage += '\nThis is a first-time caller. Ask for their name and continue with Step 1. When booking, use the broker ID above.';
+        
+        // Store phone for creating lead record later
+        this.callContext.caller_phone = callerPhone;
+        this.callContext.is_new_lead = true;
       }
       
       // Inject as silent system message
