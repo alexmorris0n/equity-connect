@@ -33,6 +33,9 @@ class AudioBridge {
     this.sessionConfigured = false;
     this.callStartTime = Date.now();
     this.callSid = null;
+    this.lastResponseAt = 0;
+    this.userSpeaking = false;
+    this.autoResumeInterval = null;
   }
 
   /**
@@ -49,7 +52,7 @@ class AudioBridge {
 
     console.log('🔵 Creating OpenAI WebSocket connection...');
     this.openaiSocket = new WebSocket(
-      'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
+      'wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28',
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -81,6 +84,9 @@ class AudioBridge {
         console.log('🔵 Triggering initial response after 1 second...');
         this.startConversation();
       }, 1000);
+      
+      // Start auto-resume monitor to prevent Barbara from dying out
+      this.startAutoResumeMonitor();
     });
 
     this.openaiSocket.on('message', async (data) => {
@@ -211,6 +217,29 @@ class AudioBridge {
       case 'response.audio.done':
         this.logger.info('🔊 AI finished speaking');
         break;
+      
+      case 'response.done':
+      case 'response.completed':
+        // Track when Barbara finished speaking
+        this.lastResponseAt = Date.now();
+        console.log('✅ Response completed, tracking for auto-resume');
+        break;
+      
+      case 'response.interrupted':
+        // Barbara was interrupted - track it and allow auto-resume
+        this.lastResponseAt = Date.now();
+        console.log('⚠️ Response interrupted, will auto-resume if caller stays silent');
+        break;
+      
+      case 'input_audio_buffer.speech_started':
+        // User started speaking
+        this.userSpeaking = true;
+        break;
+      
+      case 'input_audio_buffer.speech_stopped':
+        // User stopped speaking
+        this.userSpeaking = false;
+        break;
 
       case 'response.function_call_arguments.done':
         // Execute tool call
@@ -284,6 +313,39 @@ class AudioBridge {
       console.log('✅ Audio sent to SignalWire');
     } else {
       console.error('❌ Cannot send audio - SignalWire socket not open, state:', this.swSocket.readyState);
+    }
+  }
+
+  /**
+   * Start auto-resume monitor to prevent Barbara from dying out
+   */
+  startAutoResumeMonitor() {
+    // Check every 500ms if we need to resume conversation
+    this.autoResumeInterval = setInterval(() => {
+      const idleTime = Date.now() - this.lastResponseAt;
+      
+      // If Barbara stopped talking more than 1.5 seconds ago
+      // and user is NOT currently speaking
+      // auto-resume the conversation
+      if (idleTime > 1500 && !this.userSpeaking && this.lastResponseAt > 0) {
+        console.log('🔄 Auto-resuming conversation after', idleTime, 'ms idle');
+        this.resumeConversation();
+        this.lastResponseAt = 0; // Reset to prevent rapid re-triggers
+      }
+    }, 500);
+    
+    console.log('✅ Auto-resume monitor started');
+  }
+  
+  /**
+   * Resume conversation after interruption or unexpected silence
+   */
+  resumeConversation() {
+    if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+      console.log('🔄 Sending response.create to resume conversation');
+      this.openaiSocket.send(JSON.stringify({
+        type: 'response.create'
+      }));
     }
   }
 
@@ -401,6 +463,13 @@ class AudioBridge {
    */
   cleanup() {
     this.logger.info('🧹 Cleaning up audio bridge');
+    
+    // Clear auto-resume interval
+    if (this.autoResumeInterval) {
+      clearInterval(this.autoResumeInterval);
+      this.autoResumeInterval = null;
+      console.log('✅ Auto-resume monitor stopped');
+    }
     
     try {
       if (this.openaiSocket && this.openaiSocket.readyState === WebSocket.OPEN) {

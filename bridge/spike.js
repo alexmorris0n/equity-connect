@@ -71,7 +71,7 @@ app.register(async function (fastify) {
     
     // Connect to OpenAI Realtime API
 const openaiWS = new WebSocket(
-  'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
+  'wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28',
       {
         headers: {
           'Authorization': `Bearer ${OPENAI_API_KEY}`,
