@@ -41,17 +41,25 @@ class SignalWireClient {
       callbackUrl: url
     });
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${auth}`
-      },
-      body: body.toString()
-    });
+    let response;
+    let responseText;
+    
+    try {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${auth}`
+        },
+        body: body.toString()
+      });
 
-    // Read response body as text first for debugging
-    const responseText = await response.text();
+      // Read response body as text first for debugging
+      responseText = await response.text();
+    } catch (fetchError) {
+      console.error('❌ Fetch error:', fetchError.message);
+      throw new Error(`Failed to connect to SignalWire: ${fetchError.message}`);
+    }
     
     console.log('📡 SignalWire API Response:', {
       status: response.status,
