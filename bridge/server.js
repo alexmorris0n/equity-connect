@@ -148,9 +148,12 @@ app.get('/public/outbound-xml', async (request, reply) => {
 
 app.post('/public/outbound-xml', async (request, reply) => {
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
-  const { call_id, From, To } = request.query;
   
-  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested (POST)');
+  // SignalWire sends call_id in query, From/To in POST body
+  const { call_id } = request.query;
+  const { From, To } = request.body || {};
+  
+  app.log.info({ call_id, from: From, to: To, body: request.body }, '📞 Outbound call LaML requested (POST)');
   
   // Return LaML XML format for streaming (matching working inbound config)
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -159,8 +162,8 @@ app.post('/public/outbound-xml', async (request, reply) => {
     <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="L16@24000h" track="both_tracks" silenceDetection="false">
       <Parameter name="direction" value="outbound" />
       <Parameter name="call_id" value="${call_id}" />
-      <Parameter name="from" value="${From}" />
-      <Parameter name="to" value="${To}" />
+      <Parameter name="from" value="${From || 'unknown'}" />
+      <Parameter name="to" value="${To || 'unknown'}" />
     </Stream>
   </Connect>
 </Response>`;
