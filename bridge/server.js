@@ -278,6 +278,7 @@ app.post('/api/outbound-call', async (request, reply) => {
 
     // Normalize phone number to E.164
     const normalizedPhone = normalizeToE164(to_phone);
+    app.log.info({ to_phone, normalizedPhone }, 'Phone normalization');
     if (!normalizedPhone) {
       return reply.code(200).send({ 
         success: false,
@@ -287,6 +288,7 @@ app.post('/api/outbound-call', async (request, reply) => {
 
     // Look up lead context
     const leadContext = await executeTool('get_lead_context', { phone: normalizedPhone });
+    app.log.info({ leadContext }, 'Lead context lookup result');
     if (!leadContext || !leadContext.found) {
       return reply.code(200).send({ 
         success: false,
@@ -294,7 +296,8 @@ app.post('/api/outbound-call', async (request, reply) => {
       });
     }
 
-    const leadRecord = leadContext.lead;
+    const leadRecord = leadContext;
+    app.log.info({ leadRecord, broker_id }, 'Lead record and broker_id');
     const assignedBrokerId = broker_id || leadRecord.broker_id;
 
     // Select SignalWire number for the broker
@@ -302,7 +305,7 @@ app.post('/api/outbound-call', async (request, reply) => {
     const { data: signalwireNumbers, error: numberError } = await sb
       .from('signalwire_phone_numbers')
       .select('*')
-      .eq('assigned_broker_company', leadRecord.brokers?.company_name)
+      .eq('assigned_broker_company', leadRecord.broker?.company_name)
       .eq('status', 'active')
       .limit(1);
 
@@ -341,15 +344,15 @@ app.post('/api/outbound-call', async (request, reply) => {
     const callId = crypto.randomUUID();
     
     // Store call context for when WebSocket connects
-    pendingCalls.set(callId, {
-      lead_id: leadRecord.id,
-      lead_name: leadRecord.first_name,
-      lead_city: leadRecord.property_city,
-      broker_id: assignedBrokerId,
-      to_phone: normalizedPhone,
-      from_phone: selectedNumber.number,
-      context: 'outbound'
-    });
+            pendingCalls.set(callId, {
+              lead_id: leadRecord.lead_id,
+              lead_name: leadRecord.raw.first_name,
+              lead_city: leadRecord.raw.property_city,
+              broker_id: assignedBrokerId,
+              to_phone: normalizedPhone,
+              from_phone: selectedNumber.number,
+              context: 'outbound'
+            });
 
     // Clean up old pending calls (older than 5 minutes)
     const fiveMinAgo = Date.now() - (5 * 60 * 1000);
@@ -382,7 +385,7 @@ app.post('/api/outbound-call', async (request, reply) => {
       callId, 
       to: normalizedPhone, 
       from: selectedNumber.number,
-      lead_id: leadRecord.id,
+      lead_id: leadRecord.lead_id,
       broker_id: assignedBrokerId
     }, '📞 MCP outbound call created');
 

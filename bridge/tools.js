@@ -248,7 +248,7 @@ async function getLeadContext({ phone }) {
   // Match patterns: 6505300051, 650-530-0051, +16505300051, (650) 530-0051
   const { data: leads, error: leadError } = await sb
     .from('leads')
-    .select('*, brokers(*)')
+    .select('*, brokers!assigned_broker_id(*)')
     .or(`primary_phone.ilike.%${last10}%,primary_phone.ilike.%${last10.slice(0,3)}-${last10.slice(3,6)}-${last10.slice(6)}%`)
     .limit(1);
   
@@ -270,6 +270,7 @@ async function getLeadContext({ phone }) {
     found: true,
     lead_id: lead.id,
     broker_id: lead.assigned_broker_id,
+    broker: broker, // Include broker info
     context: formattedContext,
     raw: {
       first_name: lead.first_name,
