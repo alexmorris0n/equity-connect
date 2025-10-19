@@ -13,6 +13,7 @@
 require('dotenv').config();
 const Fastify = require('fastify');
 const fastifyWebsocket = require('@fastify/websocket');
+const fastifyFormbody = require('@fastify/formbody');
 const AudioBridge = require('./audio-bridge');
 const SignalWireClient = require('./signalwire-client');
 const { initSupabase } = require('./tools');
@@ -45,8 +46,9 @@ const app = Fastify({
   }
 });
 
-// Register WebSocket support
+// Register plugins
 app.register(fastifyWebsocket);
+app.register(fastifyFormbody); // Parse application/x-www-form-urlencoded from SignalWire
 
 // Initialize SignalWire client (if credentials provided)
 let signalwire = null;
