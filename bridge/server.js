@@ -94,7 +94,7 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const { From, To } = request.query || {};
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
   
-  fastify.log.info({ From, To }, '📞 Inbound call XML requested');
+  app.log.info({ From, To }, '📞 Inbound call XML requested');
   
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
