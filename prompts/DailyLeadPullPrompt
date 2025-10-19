@@ -63,16 +63,30 @@ Call PropertyRadar:
 ```
 Store: properties
 
-## STEP 6: Enrich with BatchData
-Call BatchData:
+## STEP 6: Skip Trace with SwarmTrace MCP
+Call 🐝Swarmtrace tool `batch_skip_trace`:
 ```json
 {
-  "bd_body_json": "{\"requests\":[${properties.map(p => JSON.stringify({propertyAddress:{street:p.Address,city:p.City,state:p.State,zip:p.ZipFive}})).join(',')}]}"
+  "tool": "batch_skip_trace",
+  "args": {
+    "properties": [${properties.map(p => JSON.stringify({
+      property_address: p.Address,
+      property_city: p.City,
+      property_state: p.State,
+      property_zip: p.ZipFive,
+      firstname: p.OwnerFirstName,
+      lastname: p.OwnerLastName
+    })).join(',')}]
+  }
 }
 ```
-Store: enrichments
+Store: skiptrace_results
 
 ## STEP 7: Insert to DB
+Merge `properties` with `skiptrace_results` (use the first contact record when available):
+- `primary_email`: first email found at `contacts[0].emails[0].email`
+- `primary_phone`: first phone found at `contacts[0].phones[0].phonenumber`
+- Default to null if contacts array empty
 Build INSERT with these EXACT column names:
 ```
 INSERT INTO leads (
