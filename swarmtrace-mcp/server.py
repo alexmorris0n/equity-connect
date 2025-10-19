@@ -21,7 +21,7 @@ import httpx
 import uvicorn
 from fastmcp import Context, FastMCP
 from fastmcp.server.http import create_sse_app
-from pydantic import BaseModel, Field, ValidationError, root_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from starlette.middleware import Middleware
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 SWARMTRACE_BASE_URL = "https://skiptracepublicapi.swarmalytics.com"
 SKIPTRACE_ENDPOINT = "/skiptrace"
+MESSAGE_PATH = "/mcp/messages/"
+SSE_PATH = "/mcp/sse"
 
 
 class PropertyInput(BaseModel):
@@ -40,22 +42,22 @@ class PropertyInput(BaseModel):
     address: str | None = Field(
         default=None,
         description="Street address (alias for property_address)",
-        example="123 Main St",
+        json_schema_extra={"example": "123 Main St"},
     )
     city: str | None = Field(
         default=None,
         description="City (alias for property_city)",
-        example="Austin",
+        json_schema_extra={"example": "Austin"},
     )
     state: str | None = Field(
         default=None,
         description="State (alias for property_state)",
-        example="TX",
+        json_schema_extra={"example": "TX"},
     )
     zip: str | None = Field(
         default=None,
         description="ZIP code (alias for property_zip)",
-        example="78701",
+        json_schema_extra={"example": "78701"},
     )
 
     property_address: str | None = Field(
@@ -84,9 +86,11 @@ class PropertyInput(BaseModel):
         description="Optional last name",
     )
 
-    @root_validator(pre=True)
-    def ensure_required_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
-        # Normalize aliases to property_* keys for validation
+    @model_validator(mode="before")
+    def ensure_required_fields(cls, values: Any):
+        if not isinstance(values, dict):
+            return values
+
         normalized = _normalize_property(values)
         missing = [
             field
@@ -94,11 +98,9 @@ class PropertyInput(BaseModel):
             if not normalized.get(field)
         ]
         if missing:
-            raise ValueError(
-                "Missing required property fields: " + ", ".join(missing)
-            )
-        # Return the merged dict so the model holds both alias and canonical keys
-        return {**values, **normalized}
+            raise ValueError("Missing required property fields: " + ", ".join(missing))
+        merged = {**values, **normalized}
+        return merged
 
 
 class BatchSkipTraceArgs(BaseModel):
@@ -148,12 +150,30 @@ class EnsureJsonContentTypeMiddleware:
     async def __call__(self, scope, receive, send):
         if scope.get("type") == "http" and scope.get("method") == "POST":
             path = scope.get("path", "")
-            if path.startswith("/mcp/messages"):
+            if path.startswith(MESSAGE_PATH.rstrip("/")):
                 headers = list(scope.get("headers", []))
                 if not any(name.lower() == b"content-type" for name, _ in headers):
                     headers.append((b"content-type", b"application/json"))
                     scope = dict(scope)
                     scope["headers"] = headers
+        await self.app(scope, receive, send)
+
+
+class BearerAuthMiddleware:
+    def __init__(self, app, token: str) -> None:
+        self.app = app
+        self._token = f"bearer {token.lower()}"
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path", "")
+            if path.startswith(SSE_PATH.rstrip("/")) or path.startswith(MESSAGE_PATH.rstrip("/")):
+                headers = dict(scope.get("headers", []))
+                auth_header = headers.get(b"authorization")
+                if not auth_header or auth_header.decode("latin1").lower() != self._token:
+                    response = PlainTextResponse("Unauthorized", status_code=401)
+                    await response(scope, receive, send)
+                    return
         await self.app(scope, receive, send)
 
 
@@ -519,6 +539,11 @@ MESSAGE_PATH = "/mcp/messages/"
 SSE_PATH = "/mcp/sse"
 
 
+middleware_config = [Middleware(EnsureJsonContentTypeMiddleware)]
+if config["bearer_token"]:
+    middleware_config.append(Middleware(BearerAuthMiddleware, token=config["bearer_token"]))
+
+
 app = create_sse_app(
     server=mcp,
     message_path=MESSAGE_PATH,
@@ -526,7 +551,7 @@ app = create_sse_app(
     auth=None,
     debug=config["enable_debug"],
     routes=[Route("/health", endpoint=healthcheck, methods=["GET"])],
-    middleware=[Middleware(EnsureJsonContentTypeMiddleware)],
+    middleware=middleware_config,
 )
 
 
