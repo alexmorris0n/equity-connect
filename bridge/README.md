@@ -7,9 +7,13 @@ Production-ready WebSocket bridge connecting SignalWire PSTN calls to OpenAI Rea
 ✅ **Inbound PSTN calls** - SignalWire → OpenAI Realtime  
 ✅ **Outbound calls** - n8n → Bridge → SignalWire → OpenAI  
 ✅ **Bidirectional audio** - PCM16 @ 16kHz streaming  
-✅ **Supabase tools** - Lead lookup, appointments, consent checks  
-✅ **Barbara AI assistant** - Realtime-optimized prompt  
-✅ **Production-ready** - Docker, health checks, monitoring  
+✅ **7 Supabase tools** - Lead lookup, KB search, appointments, consent checks  
+✅ **Barbara AI assistant** - Production-optimized Realtime prompt with Safety & Escalation  
+✅ **Returning caller intelligence** - Recognizes previous callers, skips re-qualification  
+✅ **Error handling** - Graceful fallbacks for all tool failures  
+✅ **Transcription logging** - Full conversation tracking  
+✅ **Interruption handling** - response.cancel when user speaks  
+✅ **Production-ready** - Docker, health checks, monitoring, noise handling  
 
 ---
 
@@ -203,17 +207,29 @@ Handles bidirectional audio + tool execution
 
 ## Supabase Tools
 
-Barbara can call these tools during conversations:
+Barbara has 7 tools with automatic error handling and graceful fallbacks:
 
 ### 1. `get_lead_context`
 
-Query lead data by phone number
+Query lead data by phone number - automatically called to recognize returning callers
 
 **Parameters:** `{ phone: "+14155556565" }`
 
-**Returns:** Lead info, broker details, formatted for voice
+**Returns:** Lead info (name, status, city, broker), property data, formatted for voice
 
-### 2. `check_consent_dnc`
+**Column:** Uses `primary_phone` in database
+
+### 2. `search_knowledge`
+
+Search 5,779 reverse mortgage knowledge base embeddings for accurate answers
+
+**Parameters:** `{ question: "what happens if I need assisted living" }`
+
+**Returns:** Top 3 most relevant KB articles with similarity scores
+
+**Uses:** OpenAI embeddings + Supabase vector search (`find_similar_content`)
+
+### 3. `check_consent_dnc`
 
 Verify lead has consent and not on DNC
 
@@ -221,15 +237,23 @@ Verify lead has consent and not on DNC
 
 **Returns:** `{ can_call: true/false, has_consent: bool, is_dnc: bool }`
 
-### 3. `update_lead_info`
+### 4. `update_lead_info`
 
 Update lead data collected during call
 
-**Parameters:** `{ lead_id, last_name, property_value, age, ... }`
+**Parameters:** `{ lead_id, last_name, property_value, age, mortgage_balance, ... }`
 
 **Returns:** `{ success: true, updated_fields: [...] }`
 
-### 4. `book_appointment`
+### 5. `check_broker_availability`
+
+Check broker calendar for available appointment slots
+
+**Parameters:** `{ broker_id, preferred_day?, preferred_time? }`
+
+**Returns:** Available time slots in next 7 days
+
+### 6. `book_appointment`
 
 Schedule appointment with broker
 
@@ -237,9 +261,9 @@ Schedule appointment with broker
 
 **Returns:** `{ success: true, appointment_id }`
 
-Creates interaction, updates lead status, creates billing event
+Creates interaction, updates lead status to `appointment_set`, creates $50 billing event
 
-### 5. `save_interaction`
+### 7. `save_interaction`
 
 Log call details at end
 
@@ -275,12 +299,64 @@ equity-connect/
 │   └── utils/
 │       └── number-formatter.js
 ├── prompts/
-│   └── BarbaraVapiPrompt_V2_Realtime_Optimized
+│   ├── BarbaraInboundPrompt           # Production inbound prompt
+│   └── BarbaraVapiPrompt_V2_Realtime_Optimized  # Outbound prompt (legacy)
 ├── package.json
 ├── Dockerfile
 ├── .dockerignore
 └── env.template
 ```
+
+---
+
+## Production Features (October 2025)
+
+### Voice Configuration
+- **Model:** `gpt-realtime-2025-08-28` (GA release)
+- **Voice:** `sage` (calm, measured, nurturing - perfect for seniors)
+- **Temperature:** 0.6 (minimum for Realtime API)
+- **Max tokens:** 150 (prevents rambling, enforces 2-3 sentence responses)
+
+### VAD Settings (Optimized for Noisy Environments)
+- **Threshold:** 0.65 (ignores background TV/radio)
+- **Prefix padding:** 400ms (catches full start of speech)
+- **Silence duration:** 2500ms (prevents cutting off seniors who pause to think)
+- **SignalWire silence detection:** DISABLED (prevents double-VAD conflicts)
+
+### Auto-Resume Logic
+- Monitors for Barbara "dying out" mid-conversation
+- Auto-resumes after 5s of idle time (if user not speaking)
+- Prevents awkward silences from VAD glitches
+
+### Interruption Handling
+- Sends `response.cancel` when user starts speaking
+- Prevents Barbara from talking over the caller
+- Natural turn-taking
+
+### Error Handling
+- Graceful fallbacks for all 7 tool failures
+- User-friendly error messages (never exposes technical errors)
+- Example: "I'm having trouble accessing the calendar - let me have a specialist call you back"
+
+### Transcription Logging
+- Logs both user input and Barbara's responses
+- Uses Whisper-1 for accurate transcription
+- Ready for quality monitoring and compliance
+
+### Returning Caller Intelligence
+- Automatically recognizes callers by phone number
+- References previous interactions ("Welcome back, Testy!")
+- Skips re-qualification for already-qualified leads
+- Uses assigned broker's first name for familiarity
+- Confirms existing data instead of asking fresh questions
+
+### Safety & Escalation
+Clear escalation thresholds:
+- User explicitly asks for human
+- Severe dissatisfaction or profanity
+- 3 failed tool attempts
+- 3 consecutive unclear audio events
+- Out-of-scope topics
 
 ---
 
@@ -369,16 +445,21 @@ Response includes `callSid` for tracking
 
 ## Cost Analysis
 
+**Model:** `gpt-realtime-2025-08-28` (GA)
+
 **Per-minute costs:**
 - SignalWire PSTN: ~$0.01
 - SignalWire streaming: ~$0.003
-- OpenAI Realtime: ~$0.04
+- OpenAI Realtime (input): ~$0.01
+- OpenAI Realtime (output): ~$0.016
 
-**Total: ~$0.053/min**
+**Total: ~$0.024/min**
 
-**7-minute call: ~$0.37**
+**8-minute call: ~$0.19**
 
-Compare to Vapi: ~$0.70 (47% savings)
+**Compare to Vapi: ~$2.40 (92% cost reduction!)**
+
+**ROI:** Each appointment worth $325-350, so cost is fully justified for quality calls
 
 ---
 
