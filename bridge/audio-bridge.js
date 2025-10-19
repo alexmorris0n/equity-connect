@@ -36,6 +36,8 @@ class AudioBridge {
     this.lastResponseAt = 0;
     this.userSpeaking = false;
     this.autoResumeInterval = null;
+    this.responseInProgress = false;  // Track if Barbara is currently responding
+    this.greetingSent = false;  // Prevent duplicate greeting triggers
   }
 
   /**
@@ -160,11 +162,14 @@ class AudioBridge {
         input_audio_transcription: {
           model: 'whisper-1'
         },
+        temperature: 0.3,  // Low temperature prevents hallucinating caller responses
+        presence_penalty: 0,
+        frequency_penalty: 0.5,  // Prevents repeating patterns (self-Q&A loops)
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 2000  // 2 full seconds - prevents Barbara from interrupting
+          prefix_padding_ms: 350,  // Increased from 300 to catch first words better
+          silence_duration_ms: 2200  // Increased from 2000 - gives seniors more time
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -218,6 +223,12 @@ class AudioBridge {
         this.logger.info('🔊 AI finished speaking');
         break;
       
+      case 'response.created':
+        // Response generation started
+        this.responseInProgress = true;
+        console.log('🎙️ Response generation started');
+        break;
+      
       case 'response.output_item.done':
         // Barbara finished speaking an item (could be mid-response)
         this.lastResponseAt = Date.now();
@@ -228,11 +239,13 @@ class AudioBridge {
       case 'response.completed':
         // Track when Barbara finished speaking
         this.lastResponseAt = Date.now();
+        this.responseInProgress = false;  // Response fully completed
         console.log('✅ Response completed, tracking for auto-resume');
         break;
       
       case 'response.interrupted':
-        // Barbara was interrupted - don't auto-resume immediately, let VAD handle it
+        // Barbara was interrupted - mark response as no longer in progress
+        this.responseInProgress = false;
         console.log('⚠️ Response interrupted, VAD will handle resume');
         // Don't reset lastResponseAt here - let auto-resume work after VAD timeout
         break;
@@ -332,32 +345,40 @@ class AudioBridge {
     this.autoResumeInterval = setInterval(() => {
       const idleTime = Date.now() - this.lastResponseAt;
       
-      // If Barbara stopped talking more than 3.5 seconds ago
+      // If Barbara stopped talking more than 5 seconds ago
       // and user is NOT currently speaking
       // and Barbara has spoken at least once (lastResponseAt > 0)
+      // and there's NO response currently in progress
       // auto-resume the conversation
       // 
-      // Why 3.5s? VAD silence_duration is 2s, so we wait 1.5s after VAD
-      // would have triggered to ensure we don't interrupt seniors who pause to think
-      if (idleTime > 3500 && !this.userSpeaking && this.lastResponseAt > 0) {
+      // Why 5s? VAD silence_duration is 2.2s, plus 2.8s buffer for seniors who need time
+      // to think or formulate answers. This prevents Barbara from answering her own questions.
+      if (idleTime > 5000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
         console.log('🔄 Auto-resuming conversation after', idleTime, 'ms idle');
         this.resumeConversation();
         this.lastResponseAt = 0; // Reset to prevent rapid re-triggers
       }
     }, 500);
     
-    console.log('✅ Auto-resume monitor started (3.5s threshold)');
+    console.log('✅ Auto-resume monitor started (5s threshold - prevents answering own questions)');
   }
   
   /**
    * Resume conversation after interruption or unexpected silence
    */
   resumeConversation() {
+    // Guard: Don't send response.create if one is already in progress
+    if (this.responseInProgress) {
+      console.log('⚠️ Cannot resume - response already in progress');
+      return;
+    }
+    
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
       console.log('🔄 Sending response.create to resume conversation');
       this.openaiSocket.send(JSON.stringify({
         type: 'response.create'
       }));
+      this.responseInProgress = true;  // Mark response as starting
     }
   }
 
@@ -365,7 +386,13 @@ class AudioBridge {
    * Start conversation with initial greeting
    */
   startConversation() {
-    console.log('🔵 startConversation() called, OpenAI ready:', this.openaiSocket?.readyState === WebSocket.OPEN);
+    console.log('🔵 startConversation() called, OpenAI ready:', this.openaiSocket?.readyState === WebSocket.OPEN, 'Already sent?', this.greetingSent);
+    
+    // Prevent duplicate greeting triggers
+    if (this.greetingSent) {
+      console.log('⚠️ Greeting already sent, skipping duplicate call');
+      return;
+    }
     
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
       console.log('🔵 Sending call_connected trigger to force Barbara to speak first');
@@ -391,6 +418,8 @@ class AudioBridge {
         type: 'response.create'
       }));
       
+      this.greetingSent = true;  // Mark greeting as sent
+      this.responseInProgress = true;  // Track that response is starting
       console.log('✅ Step 2: response.create sent (Barbara should now speak!)');
       this.logger.info('🎯 Conversation started with explicit greeting trigger');
     } else {
