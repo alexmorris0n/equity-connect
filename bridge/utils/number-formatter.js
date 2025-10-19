@@ -82,6 +82,34 @@ function formatCurrency(amount) {
 }
 
 /**
+ * Normalize phone to E.164 format
+ * Handles: (650) 530-0051, 650-530-0051, 6505300051, +16505300051
+ * Returns: +16505300051
+ * 
+ * @param {string} phone - Phone number in any format
+ * @returns {string|null} - E.164 formatted phone number or null if invalid
+ */
+function normalizeToE164(phone) {
+  if (!phone) return null;
+  
+  // Strip all non-digits
+  const digits = phone.replace(/\D/g, '');
+  
+  // If already has country code, add +
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return '+' + digits;
+  }
+  
+  // If 10 digits, assume US and add +1
+  if (digits.length === 10) {
+    return '+1' + digits;
+  }
+  
+  // Otherwise return with + prefix
+  return '+' + digits;
+}
+
+/**
  * Format phone number for natural speech
  * Example: "+14155556565" → "four one five, five five five, six five six five"
  * 
@@ -244,6 +272,7 @@ function formatCallContext(lead, broker) {
 }
 
 module.exports = {
+  normalizeToE164,
   formatCurrency,
   formatPhone,
   formatPercent,

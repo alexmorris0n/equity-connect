@@ -118,24 +118,20 @@ app.get('/public/inbound-xml', async (request, reply) => {
  */
 app.get('/public/outbound-xml', async (request, reply) => {
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
-  const { callId } = request.query;
+  const { call_id } = request.query;
   
-  // Include callId in WebSocket URL so we can retrieve context
-  const streamUrl = callId 
-    ? `${wsUrl}/audiostream?callId=${callId}`
-    : `${wsUrl}/audiostream`;
+  app.log.info({ call_id }, '📞 Outbound call LaML requested');
   
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="${streamUrl}" codec="L16@24000h">
-      <Parameter name="track" value="both_tracks" />
-      <Parameter name="silenceDetection" value="false" />
-    </Stream>
-  </Connect>
+  <Stream url="${wsUrl}/ws?context=outbound&call_id=${call_id}">
+    <Parameter name="direction" value="outbound"/>
+    <Parameter name="call_id" value="${call_id}"/>
+    <Parameter name="track" value="both_tracks"/>
+    <Parameter name="codec" value="PCMU"/>
+  </Stream>
 </Response>`;
-
-  app.log.info({ callId }, '📞 Served outbound LaML XML');
+  
   return reply.type('text/xml').send(xml);
 });
 
@@ -236,6 +232,179 @@ app.post('/start-call', async (request, reply) => {
 });
 
 /**
+ * MCP Outbound Call Endpoint
+ * POST /api/outbound-call
+ * Body: { to_phone, lead_id, broker_id }
+ */
+app.post('/api/outbound-call', async (request, reply) => {
+  if (!signalwire) {
+    return reply.code(200).send({ 
+      success: false,
+      message: 'SignalWire not configured - outbound calls disabled'
+    });
+  }
+
+  // Check authentication
+  const authHeader = request.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return reply.code(401).send({ 
+      success: false,
+      message: 'Missing or invalid authorization header'
+    });
+  }
+
+  const token = authHeader.substring(7);
+  if (token !== process.env.BRIDGE_API_KEY) {
+    return reply.code(401).send({ 
+      success: false,
+      message: 'Invalid API key'
+    });
+  }
+
+  const { to_phone, lead_id, broker_id } = request.body;
+
+  // Validate inputs
+  if (!to_phone || !lead_id) {
+    return reply.code(200).send({ 
+      success: false,
+      message: 'Missing required fields: to_phone, lead_id'
+    });
+  }
+
+  try {
+    // Import utilities
+    const { normalizeToE164 } = require('./utils/number-formatter');
+    const { executeTool } = require('./tools');
+
+    // Normalize phone number to E.164
+    const normalizedPhone = normalizeToE164(to_phone);
+    if (!normalizedPhone) {
+      return reply.code(200).send({ 
+        success: false,
+        message: 'Invalid phone number format'
+      });
+    }
+
+    // Look up lead context
+    const leadContext = await executeTool('get_lead_context', { phone: normalizedPhone });
+    if (!leadContext || !leadContext.found) {
+      return reply.code(200).send({ 
+        success: false,
+        message: 'Lead not found in database'
+      });
+    }
+
+    const leadRecord = leadContext.lead;
+    const assignedBrokerId = broker_id || leadRecord.broker_id;
+
+    // Select SignalWire number for the broker
+    const sb = require('./tools').initSupabase();
+    const { data: signalwireNumbers, error: numberError } = await sb
+      .from('signalwire_phone_numbers')
+      .select('*')
+      .eq('assigned_broker_company', leadRecord.brokers?.company_name)
+      .eq('status', 'active')
+      .limit(1);
+
+    if (numberError) {
+      app.log.error({ numberError }, 'Failed to query SignalWire numbers');
+      return reply.code(200).send({ 
+        success: false,
+        message: 'Failed to find broker phone number'
+      });
+    }
+
+    let selectedNumber;
+    if (signalwireNumbers && signalwireNumbers.length > 0) {
+      selectedNumber = signalwireNumbers[0];
+    } else {
+      // Fallback to default Equity Connect number
+      const { data: defaultNumbers } = await sb
+        .from('signalwire_phone_numbers')
+        .select('*')
+        .eq('assigned_broker_company', 'Equity Connect')
+        .eq('status', 'active')
+        .limit(1);
+      
+      if (defaultNumbers && defaultNumbers.length > 0) {
+        selectedNumber = defaultNumbers[0];
+      } else {
+        return reply.code(200).send({ 
+          success: false,
+          message: 'No available phone numbers for outbound calls'
+        });
+      }
+    }
+
+    // Generate unique call ID for tracking
+    const crypto = require('crypto');
+    const callId = crypto.randomUUID();
+    
+    // Store call context for when WebSocket connects
+    pendingCalls.set(callId, {
+      lead_id: leadRecord.id,
+      lead_name: leadRecord.first_name,
+      lead_city: leadRecord.property_city,
+      broker_id: assignedBrokerId,
+      to_phone: normalizedPhone,
+      from_phone: selectedNumber.number,
+      context: 'outbound'
+    });
+
+    // Clean up old pending calls (older than 5 minutes)
+    const fiveMinAgo = Date.now() - (5 * 60 * 1000);
+    for (const [id, data] of pendingCalls.entries()) {
+      if (data.created_at && data.created_at < fiveMinAgo) {
+        pendingCalls.delete(id);
+        app.log.warn({ callId: id }, 'Cleaned up stale pending call');
+      }
+    }
+
+    // Create SignalWire call
+    const call = await signalwire.createCall({
+      to: normalizedPhone,
+      from: selectedNumber.number,
+      url: `${BRIDGE_URL}/public/outbound-xml?call_id=${callId}`,
+      statusCallback: `${BRIDGE_URL}/api/call-status`
+    });
+
+    // Store by SignalWire CallSid for status callbacks
+    activeCalls.set(call.sid, { 
+      callId, 
+      lead_id: leadRecord.id, 
+      broker_id: assignedBrokerId, 
+      to: normalizedPhone, 
+      from: selectedNumber.number 
+    });
+
+    app.log.info({ 
+      callSid: call.sid, 
+      callId, 
+      to: normalizedPhone, 
+      from: selectedNumber.number,
+      lead_id: leadRecord.id,
+      broker_id: assignedBrokerId
+    }, '📞 MCP outbound call created');
+
+    return reply.code(200).send({
+      success: true,
+      message: `✅ Call created successfully`,
+      call_id: call.sid,
+      internal_id: callId,
+      from: selectedNumber.number,
+      to: normalizedPhone
+    });
+
+  } catch (err) {
+    app.log.error({ err, to_phone, lead_id, broker_id }, '❌ Failed to create MCP outbound call');
+    return reply.code(200).send({
+      success: false,
+      message: `Failed to create call: ${err.message}`
+    });
+  }
+});
+
+/**
  * Call Status Webhook (optional)
  * SignalWire posts call status updates here
  */
@@ -253,10 +422,44 @@ app.post('/call-status', async (request, reply) => {
 });
 
 /**
+ * API Call Status Webhook (for MCP integration)
+ * SignalWire posts call status updates here
+ */
+app.post('/api/call-status', async (request, reply) => {
+  const { CallSid, CallStatus, Duration } = request.body;
+  
+  app.log.info({ CallSid, CallStatus, Duration }, '📊 API Call status update');
+  
+  // Clean up call context when call completes
+  if (['completed', 'failed', 'busy', 'no-answer'].includes(CallStatus)) {
+    activeCalls.delete(CallSid);
+    
+    // Update lead status in database if we have call context
+    const callContext = activeCalls.get(CallSid);
+    if (callContext && callContext.lead_id) {
+      try {
+        const { executeTool } = require('./tools');
+        await executeTool('save_interaction', {
+          lead_id: callContext.lead_id,
+          broker_id: callContext.broker_id,
+          outcome: CallStatus === 'completed' ? 'positive' : 'neutral',
+          content: `Call ${CallStatus}${Duration ? ` (${Duration}s)` : ''}`
+        });
+      } catch (err) {
+        app.log.error({ err, CallSid }, 'Failed to update lead status');
+      }
+    }
+  }
+  
+  return reply.send({ received: true });
+});
+
+/**
  * WebSocket Audio Stream Handler
  * Handles bidirectional audio between SignalWire and OpenAI Realtime
  */
 app.register(async function (fastify) {
+  // Legacy endpoint for existing inbound calls
   fastify.get('/audiostream', { websocket: true }, async (connection, req) => {
     // In @fastify/websocket, connection IS the WebSocket
     const swSocket = connection;
@@ -267,7 +470,7 @@ app.register(async function (fastify) {
       hasSocket: !!swSocket,
       socketType: typeof swSocket,
       hasOn: typeof swSocket?.on
-    }, '🔌 WebSocket connected from SignalWire');
+    }, '🔌 WebSocket connected from SignalWire (legacy)');
     
     // Verify socket exists and has event methods
     if (!swSocket || typeof swSocket.on !== 'function') {
@@ -296,6 +499,65 @@ app.register(async function (fastify) {
     }
     
     // Create audio bridge with context (includes custom instructions if provided)
+    const bridge = new AudioBridge(swSocket, app.log, callContext);
+    
+    try {
+      await bridge.connect();
+      app.log.info('✅ Audio bridge established');
+    } catch (err) {
+      app.log.error({ err }, '❌ Failed to establish audio bridge');
+      if (swSocket && typeof swSocket.close === 'function') {
+        swSocket.close();
+      }
+    }
+  });
+
+  // New endpoint for MCP outbound calls
+  fastify.get('/ws', { websocket: true }, async (connection, req) => {
+    // In @fastify/websocket, connection IS the WebSocket
+    const swSocket = connection;
+    const { context, call_id } = req.query;
+    
+    app.log.info({ 
+      context,
+      call_id,
+      hasSocket: !!swSocket,
+      socketType: typeof swSocket,
+      hasOn: typeof swSocket?.on
+    }, '🔌 WebSocket connected from SignalWire');
+    
+    // Verify socket exists and has event methods
+    if (!swSocket || typeof swSocket.on !== 'function') {
+      app.log.error({ 
+        hasSocket: !!swSocket,
+        socketKeys: swSocket ? Object.keys(swSocket).slice(0, 10) : []
+      }, '❌ WebSocket connection invalid');
+      return;
+    }
+    
+    // Get call context from pending calls if this is an outbound call
+    let callContext = {};
+    
+    if (context === 'outbound' && call_id && pendingCalls.has(call_id)) {
+      const storedContext = pendingCalls.get(call_id);
+      callContext = {
+        ...storedContext,
+        context: 'outbound'
+      };
+      
+      app.log.info({ 
+        call_id, 
+        lead_id: callContext.lead_id,
+        broker_id: callContext.broker_id
+      }, '📋 Retrieved outbound call context');
+      
+      // Clean up pending call after retrieval
+      pendingCalls.delete(call_id);
+    } else {
+      app.log.info('📞 Inbound call - will fetch context via tools');
+    }
+    
+    // Create audio bridge with context
     const bridge = new AudioBridge(swSocket, app.log, callContext);
     
     try {
