@@ -137,34 +137,59 @@ app.get('/health', async (request, reply) => {
 
 // MCP endpoint for n8n
 app.post('/mcp', async (request, reply) => {
-  const { method, params } = request.body;
-  
-  app.log.info({ method, params }, '🔧 MCP request received');
-  
+  const { id = null, jsonrpc = '2.0', method, params = {} } = request.body || {};
+
+  app.log.info({ method, params, id }, '🔧 MCP request received');
+
+  const respond = (payload) => {
+    return reply.send({ jsonrpc: '2.0', id, ...payload });
+  };
+
   try {
     switch (method) {
       case 'tools/list': {
-        return {
-          tools: tools.map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema
-          }))
-        };
+        return respond({
+          result: {
+            tools: tools.map(tool => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema
+            }))
+          }
+        });
       }
-      
+
       case 'tools/call': {
         const { name, arguments: args } = params;
-        const result = await executeTool(name, args);
-        return result;
+        if (!name) {
+          return respond({
+            error: {
+              code: -32602,
+              message: 'Missing tool name in request'
+            }
+          });
+        }
+
+        const toolResult = await executeTool(name, args || {});
+        return respond({ result: toolResult });
       }
-      
+
       default:
-        return reply.code(400).send({ error: `Unknown method: ${method}` });
+        return respond({
+          error: {
+            code: -32601,
+            message: `Unknown method: ${method}`
+          }
+        });
     }
   } catch (error) {
     app.log.error({ error }, '❌ MCP request error');
-    return reply.code(500).send({ error: error.message });
+    return respond({
+      error: {
+        code: -32000,
+        message: error.message || 'Internal MCP error'
+      }
+    });
   }
 });
 
