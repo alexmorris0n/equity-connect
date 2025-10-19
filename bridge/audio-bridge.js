@@ -163,7 +163,6 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.3,  // Low temperature prevents hallucinating caller responses
-        presence_penalty: 0,
         frequency_penalty: 0.6,  // Prevents repeating patterns and paraphrasing greeting
         turn_detection: {
           type: 'server_vad',
