@@ -150,13 +150,15 @@ app.post('/public/outbound-xml', async (request, reply) => {
   
   app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested (POST)');
   
-  // Return LaML XML format for streaming (based on SignalWire docs)
+  // Return LaML XML format for streaming (matching working inbound config)
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="PCMU" track="both_tracks">
+    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="L16@24000h" track="both_tracks" silenceDetection="false">
       <Parameter name="direction" value="outbound" />
       <Parameter name="call_id" value="${call_id}" />
+      <Parameter name="from" value="${From}" />
+      <Parameter name="to" value="${To}" />
     </Stream>
   </Connect>
 </Response>`;
