@@ -80,7 +80,13 @@ app.get('/healthz', async (request, reply) => {
     uptime: process.uptime(),
     activeCalls: activeCalls.size,
     memory: process.memoryUsage(),
-    env: NODE_ENV
+    env: NODE_ENV,
+    signalwire: {
+      configured: !!signalwire,
+      hasProject: !!SW_PROJECT,
+      hasToken: !!SW_TOKEN,
+      hasSpace: !!SW_SPACE
+    }
   };
   
   return reply.code(200).send(health);
