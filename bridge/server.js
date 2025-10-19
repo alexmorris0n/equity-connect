@@ -148,27 +148,20 @@ app.post('/public/outbound-xml', async (request, reply) => {
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
   const { call_id, From, To } = request.query;
   
-  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call SWML requested (POST)');
+  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested (POST)');
   
-  // Return SWML format instead of LaML XML
-  const swml = {
-    version: "1.0.0",
-    sections: {
-      main: [
-        {
-          connect: {
-            stream: {
-              url: `${wsUrl}/audiostream?context=outbound&call_id=${call_id}`,
-              codec: "L16@24000h",
-              track: "both_tracks"
-            }
-          }
-        }
-      ]
-    }
-  };
+  // Return LaML XML format for streaming (based on SignalWire docs)
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="PCMU" track="both_tracks">
+      <Parameter name="direction" value="outbound" />
+      <Parameter name="call_id" value="${call_id}" />
+    </Stream>
+  </Connect>
+</Response>`;
   
-  return reply.type('application/json').send(swml);
+  return reply.type('text/xml').send(xml);
 });
 
 /**
