@@ -11,7 +11,8 @@ class SignalWireClient {
     this.projectId = projectId;
     this.authToken = authToken;
     this.space = space;
-    this.baseUrl = `https://${space}/api/calling`;
+    // Use Compatibility API (Twilio-compatible) which supports the 'url' parameter
+    this.baseUrl = `https://${space}/api/laml/2010-04-01/Accounts/${projectId}`;
   }
 
   /**
@@ -26,17 +27,15 @@ class SignalWireClient {
   async createCall({ to, from, url, statusCallback, resourceId }) {
     const auth = Buffer.from(`${this.projectId}:${this.authToken}`).toString('base64');
     
-    const body = JSON.stringify({
-      command: "dial",
-      params: {
-        from: from,
-        to: to,
-        url: url,
-        ...(statusCallback && { fallback_url: statusCallback })
-      }
+    // Use URL-encoded form data for Compatibility API
+    const body = new URLSearchParams({
+      To: to,
+      From: from,
+      Url: url,
+      ...(statusCallback && { StatusCallback: statusCallback })
     });
 
-    const apiUrl = `${this.baseUrl}/calls`;
+    const apiUrl = `${this.baseUrl}/Calls.json`;
     console.log('📞 SignalWire API Request:', {
       url: apiUrl,
       from,
@@ -54,11 +53,11 @@ class SignalWireClient {
       response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
           'Authorization': `Basic ${auth}`
         },
-        body: body
+        body: body.toString()
       });
 
       // Read response body as text first for debugging
