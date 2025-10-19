@@ -39,6 +39,8 @@ class AudioBridge {
     this.responseInProgress = false;  // Track if Barbara is currently responding
     this.greetingSent = false;  // Prevent duplicate greeting triggers
     this.currentResponseTranscript = '';  // Track Barbara's current response transcript for logging
+    this.awaitingUser = false;  // Track if Barbara asked a question and is waiting for answer
+    this.nudgedOnce = false;  // Track if we've nudged the user once already
   }
 
   /**
@@ -158,13 +160,13 @@ class AudioBridge {
         input_audio_transcription: {
           model: 'whisper-1'
         },
-        temperature: 0.6,  // Minimum allowed by Realtime API - rely on prompt for verbatim enforcement
-        max_response_output_tokens: 150,  // Limit response length to prevent rambling (2-3 sentences)
+        temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
+        max_response_output_tokens: 120,  // Tighter limit for brevity (down from 150)
         turn_detection: {
           type: 'server_vad',
           threshold: 0.65,  // Higher threshold to ignore background TV/radio noise
           prefix_padding_ms: 400,  // Slightly more padding to catch full start of speech
-          silence_duration_ms: 2500  // Longer silence detection prevents mid-sentence cut-offs in noisy environments
+          silence_duration_ms: 2000  // Tightened from 2500ms - don't mistake silence for user finished
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -248,6 +250,8 @@ class AudioBridge {
       case 'input_audio_buffer.speech_started':
         // User started speaking - cancel Barbara's in-progress response if any
         this.userSpeaking = true;
+        this.awaitingUser = false;  // User is now speaking, no longer waiting
+        this.nudgedOnce = false;  // Reset nudge since user responded
         console.log('👤 User started speaking');
         
         // If Barbara is currently responding, cancel it so she doesn't talk over the user
@@ -295,6 +299,10 @@ class AudioBridge {
         if (barbaraTranscript) {
           console.log('🤖 Barbara said:', barbaraTranscript);
           this.logger.info({ transcript: barbaraTranscript, response_id: event.response_id }, '🤖 Barbara transcription');
+          
+          // Check if Barbara asked a question (ended with ?)
+          this.awaitingUser = /\?\s*$/.test(barbaraTranscript.trim());
+          this.nudgedOnce = false;  // Reset nudge flag for this new question
           
           // TODO: Save to database for quality monitoring
           // await this.saveTranscript('assistant', barbaraTranscript, event.response_id);
@@ -372,26 +380,39 @@ class AudioBridge {
    * Start auto-resume monitor to prevent Barbara from dying out
    */
   startAutoResumeMonitor() {
-    // Check every 500ms if we need to resume conversation
+    // Check every 500ms if we need to nudge (but never auto-continue)
     this.autoResumeInterval = setInterval(() => {
       const idleTime = Date.now() - this.lastResponseAt;
       
-      // If Barbara stopped talking more than 5 seconds ago
-      // and user is NOT currently speaking
-      // and Barbara has spoken at least once (lastResponseAt > 0)
-      // and there's NO response currently in progress
-      // auto-resume the conversation
-      // 
-      // Why 5s? VAD silence_duration is 2.2s, plus 2.8s buffer for seniors who need time
-      // to think or formulate answers. This prevents Barbara from answering her own questions.
-      if (idleTime > 5000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
-        console.log('🔄 Auto-resuming conversation after', idleTime, 'ms idle');
-        this.resumeConversation();
-        this.lastResponseAt = 0; // Reset to prevent rapid re-triggers
+      // If Barbara asked a question and user hasn't responded in 8 seconds
+      // Give ONE gentle nudge, then stop (don't auto-progress through script)
+      if (idleTime > 8000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
+        // Only nudge if Barbara asked a question and we haven't nudged yet
+        if (this.awaitingUser && !this.nudgedOnce) {
+          console.log('🔔 User silent after question - sending gentle nudge');
+          
+          // Send a gentle "Take your time" nudge
+          this.openaiSocket.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'assistant',
+              content: [{
+                type: 'input_text',
+                text: 'Take your time.'
+              }]
+            }
+          }));
+          
+          this.nudgedOnce = true;  // Only nudge once per question
+          this.lastResponseAt = Date.now();  // Reset timer
+          console.log('✅ Gentle nudge sent - will not auto-continue');
+        }
+        // If not awaiting user, do nothing (don't auto-progress)
       }
     }, 500);
     
-    console.log('✅ Auto-resume monitor started (5s threshold - prevents answering own questions)');
+    console.log('✅ Auto-nudge monitor started (8s threshold - one nudge per question, no auto-continue)');
   }
   
   /**
