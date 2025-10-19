@@ -87,6 +87,7 @@ Merge `properties` with `skiptrace_results` (use the first contact record when a
 - `primary_email`: first email found at `contacts[0].emails[0].email`
 - `primary_phone`: first phone found at `contacts[0].phones[0].phonenumber`
 - Default to null if contacts array empty
+- Normalize `first_name`, `last_name`, and `property_city` to Title Case before inserting (e.g., `convert to Title Case -> Jose`)
 Build INSERT with these EXACT column names:
 ```
 INSERT INTO leads (
