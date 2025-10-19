@@ -161,7 +161,7 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
-        max_response_output_tokens: 120,  // Tighter limit for brevity (down from 150)
+        max_response_output_tokens: 150,  // Allow full greeting + one sentence response
         turn_detection: {
           type: 'server_vad',
           threshold: 0.65,  // Higher threshold to ignore background TV/radio noise
@@ -454,7 +454,10 @@ class AudioBridge {
         console.log('🔵 Sending call_connected trigger to force Barbara to speak first');
 
         // Step 1: Create a conversation item that triggers Barbara's greeting
-        // This is the proper way per OpenAI Realtime API docs
+        // Include caller's phone number so she can auto-lookup
+        const callerPhone = this.callContext.from || 'unknown';
+        console.log('🔵 Caller phone:', callerPhone);
+        
         this.openaiSocket.send(JSON.stringify({
           type: 'conversation.item.create',
           item: {
@@ -462,7 +465,7 @@ class AudioBridge {
             role: 'user',
             content: [{
               type: 'input_text',
-              text: 'call_connected'  // Trigger phrase Barbara will recognize from her prompt
+              text: `call_connected from ${callerPhone}`  // Include phone so Barbara can lookup
             }]
           }
         }));
