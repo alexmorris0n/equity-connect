@@ -150,15 +150,16 @@ app.post('/mcp', async (request, reply) => {
       case 'initialize': {
         return respond({
           result: {
+            protocolVersion: '2025-03-26',
             capabilities: {
               tools: {
                 list: true,
                 call: true
               }
             },
-            session: {
-              id: 'barbara-mcp-session',
-              name: 'barbara-mcp'
+            serverInfo: {
+              name: 'barbara-mcp',
+              version: '1.0.0'
             }
           }
         });
