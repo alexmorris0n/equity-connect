@@ -162,9 +162,9 @@ class AudioBridge {
         max_response_output_tokens: 150,  // Limit response length to prevent rambling (2-3 sentences)
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 350,
-          silence_duration_ms: 1950  // Slightly faster response - 0.25s quicker than before
+          threshold: 0.65,  // Higher threshold to ignore background TV/radio noise
+          prefix_padding_ms: 400,  // Slightly more padding to catch full start of speech
+          silence_duration_ms: 2500  // Longer silence detection prevents mid-sentence cut-offs in noisy environments
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
