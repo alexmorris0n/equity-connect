@@ -126,7 +126,29 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
   const { call_id, From, To } = request.query;
   
-  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested');
+  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested (GET)');
+  
+  // Use same format as inbound for consistency
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="L16@24000h">
+      <Parameter name="track" value="both_tracks" />
+      <Parameter name="silenceDetection" value="false" />
+      <Parameter name="from" value="${From}" />
+      <Parameter name="to" value="${To}" />
+    </Stream>
+  </Connect>
+</Response>`;
+  
+  return reply.type('text/xml').send(xml);
+});
+
+app.post('/public/outbound-xml', async (request, reply) => {
+  const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+  const { call_id, From, To } = request.query;
+  
+  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested (POST)');
   
   // Use same format as inbound for consistency
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
