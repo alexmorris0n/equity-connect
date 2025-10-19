@@ -38,6 +38,7 @@ class AudioBridge {
     this.autoResumeInterval = null;
     this.responseInProgress = false;  // Track if Barbara is currently responding
     this.greetingSent = false;  // Prevent duplicate greeting triggers
+    this.currentResponseTranscript = '';  // Track Barbara's current response transcript for logging
   }
 
   /**
@@ -158,6 +159,7 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.6,  // Minimum allowed by Realtime API - rely on prompt for verbatim enforcement
+        max_response_output_tokens: 150,  // Limit response length to prevent rambling (2-3 sentences)
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
@@ -244,9 +246,18 @@ class AudioBridge {
         break;
       
       case 'input_audio_buffer.speech_started':
-        // User started speaking
+        // User started speaking - cancel Barbara's in-progress response if any
         this.userSpeaking = true;
         console.log('👤 User started speaking');
+        
+        // If Barbara is currently responding, cancel it so she doesn't talk over the user
+        if (this.responseInProgress) {
+          console.log('⚠️ User interrupted - canceling Barbara\'s response');
+          this.openaiSocket.send(JSON.stringify({
+            type: 'response.cancel'
+          }));
+          this.responseInProgress = false;
+        }
         break;
       
       case 'input_audio_buffer.speech_stopped':
@@ -261,7 +272,34 @@ class AudioBridge {
         break;
 
       case 'conversation.item.input_audio_transcription.completed':
-        this.logger.info({ transcript: event.transcript }, '👤 User said');
+        // Log user's input transcription
+        const userTranscript = event.transcript;
+        console.log('👤 User said:', userTranscript);
+        this.logger.info({ transcript: userTranscript, item_id: event.item_id }, '👤 User transcription');
+        
+        // TODO: Save to database for quality monitoring
+        // await this.saveTranscript('user', userTranscript, event.item_id);
+        break;
+      
+      case 'response.audio_transcript.delta':
+        // Barbara's speech is being transcribed in real-time (streaming)
+        if (!this.currentResponseTranscript) {
+          this.currentResponseTranscript = '';
+        }
+        this.currentResponseTranscript += event.delta;
+        break;
+      
+      case 'response.audio_transcript.done':
+        // Barbara finished speaking - log complete transcript
+        const barbaraTranscript = this.currentResponseTranscript || event.transcript || '';
+        if (barbaraTranscript) {
+          console.log('🤖 Barbara said:', barbaraTranscript);
+          this.logger.info({ transcript: barbaraTranscript, response_id: event.response_id }, '🤖 Barbara transcription');
+          
+          // TODO: Save to database for quality monitoring
+          // await this.saveTranscript('assistant', barbaraTranscript, event.response_id);
+        }
+        this.currentResponseTranscript = '';  // Reset for next response
         break;
 
       case 'error':
@@ -388,33 +426,38 @@ class AudioBridge {
     }
     
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
-      console.log('🔵 Sending call_connected trigger to force Barbara to speak first');
-
-      // Step 1: Create a conversation item that triggers Barbara's greeting
-      // This is the proper way per OpenAI Realtime API docs
-      this.openaiSocket.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'user',
-          content: [{
-            type: 'input_text',
-            text: 'call_connected'  // Trigger phrase Barbara will recognize from her prompt
-          }]
-        }
-      }));
+      console.log('🔵 Waiting 500ms before greeting to avoid cutting into connection audio...');
       
-      console.log('✅ Step 1: conversation.item.create sent (call_connected trigger)');
+      // Wait 500ms to let the call connection settle before Barbara speaks
+      setTimeout(() => {
+        console.log('🔵 Sending call_connected trigger to force Barbara to speak first');
 
-      // Step 2: Request response generation (this makes Barbara actually speak)
-      this.openaiSocket.send(JSON.stringify({
-        type: 'response.create'
-      }));
-      
-      this.greetingSent = true;  // Mark greeting as sent
-      this.responseInProgress = true;  // Track that response is starting
-      console.log('✅ Step 2: response.create sent (Barbara should now speak!)');
-      this.logger.info('🎯 Conversation started with explicit greeting trigger');
+        // Step 1: Create a conversation item that triggers Barbara's greeting
+        // This is the proper way per OpenAI Realtime API docs
+        this.openaiSocket.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [{
+              type: 'input_text',
+              text: 'call_connected'  // Trigger phrase Barbara will recognize from her prompt
+            }]
+          }
+        }));
+        
+        console.log('✅ Step 1: conversation.item.create sent (call_connected trigger)');
+
+        // Step 2: Request response generation (this makes Barbara actually speak)
+        this.openaiSocket.send(JSON.stringify({
+          type: 'response.create'
+        }));
+        
+        this.greetingSent = true;  // Mark greeting as sent
+        this.responseInProgress = true;  // Track that response is starting
+        console.log('✅ Step 2: response.create sent (Barbara should now speak!)');
+        this.logger.info('🎯 Conversation started with explicit greeting trigger');
+      }, 500);
     } else {
       console.error('❌ Cannot start conversation - OpenAI socket not ready');
     }
@@ -450,16 +493,45 @@ class AudioBridge {
       }));
       
     } catch (err) {
-      this.logger.error({ err, function: name }, '❌ Tool execution failed');
+      this.logger.error({ err, function: name, args: argsJson }, '❌ Tool execution failed');
       
-      // Send error to OpenAI
+      // Generate graceful fallback message based on tool type
+      let fallbackMessage = '';
+      switch (name) {
+        case 'get_lead_context':
+          fallbackMessage = 'I was unable to pull up your information right now, but that\'s okay - we can still help you!';
+          break;
+        case 'search_knowledge':
+          fallbackMessage = 'I\'m having a little trouble accessing that information right now. Let me connect you with one of our specialists who can answer that for you.';
+          break;
+        case 'check_broker_availability':
+        case 'book_appointment':
+          fallbackMessage = 'I\'m having trouble accessing the calendar right now. Let me have one of our specialists call you back to schedule that. What\'s the best number to reach you?';
+          break;
+        case 'update_lead_info':
+        case 'save_interaction':
+          fallbackMessage = 'Got it - I\'ve made a note of that.';
+          break;
+        default:
+          fallbackMessage = 'I\'m having a little trouble with that right now, but I can still help you!';
+      }
+      
+      // Send graceful error message to OpenAI
       this.openaiSocket.send(JSON.stringify({
         type: 'conversation.item.create',
         item: {
           type: 'function_call_output',
           call_id,
-          output: JSON.stringify({ error: err.message })
+          output: JSON.stringify({ 
+            error: err.message,
+            fallback_message: fallbackMessage
+          })
         }
+      }));
+      
+      // Continue response so Barbara can speak the fallback
+      this.openaiSocket.send(JSON.stringify({
+        type: 'response.create'
       }));
     }
   }
