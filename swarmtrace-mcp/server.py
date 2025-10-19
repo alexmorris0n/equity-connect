@@ -23,7 +23,6 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.http import create_sse_app
 from pydantic import BaseModel, Field, ValidationError, root_validator
 from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
@@ -142,14 +141,20 @@ class BatchSkipTraceResponse(BaseModel):
     stats: Stats
 
 
-class EnsureJsonContentTypeMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        if request.method == "POST" and request.url.path.startswith("/mcp/messages"):
-            headers = list(request.scope.get("headers", []))
-            if not any(name == b"content-type" for name, _ in headers):
-                headers.append((b"content-type", b"application/json"))
-                request.scope["headers"] = headers
-        return await call_next(request)
+class EnsureJsonContentTypeMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("method") == "POST":
+            path = scope.get("path", "")
+            if path.startswith("/mcp/messages"):
+                headers = list(scope.get("headers", []))
+                if not any(name.lower() == b"content-type" for name, _ in headers):
+                    headers.append((b"content-type", b"application/json"))
+                    scope = dict(scope)
+                    scope["headers"] = headers
+        await self.app(scope, receive, send)
 
 
 def _env_bool(key: str, default: bool = False) -> bool:
