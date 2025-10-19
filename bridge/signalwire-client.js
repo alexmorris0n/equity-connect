@@ -11,7 +11,7 @@ class SignalWireClient {
     this.projectId = projectId;
     this.authToken = authToken;
     this.space = space;
-    this.baseUrl = `https://${space}/api/laml/2010-04-01/Accounts/${projectId}`;
+    this.baseUrl = `https://${space}/api/calling`;
   }
 
   /**
@@ -26,17 +26,17 @@ class SignalWireClient {
   async createCall({ to, from, url, statusCallback, resourceId }) {
     const auth = Buffer.from(`${this.projectId}:${this.authToken}`).toString('base64');
     
-    const body = new URLSearchParams({
-      From: from,
-      To: to,
-      Url: url,
-      ...(statusCallback && { 
-        StatusCallback: statusCallback,
-        StatusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed']
-      })
+    const body = JSON.stringify({
+      command: "dial",
+      params: {
+        from: from,
+        to: to,
+        url: url,
+        ...(statusCallback && { fallback_url: statusCallback })
+      }
     });
 
-    const apiUrl = `${this.baseUrl}/Calls.json`;
+    const apiUrl = `${this.baseUrl}/calls`;
     console.log('📞 SignalWire API Request:', {
       url: apiUrl,
       from,
@@ -54,11 +54,11 @@ class SignalWireClient {
       response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': `Basic ${auth}`
         },
-        body: body.toString()
+        body: body
       });
 
       // Read response body as text first for debugging
