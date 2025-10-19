@@ -44,7 +44,6 @@ class AudioBridge {
    * Initialize OpenAI Realtime connection
    */
   async connect() {
-    console.log('🔵 AudioBridge.connect() called');
     const apiKey = process.env.OPENAI_API_KEY;
     
     if (!apiKey) {
@@ -52,7 +51,6 @@ class AudioBridge {
       throw new Error('Missing OPENAI_API_KEY');
     }
 
-    console.log('🔵 Creating OpenAI WebSocket connection...');
     this.openaiSocket = new WebSocket(
       'wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28',
       {
@@ -63,11 +61,8 @@ class AudioBridge {
       }
     );
 
-    console.log('🔵 Setting up OpenAI handlers...');
     this.setupOpenAIHandlers();
-    console.log('🔵 Setting up SignalWire handlers...');
     this.setupSignalWireHandlers();
-    console.log('🔵 AudioBridge.connect() complete');
   }
 
   /**
@@ -162,8 +157,7 @@ class AudioBridge {
         input_audio_transcription: {
           model: 'whisper-1'
         },
-        temperature: 0.3,  // Low temperature prevents hallucinating caller responses
-        frequency_penalty: 0.6,  // Prevents repeating patterns and paraphrasing greeting
+        temperature: 0.3,  // Low temperature for verbatim greeting while maintaining warmth
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
