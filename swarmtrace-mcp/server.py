@@ -22,6 +22,8 @@ import uvicorn
 from fastmcp import Context, FastMCP
 from fastmcp.server.http import create_sse_app
 from pydantic import BaseModel, Field, ValidationError, root_validator
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
@@ -138,6 +140,16 @@ class BatchSkipTraceResponse(BaseModel):
     successful: list[SkipTraceResult]
     failed: list[SkipTraceResult]
     stats: Stats
+
+
+class EnsureJsonContentTypeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.method == "POST" and request.url.path.startswith("/mcp/messages"):
+            headers = list(request.scope.get("headers", []))
+            if not any(name == b"content-type" for name, _ in headers):
+                headers.append((b"content-type", b"application/json"))
+                request.scope["headers"] = headers
+        return await call_next(request)
 
 
 def _env_bool(key: str, default: bool = False) -> bool:
@@ -505,7 +517,10 @@ app = create_sse_app(
     auth=None,
     debug=config["enable_debug"],
     routes=[Route("/health", endpoint=healthcheck, methods=["GET"])],
+    middleware=[Middleware(EnsureJsonContentTypeMiddleware)],
 )
+
+app.router.redirect_slashes = False
 
 
 if __name__ == "__main__":
