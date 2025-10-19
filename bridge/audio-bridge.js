@@ -416,8 +416,8 @@ class AudioBridge {
               type: 'message',
               role: 'assistant',
               content: [{
-                type: 'input_text',
-                text: 'Take your time.'
+            type: 'text',
+            text: 'Take your time.'
               }]
             }
           }));
@@ -585,7 +585,7 @@ class AudioBridge {
           type: 'message',
           role: 'system',
           content: [{
-            type: 'input_text',
+            type: 'text',
             text: contextMessage
           }]
         }
@@ -603,11 +603,11 @@ class AudioBridge {
         type: 'conversation.item.create',
         item: {
           type: 'message',
-          role: 'system',
-          content: [{
-            type: 'input_text',
-            text: 'Lead data unavailable. Treat as new caller - ask for their name.'
-          }]
+        role: 'system',
+        content: [{
+          type: 'text',
+          text: 'Lead data unavailable. Treat as new caller - ask for their name.'
+        }]
         }
       }));
     }
