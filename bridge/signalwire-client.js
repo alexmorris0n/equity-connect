@@ -56,13 +56,23 @@ class SignalWireClient {
       contentType: response.headers.get('content-type')
     });
 
+    // Read response body as text first for debugging
+    const responseText = await response.text();
+    console.log('📄 Response body length:', responseText.length);
+
     if (!response.ok) {
-      const error = await response.text();
-      console.error('❌ SignalWire API Error:', error);
-      throw new Error(`SignalWire API error: ${response.status} - ${error}`);
+      console.error('❌ SignalWire API Error:', responseText);
+      throw new Error(`SignalWire API error: ${response.status} - ${responseText}`);
     }
 
-    return await response.json();
+    // Parse JSON from text
+    try {
+      return JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ JSON Parse Error:', parseError.message);
+      console.error('❌ Response text:', responseText);
+      throw new Error(`Failed to parse SignalWire response: ${parseError.message}`);
+    }
   }
 
   /**
