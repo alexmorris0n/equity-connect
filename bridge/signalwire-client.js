@@ -88,7 +88,8 @@ class SignalWireClient {
 
     try {
       const parsed = JSON.parse(responseText);
-      console.log('✅ Call created:', parsed.sid);
+      console.log('✅ Call created:', parsed.id || parsed.sid);
+      console.log('📋 Full response:', JSON.stringify(parsed, null, 2));
       return parsed;
     } catch (parseError) {
       console.error('❌ JSON Parse Error:', parseError.message);
