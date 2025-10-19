@@ -38,7 +38,9 @@ class SignalWireClient {
       url: apiUrl,
       from,
       to,
-      callbackUrl: url
+      callbackUrl: url,
+      authHeader: `Basic ${auth}`,
+      bodyLength: body.toString().length
     });
 
     let response;
@@ -49,6 +51,7 @@ class SignalWireClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
           'Authorization': `Basic ${auth}`
         },
         body: body.toString()
