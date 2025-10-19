@@ -9,7 +9,7 @@ COPY package*.json ./
 RUN npm install --production
 
 # Copy source code
-COPY . .
+COPY index.js ./
 
 # Expose port
 EXPOSE 3000
