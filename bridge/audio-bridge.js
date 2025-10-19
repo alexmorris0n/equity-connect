@@ -139,6 +139,8 @@ class AudioBridge {
 
   /**
    * Configure OpenAI Realtime session
+   * Note: This is called BEFORE we have lead context for caching optimization
+   * Lead context is injected separately after lookup completes
    */
   configureSession() {
     console.log('🔵 configureSession() called');
@@ -146,7 +148,12 @@ class AudioBridge {
     // Use custom instructions from n8n if provided
     // Otherwise use inbound prompt (for when people call us)
     // n8n will send full outbound prompt when making calls
-    const instructions = this.callContext.instructions || BARBARA_INBOUND_PROMPT;
+    const baseInstructions = this.callContext.instructions || BARBARA_INBOUND_PROMPT;
+    
+    // For cacheable prompt optimization, we send base instructions first
+    // Then inject variable lead context as a system message after lookup
+    const instructions = baseInstructions;
+    
     console.log('🔵 Instructions length:', instructions.length, 'Custom:', !!this.callContext.instructions);
     
     const sessionConfig = {
@@ -154,7 +161,7 @@ class AudioBridge {
       session: {
         modalities: ['audio', 'text'],
         voice: 'sage',
-        instructions: instructions,
+        instructions: instructions,  // Static prompt (cacheable)
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
@@ -179,13 +186,13 @@ class AudioBridge {
     this.openaiSocket.send(JSON.stringify(sessionConfig));
     this.sessionConfigured = true;
     
-    console.log('✅ Session configuration sent!');
+    console.log('✅ Session configuration sent (static prompt for caching)!');
     
     const hasCustomInstructions = !!this.callContext.instructions;
     this.logger.info({ 
       customInstructions: hasCustomInstructions,
       instructionsLength: instructions.length 
-    }, '✅ OpenAI session configured');
+    }, '✅ OpenAI session configured with cacheable prompt');
   }
 
   /**
