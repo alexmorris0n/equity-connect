@@ -157,7 +157,7 @@ class AudioBridge {
         input_audio_transcription: {
           model: 'whisper-1'
         },
-        temperature: 0.3,  // Low temperature for verbatim greeting while maintaining warmth
+        temperature: 0.6,  // Minimum allowed by Realtime API - rely on prompt for verbatim enforcement
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
