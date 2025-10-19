@@ -124,18 +124,21 @@ app.get('/public/inbound-xml', async (request, reply) => {
  */
 app.get('/public/outbound-xml', async (request, reply) => {
   const wsUrl = BRIDGE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
-  const { call_id } = request.query;
+  const { call_id, From, To } = request.query;
   
-  app.log.info({ call_id }, '📞 Outbound call LaML requested');
+  app.log.info({ call_id, from: From, to: To }, '📞 Outbound call LaML requested');
   
+  // Use same format as inbound for consistency
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Stream url="${wsUrl}/ws?context=outbound&call_id=${call_id}">
-    <Parameter name="direction" value="outbound"/>
-    <Parameter name="call_id" value="${call_id}"/>
-    <Parameter name="track" value="both_tracks"/>
-    <Parameter name="codec" value="PCMU"/>
-  </Stream>
+  <Connect>
+    <Stream url="${wsUrl}/audiostream?context=outbound&call_id=${call_id}" codec="L16@24000h">
+      <Parameter name="track" value="both_tracks" />
+      <Parameter name="silenceDetection" value="false" />
+      <Parameter name="from" value="${From}" />
+      <Parameter name="to" value="${To}" />
+    </Stream>
+  </Connect>
 </Response>`;
   
   return reply.type('text/xml').send(xml);
@@ -472,14 +475,18 @@ app.register(async function (fastify) {
   fastify.get('/audiostream', { websocket: true }, async (connection, req) => {
     // In @fastify/websocket, connection IS the WebSocket
     const swSocket = connection;
-    const { callId } = req.query;
+    const { callId, call_id, context } = req.query;
+    
+    // Support both callId (legacy n8n) and call_id (MCP)
+    const actualCallId = call_id || callId;
     
     app.log.info({ 
-      callId,
+      callId: actualCallId,
+      context,
       hasSocket: !!swSocket,
       socketType: typeof swSocket,
       hasOn: typeof swSocket?.on
-    }, '🔌 WebSocket connected from SignalWire (legacy)');
+    }, '🔌 WebSocket connected from SignalWire');
     
     // Verify socket exists and has event methods
     if (!swSocket || typeof swSocket.on !== 'function') {
@@ -493,16 +500,16 @@ app.register(async function (fastify) {
     // Get call context from pending calls if this is an outbound call
     let callContext = {};
     
-    if (callId && pendingCalls.has(callId)) {
-      callContext = pendingCalls.get(callId);
+    if (actualCallId && pendingCalls.has(actualCallId)) {
+      callContext = pendingCalls.get(actualCallId);
       app.log.info({ 
-        callId, 
+        callId: actualCallId, 
         lead_id: callContext.lead_id,
         hasInstructions: !!callContext.instructions 
-      }, '📋 Retrieved call context from n8n');
+      }, '📋 Retrieved call context');
       
       // Clean up pending call after retrieval
-      pendingCalls.delete(callId);
+      pendingCalls.delete(actualCallId);
     } else {
       app.log.info('📞 Inbound call - will fetch context via tools');
     }
