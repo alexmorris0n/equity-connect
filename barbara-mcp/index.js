@@ -147,6 +147,23 @@ app.post('/mcp', async (request, reply) => {
 
   try {
     switch (method) {
+      case 'initialize': {
+        return respond({
+          result: {
+            capabilities: {
+              tools: {
+                list: true,
+                call: true
+              }
+            },
+            session: {
+              id: 'barbara-mcp-session',
+              name: 'barbara-mcp'
+            }
+          }
+        });
+      }
+
       case 'tools/list': {
         return respond({
           result: {
