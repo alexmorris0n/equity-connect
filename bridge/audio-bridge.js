@@ -161,8 +161,8 @@ class AudioBridge {
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
-          prefix_padding_ms: 350,  // Increased from 300 to catch first words better
-          silence_duration_ms: 2200  // Increased from 2000 - gives seniors more time
+          prefix_padding_ms: 350,
+          silence_duration_ms: 1950  // Slightly faster response - 0.25s quicker than before
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
