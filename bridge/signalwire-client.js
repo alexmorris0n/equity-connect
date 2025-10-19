@@ -11,7 +11,7 @@ class SignalWireClient {
     this.projectId = projectId;
     this.authToken = authToken;
     this.space = space;
-    this.baseUrl = `https://${space}/api/laml/2010-04-01/Accounts/${projectId}`;
+    this.baseUrl = `https://${space}/api/relay/rest`;
   }
 
   /**
