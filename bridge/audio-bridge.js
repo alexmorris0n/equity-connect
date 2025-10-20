@@ -596,9 +596,9 @@ class AudioBridge {
         this.speaking = false;
         this.responseInProgress = false;
         
-        // Add 150ms silence tail to prevent telephony buffer clip
+        // Add 300ms silence tail to prevent telephony buffer clip and pitch drop
         // SignalWire's buffer may cut off last 100-200ms without padding
-        const silenceTail = Buffer.alloc(4800).toString('base64'); // 150ms @ 16kHz PCM16
+        const silenceTail = Buffer.alloc(9600).toString('base64'); // 300ms @ 16kHz PCM16
         
         setTimeout(() => {
           if (this.swSocket?.readyState === WebSocket.OPEN) {
@@ -609,12 +609,12 @@ class AudioBridge {
                 payload: silenceTail
               }
             }));
-            debug('🔇 Sent 150ms silence tail to prevent clip');
+            debug('🔇 Sent 300ms silence tail to prevent clip/pitch drop');
           }
           
           // Now drain queue after tail is sent
           this.drainResponseQueue();
-        }, 50); // Small delay to ensure last audio chunk is sent first
+        }, 100); // 100ms delay to ensure last audio chunk is fully sent first
         
         this.logger.info('🔊 AI finished speaking');
         break;
@@ -925,7 +925,14 @@ class AudioBridge {
             this.startAutoResumeMonitor();
             
             // Inject caller-specific greeting instructions BEFORE starting conversation
-            await this.injectCallerGreeting();
+            console.log('🟢🟢🟢 ABOUT TO CALL injectCallerGreeting()');
+            try {
+              await this.injectCallerGreeting();
+              console.log('🟢🟢🟢 injectCallerGreeting() COMPLETED SUCCESSFULLY');
+            } catch (greetErr) {
+              console.error('🔴🔴🔴 injectCallerGreeting() FAILED:', greetErr);
+              console.error('🔴🔴🔴 Stack:', greetErr.stack);
+            }
             
             // Wait brief moment for session to be ready, then trigger greeting
             setTimeout(() => {
@@ -936,6 +943,7 @@ class AudioBridge {
           } catch (err) {
             console.error('❌ Failed to configure session with lead context:', err);
             console.error('❌ Error details:', err.message);
+            console.error('❌ Stack:', err.stack);
             // Fallback: configure with minimal prompt
             this.callContext.instructions = this.buildPromptFromTemplate({ callContext: 'inbound' });
             await waitForOpen();
@@ -1808,6 +1816,8 @@ CONVERSATION GOALS (in order):
   async handleToolCall(event) {
     const { call_id, name, arguments: argsJson } = event;
     
+    console.log('🔧 Tool called:', name, 'call_id:', call_id);
+    console.log('🔧 Tool args (raw):', argsJson);
     this.logger.info({ function: name, call_id }, '🔧 Tool called');
     
     try {
@@ -1815,14 +1825,18 @@ CONVERSATION GOALS (in order):
       let args = {};
       try {
         args = JSON.parse(argsJson || '{}');
+        console.log('🔧 Tool args (parsed):', JSON.stringify(args));
       } catch (parseErr) {
         console.error('⚠️ Failed to parse tool args, using empty:', parseErr);
         args = {};
       }
       
       // Execute with timeout to prevent stalls
+      console.log('⏱️ Executing tool:', name, 'with timeout...');
       const result = await this.withTimeout(executeTool(name, args));
       
+      console.log('✅ Tool executed successfully:', name);
+      console.log('✅ Tool result:', JSON.stringify(result).substring(0, 200));
       this.logger.info({ function: name, result }, '✅ Tool executed');
       
       // Send result back to OpenAI
@@ -1839,6 +1853,9 @@ CONVERSATION GOALS (in order):
       this.enqueueResponse({});
       
     } catch (err) {
+      console.error('❌ Tool execution failed:', name);
+      console.error('❌ Error message:', err.message);
+      console.error('❌ Error stack:', err.stack);
       this.logger.error({ err, function: name, args: argsJson }, '❌ Tool execution failed');
       
       // Generate graceful fallback message based on tool type
