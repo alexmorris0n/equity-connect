@@ -759,7 +759,7 @@ class AudioBridge {
         console.log('📞 Call started, CallSid:', this.callSid); // Always log call start
         this.logger.info({ callSid: this.callSid, from: this.callContext.from }, '📞 Call started');
         
-        // For INBOUND calls: Send quick ack immediately, then force deep lookup
+        // For INBOUND calls: Send quick ack while configureSession() does the lookup
         if (!this.callContext.instructions && this.callerPhone) {
           // Send quick acknowledgment to buy time for lookup
           try {
@@ -768,12 +768,9 @@ class AudioBridge {
             debug('⚠️ Quick ack failed (non-fatal):', e);
           }
           
-          // Force lead context lookup (injects real name/city for turn 2)
-          try {
-            this.forceLeadContextLookup().catch(e => debug('⚠️ Force lookup failed:', e));
-          } catch (e) {
-            debug('⚠️ forceLeadContextLookup invocation failed (non-fatal):', e);
-          }
+          // NOTE: forceLeadContextLookup() REMOVED - it was racing with configureSession()
+          // and injecting conflicting "not found" messages. configureSession() now handles
+          // the lookup properly using the tool, which is faster and more reliable.
         }
         
         // For INBOUND calls: NOW we have caller phone - configure session with their context
