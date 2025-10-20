@@ -868,10 +868,11 @@ class AudioBridge {
             this.lastAudioAppendAt = Date.now();
             this.hasAppendedSinceLastCommit = true;  // Flag that we have new audio
             
-            // Start commit interval on first audio (lazy start)
-            if (!this.audioCommitInterval) {
-              this.startAudioCommitInterval();
-            }
+            // DISABLED: Auto-commits still causing issues despite all guards
+            // Server VAD works WITHOUT explicit commits
+            // if (!this.audioCommitInterval) {
+            //   this.startAudioCommitInterval();
+            // }
           } catch (err) {
             debug('⚠️ Failed to count audio bytes:', err);
           }

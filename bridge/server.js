@@ -107,7 +107,7 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream" codec="L16@24000h">
+    <Stream url="${wsUrl}/audiostream" codec="L16@16000h">
       <Parameter name="track" value="both_tracks" />
       ${From ? `<Parameter name="from" value="${From}" />` : ''}
       ${To ? `<Parameter name="to" value="${To}" />` : ''}
@@ -384,6 +384,13 @@ app.post('/api/outbound-call', async (request, reply) => {
     const crypto = require('crypto');
     const callId = crypto.randomUUID();
     
+    // Inject SignalWire number into custom instructions
+    let finalInstructions = instructions;
+    if (instructions) {
+      // Replace {{signalwireNumber}} placeholder with actual number
+      finalInstructions = instructions.replace(/\{\{signalwireNumber\}\}/g, selectedNumber.number);
+    }
+    
     // Store call context for when WebSocket connects
             pendingCalls.set(callId, {
               lead_id: leadRecord.lead_id,
@@ -392,8 +399,9 @@ app.post('/api/outbound-call', async (request, reply) => {
               broker_id: assignedBrokerId,
               to_phone: normalizedPhone,
               from_phone: selectedNumber.number,
+              signalwire_number: selectedNumber.number,  // Track which number is being used
               context: 'outbound',
-              instructions: instructions || null  // Custom Barbara prompt from n8n/MCP
+              instructions: finalInstructions || null  // Custom Barbara prompt with injected number
             });
 
     // Clean up old pending calls (older than 5 minutes)
@@ -472,15 +480,72 @@ app.post('/call-status', async (request, reply) => {
  * SignalWire posts call status updates here
  */
 app.post('/api/call-status', async (request, reply) => {
-  const { CallSid, CallStatus, Duration } = request.body;
+  const { CallSid, CallStatus, Duration, From, To } = request.body;
   
-  app.log.info({ CallSid, CallStatus, Duration }, '📊 API Call status update');
+  app.log.info({ CallSid, CallStatus, Duration, From, To }, '📊 API Call status update');
   
   // Clean up call context when call completes
   if (['completed', 'failed', 'busy', 'no-answer'].includes(CallStatus)) {
     activeCalls.delete(CallSid);
     
-    // Update lead status in database if we have call context
+    // Check if this call was on a tracking number (for billing)
+    const sb = require('./tools').initSupabase();
+    
+    try {
+      // Query for tracking number assignment
+      const { data: assignment, error: assignmentError } = await sb
+        .from('signalwire_phone_numbers')
+        .select(`
+          *,
+          lead:leads!currently_assigned_to(*),
+          broker:brokers!assigned_broker_id(*)
+        `)
+        .eq('number', To)
+        .eq('assignment_status', 'assigned_for_tracking')
+        .single();
+      
+      if (assignment && !assignmentError) {
+        // This is a tracked call! Log for billing
+        const direction = From === assignment.broker?.phone ? 'broker_to_lead' : 'lead_to_broker';
+        
+        app.log.info({
+          tracking_number: To,
+          direction,
+          duration: Duration,
+          billable: Duration > 300
+        }, '💰 BILLING: Tracked call on assigned number');
+        
+        // Log to billing_call_logs
+        await sb.from('billing_call_logs').insert({
+          lead_id: assignment.currently_assigned_to,
+          broker_id: assignment.assigned_broker_id,
+          tracking_number: To,
+          caller_number: From,
+          direction: direction,
+          duration_seconds: Duration || 0,
+          call_sid: CallSid,
+          call_status: CallStatus,
+          appointment_datetime: assignment.appointment_scheduled_at,
+          campaign_id: assignment.lead?.campaign_id,
+          campaign_archetype: assignment.lead?.campaign_archetype,
+          created_at: new Date().toISOString()
+        });
+        
+        // Update lead status if call completed successfully
+        if (CallStatus === 'completed' && Duration > 300) {
+          await sb.from('leads').update({
+            status: 'appointment_completed',
+            last_engagement: new Date().toISOString()
+          }).eq('id', assignment.currently_assigned_to);
+          
+          app.log.info({ lead_id: assignment.currently_assigned_to }, '✅ Appointment verified (call > 5 min)');
+        }
+      }
+    } catch (err) {
+      app.log.error({ err, To }, 'Error checking tracking number assignment');
+    }
+    
+    // Regular interaction logging
     const callContext = activeCalls.get(CallSid);
     if (callContext && callContext.lead_id) {
       try {
