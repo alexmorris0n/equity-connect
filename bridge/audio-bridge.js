@@ -111,7 +111,7 @@ class AudioBridge {
         console.log('⏰ Will configure session after getting phone (max 3s wait)');
         
         // FALLBACK: If SignalWire doesn't send phone within 3 seconds, configure with generic prompt
-        this.sessionConfigTimeout = setTimeout(async () => {
+        this.sessionConfigTimeout = setTimeout(() => {
           if (!this.sessionConfigured) {
             console.log('⏰ Timeout - no caller phone received, using generic greeting');
             this.callContext.instructions = this.buildPromptFromTemplate({ 
@@ -120,9 +120,12 @@ class AudioBridge {
               leadFirstName: '',
               brokerFirstName: 'one of our advisors'
             });
-            await this.configureSession();
-            this.startAutoResumeMonitor();
-            setTimeout(() => this.startConversation(), 500);
+            this.configureSession().then(() => {
+              this.startAutoResumeMonitor();
+              setTimeout(() => this.startConversation(), 500);
+            }).catch(err => {
+              console.error('❌ Failed to configure session in timeout fallback:', err);
+            });
           }
         }, 3000); // 3 second timeout
       }
