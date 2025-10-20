@@ -20,11 +20,33 @@ const debug = (...args) => {
   }
 };
 
-// Load Barbara's original "big beautiful prompt" (Prompt31_Master)
-const BARBARA_HYBRID_PROMPT = fs.readFileSync(
-  path.join(__dirname, '../prompts/old big buitifl promtp.md'),
-  'utf8'
-);
+// Safe prompt loader with fallback (prevents crashes)
+let BARBARA_HYBRID_PROMPT = '';
+function loadPromptSafe() {
+  if (BARBARA_HYBRID_PROMPT) return BARBARA_HYBRID_PROMPT;
+  
+  const candidates = [
+    '../prompts/old big buitifl promtp.md',
+    '../prompts/Prompt31_Master.md',
+    '../prompts/BarbaraRealtimePrompt.md',
+    '../prompts/Archived/BarbaraRealtimePrompt.md'
+  ];
+  
+  for (const rel of candidates) {
+    try {
+      const p = path.join(__dirname, rel);
+      BARBARA_HYBRID_PROMPT = fs.readFileSync(p, 'utf8');
+      console.log('📝 Loaded prompt:', rel, 'length:', BARBARA_HYBRID_PROMPT.length);
+      return BARBARA_HYBRID_PROMPT;
+    } catch (err) {
+      // Try next candidate
+    }
+  }
+  
+  console.warn('⚠️ No prompt file found - using minimal fallback');
+  BARBARA_HYBRID_PROMPT = "You are Barbara, a warm scheduling assistant. Keep responses short and friendly.";
+  return BARBARA_HYBRID_PROMPT;
+}
 
 /**
  * Create and manage audio bridge for a single call
@@ -81,7 +103,7 @@ class AudioBridge {
     
     // API compatibility (text vs input_text schema mismatch)
     this._pendingNudge = null;  // Track failed nudges for retry with alternate schema
-    this._contentType = 'text';  // Default to 'text', will auto-switch if error
+    this._contentType = 'input_text';  // Default to 'input_text' (most compatible), will auto-switch if error
   }
 
   /**
@@ -95,8 +117,11 @@ class AudioBridge {
       throw new Error('Missing OPENAI_API_KEY');
     }
 
+    // Use env variable for model (allows easy switching without code deploy)
+    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17';
+    
     this.openaiSocket = new WebSocket(
-      'wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28',
+      `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`,
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -104,6 +129,8 @@ class AudioBridge {
         }
       }
     );
+    
+    console.log('🤖 Connecting to OpenAI Realtime:', realtimeModel);
 
     this.setupOpenAIHandlers();
     this.setupSignalWireHandlers();
@@ -384,7 +411,7 @@ class AudioBridge {
    * Build prompt from template by replacing variables
    */
   buildPromptFromTemplate(variables) {
-    let prompt = BARBARA_HYBRID_PROMPT;
+    let prompt = loadPromptSafe();
     
     // 1) Process {{#if ...}}...{{else}}...{{/if}} conditionals FIRST (avoids swallowing)
     const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
@@ -791,6 +818,11 @@ class AudioBridge {
         console.error('❌ OpenAI error event:', JSON.stringify(event.error));
         this.logger.error({ error: event.error }, '❌ OpenAI error');
         
+        // Unlock queue on ANY error to prevent deadlock
+        this.speaking = false;
+        this.responseInProgress = false;
+        setTimeout(() => this.drainResponseQueue(), 0);
+        
         // Handle rate limit errors specifically
         if (errorCode === 'rate_limit_exceeded') {
           console.error('🚨 RATE LIMIT EXCEEDED - Too many calls to OpenAI API');
@@ -1109,10 +1141,11 @@ class AudioBridge {
           debug('🔔 User silent after question - sending gentle nudge');
           
           // Track for potential retry if schema mismatch
-          this._pendingNudge = 'Take your time.';
+          this._pendingNudge = 'User is silent; give a gentle, single-sentence nudge like: "Take your time."';
           
-          // Send gentle nudge using compatible helper
-          this.sendMessageItem('assistant', 'Take your time.');
+          // Send as SYSTEM instruction (not assistant message) for better turn-taking
+          this.sendMessageItem('system', this._pendingNudge);
+          this.enqueueResponse({});
           
           this.nudgedOnce = true;  // Only nudge once per question
           this.lastResponseAt = Date.now();  // Reset timer
@@ -1260,6 +1293,7 @@ class AudioBridge {
    * Handles text vs input_text schema mismatch between API versions
    */
   sendMessageItem(role, text) {
+    debug(`📤 Sending message item (role=${role}, contentType=${this._contentType}, textLen=${text?.length})`);
     this.openaiSocket.send(JSON.stringify({
       type: 'conversation.item.create',
       item: {
@@ -1271,6 +1305,7 @@ class AudioBridge {
         }]
       }
     }));
+    console.log('✅ Message item sent:', role, text.substring(0, 100) + '...');
   }
 
   /**
@@ -1301,6 +1336,8 @@ class AudioBridge {
   async injectCallerGreeting() {
     const callerPhone = this.callContext.from;
     
+    console.log('🔵 injectCallerGreeting() called, phone:', callerPhone);
+    
     if (!callerPhone) {
       console.log('⚠️ No caller phone - injecting generic greeting');
       this.sendMessageItem('system', 'CALLER INFORMATION: New caller (phone unknown). YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"');
@@ -1308,8 +1345,10 @@ class AudioBridge {
     }
     
     try {
+      console.log('🔍 Looking up lead for greeting injection:', callerPhone);
       const { executeTool } = require('./tools');
       const result = await executeTool('get_lead_context', { phone: callerPhone });
+      console.log('📊 Lead lookup result:', { found: result?.found, name: result?.raw?.first_name });
       
       if (!result || !result.found) {
         // New caller
