@@ -22,7 +22,7 @@ const debug = (...args) => {
 
 // Load Barbara's original "big beautiful prompt" (Prompt31_Master)
 const BARBARA_HYBRID_PROMPT = fs.readFileSync(
-  path.join(__dirname, '../prompts/Archived/old big buitifl promtp.md'),
+  path.join(__dirname, '../prompts/old big buitifl promtp.md'),
   'utf8'
 );
 
