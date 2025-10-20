@@ -787,6 +787,7 @@ class AudioBridge {
       // First, look up which broker owns this SignalWire number
       let assignedBrokerId = null;
       let assignedBrokerName = null;
+      let assignedBrokerData = null;
       const DEFAULT_BROKER_ID = '6a3c5ed5-664a-4e13-b019-99fe8db74174'; // Walter - fallback
       const DEFAULT_BROKER_NAME = 'Walter';
       
@@ -807,7 +808,7 @@ class AudioBridge {
           } else if (swNumber?.assigned_broker_company) {
             const { data: broker, error: brokerError } = await sb
               .from('brokers')
-              .select('id, contact_name')
+              .select('id, contact_name, company_name, nmls_number, phone, email, timezone')
               .eq('company_name', swNumber.assigned_broker_company)
               .eq('status', 'active')
               .single();
@@ -819,6 +820,7 @@ class AudioBridge {
             } else {
               assignedBrokerId = broker.id;
               assignedBrokerName = broker.contact_name.split(' ')[0]; // First name only
+              assignedBrokerData = broker; // Store full broker details
               debug('🏢 Broker assigned by SignalWire number:', assignedBrokerName);
             }
           }
@@ -839,25 +841,68 @@ class AudioBridge {
       
       debug('✅ Lead context retrieved:', JSON.stringify(result).substring(0, 200));
       
+      // If NOT a lead, check if they're a broker
+      let isBrokerCalling = false;
+      let callingBroker = null;
+      if (!result?.found) {
+        const sb = initSupabase();
+        const normalizedPhone = callerPhone.replace(/\D/g, '');
+        const last10 = normalizedPhone.slice(-10);
+        
+        const { data: brokers } = await sb
+          .from('brokers')
+          .select('*')
+          .or(`phone.ilike.%${last10}%,phone.ilike.%${last10.slice(0,3)}-${last10.slice(3,6)}-${last10.slice(6)}%`)
+          .limit(1);
+        
+        if (brokers && brokers.length > 0) {
+          isBrokerCalling = true;
+          callingBroker = brokers[0];
+          debug('🏢 Caller is a BROKER:', callingBroker.contact_name);
+        }
+      }
+      
       // Build silent system message with real data
       let contextMessage = 'CALLER INFORMATION (use this real data, do not make up names or details):\n';
       
-      if (result?.found) {
+      if (isBrokerCalling && callingBroker) {
+        // BROKER is calling their own number
+        contextMessage += `- Caller Type: BROKER (not a lead!)\n`;
+        contextMessage += `- Name: ${callingBroker.contact_name}\n`;
+        contextMessage += `- Company: ${callingBroker.company_name}\n`;
+        contextMessage += `- NMLS: ${callingBroker.nmls_number || 'N/A'}\n`;
+        contextMessage += `- Phone: ${callerPhone}\n`;
+        contextMessage += `\nCRITICAL: This is a BROKER calling their own line (likely testing). Greet them professionally and ask if they need assistance or are testing the system. Examples:\n`;
+        contextMessage += `- "Hi ${callingBroker.contact_name.split(' ')[0]}! This is your Equity Connect line. Are you testing the system or did you need something?"\n`;
+        contextMessage += `- "Hello ${callingBroker.contact_name.split(' ')[0]}, this is Barbara. Everything looks good on my end - is this a test call?"\n`;
+        contextMessage += `Do NOT try to qualify them as a lead. Be helpful and professional.`;
+        
+        // Store broker info
+        this.callContext.broker_id = callingBroker.id;
+        this.callContext.is_broker_calling = true;
+      } else if (result?.found) {
         // RETURNING CALLER - Use their existing data
         contextMessage += `- First name: ${result.raw?.first_name || 'Unknown'}\n`;
         contextMessage += `- Last name: ${result.raw?.last_name || 'Unknown'}\n`;
         contextMessage += `- Phone: ${callerPhone}\n`;
         contextMessage += `- City: ${result.raw?.property_city || 'Unknown'}\n`;
+        contextMessage += `- Property address: ${result.raw?.property_address || 'Not provided'}\n`;
+        contextMessage += `- Property value: ${result.raw?.property_value || 'Unknown'}\n`;
+        contextMessage += `- Estimated equity: ${result.raw?.estimated_equity || 'Unknown'}\n`;
         contextMessage += `- Status: ${result.raw?.status || 'new'}\n`;
         
         // Use lead's assigned broker if they have one, otherwise use SignalWire number's broker
         const finalBrokerId = result.broker_id || assignedBrokerId;
-        const finalBrokerName = result.broker_id 
-          ? (result.broker?.contact_name?.split(' ')[0] || assignedBrokerName)
-          : assignedBrokerName;
+        const brokerDetails = result.broker || assignedBrokerData;
+        const finalBrokerName = brokerDetails?.contact_name?.split(' ')[0] || assignedBrokerName;
         
-        if (finalBrokerId) {
-          contextMessage += `- Assigned broker first name: ${finalBrokerName}\n`;
+        if (finalBrokerId && brokerDetails) {
+          contextMessage += `\nASSIGNED BROKER:\n`;
+          contextMessage += `- First name: ${finalBrokerName}\n`;
+          contextMessage += `- Full name: ${brokerDetails.contact_name || 'Unknown'}\n`;
+          contextMessage += `- Company: ${brokerDetails.company_name || 'Unknown'}\n`;
+          contextMessage += `- NMLS: ${brokerDetails.nmls_number || 'licensed'}\n`;
+          contextMessage += `- Phone: ${brokerDetails.phone || 'N/A'}\n`;
           contextMessage += `- Broker ID for booking: ${finalBrokerId}\n`;
           this.callContext.broker_id = finalBrokerId;
         }
@@ -872,7 +917,17 @@ class AudioBridge {
         contextMessage += '- Status: NEW CALLER (not in database)\n';
         contextMessage += `- Phone: ${callerPhone}\n`;
         
-        if (assignedBrokerId) {
+        if (assignedBrokerId && assignedBrokerData) {
+          contextMessage += `\nASSIGNED BROKER:\n`;
+          contextMessage += `- First name: ${assignedBrokerName}\n`;
+          contextMessage += `- Full name: ${assignedBrokerData.contact_name || 'Unknown'}\n`;
+          contextMessage += `- Company: ${assignedBrokerData.company_name || 'Unknown'}\n`;
+          contextMessage += `- NMLS: ${assignedBrokerData.nmls_number || 'licensed'}\n`;
+          contextMessage += `- Phone: ${assignedBrokerData.phone || 'N/A'}\n`;
+          contextMessage += `- Broker ID for booking: ${assignedBrokerId}\n`;
+          this.callContext.broker_id = assignedBrokerId;
+        } else if (assignedBrokerId) {
+          // Fallback if we only have ID and name
           contextMessage += `- Assigned broker: ${assignedBrokerName}\n`;
           contextMessage += `- Broker ID for booking: ${assignedBrokerId}\n`;
           this.callContext.broker_id = assignedBrokerId;

@@ -170,7 +170,7 @@ const toolDefinitions = [
   {
     type: 'function',
     name: 'book_appointment',
-    description: 'Book an appointment with the broker after checking availability. Creates interaction record and billing event.',
+    description: 'Book an appointment with the broker after checking availability. Creates calendar event and auto-sends invite to lead email. Creates interaction record and billing event.',
     parameters: {
       type: 'object',
       properties: {
@@ -192,6 +192,34 @@ const toolDefinitions = [
         }
       },
       required: ['lead_id', 'broker_id', 'scheduled_for'],
+      additionalProperties: false
+    }
+  },
+  {
+    type: 'function',
+    name: 'assign_tracking_number',
+    description: 'Assign the current SignalWire number to this lead/broker pair for call tracking. CALL THIS IMMEDIATELY AFTER booking an appointment. This allows us to track all future calls between broker and lead for billing verification.',
+    parameters: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        },
+        broker_id: {
+          type: 'string',
+          description: 'Broker UUID'
+        },
+        signalwire_number: {
+          type: 'string',
+          description: 'The SignalWire number Barbara is calling from (e.g., "+14244851544")'
+        },
+        appointment_datetime: {
+          type: 'string',
+          description: 'Appointment date/time in ISO 8601 format (e.g., "2025-10-22T10:00:00Z")'
+        }
+      },
+      required: ['lead_id', 'broker_id', 'signalwire_number', 'appointment_datetime'],
       additionalProperties: false
     }
   },
@@ -270,13 +298,21 @@ async function getLeadContext({ phone }) {
     found: true,
     lead_id: lead.id,
     broker_id: lead.assigned_broker_id,
-    broker: broker, // Include broker info
+    broker: broker, // Include full broker object with all fields
     context: formattedContext,
     raw: {
       first_name: lead.first_name,
       last_name: lead.last_name,
+      primary_email: lead.primary_email,
+      property_address: lead.property_address,
       property_city: lead.property_city,
+      property_state: lead.property_state,
+      property_zip: lead.property_zip,
       property_value: lead.property_value,
+      mortgage_balance: lead.mortgage_balance,
+      estimated_equity: lead.estimated_equity,
+      age: lead.age,
+      owner_occupied: lead.owner_occupied,
       status: lead.status
     }
   };
@@ -407,29 +443,181 @@ async function findBrokerByTerritory({ city, zip_code }) {
 
 /**
  * Tool Handler: Check Broker Availability
+ * Calls Nylas Free/Busy API directly to check real calendar availability
+ * Docs: https://developer.nylas.com/docs/v3/calendar/check-free-busy/
  */
 async function checkBrokerAvailability({ broker_id, preferred_day, preferred_time }) {
+  const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
+  const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
+  
   const sb = initSupabase();
   
-  // Get existing appointments for this broker in next 7 days
-  const sevenDaysFromNow = new Date();
-  sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+  try {
+    // Get broker's nylas_grant_id and email
+    const { data: broker, error: brokerError } = await sb
+      .from('brokers')
+      .select('nylas_grant_id, contact_name, email, timezone')
+      .eq('id', broker_id)
+      .single();
+    
+    if (brokerError || !broker) {
+      console.error('❌ Broker not found:', brokerError);
+      return generateFallbackSlots(preferred_day, preferred_time);
+    }
+    
+    if (!broker.nylas_grant_id) {
+      console.warn('⚠️  Broker calendar not synced, using fallback slots');
+      return generateFallbackSlots(preferred_day, preferred_time);
+    }
+    
+    // Calculate time range (next 14 days)
+    const startTime = Math.floor(Date.now() / 1000);
+    const endTime = Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000);
+    
+    // Call Nylas Free/Busy API
+    // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
+    const freeBusyUrl = `${NYLAS_API_URL}/v3/calendars/free-busy`;
+    const response = await fetch(freeBusyUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        start_time: startTime,
+        end_time: endTime,
+        emails: [broker.email]
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Nylas free/busy API failed:', response.status, errorText);
+      return generateFallbackSlots(preferred_day, preferred_time);
+    }
+    
+    const freeBusyData = await response.json();
+    
+    // Extract busy times for the broker
+    const busyTimes = [];
+    if (freeBusyData && freeBusyData.length > 0) {
+      const emailData = freeBusyData[0];
+      if (emailData.time_slots) {
+        busyTimes.push(...emailData.time_slots.map(slot => ({
+          start: slot.start_time * 1000, // Convert Unix to milliseconds
+          end: slot.end_time * 1000
+        })));
+      }
+    }
+    
+    console.log('✅ Got free/busy data from Nylas:', {
+      broker: broker.contact_name,
+      busy_count: busyTimes.length
+    });
+    
+    // Calculate available slots
+    const availableSlots = calculateAvailableSlots(
+      busyTimes,
+      preferred_day,
+      preferred_time,
+      broker.timezone || 'America/Los_Angeles'
+    );
+    
+    return {
+      success: true,
+      available_slots: availableSlots,
+      broker_name: broker.contact_name,
+      calendar_provider: 'nylas',
+      message: availableSlots.length > 0 
+        ? `Found ${availableSlots.length} available times`
+        : 'No availability in next 2 weeks'
+    };
+    
+  } catch (err) {
+    console.error('❌ Error checking Nylas availability:', err);
+    // Fallback to simple slots
+    return generateFallbackSlots(preferred_day, preferred_time);
+  }
+}
+
+/**
+ * Calculate available time slots from busy times
+ */
+function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timezone) {
+  const availableSlots = [];
+  const businessStart = 9;  // 9 AM
+  const businessEnd = 17;   // 5 PM
   
-  const { data: appointments, error } = await sb
-    .from('interactions')
-    .select('scheduled_for')
-    .eq('broker_id', broker_id)
-    .eq('type', 'appointment')
-    .gte('scheduled_for', new Date().toISOString())
-    .lte('scheduled_for', sevenDaysFromNow.toISOString())
-    .order('scheduled_for', { ascending: true });
-  
-  if (error) {
-    return { error: error.message, available_slots: [] };
+  // Generate slots for next 14 days
+  for (let dayOffset = 1; dayOffset < 14; dayOffset++) {
+    const date = new Date();
+    date.setDate(date.getDate() + dayOffset);
+    const dayOfWeek = date.getDay();
+    
+    // Skip weekends
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+    
+    const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][dayOfWeek];
+    
+    // Filter by preferred day
+    if (preferred_day && preferred_day !== 'any' && preferred_day !== dayName) continue;
+    
+    // Check each hour
+    for (let hour = businessStart; hour < businessEnd; hour++) {
+      // Filter by preferred time
+      if (preferred_time === 'morning' && hour >= 12) continue;
+      if (preferred_time === 'afternoon' && hour < 12) continue;
+      if (preferred_time === 'evening' && hour < 17) continue;
+      
+      const slotStart = new Date(date);
+      slotStart.setHours(hour, 0, 0, 0);
+      const slotEnd = new Date(slotStart);
+      slotEnd.setHours(hour + 1, 0, 0, 0);
+      
+      const slotStartMs = slotStart.getTime();
+      const slotEndMs = slotEnd.getTime();
+      
+      // Check for conflicts with busy times
+      const isConflict = busyTimes.some(busy => 
+        (slotStartMs >= busy.start && slotStartMs < busy.end) ||
+        (slotEndMs > busy.start && slotEndMs <= busy.end) ||
+        (slotStartMs <= busy.start && slotEndMs >= busy.end)
+      );
+      
+      if (!isConflict) {
+        availableSlots.push({
+          datetime: slotStart.toISOString(),
+          unix_timestamp: Math.floor(slotStartMs / 1000),
+          display: `${slotStart.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            month: 'short', 
+            day: 'numeric' 
+          })} at ${slotStart.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            hour12: true 
+          })}`,
+          day: dayName,
+          time: slotStart.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            hour12: true 
+          })
+        });
+      }
+    }
+    
+    // Limit to 5 best options
+    if (availableSlots.length >= 5) break;
   }
   
-  // Generate available slots (simple version - can be enhanced)
-  const bookedSlots = new Set(appointments.map(a => a.scheduled_for));
+  return availableSlots.slice(0, 5);
+}
+
+/**
+ * Generate fallback slots if calendar check fails
+ */
+function generateFallbackSlots(preferred_day, preferred_time) {
   const availableSlots = [];
   
   // Define standard availability (can be customized per broker)
@@ -498,57 +686,219 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
 
 /**
  * Tool Handler: Book Appointment
+ * Books appointment directly via Nylas Events API and auto-sends calendar invite
+ * Docs: https://developer.nylas.com/docs/v3/calendar/using-the-events-api/
  */
 async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
+  const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
+  const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
+  
   const sb = initSupabase();
   
-  // Create interaction record
-  const { data: interaction, error: interactionError } = await sb
-    .from('interactions')
-    .insert({
+  try {
+    // Get broker's nylas_grant_id and info
+    const { data: broker, error: brokerError } = await sb
+      .from('brokers')
+      .select('nylas_grant_id, contact_name, email, timezone')
+      .eq('id', broker_id)
+      .single();
+    
+    if (brokerError || !broker) {
+      return { success: false, error: 'Broker not found' };
+    }
+    
+    if (!broker.nylas_grant_id) {
+      return { success: false, error: 'Broker calendar not synced' };
+    }
+    
+    // Get lead info for calendar event
+    const { data: lead } = await sb
+      .from('leads')
+      .select('first_name, last_name, primary_phone, primary_email')
+      .eq('id', lead_id)
+      .single();
+    
+    if (!lead) {
+      return { success: false, error: 'Lead not found' };
+    }
+    
+    const leadName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Lead';
+    const leadEmail = lead.primary_email || null;
+    
+    // Parse scheduled_for to Unix timestamps
+    const appointmentDate = new Date(scheduled_for);
+    const startTime = Math.floor(appointmentDate.getTime() / 1000);
+    const endTime = startTime + 3600; // 1 hour appointment
+    
+    // Create calendar event via Nylas Events API
+    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events`;
+    
+    const eventBody = {
+      title: `Reverse Mortgage Consultation - ${leadName}`,
+      description: [
+        `Lead: ${leadName}`,
+        `Phone: ${lead.primary_phone || 'N/A'}`,
+        `Email: ${leadEmail || 'N/A'}`,
+        '',
+        `Notes: ${notes || 'None'}`,
+        '',
+        'This appointment was scheduled by Barbara AI Assistant.'
+      ].join('\n'),
+      when: {
+        start_time: startTime,
+        end_time: endTime
+      },
+      participants: [
+        {
+          name: broker.contact_name,
+          email: broker.email
+        }
+      ],
+      busy: true,
+      calendar_id: 'primary'
+    };
+    
+    // Add lead as participant if they have email (for calendar invite)
+    if (leadEmail) {
+      eventBody.participants.push({
+        name: leadName,
+        email: leadEmail
+      });
+    }
+    
+    const response = await fetch(createEventUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(eventBody)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Nylas create event failed:', response.status, errorText);
+      return { success: false, error: 'Failed to create calendar event' };
+    }
+    
+    const eventData = await response.json();
+    const nylasEventId = eventData.data?.id;
+    
+    console.log('✅ Appointment booked via Nylas:', {
+      event_id: nylasEventId,
+      broker: broker.contact_name,
+      lead: leadName,
+      scheduled_for,
+      invite_sent: !!leadEmail
+    });
+    
+    // Log interaction to Supabase
+    await sb.from('interactions').insert({
       lead_id,
       broker_id,
       type: 'appointment',
       direction: 'outbound',
-      subject: 'Reverse Mortgage Consultation',
-      scheduled_for,
-      metadata: { notes, booked_via: 'ai_call' },
-      created_at: new Date().toISOString()
-    })
-    .select()
-    .single();
-  
-  if (interactionError) {
-    return { success: false, error: interactionError.message };
-  }
-  
-  // Update lead status
-  await sb
-    .from('leads')
-    .update({ 
-      status: 'appointment_set',
-      last_engagement: new Date().toISOString()
-    })
-    .eq('id', lead_id);
-  
-  // Create billing event
-  await sb
-    .from('billing_events')
-    .insert({
-      broker_id,
-      lead_id,
-      event_type: 'appointment_set',
-      amount: 50, // Per pricing model
-      status: 'pending',
+      content: `Appointment scheduled for ${appointmentDate.toLocaleString('en-US')}`,
+      outcome: 'appointment_booked',
+      metadata: {
+        nylas_event_id: nylasEventId,
+        scheduled_for,
+        notes,
+        calendar_invite_sent: !!leadEmail
+      },
       created_at: new Date().toISOString()
     });
+    
+    // Update lead status
+    await sb
+      .from('leads')
+      .update({ 
+        status: 'appointment_set',
+        last_engagement: new Date().toISOString()
+      })
+      .eq('id', lead_id);
+    
+    // Create billing event
+    await sb
+      .from('billing_events')
+      .insert({
+        broker_id,
+        lead_id,
+        event_type: 'appointment_set',
+        amount: 50,
+        status: 'pending',
+        metadata: { 
+          nylas_event_id: nylasEventId,
+          scheduled_for 
+        },
+        created_at: new Date().toISOString()
+      });
+    
+    return {
+      success: true,
+      event_id: nylasEventId,
+      scheduled_for,
+      calendar_invite_sent: !!leadEmail,
+      message: leadEmail 
+        ? `Appointment booked successfully. Calendar invite sent to ${leadEmail}`
+        : 'Appointment booked successfully (no email for invite)'
+    };
+    
+  } catch (err) {
+    console.error('❌ Error booking appointment via Nylas:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Tool Handler: Assign Tracking Number
+ * Assigns the current SignalWire number to lead/broker pair for call tracking and billing verification
+ */
+async function assignTrackingNumber({ lead_id, broker_id, signalwire_number, appointment_datetime }) {
+  const sb = initSupabase();
   
-  return {
-    success: true,
-    appointment_id: interaction.id,
-    scheduled_for,
-    message: 'Appointment booked successfully'
-  };
+  try {
+    // Call the database function
+    const { data, error } = await sb.rpc('assign_tracking_number', {
+      p_lead_id: lead_id,
+      p_broker_id: broker_id,
+      p_signalwire_number: signalwire_number,
+      p_appointment_datetime: appointment_datetime
+    });
+    
+    if (error) {
+      console.error('❌ Failed to assign tracking number:', error);
+      return { 
+        success: false, 
+        error: error.message,
+        message: 'Failed to assign tracking number'
+      };
+    }
+    
+    console.log('✅ Tracking number assigned:', {
+      number: signalwire_number,
+      lead_id,
+      broker_id,
+      release_at: data.release_at
+    });
+    
+    return {
+      success: true,
+      number: signalwire_number,
+      lead_id: lead_id,
+      broker_id: broker_id,
+      release_at: data.release_at,
+      message: `Tracking number ${signalwire_number} assigned. All future calls will be logged for billing.`
+    };
+    
+  } catch (err) {
+    console.error('❌ Error assigning tracking number:', err);
+    return { 
+      success: false, 
+      error: err.message,
+      message: 'Error assigning tracking number'
+    };
+  }
 }
 
 /**
@@ -681,6 +1031,8 @@ async function executeTool(functionName, args) {
       return await checkBrokerAvailability(args);
     case 'book_appointment':
       return await bookAppointment(args);
+    case 'assign_tracking_number':
+      return await assignTrackingNumber(args);
     case 'save_interaction':
       return await saveInteraction(args);
     case 'search_knowledge':
