@@ -507,7 +507,7 @@ class AudioBridge {
         max_response_output_tokens: 100,  // Reduced from 150 to prevent output token throttling
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.6,  // Balanced - catches soft voices, ignores most noise
+          threshold: 1.0,  // MAXIMUM - testing if phone movement is the issue (can back off later)
           prefix_padding_ms: 300,  // Standard padding
           silence_duration_ms: 600  // Balanced for seniors who trail off
         },
@@ -1230,7 +1230,7 @@ class AudioBridge {
           type: 'message',
           role: 'system',
           content: [{
-            type: 'text',
+            type: 'input_text',
             text: 'CALLER INFORMATION: New caller (phone unknown). YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"'
           }]
         }
@@ -1251,7 +1251,7 @@ class AudioBridge {
             type: 'message',
             role: 'system',
             content: [{
-              type: 'text',
+              type: 'input_text',
               text: `CALLER INFORMATION:
 Phone: ${callerPhone}
 Caller Type: NEW CALLER (first time calling)
@@ -1272,7 +1272,7 @@ YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking w
             type: 'message',
             role: 'system',
             content: [{
-              type: 'text',
+              type: 'input_text',
               text: `CALLER INFORMATION:
 Name: ${firstName}
 Phone: ${callerPhone}
@@ -1293,7 +1293,7 @@ YOUR GREETING: "Hi ${firstName}! Thanks for calling back${city ? ` about your pr
           type: 'message',
           role: 'system',
           content: [{
-            type: 'text',
+            type: 'input_text',
             text: 'CALLER INFORMATION: Unknown caller. YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"'
           }]
         }
