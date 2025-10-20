@@ -20,9 +20,9 @@ const debug = (...args) => {
   }
 };
 
-// Load Barbara's hybrid system prompt (handles both inbound and outbound)
+// Load Barbara's original "big beautiful prompt" (Prompt31_Master)
 const BARBARA_HYBRID_PROMPT = fs.readFileSync(
-  path.join(__dirname, '../prompts/BarbaraRealtimePrompt'),
+  path.join(__dirname, '../prompts/Archived/old big buitifl promtp.md'),
   'utf8'
 );
 
