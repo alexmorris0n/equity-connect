@@ -47,6 +47,8 @@ class AudioBridge {
     this.awaitingUser = false;  // Track if Barbara asked a question and is waiting for answer
     this.nudgedOnce = false;  // Track if we've nudged the user once already
     this.callerPhone = null;  // Populated from SignalWire start event
+    this.gracefulShutdown = false;  // Track if we're in graceful shutdown mode
+    this.gracefulShutdownTimer = null;  // Timeout for graceful shutdown
   }
 
   /**
@@ -496,6 +498,12 @@ class AudioBridge {
         this.lastResponseAt = Date.now();
         this.responseInProgress = false;  // Response fully completed
         debug('✅ Response completed, tracking for auto-resume');
+        
+        // If in graceful shutdown, cleanup now that response is done
+        if (this.gracefulShutdown) {
+          this.logger.info('✅ Response completed during graceful shutdown - cleaning up now');
+          this.cleanup();
+        }
         break;
       
       case 'response.interrupted':
@@ -635,6 +643,11 @@ class AudioBridge {
 
       case 'media':
         // Send audio to OpenAI (silent - happens every 20ms)
+        // Skip if in graceful shutdown - call has ended
+        if (this.gracefulShutdown) {
+          return;
+        }
+        
         if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
           this.openaiSocket.send(JSON.stringify({
             type: 'input_audio_buffer.append',
@@ -644,9 +657,9 @@ class AudioBridge {
         break;
 
       case 'stop':
-        this.logger.info('📞 Call ended by SignalWire');
+        this.logger.info('📞 Call ended by SignalWire - starting graceful shutdown');
         this.saveCallSummary();
-        this.cleanup();
+        this.startGracefulShutdown();
         break;
     }
   }
@@ -656,6 +669,12 @@ class AudioBridge {
    */
   sendMediaToSignalWire(audioData) {
     debug('🔊 Sending audio to SignalWire, length:', audioData?.length, 'callSid:', this.callSid);
+    
+    // During graceful shutdown, silently drop audio instead of logging errors
+    if (this.gracefulShutdown && this.swSocket.readyState !== WebSocket.OPEN) {
+      debug('🔇 Graceful shutdown - dropping audio chunk');
+      return;
+    }
     
     if (this.swSocket.readyState === WebSocket.OPEN) {
       this.swSocket.send(JSON.stringify({
@@ -854,20 +873,39 @@ class AudioBridge {
       const isLeadCalling = callerType === 'lead';
       
       // Build silent system message with real data
-      let contextMessage = 'CALLER INFORMATION (use this real data, do not make up names or details):\n';
+      // Determine call type
+      const isInbound = !this.callContext.instructions;
+      const callTypeInstructions = isInbound 
+        ? `CALL TYPE: INBOUND
+
+Your first words were: "Equity Connect, give me one second please"
+Now greet the caller based on who they are (see below).
+
+SCREENING DETECTION: If you heard "Google", "screening", or "RoboKiller" before this message, acknowledge it briefly.`
+        : `CALL TYPE: OUTBOUND (You called them)
+
+WAIT FOR PICKUP: Listen for "Hello?" before speaking your first words.
+SCREENING DETECTION: If you hear "Google", "screening", or "RoboKiller", wait 5 seconds then say: "This is Barbara calling regarding their reverse mortgage inquiry."
+OPENING: "Hi, is this [their name from below]?" or "Hi there!"`;
+
+      let contextMessage = `${callTypeInstructions}
+
+---
+
+CALLER INFORMATION:
+`;
       
       if (isBrokerCalling && contextData?.broker) {
         // BROKER is calling their own number
         const broker = contextData.broker;
-        contextMessage += `- Caller Type: BROKER (not a lead!)\n`;
+        contextMessage += `Caller Type: BROKER\n\n`;
+        contextMessage += `YOUR GREETING:\n`;
+        contextMessage += `"Hi ${broker.contact_name.split(' ')[0]}! This is your Equity Connect line. Are you testing the system or did you need something?"\n\n`;
+        contextMessage += `BROKER DATA:\n`;
         contextMessage += `- Name: ${broker.contact_name}\n`;
         contextMessage += `- Company: ${broker.company_name}\n`;
         contextMessage += `- NMLS: ${broker.nmls_number || 'N/A'}\n`;
         contextMessage += `- Phone: ${callerPhone}\n`;
-        contextMessage += `\nCRITICAL: This is a BROKER calling their own line (likely testing). Greet them professionally and ask if they need assistance or are testing the system. Examples:\n`;
-        contextMessage += `- "Hi ${broker.contact_name.split(' ')[0]}! This is your Equity Connect line. Are you testing the system or did you need something?"\n`;
-        contextMessage += `- "Hello ${broker.contact_name.split(' ')[0]}, this is Barbara. Everything looks good on my end - is this a test call?"\n`;
-        contextMessage += `Do NOT try to qualify them as a lead. Be helpful and professional.`;
         
         // Store broker info
         this.callContext.broker_id = broker.id;
@@ -880,7 +918,102 @@ class AudioBridge {
         const emailCtx = contextData.email_context;
         const callHist = contextData.call_history;
         
+        contextMessage += `Caller Type: RETURNING CALLER\n\n`;
+        
+        // Determine conversation flow based on lead status
+        const leadStatus = lead.status || 'new';
+        let flowInstructions = '';
+        
+        if (leadStatus === 'qualified') {
+          // Already qualified - skip to booking
+          flowInstructions = `CONVERSATION FLOW FOR THIS CALL:
+Skip qualification (already done last time). Start here:
+
+YOUR GREETING:
+"Hi ${lead.first_name}! I know we qualified you last time. Are you ready to schedule with ${broker?.contact_name?.split(' ')[0] || 'your advisor'}?"
+
+NEXT STEPS:
+- If yes → Jump straight to "Book the Appointment"
+- If they have questions first → "Of course! What would you like to know?" → Answer → Then book
+- If not ready → "No problem! Take your time. Call us back when you're ready."
+`;
+        }
+        else if (leadStatus === 'appointment_set') {
+          // Has existing appointment
+          flowInstructions = `CONVERSATION FLOW FOR THIS CALL:
+They already have an appointment scheduled.
+
+YOUR GREETING:
+"Hi ${lead.first_name}! I see you have an appointment with ${broker?.contact_name?.split(' ')[0] || 'your advisor'} coming up. What can I help you with?"
+
+LISTEN FOR:
+- Reschedule: Check new availability with check_broker_availability → Book new time → Cancel old
+- Cancel: "I understand. Let me cancel that for you. Would you like to reschedule for a different time?"
+- Questions: Answer their questions about the upcoming appointment
+- Confirm details: "Your appointment is [date/time]. [Broker] will call you then."
+`;
+        }
+        else if (leadStatus === 'showed') {
+          // Already met with broker
+          flowInstructions = `CONVERSATION FLOW FOR THIS CALL:
+They already met with the broker.
+
+YOUR GREETING:
+"Hi ${lead.first_name}! How was your meeting with ${broker?.contact_name?.split(' ')[0] || 'your advisor'}?"
+
+NEXT STEPS:
+- Listen to their feedback
+- Answer questions about next steps or application
+- Do NOT try to qualify them again
+- Help with whatever they need
+`;
+        }
+        else if (leadStatus === 'do_not_contact' || leadStatus === 'closed_lost') {
+          // Should not be calling them (only if inbound)
+          flowInstructions = `CONVERSATION FLOW FOR THIS CALL:
+Lead requested no contact or is closed_lost.
+
+YOUR GREETING:
+"Hi! Thanks for calling. How can I help you today?"
+
+IMPORTANT:
+- Be polite and helpful
+- Answer questions if they ask
+- Do NOT push for appointment
+- Let them lead the conversation
+`;
+        }
+        else {
+          // Default: new, contacted, replied - full qualification needed
+          flowInstructions = `CONVERSATION FLOW FOR THIS CALL:
+Full qualification flow needed.
+
+YOUR GREETING:
+"Hi ${lead.first_name || 'there'}! Thanks for calling back`;
+          if (lead.property_city) {
+            flowInstructions += ` about your property in ${lead.property_city}`;
+          }
+          flowInstructions += `."`;
+          if (lastInt && lastInt.context && lastInt.context.money_purpose) {
+            flowInstructions += ` Then reference: "I know you mentioned needing help with ${lastInt.context.money_purpose} last time. Is that still the situation?"`;
+          }
+          
+          flowInstructions += `
+
+CONVERSATION GOALS (in order):
+1. Build Rapport First (may be quick if they remember you)
+2. Get Permission to Qualify
+3. Gather Missing Information (check CALLER INFORMATION - some may be pre-filled)
+4. Calculate & Present Equity
+5. Answer Their Questions
+6. Book the Appointment
+`;
+        }
+        
+        contextMessage += flowInstructions + '\n\n';
+        
         // Basic lead info
+        contextMessage += `LEAD DETAILS:\n`;
         contextMessage += `- First name: ${lead.first_name || 'Unknown'}\n`;
         contextMessage += `- Last name: ${lead.last_name || 'Unknown'}\n`;
         contextMessage += `- Email: ${lead.primary_email || 'Not provided'}\n`;
@@ -943,18 +1076,22 @@ class AudioBridge {
           contextMessage += `- Avg duration: ${callHist.avg_duration_seconds}s\n`;
         }
         
-        contextMessage += '\nCRITICAL: This is a RETURNING CALLER. Use their real name and context from previous interactions. Do NOT ask questions they already answered.';
-        
         // Store lead ID and phone for tool calls
         this.callContext.lead_id = lead.id;
         this.callContext.caller_phone = callerPhone;
       } else {
         // NEW CALLER - Create minimal lead record and use SignalWire number's broker
-        contextMessage += '- Status: NEW CALLER (not in database)\n';
+        contextMessage += `Caller Type: NEW CALLER (not in database)\n\n`;
+        contextMessage += `YOUR GREETING FOR THIS CALL:\n`;
+        contextMessage += `"Hi! Thanks for calling. Who do I have the pleasure of speaking with?"\n`;
+        contextMessage += `After they give their name, ask: "Great to meet you, [name]! What can I help you with today?"\n\n`;
+        
+        contextMessage += `WHAT WE KNOW:\n`;
         contextMessage += `- Phone: ${callerPhone}\n`;
+        contextMessage += `- Status: First-time caller\n`;
         
         if (assignedBrokerId && assignedBrokerData) {
-          contextMessage += `\nASSIGNED BROKER:\n`;
+          contextMessage += `\nASSIGNED BROKER (based on the number they called):\n`;
           contextMessage += `- First name: ${assignedBrokerName}\n`;
           contextMessage += `- Full name: ${assignedBrokerData.contact_name || 'Unknown'}\n`;
           contextMessage += `- Company: ${assignedBrokerData.company_name || 'Unknown'}\n`;
@@ -964,12 +1101,11 @@ class AudioBridge {
           this.callContext.broker_id = assignedBrokerId;
         } else if (assignedBrokerId) {
           // Fallback if we only have ID and name
-          contextMessage += `- Assigned broker: ${assignedBrokerName}\n`;
+          contextMessage += `\nASSIGNED BROKER:\n`;
+          contextMessage += `- First name: ${assignedBrokerName}\n`;
           contextMessage += `- Broker ID for booking: ${assignedBrokerId}\n`;
           this.callContext.broker_id = assignedBrokerId;
         }
-        
-        contextMessage += '\nThis is a first-time caller. Ask for their name and continue with Step 1. When booking, use the broker ID above.';
         
         // Store phone for creating lead record later
         this.callContext.caller_phone = callerPhone;
@@ -1164,9 +1300,41 @@ class AudioBridge {
   }
 
   /**
+   * Start graceful shutdown - let OpenAI finish current response before closing
+   */
+  startGracefulShutdown() {
+    if (this.gracefulShutdown) {
+      debug('⚠️ Graceful shutdown already in progress');
+      return;
+    }
+    
+    this.gracefulShutdown = true;
+    this.logger.info('⏳ Graceful shutdown started - waiting for OpenAI to finish response');
+    
+    // If Barbara is currently speaking, wait for response to complete
+    if (this.responseInProgress) {
+      debug('🗣️ Barbara is speaking - waiting for response.done event');
+      // Set a timeout in case response.done never comes
+      this.gracefulShutdownTimer = setTimeout(() => {
+        this.logger.warn('⏰ Graceful shutdown timeout - forcing cleanup');
+        this.cleanup();
+      }, 3000); // 3 second max wait
+    } else {
+      // No response in progress, cleanup immediately
+      debug('✅ No response in progress - cleaning up immediately');
+      this.cleanup();
+    }
+  }
+
+  /**
    * Cleanup connections
    */
   cleanup() {
+    if (this.gracefulShutdownTimer) {
+      clearTimeout(this.gracefulShutdownTimer);
+      this.gracefulShutdownTimer = null;
+    }
+    
     this.logger.info('🧹 Cleaning up audio bridge');
     
     // Clear auto-resume interval
