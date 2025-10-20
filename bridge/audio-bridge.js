@@ -118,7 +118,7 @@ class AudioBridge {
     }
 
     // Use env variable for model (allows easy switching without code deploy)
-    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17';
+    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28';
     
     this.openaiSocket = new WebSocket(
       `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`,
