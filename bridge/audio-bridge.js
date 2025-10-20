@@ -836,81 +836,117 @@ class AudioBridge {
         assignedBrokerName = DEFAULT_BROKER_NAME;
       }
       
-      // Now look up the lead
-      const result = await executeTool('get_lead_context', { phone: callerPhone });
+      // Use super lookup function - gets EVERYTHING in one call
+      const sb = initSupabase();
+      const { data: contextData, error: contextError } = await sb.rpc('lookup_caller_complete_context', {
+        caller_phone: callerPhone
+      });
       
-      debug('✅ Lead context retrieved:', JSON.stringify(result).substring(0, 200));
-      
-      // If NOT a lead, check if they're a broker
-      let isBrokerCalling = false;
-      let callingBroker = null;
-      if (!result?.found) {
-        const sb = initSupabase();
-        const normalizedPhone = callerPhone.replace(/\D/g, '');
-        const last10 = normalizedPhone.slice(-10);
-        
-        const { data: brokers } = await sb
-          .from('brokers')
-          .select('*')
-          .or(`phone.ilike.%${last10}%,phone.ilike.%${last10.slice(0,3)}-${last10.slice(3,6)}-${last10.slice(6)}%`)
-          .limit(1);
-        
-        if (brokers && brokers.length > 0) {
-          isBrokerCalling = true;
-          callingBroker = brokers[0];
-          debug('🏢 Caller is a BROKER:', callingBroker.contact_name);
-        }
+      if (contextError) {
+        console.error('❌ Super lookup failed:', contextError);
+        throw contextError;
       }
+      
+      debug('✅ Complete context retrieved:', JSON.stringify(contextData).substring(0, 300));
+      
+      const callerType = contextData?.caller_type;
+      const isBrokerCalling = callerType === 'broker';
+      const isLeadCalling = callerType === 'lead';
       
       // Build silent system message with real data
       let contextMessage = 'CALLER INFORMATION (use this real data, do not make up names or details):\n';
       
-      if (isBrokerCalling && callingBroker) {
+      if (isBrokerCalling && contextData?.broker) {
         // BROKER is calling their own number
+        const broker = contextData.broker;
         contextMessage += `- Caller Type: BROKER (not a lead!)\n`;
-        contextMessage += `- Name: ${callingBroker.contact_name}\n`;
-        contextMessage += `- Company: ${callingBroker.company_name}\n`;
-        contextMessage += `- NMLS: ${callingBroker.nmls_number || 'N/A'}\n`;
+        contextMessage += `- Name: ${broker.contact_name}\n`;
+        contextMessage += `- Company: ${broker.company_name}\n`;
+        contextMessage += `- NMLS: ${broker.nmls_number || 'N/A'}\n`;
         contextMessage += `- Phone: ${callerPhone}\n`;
         contextMessage += `\nCRITICAL: This is a BROKER calling their own line (likely testing). Greet them professionally and ask if they need assistance or are testing the system. Examples:\n`;
-        contextMessage += `- "Hi ${callingBroker.contact_name.split(' ')[0]}! This is your Equity Connect line. Are you testing the system or did you need something?"\n`;
-        contextMessage += `- "Hello ${callingBroker.contact_name.split(' ')[0]}, this is Barbara. Everything looks good on my end - is this a test call?"\n`;
+        contextMessage += `- "Hi ${broker.contact_name.split(' ')[0]}! This is your Equity Connect line. Are you testing the system or did you need something?"\n`;
+        contextMessage += `- "Hello ${broker.contact_name.split(' ')[0]}, this is Barbara. Everything looks good on my end - is this a test call?"\n`;
         contextMessage += `Do NOT try to qualify them as a lead. Be helpful and professional.`;
         
         // Store broker info
-        this.callContext.broker_id = callingBroker.id;
+        this.callContext.broker_id = broker.id;
         this.callContext.is_broker_calling = true;
-      } else if (result?.found) {
-        // RETURNING CALLER - Use their existing data
-        contextMessage += `- First name: ${result.raw?.first_name || 'Unknown'}\n`;
-        contextMessage += `- Last name: ${result.raw?.last_name || 'Unknown'}\n`;
+      } else if (isLeadCalling && contextData?.lead) {
+        // RETURNING CALLER - Use complete context from super lookup
+        const lead = contextData.lead;
+        const broker = contextData.broker;
+        const lastInt = contextData.last_interaction;
+        const emailCtx = contextData.email_context;
+        const callHist = contextData.call_history;
+        
+        // Basic lead info
+        contextMessage += `- First name: ${lead.first_name || 'Unknown'}\n`;
+        contextMessage += `- Last name: ${lead.last_name || 'Unknown'}\n`;
+        contextMessage += `- Email: ${lead.primary_email || 'Not provided'}\n`;
         contextMessage += `- Phone: ${callerPhone}\n`;
-        contextMessage += `- City: ${result.raw?.property_city || 'Unknown'}\n`;
-        contextMessage += `- Property address: ${result.raw?.property_address || 'Not provided'}\n`;
-        contextMessage += `- Property value: ${result.raw?.property_value || 'Unknown'}\n`;
-        contextMessage += `- Estimated equity: ${result.raw?.estimated_equity || 'Unknown'}\n`;
-        contextMessage += `- Status: ${result.raw?.status || 'new'}\n`;
+        contextMessage += `- City: ${lead.property_city || 'Unknown'}\n`;
+        contextMessage += `- Property address: ${lead.property_address || 'Not provided'}\n`;
+        contextMessage += `- Property value: ${lead.property_value || 'Unknown'}\n`;
+        contextMessage += `- Estimated equity: ${lead.estimated_equity || 'Unknown'}\n`;
+        contextMessage += `- Status: ${lead.status || 'new'}\n`;
         
-        // Use lead's assigned broker if they have one, otherwise use SignalWire number's broker
-        const finalBrokerId = result.broker_id || assignedBrokerId;
-        const brokerDetails = result.broker || assignedBrokerData;
-        const finalBrokerName = brokerDetails?.contact_name?.split(' ')[0] || assignedBrokerName;
-        
-        if (finalBrokerId && brokerDetails) {
+        // Broker info
+        if (broker) {
           contextMessage += `\nASSIGNED BROKER:\n`;
-          contextMessage += `- First name: ${finalBrokerName}\n`;
-          contextMessage += `- Full name: ${brokerDetails.contact_name || 'Unknown'}\n`;
-          contextMessage += `- Company: ${brokerDetails.company_name || 'Unknown'}\n`;
-          contextMessage += `- NMLS: ${brokerDetails.nmls_number || 'licensed'}\n`;
-          contextMessage += `- Phone: ${brokerDetails.phone || 'N/A'}\n`;
-          contextMessage += `- Broker ID for booking: ${finalBrokerId}\n`;
-          this.callContext.broker_id = finalBrokerId;
+          contextMessage += `- First name: ${broker.contact_name.split(' ')[0]}\n`;
+          contextMessage += `- Full name: ${broker.contact_name}\n`;
+          contextMessage += `- Company: ${broker.company_name}\n`;
+          contextMessage += `- NMLS: ${broker.nmls_number || 'licensed'}\n`;
+          contextMessage += `- Phone: ${broker.phone}\n`;
+          contextMessage += `- Broker ID for booking: ${broker.id}\n`;
+          this.callContext.broker_id = broker.id;
+        } else if (assignedBrokerId) {
+          // Fallback to SignalWire number's broker
+          contextMessage += `\nASSIGNED BROKER:\n`;
+          contextMessage += `- Broker ID for booking: ${assignedBrokerId}\n`;
+          this.callContext.broker_id = assignedBrokerId;
         }
         
-        contextMessage += '\nCRITICAL: This is a RETURNING CALLER. Use their real name and city. Follow the STATUS flow in your instructions.';
+        // Previous interaction context
+        if (lastInt && lastInt.context) {
+          contextMessage += `\nLAST CALL CONTEXT:\n`;
+          contextMessage += `- Date: ${new Date(lastInt.date).toLocaleDateString()}\n`;
+          contextMessage += `- Outcome: ${lastInt.outcome}\n`;
+          if (lastInt.context.money_purpose) {
+            contextMessage += `- Purpose: ${lastInt.context.money_purpose}\n`;
+          }
+          if (lastInt.context.specific_need) {
+            contextMessage += `- Specific need: ${lastInt.context.specific_need}\n`;
+          }
+          if (lastInt.context.objections && lastInt.context.objections.length > 0) {
+            contextMessage += `- Previous objections: ${lastInt.context.objections.join(', ')}\n`;
+          }
+        }
+        
+        // Email engagement
+        if (emailCtx && emailCtx.engaged) {
+          contextMessage += `\nEMAIL ENGAGEMENT:\n`;
+          contextMessage += `- Opens: ${emailCtx.total_opens}, Clicks: ${emailCtx.total_clicks}\n`;
+          if (emailCtx.last_clicked_subject) {
+            contextMessage += `- Last clicked: "${emailCtx.last_clicked_subject}"\n`;
+          }
+          if (emailCtx.campaign_archetype) {
+            contextMessage += `- Campaign: ${emailCtx.campaign_archetype}\n`;
+          }
+        }
+        
+        // Call history
+        if (callHist && callHist.total_calls > 0) {
+          contextMessage += `\nCALL HISTORY:\n`;
+          contextMessage += `- Total calls: ${callHist.total_calls}\n`;
+          contextMessage += `- Avg duration: ${callHist.avg_duration_seconds}s\n`;
+        }
+        
+        contextMessage += '\nCRITICAL: This is a RETURNING CALLER. Use their real name and context from previous interactions. Do NOT ask questions they already answered.';
         
         // Store lead ID and phone for tool calls
-        this.callContext.lead_id = result.lead_id;
+        this.callContext.lead_id = lead.id;
         this.callContext.caller_phone = callerPhone;
       } else {
         // NEW CALLER - Create minimal lead record and use SignalWire number's broker
