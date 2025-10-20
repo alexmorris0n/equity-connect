@@ -58,7 +58,11 @@ class AudioBridge {
     
     // Heartbeat to keep sockets alive
     this.heartbeatInterval = null;  // Ping both sockets every 15s to prevent timeout
-    this.audioCommitInterval = null;  // Commit audio buffer every 200ms for streaming
+    
+    // Audio buffer accounting (PCM16 @ 16kHz)
+    this.bufferedAudioBytes = 0;  // Bytes accumulated since last commit
+    this.lastAudioAppendAt = 0;  // Timestamp of last append
+    this.audioCommitInterval = null;  // Interval for checking if commit needed
     
     // Additional tracking
     this._lastSampleAt = 0;  // Track last audio sample during backoff
@@ -101,7 +105,7 @@ class AudioBridge {
       console.log('🤖 OpenAI Realtime connected!'); // Always log important events
       this.logger.info('🤖 OpenAI Realtime connected');
       
-      // Start heartbeat and audio commits (only after socket is open)
+      // Start heartbeat and audio commit checker (only after socket is open)
       this.startHeartbeat();
       this.startAudioCommitInterval();
       
@@ -396,7 +400,7 @@ class AudioBridge {
     const cleaned = String(value).replace(/[^\d.]/g, '');
     const num = Math.floor(Number(cleaned));
     
-    if (!isFinite(num) || num < 0) return '';
+    if (!Number.isFinite(num) || num < 0) return '';
     if (num === 0) return 'zero';
 
     // Handle millions
@@ -816,6 +820,15 @@ class AudioBridge {
             type: 'input_audio_buffer.append',
             audio: msg.media.payload
           }));
+          
+          // Account for bytes to ensure ≥100ms before commit
+          try {
+            const bytes = Buffer.from(msg.media.payload, 'base64').length;
+            this.bufferedAudioBytes += bytes;
+            this.lastAudioAppendAt = Date.now();
+          } catch (err) {
+            debug('⚠️ Failed to count audio bytes:', err);
+          }
         }
         break;
 
@@ -1632,20 +1645,29 @@ CONVERSATION GOALS (in order):
 
   /**
    * Start audio commit interval
-   * Commits buffered audio every 200ms for streaming ASR and VAD
+   * Only commits when buffer has ≥100ms of audio to avoid empty buffer errors
    */
   startAudioCommitInterval() {
     this.audioCommitInterval = setInterval(() => {
-      if (this.openaiSocket?.readyState === WebSocket.OPEN && !this.gracefulShutdown) {
-        // Commit buffered audio so OpenAI can process it
-        this.openaiSocket.send(JSON.stringify({
-          type: 'input_audio_buffer.commit'
-        }));
-        debug('🎤 Audio buffer committed');
-      }
-    }, 200); // 200ms interval for smooth streaming
+      if (this.gracefulShutdown) return;
+      if (this.openaiSocket?.readyState !== WebSocket.OPEN) return;
 
-    debug('✅ Audio commit interval started (200ms)');
+      // Need at least 100ms of PCM16@16kHz before committing: 16k * 2 bytes * 0.1s = 3,200 bytes
+      const BYTES_REQUIRED = 3200;
+
+      // Also require the last append to be recent (avoid committing long after stream stops)
+      const appendIsRecent = Date.now() - this.lastAudioAppendAt < 750;
+
+      if (this.bufferedAudioBytes >= BYTES_REQUIRED && appendIsRecent) {
+        this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+        debug(`🎤 Audio buffer committed (~${Math.round(this.bufferedAudioBytes / 32)}ms)`);
+        this.bufferedAudioBytes = 0; // Reset accounting after commit
+      } else {
+        debug('🛑 Skip commit: not enough buffered audio yet');
+      }
+    }, 200); // 200ms check interval
+
+    debug('✅ Audio commit interval started (200ms check, ≥100ms audio required)');
   }
 
   /**
@@ -1702,6 +1724,10 @@ CONVERSATION GOALS (in order):
       this.audioCommitInterval = null;
       debug('✅ Audio commit interval stopped');
     }
+    
+    // Reset audio accounting
+    this.bufferedAudioBytes = 0;
+    this.lastAudioAppendAt = 0;
     
     this.logger.info('🧹 Cleaning up audio bridge');
     
