@@ -105,9 +105,9 @@ class AudioBridge {
       console.log('🤖 OpenAI Realtime connected!'); // Always log important events
       this.logger.info('🤖 OpenAI Realtime connected');
       
-      // Start heartbeat and audio commit checker (only after socket is open)
+      // Start heartbeat (only after socket is open)
+      // Audio commits will start when first audio is received
       this.startHeartbeat();
-      this.startAudioCommitInterval();
       
       // OUTBOUND calls: Configure immediately (we have all context from n8n)
       if (this.callContext.instructions) {
@@ -826,6 +826,11 @@ class AudioBridge {
             const bytes = Buffer.from(msg.media.payload, 'base64').length;
             this.bufferedAudioBytes += bytes;
             this.lastAudioAppendAt = Date.now();
+            
+            // Start commit interval on first audio (lazy start)
+            if (!this.audioCommitInterval) {
+              this.startAudioCommitInterval();
+            }
           } catch (err) {
             debug('⚠️ Failed to count audio bytes:', err);
           }
