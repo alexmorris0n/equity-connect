@@ -69,6 +69,7 @@ class AudioBridge {
     // Additional tracking
     this._lastSampleAt = 0;  // Track last audio sample during backoff
     this._lastEmptyEnqueue = 0;  // Track last empty enqueue for dedupe
+    this._lastAudioSentAt = 0;  // Track last audio sent to SignalWire for throttling
     this.firstAudioLogged = false;  // Track first audio for perf metrics
   }
 
@@ -910,14 +911,39 @@ class AudioBridge {
     }
     
     if (this.swSocket.readyState === WebSocket.OPEN) {
-      this.swSocket.send(JSON.stringify({
-        event: 'media',
-        streamSid: this.callSid || 'unknown',
-        media: {
-          payload: audioData
-        }
-      }));
-      debug('✅ Audio sent to SignalWire');
+      // Add 10ms delay between chunks to prevent SignalWire buffer overflow
+      // This gives SignalWire time to play audio before receiving more
+      const now = Date.now();
+      const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
+      const minDelay = 10; // 10ms throttle
+      
+      if (timeSinceLastSend < minDelay) {
+        // Too fast - wait a bit
+        setTimeout(() => {
+          if (this.swSocket.readyState === WebSocket.OPEN) {
+            this.swSocket.send(JSON.stringify({
+              event: 'media',
+              streamSid: this.callSid || 'unknown',
+              media: {
+                payload: audioData
+              }
+            }));
+            this._lastAudioSentAt = Date.now();
+            debug('✅ Audio sent to SignalWire (throttled)');
+          }
+        }, minDelay - timeSinceLastSend);
+      } else {
+        // Send immediately
+        this.swSocket.send(JSON.stringify({
+          event: 'media',
+          streamSid: this.callSid || 'unknown',
+          media: {
+            payload: audioData
+          }
+        }));
+        this._lastAudioSentAt = now;
+        debug('✅ Audio sent to SignalWire');
+      }
     } else {
       console.error('❌ Cannot send audio - SignalWire socket not open, state:', this.swSocket.readyState);
     }
