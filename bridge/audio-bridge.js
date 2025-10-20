@@ -204,6 +204,7 @@ class AudioBridge {
       const variables = {
         // Call context
         callContext: 'inbound',
+        signalwireNumber: this.callContext.to || '',  // The SignalWire number that was called
         
         // Lead info
         leadFirstName: result?.raw?.first_name || '',
@@ -449,13 +450,8 @@ class AudioBridge {
    * Handle OpenAI events
    */
   async handleOpenAIEvent(event) {
-    // Only log important events (skip frequent audio frames)
-    const audioEvents = ['response.audio.delta', 'input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped', 'input_audio_buffer.committed'];
-    
-    if (!audioEvents.includes(event.type)) {
-      console.log('🤖 OpenAI event:', event.type);
-      this.logger.info({ type: event.type }, '🤖 OpenAI event');
-    }
+    // Debug log all OpenAI events (very noisy - only enable when debugging)
+    debug('🤖 OpenAI event:', event.type);
 
     switch (event.type) {
       case 'session.created':
@@ -480,13 +476,13 @@ class AudioBridge {
       case 'response.created':
         // Response generation started
         this.responseInProgress = true;
-        console.log('🎙️ Response generation started');
+        debug('🎙️ Response generation started');
         break;
       
       case 'response.output_item.done':
         // Barbara finished speaking an item (could be mid-response)
         this.lastResponseAt = Date.now();
-        console.log('✅ Output item completed, tracking for auto-resume');
+        debug('✅ Output item completed, tracking for auto-resume');
         break;
       
       case 'response.done':
@@ -494,13 +490,13 @@ class AudioBridge {
         // Track when Barbara finished speaking
         this.lastResponseAt = Date.now();
         this.responseInProgress = false;  // Response fully completed
-        console.log('✅ Response completed, tracking for auto-resume');
+        debug('✅ Response completed, tracking for auto-resume');
         break;
       
       case 'response.interrupted':
         // Barbara was interrupted - mark response as no longer in progress
         this.responseInProgress = false;
-        console.log('⚠️ Response interrupted, VAD will handle resume');
+        debug('⚠️ Response interrupted, VAD will handle resume');
         // Don't reset lastResponseAt here - let auto-resume work after VAD timeout
         break;
       
@@ -509,11 +505,11 @@ class AudioBridge {
         this.userSpeaking = true;
         this.awaitingUser = false;  // User is now speaking, no longer waiting
         this.nudgedOnce = false;  // Reset nudge since user responded
-        console.log('👤 User started speaking');
+        debug('👤 User started speaking');
         
         // If Barbara is currently responding, cancel it so she doesn't talk over the user
         if (this.responseInProgress) {
-          console.log('⚠️ User interrupted - canceling Barbara\'s response');
+          debug('⚠️ User interrupted - canceling Barbara\'s response');
           this.openaiSocket.send(JSON.stringify({
             type: 'response.cancel'
           }));
@@ -524,7 +520,7 @@ class AudioBridge {
       case 'input_audio_buffer.speech_stopped':
         // User stopped speaking
         this.userSpeaking = false;
-        console.log('👤 User stopped speaking');
+        debug('👤 User stopped speaking');
         break;
 
       case 'response.function_call_arguments.done':
@@ -682,7 +678,7 @@ class AudioBridge {
       if (idleTime > 8000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
         // Only nudge if Barbara asked a question and we haven't nudged yet
         if (this.awaitingUser && !this.nudgedOnce) {
-          console.log('🔔 User silent after question - sending gentle nudge');
+          debug('🔔 User silent after question - sending gentle nudge');
           
           // Send a gentle "Take your time" nudge
           this.openaiSocket.send(JSON.stringify({
@@ -691,21 +687,21 @@ class AudioBridge {
               type: 'message',
               role: 'assistant',
               content: [{
-            type: 'text',
-            text: 'Take your time.'
+                type: 'input_text',
+                text: 'Take your time.'
               }]
             }
           }));
           
           this.nudgedOnce = true;  // Only nudge once per question
           this.lastResponseAt = Date.now();  // Reset timer
-          console.log('✅ Gentle nudge sent - will not auto-continue');
+          debug('✅ Gentle nudge sent - will not auto-continue');
         }
         // If not awaiting user, do nothing (don't auto-progress)
       }
     }, 500);
     
-    console.log('✅ Auto-nudge monitor started (8s threshold - one nudge per question, no auto-continue)');
+    debug('✅ Auto-nudge monitor started (8s threshold - one nudge per question, no auto-continue)');
   }
   
   /**
@@ -714,12 +710,12 @@ class AudioBridge {
   resumeConversation() {
     // Guard: Don't send response.create if one is already in progress
     if (this.responseInProgress) {
-      console.log('⚠️ Cannot resume - response already in progress');
+      debug('⚠️ Cannot resume - response already in progress');
       return;
     }
     
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
-      console.log('🔄 Sending response.create to resume conversation');
+      debug('🔄 Sending response.create to resume conversation');
       this.openaiSocket.send(JSON.stringify({
         type: 'response.create'
       }));
@@ -743,9 +739,8 @@ class AudioBridge {
     // Store caller phone for booking/logging
     this.callerPhone = callerPhone;
     
-    console.log('🔍 Force-calling get_lead_context for phone:', callerPhone);
-    console.log('📞 SignalWire number called:', signalwireNumber);
-    this.logger.info({ callerPhone, signalwireNumber }, '🔍 Forcing lead context lookup');
+    debug('🔍 Force-calling get_lead_context for phone:', callerPhone);
+    debug('📞 SignalWire number called:', signalwireNumber);
     
     try {
       const { executeTool, initSupabase } = require('./tools');
@@ -785,8 +780,7 @@ class AudioBridge {
             } else {
               assignedBrokerId = broker.id;
               assignedBrokerName = broker.contact_name.split(' ')[0]; // First name only
-              console.log('🏢 Broker assigned by SignalWire number:', assignedBrokerName);
-              this.logger.info({ brokerId: assignedBrokerId, brokerName: assignedBrokerName }, '🏢 Broker assigned by phone number');
+              debug('🏢 Broker assigned by SignalWire number:', assignedBrokerName);
             }
           }
         } catch (err) {
@@ -804,8 +798,7 @@ class AudioBridge {
       // Now look up the lead
       const result = await executeTool('get_lead_context', { phone: callerPhone });
       
-      console.log('✅ Lead context retrieved:', JSON.stringify(result).substring(0, 200));
-      this.logger.info({ result }, '✅ Lead context retrieved');
+      debug('✅ Lead context retrieved:', JSON.stringify(result).substring(0, 200));
       
       // Build silent system message with real data
       let contextMessage = 'CALLER INFORMATION (use this real data, do not make up names or details):\n';
@@ -821,7 +814,7 @@ class AudioBridge {
         // Use lead's assigned broker if they have one, otherwise use SignalWire number's broker
         const finalBrokerId = result.broker_id || assignedBrokerId;
         const finalBrokerName = result.broker_id 
-          ? (result.context?.match(/broker.*?([A-Z][a-z]+)/i)?.[1] || assignedBrokerName)
+          ? (result.broker?.contact_name?.split(' ')[0] || assignedBrokerName)
           : assignedBrokerName;
         
         if (finalBrokerId) {
@@ -860,14 +853,13 @@ class AudioBridge {
           type: 'message',
           role: 'system',
           content: [{
-            type: 'text',
+            type: 'input_text',
             text: contextMessage
           }]
         }
       }));
       
-      console.log('💉 Lead context injected into conversation');
-      this.logger.info('💉 Lead context injected successfully');
+      debug('💉 Lead context injected into conversation');
       
     } catch (err) {
       console.error('❌ Force lead lookup failed:', err.message);
@@ -878,11 +870,11 @@ class AudioBridge {
         type: 'conversation.item.create',
         item: {
           type: 'message',
-        role: 'system',
-        content: [{
-          type: 'text',
-          text: 'Lead data unavailable. Treat as new caller - ask for their name.'
-        }]
+          role: 'system',
+          content: [{
+            type: 'input_text',
+            text: 'Lead data unavailable. Treat as new caller - ask for their name.'
+          }]
         }
       }));
     }
@@ -924,7 +916,7 @@ class AudioBridge {
           }
         }));
         
-        console.log('✅ Step 1: conversation.item.create sent (call_connected trigger)');
+        debug('✅ Step 1: conversation.item.create sent (call_connected trigger)');
 
         // Step 2: Request response generation (this makes Barbara actually speak)
         this.openaiSocket.send(JSON.stringify({
@@ -933,8 +925,7 @@ class AudioBridge {
         
         this.greetingSent = true;  // Mark greeting as sent
         this.responseInProgress = true;  // Track that response is starting
-        console.log('✅ Step 2: response.create sent (Barbara should now speak!)');
-        this.logger.info('🎯 Conversation started with explicit greeting trigger');
+        debug('✅ Step 2: response.create sent (Barbara should now speak!)');
         
         // Step 3: Force lead lookup in parallel so context is ready for turn 2
         setTimeout(() => this.forceLeadContextLookup(), 50);
@@ -1055,7 +1046,7 @@ class AudioBridge {
     if (this.autoResumeInterval) {
       clearInterval(this.autoResumeInterval);
       this.autoResumeInterval = null;
-      console.log('✅ Auto-resume monitor stopped');
+      debug('✅ Auto-resume monitor stopped');
     }
     
     try {
