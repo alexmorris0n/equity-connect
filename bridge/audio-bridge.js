@@ -71,6 +71,13 @@ class AudioBridge {
     this._lastEmptyEnqueue = 0;  // Track last empty enqueue for dedupe
     this._lastAudioSentAt = 0;  // Track last audio sent to SignalWire for throttling
     this.firstAudioLogged = false;  // Track first audio for perf metrics
+    
+    // Barge-in protection (prevent false cancels from noise)
+    this.userSpeechSince = 0;  // When user started speaking
+    this.cancelDebounceTimer = null;  // Debounce timer for barge-in
+    
+    // Audio tail padding (prevent telephony buffer clip)
+    this.ttsOutBuf = Buffer.alloc(0);  // Output jitter buffer for smooth playback
   }
 
   /**
@@ -554,10 +561,30 @@ class AudioBridge {
         break;
 
       case 'response.audio.done':
-        // Mark not speaking and drain queue (sometimes comes before response.done)
+        // Mark not speaking
         this.speaking = false;
         this.responseInProgress = false;
-        this.drainResponseQueue();
+        
+        // Add 150ms silence tail to prevent telephony buffer clip
+        // SignalWire's buffer may cut off last 100-200ms without padding
+        const silenceTail = Buffer.alloc(4800).toString('base64'); // 150ms @ 16kHz PCM16
+        
+        setTimeout(() => {
+          if (this.swSocket?.readyState === WebSocket.OPEN) {
+            this.swSocket.send(JSON.stringify({
+              event: 'media',
+              streamSid: this.callSid || 'unknown',
+              media: {
+                payload: silenceTail
+              }
+            }));
+            debug('🔇 Sent 150ms silence tail to prevent clip');
+          }
+          
+          // Now drain queue after tail is sent
+          this.drainResponseQueue();
+        }, 50); // Small delay to ensure last audio chunk is sent first
+        
         this.logger.info('🔊 AI finished speaking');
         break;
       
@@ -911,11 +938,11 @@ class AudioBridge {
     }
     
     if (this.swSocket.readyState === WebSocket.OPEN) {
-      // Add 10ms delay between chunks to prevent SignalWire buffer overflow
+      // Add 30ms delay between chunks to prevent SignalWire buffer overflow
       // This gives SignalWire time to play audio before receiving more
       const now = Date.now();
       const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
-      const minDelay = 10; // 10ms throttle
+      const minDelay = 30; // 30ms throttle (increased from 10ms to prevent dropouts)
       
       if (timeSinceLastSend < minDelay) {
         // Too fast - wait a bit
