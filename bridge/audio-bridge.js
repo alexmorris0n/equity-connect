@@ -504,7 +504,7 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
-        max_response_output_tokens: 200,  // Increased from 100 - was cutting off mid-sentence
+        max_response_output_tokens: 400,  // Enough for detailed Q&A while prompt keeps responses concise
         turn_detection: {
           type: 'server_vad',
           threshold: 0.8,  // High but not max - catches speech, reduces phone handling triggers
