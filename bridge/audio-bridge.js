@@ -59,6 +59,11 @@ class AudioBridge {
     // Heartbeat to keep sockets alive
     this.heartbeatInterval = null;  // Ping both sockets every 15s to prevent timeout
     this.audioCommitInterval = null;  // Commit audio buffer every 200ms for streaming
+    
+    // Additional tracking
+    this._lastSampleAt = 0;  // Track last audio sample during backoff
+    this._lastEmptyEnqueue = 0;  // Track last empty enqueue for dedupe
+    this.firstAudioLogged = false;  // Track first audio for perf metrics
   }
 
   /**
@@ -95,6 +100,10 @@ class AudioBridge {
     this.openaiSocket.on('open', async () => {
       console.log('🤖 OpenAI Realtime connected!'); // Always log important events
       this.logger.info('🤖 OpenAI Realtime connected');
+      
+      // Start heartbeat and audio commits (only after socket is open)
+      this.startHeartbeat();
+      this.startAudioCommitInterval();
       
       // OUTBOUND calls: Configure immediately (we have all context from n8n)
       if (this.callContext.instructions) {
@@ -156,11 +165,7 @@ class AudioBridge {
       this.cleanup();
     });
 
-    // Start heartbeat to keep both sockets alive
-    this.startHeartbeat();
-
-    // Start audio commit interval (commit buffered audio every 200ms for streaming)
-    this.startAudioCommitInterval();
+    // Heartbeat and audio commits will be started in 'open' handler
   }
 
   /**
@@ -363,24 +368,20 @@ class AudioBridge {
   buildPromptFromTemplate(variables) {
     let prompt = BARBARA_HYBRID_PROMPT;
     
-    // Process {{#if}} conditionals - removes handlebars syntax
-    const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
-    prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
-      return variables[varName] ? content : '';
-    });
-    
-    // Process {{#if}}...{{else}}...{{/if}} conditionals
+    // 1) Process {{#if ...}}...{{else}}...{{/if}} conditionals FIRST (avoids swallowing)
     const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
     prompt = prompt.replace(conditionalElseRegex, (match, varName, ifContent, elseContent) => {
       return variables[varName] ? ifContent : elseContent;
     });
     
-    // Replace all {{variable}} placeholders
-    Object.keys(variables).forEach(key => {
-      const placeholder = `{{${key}}}`;
-      const value = variables[key] || '';
-      prompt = prompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+    // 2) Then process simple {{#if}} conditionals
+    const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+    prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
+      return variables[varName] ? content : '';
     });
+    
+    // 3) Replace all {{variable}} placeholders in single pass
+    prompt = prompt.replace(/\{\{(\w+)\}\}/g, (match, key) => variables[key] ?? '');
     
     return prompt;
   }
@@ -389,28 +390,34 @@ class AudioBridge {
    * Convert number to words (for natural speech)
    */
   numberToWords(value) {
-    if (!value || value === 0) return 'zero';
+    if (value === null || value === undefined) return '';
     
-    const num = parseInt(value);
+    // Clean input - remove commas, dollar signs, etc.
+    const cleaned = String(value).replace(/[^\d.]/g, '');
+    const num = Math.floor(Number(cleaned));
     
+    if (!isFinite(num) || num < 0) return '';
+    if (num === 0) return 'zero';
+
     // Handle millions
-    if (num >= 1000000) {
-      const millions = num / 1000000;
-      if (millions === Math.floor(millions)) {
-        return `${millions === 1 ? 'one' : millions} million`;
-      } else {
-        return `${millions.toFixed(1)} million`;
-      }
+    if (num >= 1_000_000) {
+      const m = num / 1_000_000;
+      const whole = Math.floor(m);
+      const frac = m - whole;
+      
+      // Prefer natural phrasing: "one point three million" vs "1.3 million"
+      return frac === 0
+        ? `${this.numberWord(whole)} million`
+        : `${m.toFixed(1)} million`;
     }
     
     // Handle thousands
-    if (num >= 1000) {
-      const thousands = num / 1000;
-      if (thousands === Math.floor(thousands)) {
-        return `${this.numberWord(thousands)} thousand`;
-      } else {
-        return `${thousands.toFixed(0)} thousand`;
-      }
+    if (num >= 1_000) {
+      const thousands = Math.floor(num / 1_000);
+      const remainder = num % 1_000;
+      return remainder
+        ? `${this.numberWord(thousands)} thousand ${this.numberWord(remainder)}`
+        : `${this.numberWord(thousands)} thousand`;
     }
     
     return this.numberWord(num);
@@ -475,7 +482,7 @@ class AudioBridge {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
-        voice: 'sage',
+        voice: process.env.REALTIME_VOICE || 'alloy',  // Fallback if 'sage' not available
         instructions: instructions,  // Static prompt (cacheable)
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
@@ -486,9 +493,9 @@ class AudioBridge {
         max_response_output_tokens: 100,  // Reduced from 150 to prevent output token throttling
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.7,  // Higher threshold - ignore footsteps, background noise
+          threshold: 0.6,  // Balanced - catches soft voices, ignores most noise
           prefix_padding_ms: 300,  // Standard padding
-          silence_duration_ms: 700  // Shorter silence detection - more responsive
+          silence_duration_ms: 600  // Balanced for seniors who trail off
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -529,6 +536,12 @@ class AudioBridge {
       case 'response.audio.delta':
         // Send audio back to SignalWire
         if (event.delta) {
+          // Log first audio out for performance metrics
+          if (!this.firstAudioLogged) {
+            const firstAudioMs = Date.now() - this.callStartTime;
+            console.log(`🎯 First audio out: ${firstAudioMs}ms from call start`);
+            this.firstAudioLogged = true;
+          }
           this.sendMediaToSignalWire(event.delta);
         }
         break;
@@ -580,6 +593,12 @@ class AudioBridge {
         this.responseInProgress = false;
         this.speaking = false;  // No longer speaking - ready for next response
         console.log(`⚠️ Response stopped early: ${event.type}`);
+        
+        // Clear input audio buffer to avoid stale audio
+        if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+          this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
+          debug('🧹 Cleared input audio buffer after interruption');
+        }
         
         // Drain queued responses (this is CRITICAL - prevents permanent silence!)
         this.drainResponseQueue();
@@ -694,7 +713,7 @@ class AudioBridge {
   /**
    * Handle SignalWire events
    */
-  handleSignalWireEvent(msg) {
+  async handleSignalWireEvent(msg) {
     // Only log important events (not media frames)
     if (msg.event !== 'media') {
       debug('📞 SignalWire event:', msg.event);
@@ -720,6 +739,23 @@ class AudioBridge {
         
         console.log('📞 Call started, CallSid:', this.callSid); // Always log call start
         this.logger.info({ callSid: this.callSid, from: this.callContext.from }, '📞 Call started');
+        
+        // For INBOUND calls: Send quick ack immediately, then force deep lookup
+        if (!this.callContext.instructions && this.callerPhone) {
+          // Send quick acknowledgment to buy time for lookup
+          try {
+            this.sendQuickAcknowledgment();
+          } catch (e) {
+            debug('⚠️ Quick ack failed (non-fatal):', e);
+          }
+          
+          // Force lead context lookup (injects real name/city for turn 2)
+          try {
+            this.forceLeadContextLookup().catch(e => debug('⚠️ Force lookup failed:', e));
+          } catch (e) {
+            debug('⚠️ forceLeadContextLookup invocation failed (non-fatal):', e);
+          }
+        }
         
         // For INBOUND calls: NOW we have caller phone - configure session with their context
         if (!this.callContext.instructions && this.callerPhone && !this.sessionConfigured) {
@@ -897,9 +933,14 @@ class AudioBridge {
 
   /**
    * Check if we can send to OpenAI (not in backoff period)
+   * Stricter check - considers socket state and shutdown
    */
   canSend() {
-    return Date.now() >= this.backoffUntil;
+    return (
+      !this.gracefulShutdown &&
+      this.openaiSocket?.readyState === WebSocket.OPEN &&
+      Date.now() >= this.backoffUntil
+    );
   }
 
   /**
@@ -910,6 +951,16 @@ class AudioBridge {
     if (this.gracefulShutdown) {
       debug('⚠️ Graceful shutdown - not enqueueing response');
       return;
+    }
+    
+    // Collapse consecutive empty payloads within 300ms (prevent storms)
+    const now = Date.now();
+    if (!payload || Object.keys(payload).length === 0) {
+      if (this._lastEmptyEnqueue && now - this._lastEmptyEnqueue < 300) {
+        debug('⚠️ Deduping empty enqueue - too recent');
+        return;
+      }
+      this._lastEmptyEnqueue = now;
     }
     
     debug('📥 Enqueueing response:', JSON.stringify(payload).substring(0, 100));
@@ -1436,6 +1487,16 @@ CONVERSATION GOALS (in order):
   }
 
   /**
+   * Wrap promise with timeout to prevent stalls
+   */
+  withTimeout(promise, ms = 2500) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Tool execution timeout')), ms))
+    ]);
+  }
+
+  /**
    * Handle tool calls from OpenAI
    */
   async handleToolCall(event) {
@@ -1444,8 +1505,17 @@ CONVERSATION GOALS (in order):
     this.logger.info({ function: name, call_id }, '🔧 Tool called');
     
     try {
-      const args = JSON.parse(argsJson);
-      const result = await executeTool(name, args);
+      // Parse args safely
+      let args = {};
+      try {
+        args = JSON.parse(argsJson || '{}');
+      } catch (parseErr) {
+        console.error('⚠️ Failed to parse tool args, using empty:', parseErr);
+        args = {};
+      }
+      
+      // Execute with timeout to prevent stalls
+      const result = await this.withTimeout(executeTool(name, args));
       
       this.logger.info({ function: name, result }, '✅ Tool executed');
       
@@ -1597,7 +1667,7 @@ CONVERSATION GOALS (in order):
       this.gracefulShutdownTimer = setTimeout(() => {
         this.logger.warn('⏰ Graceful shutdown timeout - forcing cleanup');
         this.cleanup();
-      }, 3000); // 3 second max wait
+      }, 7000); // 7 second max wait (seniors can have long syllables)
     } else {
       // No response in progress, cleanup immediately
       debug('✅ No response in progress - cleaning up immediately');
