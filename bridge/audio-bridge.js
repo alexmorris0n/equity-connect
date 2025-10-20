@@ -504,10 +504,10 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
-        max_response_output_tokens: 100,  // Reduced from 150 to prevent output token throttling
+        max_response_output_tokens: 200,  // Increased from 100 - was cutting off mid-sentence
         turn_detection: {
           type: 'server_vad',
-          threshold: 1.0,  // MAXIMUM - testing if phone movement is the issue (can back off later)
+          threshold: 0.8,  // High but not max - catches speech, reduces phone handling triggers
           prefix_padding_ms: 300,  // Standard padding
           silence_duration_ms: 600  // Balanced for seniors who trail off
         },
