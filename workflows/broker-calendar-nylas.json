@@ -1,0 +1,240 @@
+{
+  "name": "Broker Calendar - Nylas Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "broker-availability-nylas",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [400, 200],
+      "id": "webhook-availability",
+      "name": "📅 Check Availability",
+      "webhookId": "broker-availability-nylas"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "broker-book-appointment-nylas",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [400, 500],
+      "id": "webhook-book",
+      "name": "📝 Book Appointment",
+      "webhookId": "broker-book-appointment-nylas"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n  b.id,\n  b.contact_name,\n  b.company_name,\n  b.email as broker_email,\n  b.timezone,\n  b.nylas_grant_id,\n  b.calendar_provider\nFROM brokers b\nWHERE b.id = '{{ $json.body.broker_id }}'\nLIMIT 1"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [620, 200],
+      "id": "get-broker-info",
+      "name": "Get Broker Info",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.us.nylas.com/v3/grants/{{ $json.nylas_grant_id }}/events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start",
+              "value": "={{ Math.floor(Date.now() / 1000) }}"
+            },
+            {
+              "name": "end",
+              "value": "={{ Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000) }}"
+            },
+            {
+              "name": "calendar_id",
+              "value": "primary"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 200],
+      "id": "nylas-get-events",
+      "name": "Nylas: Get Calendar Events",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "nylas-api-key",
+          "name": "Nylas API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate available slots from Nylas calendar events\nconst events = $input.first().json.data || [];\nconst broker = $('Get Broker Info').first().json;\nconst request = $('📅 Check Availability').first().json.body;\n\n// Extract busy times from Nylas events\nconst busyTimes = events\n  .filter(event => event.status !== 'cancelled')\n  .map(event => ({\n    start: new Date(event.when.start_time * 1000),\n    end: new Date(event.when.end_time * 1000)\n  }));\n\n// Generate available slots\nconst slots = [];\nconst businessStart = 9;  // 9 AM\nconst businessEnd = 17;   // 5 PM\n\nfor (let dayOffset = 1; dayOffset < 14; dayOffset++) {\n  const date = new Date();\n  date.setDate(date.getDate() + dayOffset);\n  const dayOfWeek = date.getDay();\n  \n  // Skip weekends\n  if (dayOfWeek === 0 || dayOfWeek === 6) continue;\n  \n  const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][dayOfWeek];\n  \n  // Filter by preferred day\n  if (request.preferred_day && request.preferred_day !== 'any' && request.preferred_day !== dayName) {\n    continue;\n  }\n  \n  // Check each hour\n  for (let hour = businessStart; hour < businessEnd; hour++) {\n    // Filter by preferred time\n    if (request.preferred_time === 'morning' && hour >= 12) continue;\n    if (request.preferred_time === 'afternoon' && hour < 12) continue;\n    \n    const slotStart = new Date(date);\n    slotStart.setHours(hour, 0, 0, 0);\n    const slotEnd = new Date(slotStart);\n    slotEnd.setMinutes(60);\n    \n    // Check for conflicts with busy times\n    const isConflict = busyTimes.some(busy => \n      (slotStart >= busy.start && slotStart < busy.end) ||\n      (slotEnd > busy.start && slotEnd <= busy.end) ||\n      (slotStart <= busy.start && slotEnd >= busy.end)\n    );\n    \n    if (!isConflict) {\n      slots.push({\n        datetime: slotStart.toISOString(),\n        unix_timestamp: Math.floor(slotStart.getTime() / 1000),\n        display: `${slotStart.toLocaleDateString('en-US', { \n          weekday: 'long', \n          month: 'short', \n          day: 'numeric' \n        })} at ${slotStart.toLocaleTimeString('en-US', { \n          hour: 'numeric', \n          minute: '2-digit', \n          hour12: true \n        })}`,\n        day: dayName,\n        time: slotStart.toLocaleTimeString('en-US', { \n          hour: 'numeric', \n          minute: '2-digit', \n          hour12: true \n        })\n      });\n    }\n  }\n}\n\nreturn [{\n  json: {\n    success: true,\n    broker_name: broker.contact_name,\n    broker_id: broker.id,\n    calendar_provider: broker.calendar_provider,\n    available_slots: slots.slice(0, 5),  // Return top 5 slots\n    total_available: slots.length,\n    timezone: broker.timezone\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 200],
+      "id": "calculate-slots",
+      "name": "Calculate Available Slots"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1280, 200],
+      "id": "respond-availability",
+      "name": "Respond"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n  b.id,\n  b.contact_name,\n  b.company_name,\n  b.email as broker_email,\n  b.timezone,\n  b.nylas_grant_id,\n  b.calendar_provider\nFROM brokers b\nWHERE b.id = '{{ $json.body.broker_id }}'\nLIMIT 1"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [620, 500],
+      "id": "get-broker-for-booking",
+      "name": "Get Broker Info",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.us.nylas.com/v3/grants/{{ $('Get Broker Info').item.json.nylas_grant_id }}/events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "=Reverse Mortgage Consultation - {{ $('📝 Book Appointment').item.json.body.lead_name }}"
+            },
+            {
+              "name": "when",
+              "value": "={{ { start_time: $('📝 Book Appointment').item.json.body.start_time, end_time: $('📝 Book Appointment').item.json.body.end_time } }}"
+            },
+            {
+              "name": "participants",
+              "value": "={{ [\n  { \n    name: $('Get Broker Info').item.json.contact_name,\n    email: $('Get Broker Info').item.json.broker_email \n  },\n  { \n    name: $('📝 Book Appointment').item.json.body.lead_name,\n    email: $('📝 Book Appointment').item.json.body.lead_email \n  }\n] }}"
+            },
+            {
+              "name": "description",
+              "value": "=Lead: {{ $('📝 Book Appointment').item.json.body.lead_name }}\\nPhone: {{ $('📝 Book Appointment').item.json.body.lead_phone }}\\nEmail: {{ $('📝 Book Appointment').item.json.body.lead_email }}\\n\\nTracking: {{ $('📝 Book Appointment').item.json.body.tracking_number || 'Not assigned' }}\\n\\nNotes: {{ $('📝 Book Appointment').item.json.body.notes || 'None' }}"
+            },
+            {
+              "name": "calendar_id",
+              "value": "primary"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 500],
+      "id": "nylas-create-event",
+      "name": "Nylas: Create Calendar Event",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "nylas-api-key",
+          "name": "Nylas API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableId": "interactions",
+        "options": {
+          "queryName": "=INSERT INTO interactions (lead_id, broker_id, interaction_type, interaction_date, notes, metadata) VALUES ..."
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1060, 500],
+      "id": "log-appointment",
+      "name": "Log Appointment to Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "pvE2B3BDrLhctd5B",
+          "name": "SupaBase Equity Connect"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  message: 'Appointment booked successfully',\n  event_id: $json.data.id,\n  calendar_invite_sent: true,\n  broker_name: $('Get Broker Info').item.json.contact_name,\n  scheduled_for: $('📝 Book Appointment').item.json.body.start_time\n} }}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1280, 500],
+      "id": "respond-booking",
+      "name": "Respond Success"
+    }
+  ],
+  "connections": {
+    "📅 Check Availability": {
+      "main": [[{ "node": "Get Broker Info", "type": "main", "index": 0 }]]
+    },
+    "Get Broker Info": {
+      "main": [[{ "node": "Nylas: Get Calendar Events", "type": "main", "index": 0 }]]
+    },
+    "Nylas: Get Calendar Events": {
+      "main": [[{ "node": "Calculate Available Slots", "type": "main", "index": 0 }]]
+    },
+    "Calculate Available Slots": {
+      "main": [[{ "node": "Respond", "type": "main", "index": 0 }]]
+    },
+    "📝 Book Appointment": {
+      "main": [[{ "node": "Get Broker Info", "type": "main", "index": 0 }]]
+    },
+    "Get Broker Info": {
+      "main": [[{ "node": "Nylas: Create Calendar Event", "type": "main", "index": 0 }]]
+    },
+    "Nylas: Create Calendar Event": {
+      "main": [[{ "node": "Log Appointment to Supabase", "type": "main", "index": 0 }]]
+    },
+    "Log Appointment to Supabase": {
+      "main": [[{ "node": "Respond Success", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Unified calendar integration using Nylas API - supports Google, Microsoft, iCloud calendars with one simple workflow"
+  }
+}
+

@@ -1,0 +1,171 @@
+{
+  "type": "session.update",
+  "session": {
+    "instructions": "<LOAD barbara-personality-core.md HERE>",
+    
+    "voice": "alloy",
+    "input_audio_format": "pcm16",
+    "output_audio_format": "pcm16",
+    "turn_detection": {
+      "type": "server_vad",
+      "threshold": 0.5,
+      "prefix_padding_ms": 300,
+      "silence_duration_ms": 200
+    },
+
+    "tools": [
+      {
+        "type": "function",
+        "name": "search_knowledge",
+        "description": "Search the reverse mortgage knowledge base for answers to complex questions",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search terms related to the question"
+            }
+          },
+          "required": ["query"]
+        }
+      },
+      {
+        "type": "function",
+        "name": "check_broker_availability",
+        "description": "Check available appointment slots for the broker",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "broker_id": {
+              "type": "string",
+              "description": "Broker UUID from caller_information"
+            },
+            "preferred_date": {
+              "type": "string",
+              "description": "ISO date string (optional)"
+            }
+          },
+          "required": ["broker_id"]
+        }
+      },
+      {
+        "type": "function",
+        "name": "book_appointment",
+        "description": "Book an appointment (ONLY call when controller_state.canBook is true)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "lead_id": { "type": "string" },
+            "broker_id": { "type": "string" },
+            "appointment_datetime": { "type": "string" },
+            "phone": { "type": "string" },
+            "email": { "type": "string" }
+          },
+          "required": ["lead_id", "broker_id", "appointment_datetime"]
+        }
+      },
+      {
+        "type": "function",
+        "name": "save_interaction",
+        "description": "Save call summary at the end",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "lead_id": { "type": "string" },
+            "broker_id": { "type": "string" },
+            "duration_seconds": { "type": "number" },
+            "outcome": {
+              "type": "string",
+              "enum": ["appointment_booked", "interested", "not_interested", "callback_requested"]
+            },
+            "metadata": {
+              "type": "object",
+              "properties": {
+                "money_purpose": { "type": "string" },
+                "specific_need": { "type": "string" },
+                "amount_needed": { "type": "number" },
+                "timeline": { "type": "string" },
+                "objections": { "type": "array" },
+                "key_details": { "type": "array" }
+              }
+            }
+          },
+          "required": ["lead_id", "broker_id", "outcome"]
+        }
+      }
+    ],
+
+    "metadata": {
+      "controller_state": {
+        "phase": "RAPPORT",
+        "slots": {
+          "purpose": null,
+          "age_62_plus": null,
+          "primary_residence": null,
+          "mortgage_status": null,
+          "est_home_value": null,
+          "est_mortgage_balance": null
+        },
+        "equityPresented": false,
+        "qaComplete": false,
+        "canBook": false,
+        "missing_slot": null,
+        "next_question": null
+      },
+
+      "caller_information": {
+        "call_direction": "inbound",
+        "call_type": "NEW_CALLER",
+        
+        "lead": {
+          "id": "uuid-lead-123",
+          "first_name": "Mary",
+          "last_name": "Johnson",
+          "phone": "+15555551234",
+          "email": "mary@example.com",
+          "age": 68
+        },
+
+        "property": {
+          "street": "1234 Oak Avenue",
+          "city": "Los Angeles",
+          "state": "CA",
+          "zip": "90001",
+          "estimated_value": 750000,
+          "mortgage_balance": 0,
+          "estimated_equity": 750000
+        },
+
+        "broker": {
+          "id": "uuid-broker-456",
+          "first_name": "Walter",
+          "last_name": "Thompson",
+          "company": "My Reverse Options",
+          "phone": "+18005551234",
+          "nmls": "123456"
+        },
+
+        "campaign": {
+          "archetype": "no_more_payments",
+          "persona_sender": "Linda",
+          "email_opens": 3,
+          "email_clicks": 1,
+          "last_opened": "2025-10-19T14:30:00Z"
+        },
+
+        "last_call_context": {
+          "total_calls": 2,
+          "last_call_date": "2025-10-15T10:00:00Z",
+          "money_purpose": "medical",
+          "specific_need": "Husband needs heart surgery - $75k",
+          "amount_needed": 75000,
+          "timeline": "urgent",
+          "objections": ["fees_concern", "spouse_approval"],
+          "questions_asked": ["Can I leave house to kids?"],
+          "key_details": ["Wife name is Carol", "Surgery scheduled for November"]
+        }
+      }
+    }
+  }
+}
+
