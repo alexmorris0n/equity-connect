@@ -429,9 +429,9 @@ class AudioBridge {
         max_response_output_tokens: 150,  // Allow full greeting + one sentence response
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.5,  // Lower threshold - 0.65 was too sensitive, causing false interruptions
+          threshold: 0.7,  // Higher threshold - ignore footsteps, background noise
           prefix_padding_ms: 300,  // Standard padding
-          silence_duration_ms: 800  // Shorter silence detection - more responsive
+          silence_duration_ms: 700  // Shorter silence detection - more responsive
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -540,11 +540,12 @@ class AudioBridge {
         if (!this.responseInProgress && this.lastResponseAt > 0) {
           const timeSinceLastResponse = Date.now() - this.lastResponseAt;
           // If less than 2 seconds since Barbara last spoke, she was likely interrupted mid-thought
-          if (timeSinceLastResponse < 2000) {
-            debug('🔄 False interruption detected - resuming Barbara');
+          if (timeSinceLastResponse < 2000 && this.currentResponseTranscript) {
+            debug('🔄 False interruption detected - resuming Barbara with context');
             setTimeout(() => {
               if (!this.userSpeaking && !this.responseInProgress) {
-                this.resumeConversation();
+                // Resume with context of what she was saying
+                this.resumeWithContext();
               }
             }, 500);  // Wait 500ms to ensure user is really done
           }
@@ -760,6 +761,43 @@ class AudioBridge {
         type: 'response.create'
       }));
       this.responseInProgress = true;  // Mark response as starting
+    }
+  }
+
+  /**
+   * Resume conversation with context of what Barbara was saying
+   * Used when false interruption happens - helps her continue her thought
+   */
+  resumeWithContext() {
+    // Guard: Don't send response.create if one is already in progress
+    if (this.responseInProgress) {
+      debug('⚠️ Cannot resume - response already in progress');
+      return;
+    }
+    
+    if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+      const lastThought = this.currentResponseTranscript.trim();
+      debug('🔄 Resuming Barbara with context:', lastThought);
+      
+      // Tell Barbara to continue where she left off
+      this.openaiSocket.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'system',
+          content: [{
+            type: 'input_text',
+            text: `You were interrupted mid-sentence. You were saying: "${lastThought}". Continue from where you left off - don't start over. Just finish your thought naturally.`
+          }]
+        }
+      }));
+      
+      // Then trigger response
+      this.openaiSocket.send(JSON.stringify({
+        type: 'response.create'
+      }));
+      
+      this.responseInProgress = true;
     }
   }
 
