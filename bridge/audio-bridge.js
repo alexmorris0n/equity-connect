@@ -50,6 +50,11 @@ class AudioBridge {
     this.gracefulShutdown = false;  // Track if we're in graceful shutdown mode
     this.gracefulShutdownTimer = null;  // Timeout for graceful shutdown
     this.sessionConfigTimeout = null;  // Timeout to ensure session gets configured (fallback)
+    
+    // Rate limiting and response queue management
+    this.responseQueue = [];  // Queue for pending response.create calls
+    this.backoffUntil = 0;  // Timestamp when we can send again (rate limit backoff)
+    this.speaking = false;  // Track if Barbara is currently speaking (single-flight)
   }
 
   /**
@@ -465,7 +470,7 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
-        max_response_output_tokens: 150,  // Allow full greeting + one sentence response
+        max_response_output_tokens: 100,  // Reduced from 150 to prevent output token throttling
         turn_detection: {
           type: 'server_vad',
           threshold: 0.7,  // Higher threshold - ignore footsteps, background noise
@@ -516,12 +521,17 @@ class AudioBridge {
         break;
 
       case 'response.audio.done':
+        // Mark not speaking and drain queue (sometimes comes before response.done)
+        this.speaking = false;
+        this.responseInProgress = false;
+        this.drainResponseQueue();
         this.logger.info('🔊 AI finished speaking');
         break;
       
       case 'response.created':
         // Response generation started
         this.responseInProgress = true;
+        this.speaking = true;  // Mark as speaking for single-flight enforcement
         debug('🎙️ Response generation started');
         break;
       
@@ -536,7 +546,11 @@ class AudioBridge {
         // Track when Barbara finished speaking
         this.lastResponseAt = Date.now();
         this.responseInProgress = false;  // Response fully completed
+        this.speaking = false;  // No longer speaking - ready for next response
         debug('✅ Response completed, tracking for auto-resume');
+        
+        // Drain queued responses (single-flight pattern)
+        this.drainResponseQueue();
         
         // If in graceful shutdown, cleanup now that response is done
         if (this.gracefulShutdown) {
@@ -546,10 +560,16 @@ class AudioBridge {
         break;
       
       case 'response.interrupted':
+      case 'response.canceled':      // ✅ US spelling (CRITICAL - this is what OpenAI sends!)
+      case 'response.cancelled':     // UK spelling (keep just in case)
+      case 'response.truncated':     // Sometimes used when cut short
         // Barbara was interrupted - mark response as no longer in progress
         this.responseInProgress = false;
-        debug('⚠️ Response interrupted, VAD will handle resume');
-        // Don't reset lastResponseAt here - let auto-resume work after VAD timeout
+        this.speaking = false;  // No longer speaking - ready for next response
+        console.log(`⚠️ Response stopped early: ${event.type}`);
+        
+        // Drain queued responses (this is CRITICAL - prevents permanent silence!)
+        this.drainResponseQueue();
         break;
       
       case 'input_audio_buffer.speech_started':
@@ -632,8 +652,8 @@ class AudioBridge {
         break;
 
       case 'rate_limits.updated':
-        // Informational only - OpenAI telling us current rate limits
-        debug('📊 Rate limits updated:', event.rate_limits);
+        // CRITICAL: Pass the full event so tolerant parser can read either shape
+        this.handleRateLimits(event);
         break;
 
       case 'error':
@@ -731,6 +751,16 @@ class AudioBridge {
         if (this.gracefulShutdown) {
           return;
         }
+
+        // ⛔ BACKPRESSURE: Sample audio lightly during backoff (keeps VAD alive)
+        // Don't drop ALL frames or barge-in detection will fail
+        if (!this.canSend()) {
+          const now = Date.now();
+          this._lastSampleAt = this._lastSampleAt || 0;
+          if (now - this._lastSampleAt < 200) return;  // Sample ~5 fps during backoff
+          this._lastSampleAt = now;
+          debug('⏳ Sampling audio during backoff (keep VAD alive)');
+        }
         
         if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
           this.openaiSocket.send(JSON.stringify({
@@ -742,6 +772,16 @@ class AudioBridge {
 
       case 'stop':
         this.logger.info('📞 Call ended by SignalWire - starting graceful shutdown');
+        
+        // Cancel any in-progress response so OpenAI stops generating
+        try {
+          if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+            this.openaiSocket.send(JSON.stringify({ type: 'response.cancel' }));
+          }
+        } catch (err) {
+          debug('⚠️ Error canceling response:', err);
+        }
+        
         this.saveCallSummary();
         this.startGracefulShutdown();
         break;
@@ -814,22 +854,101 @@ class AudioBridge {
   }
   
   /**
-   * Resume conversation after interruption or unexpected silence
+   * Handle rate limits from OpenAI
+   * Backs off when limits are hit to prevent Barbara from going silent
+   * Tolerant parser - handles both event.rate_limits and event.metrics
    */
-  resumeConversation() {
-    // Guard: Don't send response.create if one is already in progress
-    if (this.responseInProgress) {
-      debug('⚠️ Cannot resume - response already in progress');
+  handleRateLimits(rateLimitsOrEvent) {
+    // Handle both array and object formats
+    const metrics = Array.isArray(rateLimitsOrEvent)
+      ? rateLimitsOrEvent
+      : (rateLimitsOrEvent?.metrics || rateLimitsOrEvent?.rate_limits || []);
+
+    if (!metrics.length) return;
+
+    const throttled = metrics.filter(m => Number(m.remaining) <= 0);
+    
+    if (throttled.length > 0) {
+      const maxReset = Math.max(...throttled.map(m => Number(m.reset_seconds) || 1));
+      this.backoffUntil = Date.now() + Math.ceil(maxReset * 1000);
+      
+      console.log('⏳ RATE LIMIT HIT - backing off for', maxReset, 'seconds');
+      throttled.forEach(m => {
+        console.log(`   - ${m.name}: ${m.remaining}/${m.limit} remaining, resets in ${m.reset_seconds}s`);
+      });
+      this.logger.warn({ throttled, backoffMs: maxReset * 1000 }, '⏳ Rate limit backoff');
+    } else {
+      debug('📊 Rate limits OK:', metrics.map(m => `${m.name}: ${m.remaining}/${m.limit}`).join(', '));
+    }
+  }
+
+  /**
+   * Check if we can send to OpenAI (not in backoff period)
+   */
+  canSend() {
+    return Date.now() >= this.backoffUntil;
+  }
+
+  /**
+   * Enqueue a response.create call (single-flight pattern)
+   */
+  enqueueResponse(payload = {}) {
+    // Don't enqueue during graceful shutdown
+    if (this.gracefulShutdown) {
+      debug('⚠️ Graceful shutdown - not enqueueing response');
       return;
     }
     
-    if (this.openaiSocket?.readyState === WebSocket.OPEN) {
-      debug('🔄 Sending response.create to resume conversation');
-      this.openaiSocket.send(JSON.stringify({
-        type: 'response.create'
-      }));
-      this.responseInProgress = true;  // Mark response as starting
+    debug('📥 Enqueueing response:', JSON.stringify(payload).substring(0, 100));
+    this.responseQueue.push(payload);
+    this.drainResponseQueue();
+  }
+
+  /**
+   * Drain response queue (single-flight - only one response at a time)
+   */
+  drainResponseQueue() {
+    // Don't start new response if one is already in progress
+    if (this.speaking || this.responseInProgress) {
+      debug('⏸️ Cannot drain queue - already speaking');
+      return;
     }
+
+    // Don't send if in rate limit backoff period
+    if (!this.canSend()) {
+      const waitMs = this.backoffUntil - Date.now();
+      debug(`⏳ In backoff period - waiting ${waitMs}ms before sending`);
+      
+      // Retry after backoff expires
+      setTimeout(() => this.drainResponseQueue(), waitMs + 100);
+      return;
+    }
+
+    // Get next item from queue
+    const next = this.responseQueue.shift();
+    if (!next) {
+      debug('✅ Response queue empty');
+      return;
+    }
+
+    // Send response.create
+    debug('🔄 Draining queue - sending response.create');
+    if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+      this.openaiSocket.send(JSON.stringify({
+        type: 'response.create',
+        response: next
+      }));
+      this.speaking = true;
+      this.responseInProgress = true;
+    }
+  }
+
+  /**
+   * Resume conversation after interruption or unexpected silence
+   */
+  resumeConversation() {
+    // Use queue system instead of direct send
+    this.enqueueResponse({});
   }
 
   /**
@@ -837,12 +956,6 @@ class AudioBridge {
    * Used when false interruption happens - helps her continue her thought
    */
   resumeWithContext() {
-    // Guard: Don't send response.create if one is already in progress
-    if (this.responseInProgress) {
-      debug('⚠️ Cannot resume - response already in progress');
-      return;
-    }
-    
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
       const lastThought = this.currentResponseTranscript.trim();
       debug('🔄 Resuming Barbara with context:', lastThought);
@@ -860,12 +973,8 @@ class AudioBridge {
         }
       }));
       
-      // Then trigger response
-      this.openaiSocket.send(JSON.stringify({
-        type: 'response.create'
-      }));
-      
-      this.responseInProgress = true;
+      // Use queue system for response.create
+      this.enqueueResponse({});
     }
   }
 
@@ -891,12 +1000,10 @@ class AudioBridge {
           }
         }));
         
-        // Trigger Barbara to speak the acknowledgment
-        this.openaiSocket.send(JSON.stringify({
-          type: 'response.create'
-        }));
+        // Trigger Barbara to speak the acknowledgment using queue system
+        this.enqueueResponse({});
         
-        debug('✅ Quick acknowledgment triggered - Barbara will say "Equity Connect, give me one second please"');
+        debug('✅ Quick acknowledgment enqueued - Barbara will say "Equity Connect, give me one second please"');
         // Don't mark greetingSent = true yet - this is just the acknowledgment
       }, 500); // Small delay to let call connection settle
     }
@@ -1305,14 +1412,10 @@ CONVERSATION GOALS (in order):
         
         debug('✅ Step 1: conversation.item.create sent (call_connected trigger)');
 
-        // Step 2: Request response generation (this makes Barbara actually speak)
-        this.openaiSocket.send(JSON.stringify({
-          type: 'response.create'
-        }));
-        
-        this.greetingSent = true;  // Mark greeting as sent
-        this.responseInProgress = true;  // Track that response is starting
-        debug('✅ Step 2: response.create sent (Barbara should now speak!)');
+        // Step 2: Request response generation using queue system (single-flight)
+        this.greetingSent = true;  // Mark greeting as sent before enqueueing
+        this.enqueueResponse({});
+        debug('✅ Step 2: response.create enqueued (Barbara should now speak!)');
       }, 500);
     } else {
       console.error('❌ Cannot start conversation - OpenAI socket not ready');
@@ -1343,10 +1446,8 @@ CONVERSATION GOALS (in order):
         }
       }));
       
-      // Continue response
-      this.openaiSocket.send(JSON.stringify({
-        type: 'response.create'
-      }));
+      // Continue response using queue system (single-flight)
+      this.enqueueResponse({});
       
     } catch (err) {
       this.logger.error({ err, function: name, args: argsJson }, '❌ Tool execution failed');
@@ -1385,10 +1486,8 @@ CONVERSATION GOALS (in order):
         }
       }));
       
-      // Continue response so Barbara can speak the fallback
-      this.openaiSocket.send(JSON.stringify({
-        type: 'response.create'
-      }));
+      // Continue response so Barbara can speak the fallback (use queue)
+      this.enqueueResponse({});
     }
   }
 
