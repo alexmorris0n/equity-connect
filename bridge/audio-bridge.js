@@ -958,38 +958,48 @@ class AudioBridge {
    * Send media (audio) to SignalWire
    */
   sendMediaToSignalWire(audioData) {
-    debug('🔊 Sending audio to SignalWire, length:', audioData?.length, 'callSid:', this.callSid);
-    
     // During graceful shutdown, silently drop audio instead of logging errors
     if (this.gracefulShutdown && this.swSocket.readyState !== WebSocket.OPEN) {
       debug('🔇 Graceful shutdown - dropping audio chunk');
       return;
     }
     
-    if (this.swSocket.readyState === WebSocket.OPEN) {
-      // Add 30ms delay between chunks to prevent SignalWire buffer overflow
-      // This gives SignalWire time to play audio before receiving more
-      const now = Date.now();
-      const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
-      const minDelay = 30; // 30ms throttle (increased from 10ms to prevent dropouts)
+    if (this.swSocket.readyState !== WebSocket.OPEN) {
+      console.error('❌ Cannot send audio - SignalWire socket not open, state:', this.swSocket.readyState);
+      return;
+    }
+    
+    // Decode base64 to check actual size
+    const audioBuffer = Buffer.from(audioData, 'base64');
+    const maxChunkSize = 16000; // Max bytes per chunk to prevent buffer overflow
+    
+    // If chunk is larger than max, split it into smaller pieces
+    if (audioBuffer.length > maxChunkSize) {
+      debug(`📦 Splitting large chunk (${audioBuffer.length} bytes) into smaller pieces`);
       
-      if (timeSinceLastSend < minDelay) {
-        // Too fast - wait a bit
-        setTimeout(() => {
-          if (this.swSocket.readyState === WebSocket.OPEN) {
-            this.swSocket.send(JSON.stringify({
-              event: 'media',
-              streamSid: this.callSid || 'unknown',
-              media: {
-                payload: audioData
-              }
-            }));
-            this._lastAudioSentAt = Date.now();
-            debug('✅ Audio sent to SignalWire (throttled)');
-          }
-        }, minDelay - timeSinceLastSend);
-      } else {
-        // Send immediately
+      for (let offset = 0; offset < audioBuffer.length; offset += maxChunkSize) {
+        const chunk = audioBuffer.slice(offset, offset + maxChunkSize);
+        const chunkBase64 = chunk.toString('base64');
+        
+        // Send each piece with throttling
+        this.sendSingleChunk(chunkBase64, `${offset}/${audioBuffer.length}`);
+      }
+    } else {
+      // Normal size - send as-is
+      this.sendSingleChunk(audioData, audioData.length);
+    }
+  }
+  
+  /**
+   * Send a single audio chunk to SignalWire with throttling
+   */
+  sendSingleChunk(audioData, logInfo) {
+    const now = Date.now();
+    const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
+    const minDelay = 30; // 30ms throttle
+    
+    const sendFn = () => {
+      if (this.swSocket.readyState === WebSocket.OPEN) {
         this.swSocket.send(JSON.stringify({
           event: 'media',
           streamSid: this.callSid || 'unknown',
@@ -997,11 +1007,17 @@ class AudioBridge {
             payload: audioData
           }
         }));
-        this._lastAudioSentAt = now;
-        debug('✅ Audio sent to SignalWire');
+        this._lastAudioSentAt = Date.now();
+        debug(`✅ Audio sent to SignalWire (${logInfo})`);
       }
+    };
+    
+    if (timeSinceLastSend < minDelay) {
+      // Too fast - wait
+      setTimeout(sendFn, minDelay - timeSinceLastSend);
     } else {
-      console.error('❌ Cannot send audio - SignalWire socket not open, state:', this.swSocket.readyState);
+      // Send immediately
+      sendFn();
     }
   }
 
