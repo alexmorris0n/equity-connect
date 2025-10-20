@@ -771,7 +771,31 @@ class AudioBridge {
             this.sessionConfigTimeout = null;
           }
           
+          // WAIT for OpenAI socket to be fully open before configuring
+          const waitForOpen = () => new Promise((resolve) => {
+            if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+              resolve();
+            } else {
+              const checkInterval = setInterval(() => {
+                if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+                  clearInterval(checkInterval);
+                  resolve();
+                }
+              }, 50); // Check every 50ms
+              
+              // Timeout after 3 seconds
+              setTimeout(() => {
+                clearInterval(checkInterval);
+                resolve(); // Continue anyway
+              }, 3000);
+            }
+          });
+          
           try {
+            // Wait for socket to be ready
+            await waitForOpen();
+            console.log('✅ OpenAI socket ready - configuring session');
+            
             // Configure session with personalized prompt (includes lead lookup)
             await this.configureSession();
             this.startAutoResumeMonitor();
@@ -787,6 +811,7 @@ class AudioBridge {
             console.error('❌ Error details:', err.message);
             // Fallback: configure with minimal prompt
             this.callContext.instructions = this.buildPromptFromTemplate({ callContext: 'inbound' });
+            await waitForOpen();
             await this.configureSession();
             this.startAutoResumeMonitor();
             setTimeout(() => this.startConversation(), 500);
