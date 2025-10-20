@@ -294,7 +294,7 @@ app.post('/api/outbound-call', async (request, reply) => {
     });
   }
 
-  const { to_phone, lead_id, broker_id } = request.body;
+  const { to_phone, lead_id, broker_id, instructions, lead_context } = request.body;
 
   // Validate inputs
   if (!to_phone || !lead_id) {
@@ -319,18 +319,26 @@ app.post('/api/outbound-call', async (request, reply) => {
       });
     }
 
-    // Look up lead context
-    const leadContext = await executeTool('get_lead_context', { phone: normalizedPhone });
-    app.log.info({ leadContext }, 'Lead context lookup result');
-    if (!leadContext || !leadContext.found) {
-      return reply.code(200).send({ 
-        success: false,
-        message: 'Lead not found in database'
-      });
+    // Use provided lead context OR look up from database
+    let leadRecord;
+    if (lead_context && lead_context.broker) {
+      // Use provided context from n8n (more efficient)
+      leadRecord = lead_context;
+      app.log.info({ source: 'provided' }, 'Using provided lead context from n8n');
+    } else {
+      // Fallback: Look up lead context from database
+      const leadContext = await executeTool('get_lead_context', { phone: normalizedPhone });
+      app.log.info({ leadContext }, 'Lead context lookup result (fallback)');
+      if (!leadContext || !leadContext.found) {
+        return reply.code(200).send({ 
+          success: false,
+          message: 'Lead not found in database'
+        });
+      }
+      leadRecord = leadContext;
     }
 
-    const leadRecord = leadContext;
-    app.log.info({ leadRecord, broker_id }, 'Lead record and broker_id');
+    app.log.info({ broker_id }, 'Lead record and broker_id');
     const assignedBrokerId = broker_id || leadRecord.broker_id;
 
     // Select SignalWire number for the broker
@@ -384,7 +392,8 @@ app.post('/api/outbound-call', async (request, reply) => {
               broker_id: assignedBrokerId,
               to_phone: normalizedPhone,
               from_phone: selectedNumber.number,
-              context: 'outbound'
+              context: 'outbound',
+              instructions: instructions || null  // Custom Barbara prompt from n8n/MCP
             });
 
     // Clean up old pending calls (older than 5 minutes)

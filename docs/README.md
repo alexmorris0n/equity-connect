@@ -1,6 +1,6 @@
 # Equity Connect Documentation
 
-**Last Updated:** October 11, 2025
+**Last Updated:** October 20, 2025
 
 ---
 
@@ -22,21 +22,20 @@
 - [PROPERTYRADAR_PULL_WORKFLOW_FINAL.md](PROPERTYRADAR_PULL_WORKFLOW_FINAL.md) - Daily lead pull (17 nodes, WORKING)
 - [PROPERTYRADAR_LIST_CREATION_GUIDE.md](PROPERTYRADAR_LIST_CREATION_GUIDE.md) - How to create dynamic lists
 - [PROPERTYRADAR_INTEGRATION.md](PROPERTYRADAR_INTEGRATION.md) - API reference
-- [PROPERTYRADAR_CLEANUP_SUMMARY.md](PROPERTYRADAR_CLEANUP_SUMMARY.md) - What was archived/deleted
 
 **Compliance & Legal:**
 - [COMPLIANCE_SIMPLE_GUIDE.md](COMPLIANCE_SIMPLE_GUIDE.md) - Email vs calls cheat sheet
 - [COMPLIANCE_FRAMEWORK.md](COMPLIANCE_FRAMEWORK.md) - Full compliance details
 - [CONSENT_MANAGEMENT_GUIDE.md](CONSENT_MANAGEMENT_GUIDE.md) - TCPA consent for phone calls
 
-**Phone Number Pool (SignalWire + VAPI):**
-- [SIGNALWIRE_PHONE_POOL_GUIDE.md](SIGNALWIRE_PHONE_POOL_GUIDE.md) - ⭐ **Production-ready pool management (scales to 100+ brokers)**
-- [SIGNALWIRE_INTEGRATION_GUIDE.md](SIGNALWIRE_INTEGRATION_GUIDE.md) - Initial setup
-- [VAPI_AI_VOICE_INTEGRATION.md](VAPI_AI_VOICE_INTEGRATION.md) - Barbara AI assistant
+**Voice System (SignalWire + OpenAI Realtime):**
+- [../bridge/README.md](../bridge/README.md) - ⭐ **Production voice bridge (OpenAI Realtime + SignalWire)**
+- [../barbara-mcp/README.md](../barbara-mcp/README.md) - Barbara MCP server for n8n
+- [SIGNALWIRE_PHONE_POOL_GUIDE.md](SIGNALWIRE_PHONE_POOL_GUIDE.md) - Phone number pool management
+- [SIGNALWIRE_INTEGRATION_GUIDE.md](SIGNALWIRE_INTEGRATION_GUIDE.md) - SignalWire PSTN setup
 
 **Campaign Setup:**
 - [INSTANTLY_CONSENT_INTEGRATION.md](INSTANTLY_CONSENT_INTEGRATION.md) - Cold email campaign guide
-- [COMPLIANCE_CORRECTIONS.md](COMPLIANCE_CORRECTIONS.md) - What we fixed in docs
 
 ---
 
@@ -52,9 +51,9 @@
 ### 🔧 Integration Guides
 
 **Voice & Appointments:**
-- [VAPI_AI_VOICE_INTEGRATION.md](VAPI_AI_VOICE_INTEGRATION.md) - AI voice call setup
-- [CALCOM_INTEGRATION.md](CALCOM_INTEGRATION.md) - Appointment booking
-- [SIGNALWIRE_INTEGRATION_GUIDE.md](SIGNALWIRE_INTEGRATION_GUIDE.md) - Phone number pools
+- [../bridge/README.md](../bridge/README.md) - Voice bridge deployment (OpenAI Realtime)
+- [../barbara-mcp/README.md](../barbara-mcp/README.md) - Barbara MCP for n8n integration
+- [SIGNALWIRE_INTEGRATION_GUIDE.md](SIGNALWIRE_INTEGRATION_GUIDE.md) - SignalWire phone setup
 
 **Data & Enrichment:**
 - [DATA_SOURCING_WATERFALL_STRATEGY.md](DATA_SOURCING_WATERFALL_STRATEGY.md) - Enrichment waterfall strategy
@@ -137,7 +136,7 @@
 → Read [INSTANTLY_CONSENT_INTEGRATION.md](INSTANTLY_CONSENT_INTEGRATION.md)
 
 **Build voice calling:**
-→ Read [VAPI_AI_VOICE_INTEGRATION.md](VAPI_AI_VOICE_INTEGRATION.md)
+→ Read [../bridge/README.md](../bridge/README.md)
 
 **Deploy to production:**
 → Read [PRODUCTION_IMPLEMENTATION_CHECKLIST.md](PRODUCTION_IMPLEMENTATION_CHECKLIST.md)
@@ -146,6 +145,12 @@
 
 ## 🗑️ Cleanup History
 
+**October 20, 2025:**
+- ✅ Replaced VAPI with custom OpenAI Realtime bridge (92% cost reduction)
+- ✅ Archived all VAPI configs and documentation to `config/archived/` and `docs/archived/`
+- ✅ Moved historical summaries and completed task docs to `docs/archived/`
+- ✅ Updated documentation to reflect bridge system
+
 **October 11, 2025:**
 - Archived 15 redundant/outdated docs to `archive/`
 - Deleted 9 obsolete interim docs
@@ -153,7 +158,7 @@
 - Fixed compliance misunderstandings in Instantly and Consent guides
 - Consolidated PropertyRadar documentation
 
-**See:** [PROPERTYRADAR_CLEANUP_SUMMARY.md](PROPERTYRADAR_CLEANUP_SUMMARY.md) and [COMPLIANCE_CORRECTIONS.md](COMPLIANCE_CORRECTIONS.md)
+**See:** [archived/README.md](archived/README.md) for full archive list
 
 ---
 

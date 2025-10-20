@@ -3,6 +3,19 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import fastify from 'fastify';
 import cors from '@fastify/cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ES Module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load hybrid prompt template (handles both inbound and outbound)
+const HYBRID_PROMPT_TEMPLATE = fs.readFileSync(
+  path.join(__dirname, '../prompts/BarbaraRealtimePrompt'),
+  'utf8'
+);
 
 // Initialize Fastify for HTTP streaming transport
 const app = fastify({
@@ -34,14 +47,110 @@ if (!BRIDGE_API_KEY) {
   process.exit(1);
 }
 
+/**
+ * Convert number to words (for Barbara to speak naturally)
+ * Examples: 1500000 -> "one point five million", 750000 -> "seven hundred fifty thousand"
+ */
+function numberToWords(value) {
+  if (!value || value === 0) return 'zero';
+  
+  const num = parseInt(value);
+  
+  // Handle millions
+  if (num >= 1000000) {
+    const millions = num / 1000000;
+    if (millions === Math.floor(millions)) {
+      return `${millions === 1 ? 'one' : millions} million`;
+    } else {
+      return `${millions.toFixed(1)} million`;
+    }
+  }
+  
+  // Handle thousands
+  if (num >= 1000) {
+    const thousands = num / 1000;
+    if (thousands === Math.floor(thousands)) {
+      return `${numberWord(thousands)} thousand`;
+    } else {
+      return `${thousands.toFixed(0)} thousand`;
+    }
+  }
+  
+  return numberWord(num);
+}
+
+/**
+ * Convert single numbers to words (1-999)
+ */
+function numberWord(num) {
+  const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  
+  if (num < 10) return ones[num];
+  if (num < 20) return teens[num - 10];
+  if (num < 100) {
+    const tenPart = Math.floor(num / 10);
+    const onePart = num % 10;
+    return tens[tenPart] + (onePart > 0 ? ' ' + ones[onePart] : '');
+  }
+  
+  const hundreds = Math.floor(num / 100);
+  const remainder = num % 100;
+  return ones[hundreds] + ' hundred' + (remainder > 0 ? ' ' + numberWord(remainder) : '');
+}
+
+/**
+ * Build customized prompt by replacing handlebars-style placeholders
+ */
+function buildCustomPrompt(variables) {
+  let prompt = HYBRID_PROMPT_TEMPLATE;
+  
+  // Helper to safely replace placeholders
+  const replace = (key, value) => {
+    const placeholder = `{{${key}}}`;
+    const safeValue = value || '';
+    prompt = prompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), safeValue);
+  };
+  
+  // Handle handlebars conditionals (simple implementation)
+  // {{#if propertyCity}}...{{/if}}
+  const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+  prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
+    return variables[varName] ? content : '';
+  });
+  
+  // {{#if personaFirstName}}...{{else}}...{{/if}}
+  const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
+  prompt = prompt.replace(conditionalElseRegex, (match, varName, ifContent, elseContent) => {
+    return variables[varName] ? ifContent : elseContent;
+  });
+  
+  // Replace all variable placeholders
+  Object.keys(variables).forEach(key => {
+    replace(key, variables[key]);
+  });
+  
+  return prompt;
+}
+
+/**
+ * Extract first name from full name
+ */
+function extractFirstName(fullName) {
+  if (!fullName) return '';
+  return fullName.split(' ')[0];
+}
+
 // Tool definitions
 const tools = [
   {
     name: 'create_outbound_call',
-    description: 'Create an outbound call to a lead using Barbara AI voice assistant',
+    description: 'Create an outbound call to a lead using Barbara AI voice assistant with full personalization',
     inputSchema: {
       type: 'object',
       properties: {
+        // Required fields
         to_phone: {
           type: 'string',
           description: 'Phone number to call (will be normalized to E.164 format)'
@@ -50,10 +159,50 @@ const tools = [
           type: 'string',
           description: 'Lead ID from the database'
         },
+        
+        // Optional broker
         broker_id: {
           type: 'string',
           description: 'Optional broker ID (if not provided, will use lead\'s assigned broker)'
-        }
+        },
+        
+        // Lead information (27 variables for customization)
+        lead_first_name: { type: 'string', description: 'Lead first name' },
+        lead_last_name: { type: 'string', description: 'Lead last name' },
+        lead_full_name: { type: 'string', description: 'Lead full name' },
+        lead_email: { type: 'string', description: 'Lead email address' },
+        lead_phone: { type: 'string', description: 'Lead phone number' },
+        
+        // Property information
+        property_address: { type: 'string', description: 'Property street address' },
+        property_city: { type: 'string', description: 'Property city' },
+        property_state: { type: 'string', description: 'Property state' },
+        property_zipcode: { type: 'string', description: 'Property ZIP code' },
+        property_value: { type: 'string', description: 'Property value (numeric)' },
+        property_value_formatted: { type: 'string', description: 'Property value formatted (e.g., "1.2M")' },
+        
+        // Equity calculations
+        estimated_equity: { type: 'string', description: 'Estimated equity (numeric)' },
+        estimated_equity_formatted: { type: 'string', description: 'Estimated equity formatted (e.g., "1M")' },
+        equity_50_percent: { type: 'string', description: '50% of equity (numeric)' },
+        equity_50_formatted: { type: 'string', description: '50% equity formatted (e.g., "500K")' },
+        equity_60_percent: { type: 'string', description: '60% of equity (numeric)' },
+        equity_60_formatted: { type: 'string', description: '60% equity formatted (e.g., "600K")' },
+        
+        // Campaign and persona
+        campaign_archetype: { type: 'string', description: 'Campaign archetype' },
+        persona_assignment: { type: 'string', description: 'Assigned persona type' },
+        persona_sender_name: { type: 'string', description: 'Persona full name (e.g., "Carlos Rodriguez")' },
+        
+        // Broker information
+        broker_company: { type: 'string', description: 'Broker company name' },
+        broker_full_name: { type: 'string', description: 'Broker full name' },
+        broker_nmls: { type: 'string', description: 'Broker NMLS number' },
+        broker_phone: { type: 'string', description: 'Broker phone number' },
+        broker_display: { type: 'string', description: 'Broker display name with NMLS' },
+        
+        // Call context
+        call_context: { type: 'string', description: 'Call context (always "outbound" for this tool)' }
       },
       required: ['to_phone', 'lead_id']
     }
@@ -64,12 +213,75 @@ const tools = [
 async function executeTool(name, args) {
   switch (name) {
     case 'create_outbound_call': {
-      const { to_phone, lead_id, broker_id } = args;
+      const { to_phone, lead_id, broker_id, ...variables } = args;
       
-      app.log.info({ to_phone, lead_id, broker_id }, '📞 Creating outbound call');
+      app.log.info({ to_phone, lead_id, broker_id, hasVariables: Object.keys(variables).length }, '📞 Creating outbound call');
       
       try {
-        // Call the bridge API
+        // Extract first names for Barbara's use
+        const brokerFirstName = extractFirstName(variables.broker_full_name);
+        const personaFirstName = extractFirstName(variables.persona_sender_name);
+        
+        // Convert numeric values to words for speech
+        const propertyValueWords = variables.property_value ? numberToWords(variables.property_value) : '';
+        const estimatedEquityWords = variables.estimated_equity ? numberToWords(variables.estimated_equity) : '';
+        const equity50Words = variables.equity_50_percent ? numberToWords(variables.equity_50_percent) : '';
+        const equity60Words = variables.equity_60_percent ? numberToWords(variables.equity_60_percent) : '';
+        
+        // Build complete variables object for prompt injection
+        const promptVariables = {
+          // Lead info
+          leadFirstName: variables.lead_first_name || '',
+          leadLastName: variables.lead_last_name || '',
+          leadFullName: variables.lead_full_name || '',
+          leadEmail: variables.lead_email || '',
+          leadPhone: variables.lead_phone || to_phone,
+          
+          // Property info
+          propertyAddress: variables.property_address || '',
+          propertyCity: variables.property_city || '',
+          propertyState: variables.property_state || '',
+          propertyZipcode: variables.property_zipcode || '',
+          propertyValue: variables.property_value || '',
+          propertyValueWords: propertyValueWords,
+          mortgageBalanceWords: variables.mortgage_balance ? numberToWords(variables.mortgage_balance) : '',
+          
+          // Equity
+          estimatedEquity: variables.estimated_equity || '',
+          estimatedEquityWords: estimatedEquityWords,
+          equity50Percent: variables.equity_50_percent || '',
+          equity50FormattedWords: equity50Words,
+          equity60Percent: variables.equity_60_percent || '',
+          equity60FormattedWords: equity60Words,
+          
+          // Campaign
+          campaignArchetype: variables.campaign_archetype || 'direct',
+          personaAssignment: variables.persona_assignment || 'general',
+          personaSenderName: variables.persona_sender_name || '',
+          personaFirstName: personaFirstName,
+          
+          // Broker
+          brokerCompany: variables.broker_company || '',
+          brokerFullName: variables.broker_full_name || '',
+          brokerFirstName: brokerFirstName,
+          brokerNmls: variables.broker_nmls || '',
+          brokerPhone: variables.broker_phone || '',
+          brokerDisplay: variables.broker_display || '',
+          
+          // Context - CRITICAL: determines inbound vs outbound flow
+          callContext: variables.call_context || 'outbound'
+        };
+        
+        // Build customized prompt
+        const customizedPrompt = buildCustomPrompt(promptVariables);
+        
+        app.log.info({ 
+          promptLength: customizedPrompt.length,
+          hasCity: !!promptVariables.propertyCity,
+          hasPersona: !!promptVariables.personaFirstName 
+        }, '📝 Built customized prompt');
+        
+        // Call the bridge API with customized prompt
         const response = await fetch(`${BRIDGE_URL}/api/outbound-call`, {
           method: 'POST',
           headers: {
@@ -79,7 +291,8 @@ async function executeTool(name, args) {
           body: JSON.stringify({
             to_phone,
             lead_id,
-            broker_id
+            broker_id,
+            instructions: customizedPrompt  // Pass customized prompt to bridge
           })
         });
         
@@ -95,6 +308,8 @@ async function executeTool(name, args) {
                       `📞 Call ID: ${result.call_id}\n` +
                       `📱 From: ${result.from}\n` +
                       `📱 To: ${result.to}\n` +
+                      `👤 Lead: ${promptVariables.leadFirstName} ${promptVariables.leadLastName}\n` +
+                      `🏢 Broker: ${promptVariables.brokerFirstName}\n` +
                       `💬 Message: ${result.message}`
               }
             ]
@@ -159,7 +374,7 @@ app.post('/mcp', async (request, reply) => {
             },
             serverInfo: {
               name: 'barbara-mcp',
-              version: '1.0.0'
+              version: '2.0.0'
             }
           }
         });
@@ -220,9 +435,10 @@ app.listen({ port, host }, (err, address) => {
     app.log.error(err);
     process.exit(1);
   }
-  app.log.info(`🚀 Barbara MCP Server running on ${address}`);
+  app.log.info(`🚀 Barbara MCP Server v2.0 running on ${address}`);
   app.log.info(`📡 Bridge URL: ${BRIDGE_URL}`);
   app.log.info(`🔧 MCP endpoint: ${address}/mcp`);
+  app.log.info(`📝 Outbound prompt loaded (${OUTBOUND_PROMPT_TEMPLATE.length} chars)`);
 });
 
 // Graceful shutdown

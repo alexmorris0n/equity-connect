@@ -10,14 +10,19 @@ const { toolDefinitions, executeTool } = require('./tools');
 const fs = require('fs');
 const path = require('path');
 
-// Load Barbara's system prompts
-const BARBARA_INBOUND_PROMPT = fs.readFileSync(
-  path.join(__dirname, '../prompts/BarbaraInboundPrompt'),
-  'utf8'
-);
+// Debug logging control
+const ENABLE_DEBUG_LOGGING = process.env.ENABLE_DEBUG_LOGGING === 'true';
 
-const BARBARA_OUTBOUND_PROMPT = fs.readFileSync(
-  path.join(__dirname, '../prompts/BarbaraVapiPrompt_V2_Realtime_Optimized'),
+// Debug logger - only logs if debug enabled
+const debug = (...args) => {
+  if (ENABLE_DEBUG_LOGGING) {
+    console.log(...args);
+  }
+};
+
+// Load Barbara's hybrid system prompt (handles both inbound and outbound)
+const BARBARA_HYBRID_PROMPT = fs.readFileSync(
+  path.join(__dirname, '../prompts/BarbaraRealtimePrompt'),
   'utf8'
 );
 
@@ -41,6 +46,7 @@ class AudioBridge {
     this.currentResponseTranscript = '';  // Track Barbara's current response transcript for logging
     this.awaitingUser = false;  // Track if Barbara asked a question and is waiting for answer
     this.nudgedOnce = false;  // Track if we've nudged the user once already
+    this.callerPhone = null;  // Populated from SignalWire start event
   }
 
   /**
@@ -72,18 +78,25 @@ class AudioBridge {
    * Setup OpenAI WebSocket event handlers
    */
   setupOpenAIHandlers() {
-    console.log('🔵 setupOpenAIHandlers called, socket exists:', !!this.openaiSocket);
+    debug('🔵 setupOpenAIHandlers called, socket exists:', !!this.openaiSocket);
     
-    this.openaiSocket.on('open', () => {
-      console.log('🤖 OpenAI Realtime connected!');
+    this.openaiSocket.on('open', async () => {
+      console.log('🤖 OpenAI Realtime connected!'); // Always log important events
       this.logger.info('🤖 OpenAI Realtime connected');
-      this.configureSession();
       
-      // Trigger immediate greeting for inbound calls
+      // Configure session (async - waits for lead lookup on inbound)
+      await this.configureSession();
+      
+      // Trigger greeting based on call type
+      // Inbound: 1.5 seconds (gives people time to say "Hello?")
+      // Outbound: 1 second (faster response after they pick up)
+      const isInbound = !this.callContext.instructions;
+      const greetingDelay = isInbound ? 1500 : 1000;
+      
       setTimeout(() => {
-        console.log('🔵 Triggering initial response after 1 second...');
+        debug(`🔵 Triggering initial response after ${greetingDelay}ms (${isInbound ? 'inbound' : 'outbound'})...`);
         this.startConversation();
-      }, 1000);
+      }, greetingDelay);
       
       // Start auto-resume monitor to prevent Barbara from dying out
       this.startAutoResumeMonitor();
@@ -115,7 +128,7 @@ class AudioBridge {
    * Setup SignalWire WebSocket event handlers
    */
   setupSignalWireHandlers() {
-    console.log('🔵 setupSignalWireHandlers called, socket exists:', !!this.swSocket, 'has .on?:', typeof this.swSocket?.on);
+    debug('🔵 setupSignalWireHandlers called, socket exists:', !!this.swSocket, 'has .on?:', typeof this.swSocket?.on);
     
     this.swSocket.on('message', (message) => {
       try {
@@ -138,23 +151,260 @@ class AudioBridge {
   }
 
   /**
-   * Configure OpenAI Realtime session
-   * Note: This is called BEFORE we have lead context for caching optimization
-   * Lead context is injected separately after lookup completes
+   * Personalize prompt with context after getting caller phone (for inbound)
    */
-  configureSession() {
-    console.log('🔵 configureSession() called');
+  async personalizePromptWithContext() {
+    debug('🔄 Personalizing prompt with caller context');
     
-    // Use custom instructions from n8n if provided
-    // Otherwise use inbound prompt (for when people call us)
-    // n8n will send full outbound prompt when making calls
-    const baseInstructions = this.callContext.instructions || BARBARA_INBOUND_PROMPT;
+    try {
+      const { prompt, variables } = await this.lookupAndBuildPrompt();
+      
+      // Update session with personalized prompt
+      debug('📤 Sending session update with personalized prompt');
+      this.openaiSocket.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          instructions: prompt
+        }
+      }));
+      
+      debug('✅ Session updated with personalized prompt', {
+        hasName: !!variables.leadFirstName,
+        hasCity: !!variables.propertyCity
+      });
+      
+    } catch (err) {
+      console.error('❌ Failed to personalize prompt:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Look up lead context and build personalized prompt
+   */
+  async lookupAndBuildPrompt() {
+    // Extract caller phone from SignalWire metadata
+    const callerPhone = this.extractCallerPhone();
     
-    // For cacheable prompt optimization, we send base instructions first
-    // Then inject variable lead context as a system message after lookup
-    const instructions = baseInstructions;
+    if (!callerPhone) {
+      debug('⚠️  No caller phone found, using minimal prompt');
+      return {
+        prompt: this.buildPromptFromTemplate({ callContext: 'inbound' }),
+        variables: { callContext: 'inbound' }
+      };
+    }
     
-    console.log('🔵 Instructions length:', instructions.length, 'Custom:', !!this.callContext.instructions);
+    debug('📞 Looking up lead context for:', callerPhone);
+    
+    try {
+      // Look up lead from database
+      const result = await executeTool('get_lead_context', { phone: callerPhone });
+      
+      // Build variables object from lead context
+      const variables = {
+        // Call context
+        callContext: 'inbound',
+        
+        // Lead info
+        leadFirstName: result?.raw?.first_name || '',
+        leadLastName: result?.raw?.last_name || '',
+        leadFullName: result?.raw?.first_name 
+          ? `${result.raw.first_name} ${result.raw.last_name || ''}`.trim() 
+          : '',
+        leadEmail: result?.raw?.primary_email || '',
+        leadPhone: callerPhone,
+        
+        // Property info
+        propertyAddress: result?.raw?.property_address || '',
+        propertyCity: result?.raw?.property_city || '',
+        propertyState: result?.raw?.property_state || '',
+        propertyZipcode: result?.raw?.property_zip || '',
+        propertyValue: result?.raw?.property_value || '',
+        propertyValueWords: result?.raw?.property_value ? this.numberToWords(result.raw.property_value) : '',
+        mortgageBalanceWords: result?.raw?.mortgage_balance ? this.numberToWords(result.raw.mortgage_balance) : '',
+        
+        // Equity
+        estimatedEquity: result?.raw?.estimated_equity || '',
+        estimatedEquityWords: result?.raw?.estimated_equity ? this.numberToWords(result.raw.estimated_equity) : '',
+        equity50Percent: result?.raw?.estimated_equity ? Math.floor(result.raw.estimated_equity * 0.5) : '',
+        equity50FormattedWords: result?.raw?.estimated_equity ? this.numberToWords(Math.floor(result.raw.estimated_equity * 0.5)) : '',
+        equity60Percent: result?.raw?.estimated_equity ? Math.floor(result.raw.estimated_equity * 0.6) : '',
+        equity60FormattedWords: result?.raw?.estimated_equity ? this.numberToWords(Math.floor(result.raw.estimated_equity * 0.6)) : '',
+        
+        // Broker info
+        brokerCompany: result?.broker?.company_name || '',
+        brokerFullName: result?.broker?.contact_name || '',
+        brokerFirstName: result?.broker?.contact_name ? result.broker.contact_name.split(' ')[0] : '',
+        brokerNmls: result?.broker?.nmls_number || '',
+        brokerPhone: result?.broker?.phone || '',
+        brokerDisplay: result?.broker?.contact_name 
+          ? `${result.broker.contact_name}, NMLS ${result.broker.nmls_number || 'licensed'}`
+          : '',
+        
+        // Persona - empty for inbound (they called us)
+        personaSenderName: '',
+        personaFirstName: '',
+        campaignArchetype: '',
+        personaAssignment: ''
+      };
+      
+      debug('✅ Lead context retrieved:', {
+        found: result?.found,
+        name: variables.leadFirstName,
+        city: variables.propertyCity,
+        broker: variables.brokerFirstName
+      });
+      
+      // Build prompt from template with variables
+      const prompt = this.buildPromptFromTemplate(variables);
+      
+      return { prompt, variables };
+      
+    } catch (err) {
+      console.error('❌ Failed to lookup lead context:', err);
+      // Return minimal prompt on error
+      return {
+        prompt: this.buildPromptFromTemplate({ callContext: 'inbound' }),
+        variables: { callContext: 'inbound' }
+      };
+    }
+  }
+  
+  /**
+   * Extract caller phone from SignalWire metadata
+   */
+  extractCallerPhone() {
+    // Outbound: use to_phone from context
+    if (this.callContext.to_phone) {
+      return this.callContext.to_phone;
+    }
+    
+    // Inbound: use from context (populated by SignalWire start event)
+    if (this.callContext.from) {
+      return this.callContext.from;
+    }
+    
+    // Use stored caller phone
+    if (this.callerPhone) {
+      return this.callerPhone;
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Build prompt from template by replacing variables
+   */
+  buildPromptFromTemplate(variables) {
+    let prompt = BARBARA_HYBRID_PROMPT;
+    
+    // Process {{#if}} conditionals - removes handlebars syntax
+    const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+    prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
+      return variables[varName] ? content : '';
+    });
+    
+    // Process {{#if}}...{{else}}...{{/if}} conditionals
+    const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
+    prompt = prompt.replace(conditionalElseRegex, (match, varName, ifContent, elseContent) => {
+      return variables[varName] ? ifContent : elseContent;
+    });
+    
+    // Replace all {{variable}} placeholders
+    Object.keys(variables).forEach(key => {
+      const placeholder = `{{${key}}}`;
+      const value = variables[key] || '';
+      prompt = prompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+    });
+    
+    return prompt;
+  }
+  
+  /**
+   * Convert number to words (for natural speech)
+   */
+  numberToWords(value) {
+    if (!value || value === 0) return 'zero';
+    
+    const num = parseInt(value);
+    
+    // Handle millions
+    if (num >= 1000000) {
+      const millions = num / 1000000;
+      if (millions === Math.floor(millions)) {
+        return `${millions === 1 ? 'one' : millions} million`;
+      } else {
+        return `${millions.toFixed(1)} million`;
+      }
+    }
+    
+    // Handle thousands
+    if (num >= 1000) {
+      const thousands = num / 1000;
+      if (thousands === Math.floor(thousands)) {
+        return `${this.numberWord(thousands)} thousand`;
+      } else {
+        return `${thousands.toFixed(0)} thousand`;
+      }
+    }
+    
+    return this.numberWord(num);
+  }
+  
+  /**
+   * Convert single numbers to words (1-999)
+   */
+  numberWord(num) {
+    const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    
+    if (num < 10) return ones[num];
+    if (num < 20) return teens[num - 10];
+    if (num < 100) {
+      const tenPart = Math.floor(num / 10);
+      const onePart = num % 10;
+      return tens[tenPart] + (onePart > 0 ? ' ' + ones[onePart] : '');
+    }
+    
+    const hundreds = Math.floor(num / 100);
+    const remainder = num % 100;
+    return ones[hundreds] + ' hundred' + (remainder > 0 ? ' ' + this.numberWord(remainder) : '');
+  }
+
+  /**
+   * Configure OpenAI Realtime session
+   * Note: Now looks up lead context for inbound calls to personalize prompt
+   */
+  async configureSession() {
+    debug('🔵 configureSession() called');
+    
+    let instructions;
+    
+    if (this.callContext.instructions) {
+      // n8n/Barbara MCP sent fully customized prompt (outbound calls)
+      instructions = this.callContext.instructions;
+      debug('🔵 Using custom instructions from n8n/MCP (outbound)');
+    } else {
+      // Inbound call - look up lead context and process template
+      debug('🔵 Inbound call - looking up lead context to personalize prompt');
+      
+      try {
+        const leadContext = await this.lookupAndBuildPrompt();
+        instructions = leadContext.prompt;
+        debug('🔵 Built personalized inbound prompt', {
+          hasName: !!leadContext.variables.leadFirstName,
+          hasCity: !!leadContext.variables.propertyCity,
+          promptLength: instructions.length
+        });
+      } catch (err) {
+        console.error('❌ Failed to build personalized prompt, using minimal:', err);
+        // Fallback to minimal prompt
+        instructions = this.buildPromptFromTemplate({ callContext: 'inbound' });
+      }
+    }
+    
+    debug('🔵 Instructions length:', instructions.length, 'Custom:', !!this.callContext.instructions);
     
     const sessionConfig = {
       type: 'session.update',
@@ -179,14 +429,14 @@ class AudioBridge {
         tool_choice: 'auto'
       }
     };
-
-    console.log('🔵 Sending session.update to OpenAI...');
-    console.log('🔵 Session config:', JSON.stringify(sessionConfig).substring(0, 500));
+    
+    debug('🔵 Sending session.update to OpenAI...');
+    debug('🔵 Session config:', JSON.stringify(sessionConfig).substring(0, 500));
     
     this.openaiSocket.send(JSON.stringify(sessionConfig));
     this.sessionConfigured = true;
     
-    console.log('✅ Session configuration sent (static prompt for caching)!');
+    debug('✅ Session configuration sent!');
     
     const hasCustomInstructions = !!this.callContext.instructions;
     this.logger.info({ 
@@ -338,7 +588,7 @@ class AudioBridge {
   handleSignalWireEvent(msg) {
     // Only log important events (not media frames)
     if (msg.event !== 'media') {
-      console.log('📞 SignalWire event:', msg.event);
+      debug('📞 SignalWire event:', msg.event);
     }
     
     switch (msg.event) {
@@ -349,17 +599,34 @@ class AudioBridge {
         const cp = msg.start?.customParameters || {};
         if (cp.from) {
           this.callContext.from = cp.from;
-          console.log('📞 Caller phone extracted:', cp.from);
+          this.callerPhone = cp.from;
+          debug('📞 Caller phone extracted:', cp.from);
         }
         if (cp.to) {
           this.callContext.to = cp.to;
         }
         
-        console.log('📞 Call started, CallSid:', this.callSid);
+        console.log('📞 Call started, CallSid:', this.callSid); // Always log call start
         this.logger.info({ callSid: this.callSid, from: this.callContext.from }, '📞 Call started');
         
-        // Trigger initial greeting
-        if (this.sessionConfigured) {
+        // For INBOUND calls without custom instructions, personalize prompt now that we have phone
+        if (!this.callContext.instructions && this.callerPhone && this.sessionConfigured) {
+          debug('🔄 Personalizing prompt now that we have caller phone');
+          this.personalizePromptWithContext().then(() => {
+            debug('✅ Prompt personalized, adding 500ms delay before greeting (inbound)');
+            // Extra delay for inbound calls to give caller time to say "Hello?"
+            setTimeout(() => {
+              debug('🔵 Triggering greeting after personalization delay');
+              this.startConversation();
+            }, 500);
+          }).catch(err => {
+            console.error('❌ Failed to personalize prompt:', err);
+            setTimeout(() => {
+              this.startConversation();
+            }, 500); // Continue with delay anyway
+          });
+        } else if (this.sessionConfigured) {
+          // Outbound or already personalized - just start
           this.startConversation();
         }
         break;
@@ -386,7 +653,7 @@ class AudioBridge {
    * Send media (audio) to SignalWire
    */
   sendMediaToSignalWire(audioData) {
-    console.log('🔊 Sending audio to SignalWire, length:', audioData?.length, 'callSid:', this.callSid, 'socketOpen:', this.swSocket.readyState === WebSocket.OPEN);
+    debug('🔊 Sending audio to SignalWire, length:', audioData?.length, 'callSid:', this.callSid);
     
     if (this.swSocket.readyState === WebSocket.OPEN) {
       this.swSocket.send(JSON.stringify({
@@ -396,7 +663,7 @@ class AudioBridge {
           payload: audioData
         }
       }));
-      console.log('✅ Audio sent to SignalWire');
+      debug('✅ Audio sent to SignalWire');
     } else {
       console.error('❌ Cannot send audio - SignalWire socket not open, state:', this.swSocket.readyState);
     }
@@ -625,25 +892,25 @@ class AudioBridge {
    * Start conversation with initial greeting
    */
   startConversation() {
-    console.log('🔵 startConversation() called, OpenAI ready:', this.openaiSocket?.readyState === WebSocket.OPEN, 'Already sent?', this.greetingSent);
+    debug('🔵 startConversation() called, OpenAI ready:', this.openaiSocket?.readyState === WebSocket.OPEN, 'Already sent?', this.greetingSent);
     
     // Prevent duplicate greeting triggers
     if (this.greetingSent) {
-      console.log('⚠️ Greeting already sent, skipping duplicate call');
+      debug('⚠️ Greeting already sent, skipping duplicate call');
       return;
     }
     
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
-      console.log('🔵 Waiting 500ms before greeting to avoid cutting into connection audio...');
+      debug('🔵 Waiting 500ms before greeting to avoid cutting into connection audio...');
       
       // Wait 500ms to let the call connection settle before Barbara speaks
       setTimeout(() => {
-        console.log('🔵 Sending call_connected trigger to force Barbara to speak first');
+        debug('🔵 Sending call_connected trigger to force Barbara to speak first');
 
         // Step 1: Create a conversation item that triggers Barbara's greeting
         // Include caller's phone number so she can auto-lookup
         const callerPhone = this.callContext.from || 'unknown';
-        console.log('🔵 Caller phone:', callerPhone);
+        debug('🔵 Caller phone:', callerPhone);
         
         this.openaiSocket.send(JSON.stringify({
           type: 'conversation.item.create',
