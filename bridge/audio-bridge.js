@@ -55,6 +55,10 @@ class AudioBridge {
     this.responseQueue = [];  // Queue for pending response.create calls
     this.backoffUntil = 0;  // Timestamp when we can send again (rate limit backoff)
     this.speaking = false;  // Track if Barbara is currently speaking (single-flight)
+    
+    // Heartbeat to keep sockets alive
+    this.heartbeatInterval = null;  // Ping both sockets every 15s to prevent timeout
+    this.audioCommitInterval = null;  // Commit audio buffer every 200ms for streaming
   }
 
   /**
@@ -151,6 +155,12 @@ class AudioBridge {
       this.logger.info('🤖 OpenAI disconnected');
       this.cleanup();
     });
+
+    // Start heartbeat to keep both sockets alive
+    this.startHeartbeat();
+
+    // Start audio commit interval (commit buffered audio every 200ms for streaming)
+    this.startAudioCommitInterval();
   }
 
   /**
@@ -1523,6 +1533,52 @@ CONVERSATION GOALS (in order):
   }
 
   /**
+   * Start heartbeat to keep both sockets alive
+   * Sends ping every 15s to prevent idle timeout
+   */
+  startHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      try {
+        if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+          this.openaiSocket.ping?.();
+          debug('💓 OpenAI heartbeat sent');
+        }
+      } catch (err) {
+        debug('⚠️ OpenAI ping failed:', err);
+      }
+
+      try {
+        if (this.swSocket?.readyState === WebSocket.OPEN) {
+          this.swSocket.ping?.();
+          debug('💓 SignalWire heartbeat sent');
+        }
+      } catch (err) {
+        debug('⚠️ SignalWire ping failed:', err);
+      }
+    }, 15000); // 15 second interval
+
+    debug('💓 Heartbeat started - pinging every 15s');
+  }
+
+  /**
+   * Start audio commit interval
+   * Commits buffered audio every 200ms for streaming ASR and VAD
+   */
+  startAudioCommitInterval() {
+    this.audioCommitInterval = setInterval(() => {
+      if (this.openaiSocket?.readyState === WebSocket.OPEN && !this.gracefulShutdown) {
+        // Commit buffered audio so OpenAI can process it
+        this.openaiSocket.send(JSON.stringify({
+          type: 'input_audio_buffer.commit'
+        }));
+        debug('🎤 Audio buffer committed');
+      }
+    }, 200); // 200ms interval for smooth streaming
+
+    debug('✅ Audio commit interval started (200ms)');
+  }
+
+  /**
    * Start graceful shutdown - let OpenAI finish current response before closing
    */
   startGracefulShutdown() {
@@ -1561,6 +1617,20 @@ CONVERSATION GOALS (in order):
     if (this.sessionConfigTimeout) {
       clearTimeout(this.sessionConfigTimeout);
       this.sessionConfigTimeout = null;
+    }
+    
+    // Clear heartbeat
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      debug('✅ Heartbeat stopped');
+    }
+
+    // Clear audio commit interval
+    if (this.audioCommitInterval) {
+      clearInterval(this.audioCommitInterval);
+      this.audioCommitInterval = null;
+      debug('✅ Audio commit interval stopped');
     }
     
     this.logger.info('🧹 Cleaning up audio bridge');
