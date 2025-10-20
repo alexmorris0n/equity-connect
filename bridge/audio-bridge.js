@@ -63,6 +63,8 @@ class AudioBridge {
     this.bufferedAudioBytes = 0;  // Bytes accumulated since last commit
     this.lastAudioAppendAt = 0;  // Timestamp of last append
     this.audioCommitInterval = null;  // Interval for checking if commit needed
+    this.hasAppendedSinceLastCommit = false;  // Track if new audio appended since last commit
+    this.commitLockedUntil = 0;  // Cooldown after buffer clear to prevent empty commits
     
     // Additional tracking
     this._lastSampleAt = 0;  // Track last audio sample during backoff
@@ -602,6 +604,11 @@ class AudioBridge {
         if (this.openaiSocket?.readyState === WebSocket.OPEN) {
           this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
           debug('🧹 Cleared input audio buffer after interruption');
+          
+          // Prevent empty commit right after clear
+          this.bufferedAudioBytes = 0;
+          this.hasAppendedSinceLastCommit = false;
+          this.commitLockedUntil = Date.now() + 600;  // 600ms cooldown
         }
         
         // Drain queued responses (this is CRITICAL - prevents permanent silence!)
@@ -693,11 +700,19 @@ class AudioBridge {
         break;
 
       case 'error':
+        const errorCode = event.error?.code;
+        
+        // Downgrade empty buffer commits to warning (non-fatal, expected occasionally)
+        if (errorCode === 'input_audio_buffer_commit_empty') {
+          this.logger.warn({ error: event.error }, '⚠️ Commit skipped (empty buffer)');
+          break;
+        }
+        
         console.error('❌ OpenAI error event:', JSON.stringify(event.error));
         this.logger.error({ error: event.error }, '❌ OpenAI error');
         
         // Handle rate limit errors specifically
-        if (event.error?.code === 'rate_limit_exceeded') {
+        if (errorCode === 'rate_limit_exceeded') {
           console.error('🚨 RATE LIMIT EXCEEDED - Too many calls to OpenAI API');
           this.logger.error('🚨 Rate limit exceeded - check OpenAI account tier and usage');
           // Gracefully end the call
@@ -851,6 +866,7 @@ class AudioBridge {
             const bytes = Buffer.from(msg.media.payload, 'base64').length;
             this.bufferedAudioBytes += bytes;
             this.lastAudioAppendAt = Date.now();
+            this.hasAppendedSinceLastCommit = true;  // Flag that we have new audio
             
             // Start commit interval on first audio (lazy start)
             if (!this.audioCommitInterval) {
@@ -1681,6 +1697,8 @@ CONVERSATION GOALS (in order):
     this.audioCommitInterval = setInterval(() => {
       if (this.gracefulShutdown) return;
       if (this.openaiSocket?.readyState !== WebSocket.OPEN) return;
+      if (Date.now() < this.commitLockedUntil) return;  // Cooldown after buffer clear
+      if (!this.hasAppendedSinceLastCommit) return;  // Nothing new to commit
 
       // Need at least 100ms of PCM16@16kHz before committing: 16k * 2 bytes * 0.1s = 3,200 bytes
       const BYTES_REQUIRED = 3200;
@@ -1692,6 +1710,7 @@ CONVERSATION GOALS (in order):
         this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
         debug(`🎤 Audio buffer committed (~${Math.round(this.bufferedAudioBytes / 32)}ms)`);
         this.bufferedAudioBytes = 0; // Reset accounting after commit
+        this.hasAppendedSinceLastCommit = false;  // Wait for new audio before next commit
       } else {
         debug('🛑 Skip commit: not enough buffered audio yet');
       }
@@ -1758,6 +1777,8 @@ CONVERSATION GOALS (in order):
     // Reset audio accounting
     this.bufferedAudioBytes = 0;
     this.lastAudioAppendAt = 0;
+    this.hasAppendedSinceLastCommit = false;
+    this.commitLockedUntil = 0;
     
     this.logger.info('🧹 Cleaning up audio bridge');
     
