@@ -945,7 +945,7 @@ class AudioBridge {
               type: 'message',
               role: 'assistant',
               content: [{
-                type: 'input_text',
+                type: 'text',
                 text: 'Take your time.'
               }]
             }
