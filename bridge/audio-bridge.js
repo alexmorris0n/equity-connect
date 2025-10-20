@@ -644,25 +644,54 @@ class AudioBridge {
         break;
       
       case 'input_audio_buffer.speech_started':
-        // User started speaking - cancel Barbara's in-progress response if any
+        // User started speaking
         this.userSpeaking = true;
-        this.awaitingUser = false;  // User is now speaking, no longer waiting
-        this.nudgedOnce = false;  // Reset nudge since user responded
+        this.awaitingUser = false;
+        this.nudgedOnce = false;
+        this.userSpeechSince = Date.now();
         debug('👤 User started speaking');
         
-        // If Barbara is currently responding, cancel it so she doesn't talk over the user
-        if (this.responseInProgress) {
-          debug('⚠️ User interrupted - canceling Barbara\'s response');
-          this.openaiSocket.send(JSON.stringify({
-            type: 'response.cancel'
-          }));
-          this.responseInProgress = false;
+        // VAPI-style barge-in: require 600ms of speech (≈2-3 words) before canceling
+        // This prevents mouse clicks, coughs, single syllables from interrupting
+        if (this.responseInProgress && !this.cancelDebounceTimer) {
+          this.cancelDebounceTimer = setTimeout(() => {
+            const speechDuration = Date.now() - (this.userSpeechSince || Date.now());
+            
+            // Only cancel if user spoke for at least 600ms (real speech, not noise)
+            if (this.responseInProgress && speechDuration >= 600) {
+              debug('⚠️ Real barge-in detected (600ms speech) - canceling Barbara');
+              this.openaiSocket.send(JSON.stringify({
+                type: 'response.cancel'
+              }));
+              this.responseInProgress = false;
+              
+              // Clear audio buffer
+              this.openaiSocket.send(JSON.stringify({
+                type: 'input_audio_buffer.clear'
+              }));
+              this.bufferedAudioBytes = 0;
+              this.hasAppendedSinceLastCommit = false;
+              this.commitLockedUntil = Date.now() + 600;
+            } else {
+              debug('⚠️ Short noise detected (<600ms) - NOT canceling Barbara');
+            }
+            this.cancelDebounceTimer = null;
+          }, 620); // Wait 620ms to measure speech duration
         }
         break;
       
       case 'input_audio_buffer.speech_stopped':
         // User stopped speaking
         this.userSpeaking = false;
+        this.userSpeechSince = 0;
+        
+        // Clear debounce timer if speech stopped before reaching 600ms threshold
+        if (this.cancelDebounceTimer) {
+          clearTimeout(this.cancelDebounceTimer);
+          this.cancelDebounceTimer = null;
+          debug('⏹️ Speech stopped before 600ms - cancel timer cleared');
+        }
+        
         debug('👤 User stopped speaking');
         
         // If Barbara was interrupted but user said nothing (false positive from noise),
@@ -998,7 +1027,7 @@ class AudioBridge {
               type: 'message',
               role: 'assistant',
               content: [{
-                type: 'text',
+                type: 'input_text',
                 text: 'Take your time.'
               }]
             }
