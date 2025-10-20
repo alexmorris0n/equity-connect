@@ -812,6 +812,9 @@ class AudioBridge {
             await this.configureSession();
             this.startAutoResumeMonitor();
             
+            // Inject caller-specific greeting instructions BEFORE starting conversation
+            await this.injectCallerGreeting();
+            
             // Wait brief moment for session to be ready, then trigger greeting
             setTimeout(() => {
               console.log('🔵 Session configured with personalized context - triggering greeting');
@@ -1127,6 +1130,92 @@ class AudioBridge {
         debug('✅ Quick acknowledgment enqueued - Barbara will say "Equity Connect, give me one second please"');
         // Don't mark greetingSent = true yet - this is just the acknowledgment
       }, 500); // Small delay to let call connection settle
+    }
+  }
+
+  /**
+   * Inject caller-specific greeting instructions
+   * Called BEFORE startConversation() to tell Barbara exactly how to greet this caller
+   */
+  async injectCallerGreeting() {
+    const callerPhone = this.callContext.from;
+    
+    if (!callerPhone) {
+      console.log('⚠️ No caller phone - injecting generic greeting');
+      this.openaiSocket.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'system',
+          content: [{
+            type: 'text',
+            text: 'CALLER INFORMATION: New caller (phone unknown). YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"'
+          }]
+        }
+      }));
+      return;
+    }
+    
+    try {
+      const { executeTool } = require('./tools');
+      const result = await executeTool('get_lead_context', { phone: callerPhone });
+      
+      if (!result || !result.found) {
+        // New caller
+        console.log('💬 Injecting NEW CALLER greeting');
+        this.openaiSocket.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'system',
+            content: [{
+              type: 'text',
+              text: `CALLER INFORMATION:
+Phone: ${callerPhone}
+Caller Type: NEW CALLER (first time calling)
+
+YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"`
+            }]
+          }
+        }));
+      } else {
+        // Returning caller
+        const firstName = result?.raw?.first_name || 'there';
+        const city = result?.raw?.property_city || '';
+        console.log(`💬 Injecting RETURNING CALLER greeting for: ${firstName}`);
+        
+        this.openaiSocket.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'system',
+            content: [{
+              type: 'text',
+              text: `CALLER INFORMATION:
+Name: ${firstName}
+Phone: ${callerPhone}
+City: ${city}
+Caller Type: RETURNING CALLER
+
+YOUR GREETING: "Hi ${firstName}! Thanks for calling back${city ? ` about your property in ${city}` : ''}. What can I help you with today?"`
+            }]
+          }
+        }));
+      }
+    } catch (err) {
+      console.error('❌ Failed to inject caller greeting:', err);
+      // Fallback to generic
+      this.openaiSocket.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'system',
+          content: [{
+            type: 'text',
+            text: 'CALLER INFORMATION: Unknown caller. YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"'
+          }]
+        }
+      }));
     }
   }
 
