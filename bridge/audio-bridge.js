@@ -78,6 +78,10 @@ class AudioBridge {
     
     // Audio tail padding (prevent telephony buffer clip)
     this.ttsOutBuf = Buffer.alloc(0);  // Output jitter buffer for smooth playback
+    
+    // API compatibility (text vs input_text schema mismatch)
+    this._pendingNudge = null;  // Track failed nudges for retry with alternate schema
+    this._contentType = 'text';  // Default to 'text', will auto-switch if error
   }
 
   /**
@@ -758,10 +762,29 @@ class AudioBridge {
 
       case 'error':
         const errorCode = event.error?.code;
+        const errorMsg = (event.error?.message || '').toLowerCase();
         
         // Downgrade empty buffer commits to warning (non-fatal, expected occasionally)
         if (errorCode === 'input_audio_buffer_commit_empty') {
           this.logger.warn({ error: event.error }, '⚠️ Commit skipped (empty buffer)');
+          break;
+        }
+        
+        // Auto-retry content type mismatch (text vs input_text schema issue)
+        if (errorCode === 'invalid_value' && errorMsg.includes('content') && errorMsg.includes('type')) {
+          debug('🔄 Content type mismatch detected - auto-switching schema');
+          
+          // Switch to alternate content type
+          this._contentType = this._contentType === 'text' ? 'input_text' : 'text';
+          debug(`🔄 Switched content type to: ${this._contentType}`);
+          
+          // Retry pending nudge if any
+          if (this._pendingNudge) {
+            debug('🔄 Retrying nudge with alternate schema');
+            this.sendMessageItem('assistant', this._pendingNudge);
+            this._pendingNudge = null;
+            this.enqueueResponse({});
+          }
           break;
         }
         
@@ -1085,18 +1108,11 @@ class AudioBridge {
         if (this.awaitingUser && !this.nudgedOnce) {
           debug('🔔 User silent after question - sending gentle nudge');
           
-          // Send a gentle "Take your time" nudge
-          this.openaiSocket.send(JSON.stringify({
-            type: 'conversation.item.create',
-            item: {
-              type: 'message',
-              role: 'assistant',
-              content: [{
-                type: 'input_text',
-                text: 'Take your time.'
-              }]
-            }
-          }));
+          // Track for potential retry if schema mismatch
+          this._pendingNudge = 'Take your time.';
+          
+          // Send gentle nudge using compatible helper
+          this.sendMessageItem('assistant', 'Take your time.');
           
           this.nudgedOnce = true;  // Only nudge once per question
           this.lastResponseAt = Date.now();  // Reset timer
@@ -1232,21 +1248,29 @@ class AudioBridge {
       debug('🔄 Resuming Barbara with context:', lastThought);
       
       // Tell Barbara to continue where she left off
-      this.openaiSocket.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'system',
-          content: [{
-            type: 'input_text',
-            text: `You were interrupted mid-sentence. You were saying: "${lastThought}". Continue from where you left off - don't start over. Just finish your thought naturally.`
-          }]
-        }
-      }));
+      this.sendMessageItem('system', `You were interrupted mid-sentence. You were saying: "${lastThought}". Continue from where you left off - don't start over. Just finish your thought naturally.`);
       
       // Use queue system for response.create
       this.enqueueResponse({});
     }
+  }
+
+  /**
+   * Send a message item with automatic content type compatibility
+   * Handles text vs input_text schema mismatch between API versions
+   */
+  sendMessageItem(role, text) {
+    this.openaiSocket.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role,
+        content: [{
+          type: this._contentType,  // Dynamic: 'text' or 'input_text'
+          text
+        }]
+      }
+    }));
   }
 
   /**
@@ -1259,17 +1283,7 @@ class AudioBridge {
         debug('🔵 Sending quick acknowledgment before lead lookup');
         
         // Inject the exact acknowledgment we want Barbara to say
-        this.openaiSocket.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'message',
-            role: 'system',
-            content: [{
-              type: 'input_text',
-              text: 'INBOUND CALL CONNECTED: Say exactly: "Equity Connect, give me one second please." Then wait for lead context to be injected.'
-            }]
-          }
-        }));
+        this.sendMessageItem('system', 'INBOUND CALL CONNECTED: Say exactly: "Equity Connect, give me one second please." Then wait for lead context to be injected.');
         
         // Trigger Barbara to speak the acknowledgment using queue system
         this.enqueueResponse({});
@@ -1289,17 +1303,7 @@ class AudioBridge {
     
     if (!callerPhone) {
       console.log('⚠️ No caller phone - injecting generic greeting');
-      this.openaiSocket.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'system',
-          content: [{
-            type: 'input_text',
-            text: 'CALLER INFORMATION: New caller (phone unknown). YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"'
-          }]
-        }
-      }));
+      this.sendMessageItem('system', 'CALLER INFORMATION: New caller (phone unknown). YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"');
       return;
     }
     
@@ -1310,59 +1314,29 @@ class AudioBridge {
       if (!result || !result.found) {
         // New caller
         console.log('💬 Injecting NEW CALLER greeting');
-        this.openaiSocket.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'message',
-            role: 'system',
-            content: [{
-              type: 'input_text',
-              text: `CALLER INFORMATION:
+        this.sendMessageItem('system', `CALLER INFORMATION:
 Phone: ${callerPhone}
 Caller Type: NEW CALLER (first time calling)
 
-YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"`
-            }]
-          }
-        }));
+YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"`);
       } else {
         // Returning caller
         const firstName = result?.raw?.first_name || 'there';
         const city = result?.raw?.property_city || '';
         console.log(`💬 Injecting RETURNING CALLER greeting for: ${firstName}`);
         
-        this.openaiSocket.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'message',
-            role: 'system',
-            content: [{
-              type: 'input_text',
-              text: `CALLER INFORMATION:
+        this.sendMessageItem('system', `CALLER INFORMATION:
 Name: ${firstName}
 Phone: ${callerPhone}
 City: ${city}
 Caller Type: RETURNING CALLER
 
-YOUR GREETING: "Hi ${firstName}! Thanks for calling back${city ? ` about your property in ${city}` : ''}. What can I help you with today?"`
-            }]
-          }
-        }));
+YOUR GREETING: "Hi ${firstName}! Thanks for calling back${city ? ` about your property in ${city}` : ''}. What can I help you with today?"`);
       }
     } catch (err) {
       console.error('❌ Failed to inject caller greeting:', err);
       // Fallback to generic
-      this.openaiSocket.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'system',
-          content: [{
-            type: 'input_text',
-            text: 'CALLER INFORMATION: Unknown caller. YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"'
-          }]
-        }
-      }));
+      this.sendMessageItem('system', 'CALLER INFORMATION: Unknown caller. YOUR GREETING: "Hi! Thanks for calling. Who do I have the pleasure of speaking with?"');
     }
   }
 
