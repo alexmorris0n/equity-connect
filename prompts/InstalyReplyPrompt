@@ -578,13 +578,59 @@ NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is av
 ---
 
 **CRITICAL CHECKPOINT:**
-Before proceeding to STEP 4, verify you have completed ALL required steps for the intent:
+Before proceeding to STEP 3.X, verify you have completed ALL required steps for the intent:
 - PHONE_PROVIDED: 8-9 steps (extract phone, update lead status, check existing phone, release old broker's phone if needed, reuse OR assign new phone, update lead if new, create VAPI call, log interaction, NO email)
 - UNSUBSCRIBE: 3 steps (update DB, log interaction, NO email)
 - QUESTION: 7 steps (identify questions, determine topics, KB search, compose email, send email, log inbound, update DB)
 - INTEREST: 4 steps (compose email, send email, log inbound, update DB)
 
 If you have NOT completed all steps, GO BACK and complete them now.
+
+---
+
+## STEP 3.X: Log Email Event (UNIVERSAL - ALL INTENTS)
+
+**After completing intent-specific actions, ALWAYS log the email event for engagement tracking:**
+
+Call Supabase execute_sql:
+```sql
+INSERT INTO email_events (
+  lead_id,
+  broker_id,
+  event_type,
+  email_subject,
+  email_from_address,
+  campaign_archetype,
+  persona_name,
+  reply_content,
+  metadata,
+  created_at
+) VALUES (
+  '${lead_record.id}',
+  '${lead_record.broker_id}',
+  'replied',
+  '{{ $json.subject }}',
+  '{{ $json.sender_account }}',
+  '${lead_record.campaign_archetype}',
+  '{{ $json.persona_sender_name }}',
+  $escape${{ $json.reply_text }}$escape$,
+  jsonb_build_object(
+    'intent', '${intent}',
+    'campaign_id', '{{ $json.campaign_id }}',
+    'reply_to_uuid', '{{ $json.reply_to_uuid }}'
+  ),
+  NOW()
+)
+RETURNING id
+```
+
+**What this does:**
+- Tracks that the lead replied to an email (engagement metric)
+- Stores full reply text for future context
+- Links to campaign and email for analytics
+- Barbara can see email engagement history on next call
+
+**CRITICAL:** This step is REQUIRED for all intents - don't skip it!
 
 ---
 
