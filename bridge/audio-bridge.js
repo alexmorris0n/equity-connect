@@ -429,9 +429,9 @@ class AudioBridge {
         max_response_output_tokens: 150,  // Allow full greeting + one sentence response
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.65,  // Higher threshold to ignore background TV/radio noise
-          prefix_padding_ms: 400,  // Slightly more padding to catch full start of speech
-          silence_duration_ms: 2000  // Tightened from 2500ms - don't mistake silence for user finished
+          threshold: 0.5,  // Lower threshold - 0.65 was too sensitive, causing false interruptions
+          prefix_padding_ms: 300,  // Standard padding
+          silence_duration_ms: 800  // Shorter silence detection - more responsive
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -534,6 +534,21 @@ class AudioBridge {
         // User stopped speaking
         this.userSpeaking = false;
         debug('👤 User stopped speaking');
+        
+        // If Barbara was interrupted but user said nothing (false positive from noise),
+        // resume her response after brief delay
+        if (!this.responseInProgress && this.lastResponseAt > 0) {
+          const timeSinceLastResponse = Date.now() - this.lastResponseAt;
+          // If less than 2 seconds since Barbara last spoke, she was likely interrupted mid-thought
+          if (timeSinceLastResponse < 2000) {
+            debug('🔄 False interruption detected - resuming Barbara');
+            setTimeout(() => {
+              if (!this.userSpeaking && !this.responseInProgress) {
+                this.resumeConversation();
+              }
+            }, 500);  // Wait 500ms to ensure user is really done
+          }
+        }
         break;
 
       case 'response.function_call_arguments.done':
