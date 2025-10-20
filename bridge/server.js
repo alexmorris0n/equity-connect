@@ -107,7 +107,7 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream" codec="L16@16000h">
+    <Stream url="${wsUrl}/audiostream" codec="L16@24000h">
       <Parameter name="track" value="both_tracks" />
       ${From ? `<Parameter name="from" value="${From}" />` : ''}
       ${To ? `<Parameter name="to" value="${To}" />` : ''}
