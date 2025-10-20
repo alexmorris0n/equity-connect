@@ -87,16 +87,21 @@ class AudioBridge {
       // Configure session (async - waits for lead lookup on inbound)
       await this.configureSession();
       
-      // Trigger greeting based on call type
-      // Inbound: 1.5 seconds (gives people time to say "Hello?")
-      // Outbound: 1 second (faster response after they pick up)
+      // For inbound calls: Say "One sec" immediately, then look up lead context
+      // For outbound calls: Start conversation with pre-built context
       const isInbound = !this.callContext.instructions;
-      const greetingDelay = isInbound ? 1500 : 1000;
       
-      setTimeout(() => {
-        debug(`🔵 Triggering initial response after ${greetingDelay}ms (${isInbound ? 'inbound' : 'outbound'})...`);
-        this.startConversation();
-      }, greetingDelay);
+      if (!isInbound) {
+        // Outbound: Start conversation immediately (we already have full context from n8n)
+        setTimeout(() => {
+          debug('🔵 Outbound call - triggering greeting after 1s delay');
+          this.startConversation();
+        }, 1000);
+      } else {
+        // Inbound: Quick acknowledgment, then wait for lead lookup
+        debug('🔵 Inbound call - will say "One sec" while pulling lead context');
+        this.sendQuickAcknowledgment();
+      }
       
       // Start auto-resume monitor to prevent Barbara from dying out
       this.startAutoResumeMonitor();
@@ -605,25 +610,26 @@ class AudioBridge {
         console.log('📞 Call started, CallSid:', this.callSid); // Always log call start
         this.logger.info({ callSid: this.callSid, from: this.callContext.from }, '📞 Call started');
         
-        // For INBOUND calls without custom instructions, personalize prompt now that we have phone
+        // For INBOUND calls: Force lead lookup, then trigger real greeting after context injected
         if (!this.callContext.instructions && this.callerPhone && this.sessionConfigured) {
-          debug('🔄 Personalizing prompt now that we have caller phone');
-          this.personalizePromptWithContext().then(() => {
-            debug('✅ Prompt personalized, adding 500ms delay before greeting (inbound)');
-            // Extra delay for inbound calls to give caller time to say "Hello?"
+          debug('🔄 Inbound call - performing lead lookup then triggering greeting');
+          
+          // Perform lead lookup (injects context as system message)
+          this.forceLeadContextLookup().then(() => {
+            // Wait 1 second after context injection, then trigger the real greeting
             setTimeout(() => {
-              debug('🔵 Triggering greeting after personalization delay');
+              debug('🔵 Lead context injected - now triggering personalized greeting');
               this.startConversation();
-            }, 500);
+            }, 1000);
           }).catch(err => {
-            console.error('❌ Failed to personalize prompt:', err);
+            console.error('❌ Lead lookup failed, triggering generic greeting anyway');
             setTimeout(() => {
               this.startConversation();
-            }, 500); // Continue with delay anyway
+            }, 1000);
           });
-        } else if (this.sessionConfigured) {
-          // Outbound or already personalized - just start
-          this.startConversation();
+        } else if (this.sessionConfigured && this.callContext.instructions) {
+          // Outbound call - already triggered greeting in setupOpenAIHandlers
+          debug('🔵 Outbound call - greeting already triggered');
         }
         break;
 
@@ -720,6 +726,39 @@ class AudioBridge {
         type: 'response.create'
       }));
       this.responseInProgress = true;  // Mark response as starting
+    }
+  }
+
+  /**
+   * Send quick acknowledgment for inbound calls while we look up lead context
+   * Says "Equity Connect, give me one second please" to buy time
+   */
+  sendQuickAcknowledgment() {
+    if (this.openaiSocket?.readyState === WebSocket.OPEN && !this.greetingSent) {
+      setTimeout(() => {
+        debug('🔵 Sending quick acknowledgment before lead lookup');
+        
+        // Inject the exact acknowledgment we want Barbara to say
+        this.openaiSocket.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'system',
+            content: [{
+              type: 'input_text',
+              text: 'INBOUND CALL CONNECTED: Say exactly: "Equity Connect, give me one second please." Then wait for lead context to be injected.'
+            }]
+          }
+        }));
+        
+        // Trigger Barbara to speak the acknowledgment
+        this.openaiSocket.send(JSON.stringify({
+          type: 'response.create'
+        }));
+        
+        debug('✅ Quick acknowledgment triggered - Barbara will say "Equity Connect, give me one second please"');
+        // Don't mark greetingSent = true yet - this is just the acknowledgment
+      }, 500); // Small delay to let call connection settle
     }
   }
 
@@ -926,9 +965,6 @@ class AudioBridge {
         this.greetingSent = true;  // Mark greeting as sent
         this.responseInProgress = true;  // Track that response is starting
         debug('✅ Step 2: response.create sent (Barbara should now speak!)');
-        
-        // Step 3: Force lead lookup in parallel so context is ready for turn 2
-        setTimeout(() => this.forceLeadContextLookup(), 50);
       }, 500);
     } else {
       console.error('❌ Cannot start conversation - OpenAI socket not ready');
