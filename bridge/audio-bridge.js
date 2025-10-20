@@ -49,6 +49,7 @@ class AudioBridge {
     this.callerPhone = null;  // Populated from SignalWire start event
     this.gracefulShutdown = false;  // Track if we're in graceful shutdown mode
     this.gracefulShutdownTimer = null;  // Timeout for graceful shutdown
+    this.sessionConfigTimeout = null;  // Timeout to ensure session gets configured (fallback)
   }
 
   /**
@@ -86,27 +87,40 @@ class AudioBridge {
       console.log('🤖 OpenAI Realtime connected!'); // Always log important events
       this.logger.info('🤖 OpenAI Realtime connected');
       
-      // Configure session (async - waits for lead lookup on inbound)
-      await this.configureSession();
-      
-      // For inbound calls: Say "One sec" immediately, then look up lead context
-      // For outbound calls: Start conversation with pre-built context
-      const isInbound = !this.callContext.instructions;
-      
-      if (!isInbound) {
-        // Outbound: Start conversation immediately (we already have full context from n8n)
+      // OUTBOUND calls: Configure immediately (we have all context from n8n)
+      if (this.callContext.instructions) {
+        console.log('🔵 Outbound call - configuring session with provided context');
+        await this.configureSession();
+        this.startAutoResumeMonitor();
+        
+        // Start conversation after 1s delay
         setTimeout(() => {
-          debug('🔵 Outbound call - triggering greeting after 1s delay');
+          debug('🔵 Triggering outbound greeting');
           this.startConversation();
         }, 1000);
-      } else {
-        // Inbound: Quick acknowledgment, then wait for lead lookup
-        debug('🔵 Inbound call - will say "One sec" while pulling lead context');
-        this.sendQuickAcknowledgment();
       }
-      
-      // Start auto-resume monitor to prevent Barbara from dying out
-      this.startAutoResumeMonitor();
+      // INBOUND calls: WAIT for SignalWire 'start' event to get caller phone
+      // Then lookup lead, THEN configure session with their context
+      else {
+        console.log('🔵 Inbound call - waiting for caller phone from SignalWire start event');
+        console.log('⏰ Will configure session after getting phone (max 3s wait)');
+        
+        // FALLBACK: If SignalWire doesn't send phone within 3 seconds, configure with generic prompt
+        this.sessionConfigTimeout = setTimeout(async () => {
+          if (!this.sessionConfigured) {
+            console.log('⏰ Timeout - no caller phone received, using generic greeting');
+            this.callContext.instructions = this.buildPromptFromTemplate({ 
+              callContext: 'inbound',
+              isNewCaller: true,
+              leadFirstName: '',
+              brokerFirstName: 'one of our advisors'
+            });
+            await this.configureSession();
+            this.startAutoResumeMonitor();
+            setTimeout(() => this.startConversation(), 500);
+          }
+        }, 3000); // 3 second timeout
+      }
     });
 
     this.openaiSocket.on('message', async (data) => {
@@ -194,18 +208,42 @@ class AudioBridge {
     const callerPhone = this.extractCallerPhone();
     
     if (!callerPhone) {
-      debug('⚠️  No caller phone found, using minimal prompt');
+      console.log('⚠️ WARNING: No caller phone found, using minimal prompt');
       return {
         prompt: this.buildPromptFromTemplate({ callContext: 'inbound' }),
         variables: { callContext: 'inbound' }
       };
     }
     
-    debug('📞 Looking up lead context for:', callerPhone);
+    console.log('📞 Looking up lead context for:', callerPhone);
     
     try {
       // Look up lead from database
       const result = await executeTool('get_lead_context', { phone: callerPhone });
+      
+      // Check if lead was found
+      if (!result || !result.found || result.error) {
+        console.log('⚠️ Lead not found in database - treating as new caller');
+        console.log('📝 Will create new lead record during call with phone:', callerPhone);
+        
+        // Return new caller prompt (friendly, collect info during call)
+        return {
+          prompt: this.buildPromptFromTemplate({ 
+            callContext: 'inbound',
+            leadPhone: callerPhone,
+            isNewCaller: true 
+          }),
+          variables: { 
+            callContext: 'inbound',
+            leadPhone: callerPhone,
+            isNewCaller: true,
+            leadFirstName: '',
+            leadLastName: '',
+            propertyCity: '',
+            brokerFirstName: 'one of our advisors'
+          }
+        };
+      }
       
       // Build variables object from lead context
       const variables = {
@@ -256,7 +294,7 @@ class AudioBridge {
         personaAssignment: ''
       };
       
-      debug('✅ Lead context retrieved:', {
+      console.log('✅ Lead context retrieved:', {
         found: result?.found,
         name: variables.leadFirstName,
         city: variables.propertyCity,
@@ -270,6 +308,7 @@ class AudioBridge {
       
     } catch (err) {
       console.error('❌ Failed to lookup lead context:', err);
+      console.error('❌ Error stack:', err.stack);
       // Return minimal prompt on error
       return {
         prompt: this.buildPromptFromTemplate({ callContext: 'inbound' }),
@@ -592,6 +631,11 @@ class AudioBridge {
         this.currentResponseTranscript = '';  // Reset for next response
         break;
 
+      case 'rate_limits.updated':
+        // Informational only - OpenAI telling us current rate limits
+        debug('📊 Rate limits updated:', event.rate_limits);
+        break;
+
       case 'error':
         console.error('❌ OpenAI error event:', JSON.stringify(event.error));
         this.logger.error({ error: event.error }, '❌ OpenAI error');
@@ -602,6 +646,13 @@ class AudioBridge {
           this.logger.error('🚨 Rate limit exceeded - check OpenAI account tier and usage');
           // Gracefully end the call
           this.cleanup();
+        }
+        break;
+
+      default:
+        // Log unhandled events for debugging
+        if (!event.type.includes('delta') && !event.type.includes('transcript')) {
+          debug('⚠️ Unhandled OpenAI event:', event.type);
         }
         break;
     }
@@ -625,34 +676,51 @@ class AudioBridge {
         if (cp.from) {
           this.callContext.from = cp.from;
           this.callerPhone = cp.from;
-          debug('📞 Caller phone extracted:', cp.from);
+          console.log('📞 Caller phone extracted:', cp.from); // Always log - critical for debugging
+        } else {
+          console.log('⚠️ WARNING: No caller phone in customParameters!', { customParameters: cp });
         }
         if (cp.to) {
           this.callContext.to = cp.to;
+          console.log('📞 SignalWire number called:', cp.to);
         }
         
         console.log('📞 Call started, CallSid:', this.callSid); // Always log call start
         this.logger.info({ callSid: this.callSid, from: this.callContext.from }, '📞 Call started');
         
-        // For INBOUND calls: Force lead lookup, then trigger real greeting after context injected
-        if (!this.callContext.instructions && this.callerPhone && this.sessionConfigured) {
-          debug('🔄 Inbound call - performing lead lookup then triggering greeting');
+        // For INBOUND calls: NOW we have caller phone - configure session with their context
+        if (!this.callContext.instructions && this.callerPhone && !this.sessionConfigured) {
+          console.log('🔄 Inbound call - configuring session with caller context:', this.callerPhone);
           
-          // Perform lead lookup (injects context as system message)
-          this.forceLeadContextLookup().then(() => {
-            // Wait 1 second after context injection, then trigger the real greeting
+          // Clear the timeout - we got the phone in time!
+          if (this.sessionConfigTimeout) {
+            clearTimeout(this.sessionConfigTimeout);
+            this.sessionConfigTimeout = null;
+          }
+          
+          try {
+            // Configure session with personalized prompt (includes lead lookup)
+            await this.configureSession();
+            this.startAutoResumeMonitor();
+            
+            // Wait brief moment for session to be ready, then trigger greeting
             setTimeout(() => {
-              debug('🔵 Lead context injected - now triggering personalized greeting');
+              console.log('🔵 Session configured with personalized context - triggering greeting');
               this.startConversation();
-            }, 1000);
-          }).catch(err => {
-            console.error('❌ Lead lookup failed, triggering generic greeting anyway');
-            setTimeout(() => {
-              this.startConversation();
-            }, 1000);
-          });
-        } else if (this.sessionConfigured && this.callContext.instructions) {
-          // Outbound call - already triggered greeting in setupOpenAIHandlers
+            }, 500);
+            
+          } catch (err) {
+            console.error('❌ Failed to configure session with lead context:', err);
+            console.error('❌ Error details:', err.message);
+            // Fallback: configure with minimal prompt
+            this.callContext.instructions = this.buildPromptFromTemplate({ callContext: 'inbound' });
+            await this.configureSession();
+            this.startAutoResumeMonitor();
+            setTimeout(() => this.startConversation(), 500);
+          }
+        } 
+        // Outbound calls already configured in 'open' handler
+        else if (this.sessionConfigured && this.callContext.instructions) {
           debug('🔵 Outbound call - greeting already triggered');
         }
         break;
@@ -1386,6 +1454,11 @@ CONVERSATION GOALS (in order):
     if (this.gracefulShutdownTimer) {
       clearTimeout(this.gracefulShutdownTimer);
       this.gracefulShutdownTimer = null;
+    }
+    
+    if (this.sessionConfigTimeout) {
+      clearTimeout(this.sessionConfigTimeout);
+      this.sessionConfigTimeout = null;
     }
     
     this.logger.info('🧹 Cleaning up audio bridge');
