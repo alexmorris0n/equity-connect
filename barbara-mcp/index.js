@@ -41,10 +41,16 @@ await app.register(cors, {
 // Environment variables
 const BRIDGE_URL = process.env.BRIDGE_URL || 'https://bridge.northflank.app';
 const BRIDGE_API_KEY = process.env.BRIDGE_API_KEY;
+const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
+const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
 
 if (!BRIDGE_API_KEY) {
   app.log.error('BRIDGE_API_KEY environment variable is required');
   process.exit(1);
+}
+
+if (!NYLAS_API_KEY) {
+  app.log.warn('NYLAS_API_KEY not set - Nylas tools will not be available');
 }
 
 /**
@@ -145,6 +151,110 @@ function extractFirstName(fullName) {
 // Tool definitions
 const tools = [
   {
+    name: 'check_broker_availability',
+    description: 'Check broker calendar availability using Nylas Free/Busy API. Returns available time slots for the next 14 days with smart prioritization (today > tomorrow > next week). Business hours: 10 AM - 5 PM with 2-hour minimum notice.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        broker_id: {
+          type: 'string',
+          description: 'Broker UUID to check availability for'
+        },
+        preferred_day: {
+          type: 'string',
+          enum: ['any', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+          description: 'Preferred day of week (optional, default: any)'
+        },
+        preferred_time: {
+          type: 'string',
+          enum: ['any', 'morning', 'afternoon'],
+          description: 'Preferred time of day (optional, default: any). Morning = 10 AM-12 PM, Afternoon = 12 PM-5 PM'
+        }
+      },
+      required: ['broker_id']
+    }
+  },
+  {
+    name: 'book_appointment',
+    description: 'Book an appointment with a broker using Nylas Events API. Creates calendar event on broker\'s calendar and sends calendar invite to lead (if email provided).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        },
+        broker_id: {
+          type: 'string',
+          description: 'Broker UUID'
+        },
+        scheduled_for: {
+          type: 'string',
+          description: 'Appointment date/time in ISO 8601 format (e.g., "2025-10-22T10:00:00Z")'
+        },
+        notes: {
+          type: 'string',
+          description: 'Optional notes about the appointment (e.g., "Interested in accessing equity for medical expenses")'
+        }
+      },
+      required: ['lead_id', 'broker_id', 'scheduled_for']
+    }
+  },
+  {
+    name: 'update_lead_info',
+    description: 'Update lead contact information in the database. Used to collect or correct phone, email, name, address, etc.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        },
+        primary_phone: {
+          type: 'string',
+          description: 'Primary phone number (E.164 format recommended)'
+        },
+        primary_email: {
+          type: 'string',
+          description: 'Primary email address'
+        },
+        first_name: {
+          type: 'string',
+          description: 'First name'
+        },
+        last_name: {
+          type: 'string',
+          description: 'Last name'
+        },
+        city: {
+          type: 'string',
+          description: 'City'
+        },
+        state: {
+          type: 'string',
+          description: 'State'
+        },
+        zipcode: {
+          type: 'string',
+          description: 'ZIP code'
+        },
+        age: {
+          type: 'number',
+          description: 'Age'
+        },
+        property_value: {
+          type: 'number',
+          description: 'Estimated property value'
+        },
+        mortgage_balance: {
+          type: 'number',
+          description: 'Current mortgage balance'
+        }
+      },
+      required: ['lead_id']
+    }
+  },
+  {
     name: 'create_outbound_call',
     description: 'Create an outbound call to a lead using Barbara AI voice assistant with full personalization',
     inputSchema: {
@@ -212,6 +322,147 @@ const tools = [
 // Tool execution function
 async function executeTool(name, args) {
   switch (name) {
+    case 'check_broker_availability': {
+      app.log.info({ broker_id: args.broker_id }, '📅 Checking broker availability');
+      
+      try {
+        const response = await fetch(`${BRIDGE_URL}/api/tools/check_broker_availability`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+          },
+          body: JSON.stringify(args)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          app.log.info({ slots: result.available_slots?.length }, '✅ Availability checked');
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ Availability Check Complete\n\n` +
+                      `📅 Broker: ${result.broker_name}\n` +
+                      `⏰ Available Slots: ${result.available_slots?.length || 0}\n` +
+                      `💬 ${result.message}\n\n` +
+                      `📋 Slots:\n` +
+                      (result.available_slots || []).slice(0, 5).map(slot => 
+                        `  • ${slot.display}${slot.is_same_day ? ' (TODAY)' : slot.is_tomorrow ? ' (TOMORROW)' : ''}`
+                      ).join('\n')
+              }
+            ]
+          };
+        } else {
+          throw new Error(result.error || 'Availability check failed');
+        }
+      } catch (error) {
+        app.log.error({ error }, '❌ Availability check error');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Availability check failed: ${error.message}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+    
+    case 'book_appointment': {
+      app.log.info({ lead_id: args.lead_id, broker_id: args.broker_id }, '📅 Booking appointment');
+      
+      try {
+        const response = await fetch(`${BRIDGE_URL}/api/tools/book_appointment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+          },
+          body: JSON.stringify(args)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          app.log.info({ appointment_id: result.appointment_id }, '✅ Appointment booked');
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ Appointment Booked Successfully!\n\n` +
+                      `📅 Time: ${new Date(args.scheduled_for).toLocaleString()}\n` +
+                      `👤 Lead ID: ${args.lead_id}\n` +
+                      `🏢 Broker ID: ${args.broker_id}\n` +
+                      `📧 Calendar invite sent: ${result.calendar_invite_sent ? 'Yes' : 'No (email missing)'}\n` +
+                      `📝 Notes: ${args.notes || 'None'}`
+              }
+            ]
+          };
+        } else {
+          throw new Error(result.error || 'Appointment booking failed');
+        }
+      } catch (error) {
+        app.log.error({ error }, '❌ Appointment booking error');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Appointment booking failed: ${error.message}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+    
+    case 'update_lead_info': {
+      app.log.info({ lead_id: args.lead_id, updates: Object.keys(args).filter(k => k !== 'lead_id') }, '📝 Updating lead info');
+      
+      try {
+        const response = await fetch(`${BRIDGE_URL}/api/tools/update_lead_info`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+          },
+          body: JSON.stringify(args)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          app.log.info('✅ Lead info updated');
+          const updates = Object.keys(args).filter(k => k !== 'lead_id');
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ Lead Info Updated Successfully!\n\n` +
+                      `👤 Lead ID: ${args.lead_id}\n` +
+                      `📝 Updated fields: ${updates.join(', ')}`
+              }
+            ]
+          };
+        } else {
+          throw new Error(result.error || 'Lead info update failed');
+        }
+      } catch (error) {
+        app.log.error({ error }, '❌ Lead info update error');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Lead info update failed: ${error.message}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+    
     case 'create_outbound_call': {
       const { to_phone, lead_id, broker_id, ...variables } = args;
       
@@ -230,6 +481,10 @@ async function executeTool(name, args) {
         
         // Build complete variables object for prompt injection
         const promptVariables = {
+          // Call context
+          callContext: variables.call_context || 'outbound',
+          signalwireNumber: '',  // Will be populated by bridge from selected number
+          
           // Lead info
           leadFirstName: variables.lead_first_name || '',
           leadLastName: variables.lead_last_name || '',

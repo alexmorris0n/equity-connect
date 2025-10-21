@@ -474,14 +474,15 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     const startTime = Math.floor(Date.now() / 1000);
     const endTime = Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000);
     
-    // Call Nylas Free/Busy API
+    // Call Nylas Free/Busy API (grant-specific endpoint)
     // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
-    const freeBusyUrl = `${NYLAS_API_URL}/v3/calendars/free-busy`;
+    const freeBusyUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/calendars/free-busy`;
     const response = await fetch(freeBusyUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${NYLAS_API_KEY}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, application/gzip'
       },
       body: JSON.stringify({
         start_time: startTime,
@@ -523,14 +524,31 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
       broker.timezone || 'America/Los_Angeles'
     );
     
+    // Generate smart response message
+    let message = '';
+    if (availableSlots.length === 0) {
+      message = 'No availability in the next 2 weeks within business hours (10 AM - 5 PM)';
+    } else {
+      const sameDaySlots = availableSlots.filter(slot => slot.is_same_day);
+      const tomorrowSlots = availableSlots.filter(slot => slot.is_tomorrow);
+      
+      if (sameDaySlots.length > 0) {
+        message = `Great! I have ${sameDaySlots.length} slot(s) available today. The earliest is ${sameDaySlots[0].time}.`;
+      } else if (tomorrowSlots.length > 0) {
+        message = `I have ${tomorrowSlots.length} slot(s) available tomorrow. The earliest is ${tomorrowSlots[0].time}.`;
+      } else {
+        message = `I have ${availableSlots.length} available times over the next 2 weeks.`;
+      }
+    }
+
     return {
       success: true,
       available_slots: availableSlots,
       broker_name: broker.contact_name,
       calendar_provider: 'nylas',
-      message: availableSlots.length > 0 
-        ? `Found ${availableSlots.length} available times`
-        : 'No availability in next 2 weeks'
+      business_hours: '10:00 AM - 5:00 PM',
+      min_notice: '2 hours',
+      message: message
     };
     
   } catch (err) {
@@ -545,11 +563,15 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
  */
 function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timezone) {
   const availableSlots = [];
-  const businessStart = 9;  // 9 AM
-  const businessEnd = 17;   // 5 PM
+  const businessStart = 10;  // 10 AM (updated business hours)
+  const businessEnd = 17;    // 5 PM
+  const minNoticeHours = 2;  // Minimum 2 hours notice
+  
+  const now = new Date();
+  const minBookingTime = new Date(now.getTime() + (minNoticeHours * 60 * 60 * 1000));
   
   // Generate slots for next 14 days
-  for (let dayOffset = 1; dayOffset < 14; dayOffset++) {
+  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
     const date = new Date();
     date.setDate(date.getDate() + dayOffset);
     const dayOfWeek = date.getDay();
@@ -562,7 +584,7 @@ function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timez
     // Filter by preferred day
     if (preferred_day && preferred_day !== 'any' && preferred_day !== dayName) continue;
     
-    // Check each hour
+    // Check each hour within business hours
     for (let hour = businessStart; hour < businessEnd; hour++) {
       // Filter by preferred time
       if (preferred_time === 'morning' && hour >= 12) continue;
@@ -573,6 +595,9 @@ function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timez
       slotStart.setHours(hour, 0, 0, 0);
       const slotEnd = new Date(slotStart);
       slotEnd.setHours(hour + 1, 0, 0, 0);
+      
+      // Skip if slot is too soon (less than 2 hours notice)
+      if (slotStart < minBookingTime) continue;
       
       const slotStartMs = slotStart.getTime();
       const slotEndMs = slotEnd.getTime();
@@ -585,6 +610,9 @@ function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timez
       );
       
       if (!isConflict) {
+        const isToday = dayOffset === 0;
+        const isTomorrow = dayOffset === 1;
+        
         availableSlots.push({
           datetime: slotStart.toISOString(),
           unix_timestamp: Math.floor(slotStartMs / 1000),
@@ -602,7 +630,10 @@ function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timez
             hour: 'numeric', 
             minute: '2-digit', 
             hour12: true 
-          })
+          }),
+          priority: isToday ? 1 : (isTomorrow ? 2 : 3), // Prioritize today, then tomorrow
+          is_same_day: isToday,
+          is_tomorrow: isTomorrow
         });
       }
     }
@@ -610,6 +641,9 @@ function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timez
     // Limit to 5 best options
     if (availableSlots.length >= 5) break;
   }
+  
+  // Sort by priority (same day first, then tomorrow, then others)
+  availableSlots.sort((a, b) => a.priority - b.priority);
   
   return availableSlots.slice(0, 5);
 }
@@ -657,16 +691,14 @@ function generateFallbackSlots(preferred_day, preferred_time) {
         
         const slotISO = slotDate.toISOString();
         
-        // Check if slot is already booked
-        if (!bookedSlots.has(slotISO)) {
-          availableSlots.push({
-            datetime: slotISO,
-            day_name: dayName,
-            date: slotDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
-            time: slotDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
-            period: period
-          });
-        }
+        // Add all calculated slots (no booking check needed for fallback)
+        availableSlots.push({
+          datetime: slotISO,
+          day_name: dayName,
+          date: slotDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+          time: slotDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+          period: period
+        });
       }
     }
     
@@ -928,13 +960,14 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
     return { success: false, error: error.message };
   }
   
-  // Update lead engagement
+  // Update lead engagement (increment interaction_count using raw SQL)
+  await sb.rpc('increment_interaction_count', { lead_uuid: lead_id });
+  
   await sb
     .from('leads')
     .update({
       last_contact: new Date().toISOString(),
-      last_engagement: new Date().toISOString(),
-      interaction_count: sb.rpc('increment', { row_id: lead_id, column_name: 'interaction_count' })
+      last_engagement: new Date().toISOString()
     })
     .eq('id', lead_id);
   
@@ -992,7 +1025,7 @@ async function searchKnowledge({ question }) {
     // Format results for Barbara to use conversationally
     const formattedResults = data.map((item, index) => ({
       rank: index + 1,
-      content: item.content_text || item.content,
+      content: item.content,  // FIXED: column is 'content' not 'content_text'
       similarity: Math.round(item.similarity * 100) + '%'
     }));
     
