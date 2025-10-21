@@ -790,7 +790,8 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     const endTime = startTime + 3600; // 1 hour appointment
     
     // Create calendar event via Nylas Events API
-    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events`;
+    // NOTE: calendar_id MUST be query parameter, not in body!
+    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events?calendar_id=primary`;
     
     const eventBody = {
       title: `Reverse Mortgage Consultation - ${leadName}`,
@@ -813,8 +814,7 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
           email: broker.email
         }
       ],
-      busy: true,
-      calendar_id: 'primary'
+      busy: true
     };
     
     // Add lead as participant if they have email (for calendar invite)
