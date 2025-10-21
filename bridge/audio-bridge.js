@@ -542,9 +542,9 @@ class AudioBridge {
         max_response_output_tokens: 400,  // Enough for detailed Q&A while prompt keeps responses concise
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.95,  // Very high - ignores phone alerts, notifications, handling noise
-          prefix_padding_ms: 200,  // Reduced padding
-          silence_duration_ms: 900  // Longer for seniors who pause mid-thought
+          threshold: 0.7,  // Lower - more sensitive to user speech (was 0.95 - too high)
+          prefix_padding_ms: 300,  // Slightly more padding to catch start of speech
+          silence_duration_ms: 800  // Wait 800ms before Barbara speaks
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
