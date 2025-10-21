@@ -71,6 +71,10 @@ class AudioBridge {
     this.callerPhone = null;  // Populated from SignalWire start event
     this.gracefulShutdown = false;  // Track if we're in graceful shutdown mode
     this.gracefulShutdownTimer = null;  // Timeout for graceful shutdown
+    
+    // Transcript tracking for database storage
+    this.conversationTranscript = [];  // Array of { role: 'user'|'assistant', text: '', timestamp: '' }
+    this.callStartTime = Date.now();  // Track call start for duration calculation
     this.sessionConfigTimeout = null;  // Timeout to ensure session gets configured (fallback)
     
     // Rate limiting and response queue management
@@ -780,8 +784,14 @@ class AudioBridge {
         console.log('👤 User said:', userTranscript);
         this.logger.info({ transcript: userTranscript, item_id: event.item_id }, '👤 User transcription');
         
-        // TODO: Save to database for quality monitoring
-        // await this.saveTranscript('user', userTranscript, event.item_id);
+        // Save to conversation transcript
+        if (userTranscript) {
+          this.conversationTranscript.push({
+            role: 'user',
+            text: userTranscript,
+            timestamp: new Date().toISOString()
+          });
+        }
         break;
       
       case 'response.audio_transcript.delta':
@@ -799,12 +809,16 @@ class AudioBridge {
           console.log('🤖 Barbara said:', barbaraTranscript);
           this.logger.info({ transcript: barbaraTranscript, response_id: event.response_id }, '🤖 Barbara transcription');
           
+          // Save to conversation transcript
+          this.conversationTranscript.push({
+            role: 'assistant',
+            text: barbaraTranscript,
+            timestamp: new Date().toISOString()
+          });
+          
           // Check if Barbara asked a question (ended with ?)
           this.awaitingUser = /\?\s*$/.test(barbaraTranscript.trim());
           this.nudgedOnce = false;  // Reset nudge flag for this new question
-          
-          // TODO: Save to database for quality monitoring
-          // await this.saveTranscript('assistant', barbaraTranscript, event.response_id);
         }
         this.currentResponseTranscript = '';  // Reset for next response
         break;

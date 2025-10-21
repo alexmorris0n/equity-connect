@@ -11,6 +11,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { formatCallContext } = require('./utils/number-formatter');
+const { initPromptLayer } = require('./promptlayer-integration');
 
 // Initialize Supabase client
 let supabase = null;
@@ -291,6 +292,18 @@ async function getLeadContext({ phone }) {
   const lead = leads[0];
   const broker = lead.brokers;
   
+  // Get last interaction with metadata (for context in next call)
+  const { data: lastInteraction } = await sb
+    .from('interactions')
+    .select('*')
+    .eq('lead_id', lead.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  // Extract last call context from metadata
+  const lastCallContext = lastInteraction?.metadata || {};
+  
   // Format context for Barbara's prompt with number-to-words
   const formattedContext = formatCallContext(lead, broker);
   
@@ -300,6 +313,20 @@ async function getLeadContext({ phone }) {
     broker_id: lead.assigned_broker_id,
     broker: broker, // Include full broker object with all fields
     context: formattedContext,
+    
+    // Last call context (for personalization)
+    last_call: {
+      money_purpose: lastCallContext.money_purpose || null,
+      specific_need: lastCallContext.specific_need || null,
+      amount_needed: lastCallContext.amount_needed || null,
+      timeline: lastCallContext.timeline || null,
+      objections: lastCallContext.objections || [],
+      questions_asked: lastCallContext.questions_asked || [],
+      key_details: lastCallContext.key_details || [],
+      appointment_scheduled: lastCallContext.appointment_scheduled || false,
+      last_outcome: lastInteraction?.outcome || null
+    },
+    
     raw: {
       first_name: lead.first_name,
       last_name: lead.last_name,
@@ -936,8 +963,49 @@ async function assignTrackingNumber({ lead_id, broker_id, signalwire_number, app
 /**
  * Tool Handler: Save Interaction
  */
-async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, content, recording_url }) {
+async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, content, recording_url, metadata, transcript }) {
   const sb = initSupabase();
+  
+  // Build comprehensive metadata
+  const interactionMetadata = {
+    ai_agent: 'barbara',
+    version: '2.0',
+    
+    // Merge any provided metadata
+    ...(metadata || {}),
+    
+    // Include full conversation transcript if provided
+    conversation_transcript: transcript || metadata?.conversation_transcript || null,
+    
+    // Ensure these fields exist
+    money_purpose: metadata?.money_purpose || null,
+    specific_need: metadata?.specific_need || null,
+    amount_needed: metadata?.amount_needed || null,
+    timeline: metadata?.timeline || null,
+    objections: metadata?.objections || [],
+    questions_asked: metadata?.questions_asked || [],
+    key_details: metadata?.key_details || [],
+    
+    // Appointment tracking
+    appointment_scheduled: metadata?.appointment_scheduled || false,
+    appointment_datetime: metadata?.appointment_datetime || null,
+    
+    // Contact verification tracking
+    email_verified: metadata?.email_verified || false,
+    phone_verified: metadata?.phone_verified || false,
+    email_collected: metadata?.email_collected || false,
+    
+    // Commitment tracking
+    commitment_points_completed: metadata?.commitment_points_completed || 0,
+    text_reminder_consented: metadata?.text_reminder_consented || false,
+    
+    // Call quality metrics
+    interruptions: metadata?.interruptions || 0,
+    tool_calls_made: metadata?.tool_calls_made || [],
+    
+    // Save timestamp
+    saved_at: new Date().toISOString()
+  };
   
   const { data, error } = await sb
     .from('interactions')
@@ -945,18 +1013,19 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
       lead_id,
       broker_id,
       type: 'ai_call',
-      direction: 'outbound',
+      direction: metadata?.direction || 'outbound',
       content,
       duration_seconds,
       outcome,
       recording_url,
-      metadata: { ai_agent: 'barbara', version: '1.0' },
+      metadata: interactionMetadata,
       created_at: new Date().toISOString()
     })
     .select()
     .single();
   
   if (error) {
+    console.error('❌ Error saving interaction:', error);
     return { success: false, error: error.message };
   }
   
@@ -971,10 +1040,44 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
     })
     .eq('id', lead_id);
   
+  console.log('✅ Interaction saved with rich metadata:', {
+    interaction_id: data.id,
+    metadata_fields: Object.keys(interactionMetadata).length
+  });
+  
+  // Log to PromptLayer for analytics
+  try {
+    const promptLayer = initPromptLayer();
+    const transcript = metadata?.conversation_transcript || [];
+    
+    // Get lead and broker names for tags
+    const { data: lead } = await sb.from('leads').select('first_name, last_name').eq('id', lead_id).single();
+    const { data: broker } = await sb.from('brokers').select('contact_name').eq('id', broker_id).single();
+    
+    const leadName = lead ? `${lead.first_name} ${lead.last_name}`.trim() : 'Unknown';
+    const brokerName = broker?.contact_name || 'Unknown';
+    
+    await promptLayer.logRealtimeConversation({
+      callId: data.id,
+      leadId: lead_id,
+      brokerId: broker_id,
+      leadName: leadName,
+      brokerName: brokerName,
+      conversationTranscript: transcript,
+      metadata: interactionMetadata,
+      outcome: outcome,
+      durationSeconds: duration_seconds,
+      toolCalls: interactionMetadata.tool_calls_made || []
+    });
+  } catch (plError) {
+    console.warn('⚠️ PromptLayer logging failed (non-critical):', plError.message);
+  }
+  
   return {
     success: true,
     interaction_id: data.id,
-    message: 'Interaction saved'
+    message: 'Interaction saved with rich context',
+    metadata_saved: Object.keys(interactionMetadata).length
   };
 }
 

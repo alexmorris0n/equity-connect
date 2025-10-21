@@ -95,6 +95,29 @@ app.get('/healthz', async (request, reply) => {
 });
 
 /**
+ * Active Calls Intelligence API
+ * Returns real-time metrics for dashboard
+ */
+app.get('/api/active-calls', async (request, reply) => {
+  try {
+    const { getActiveCalls } = require('./api/active-calls');
+    const calls = await getActiveCalls();
+    
+    return reply.code(200).send({
+      success: true,
+      active_count: calls.length,
+      calls: calls
+    });
+  } catch (err) {
+    app.log.error({ err }, 'Error getting active calls');
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
  * LaML XML Endpoint for Inbound Calls
  * SignalWire calls this when an inbound call arrives
  */

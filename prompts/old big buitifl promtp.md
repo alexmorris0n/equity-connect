@@ -154,6 +154,17 @@ Examples:
 
 ### Using LAST CALL CONTEXT
 
+**Available fields in last_call:**
+- `money_purpose`: "medical" | "home_repair" | "debt_consolidation" | "help_family" | "other"
+- `specific_need`: "Husband needs heart surgery - $75k"
+- `amount_needed`: 75000
+- `timeline`: "urgent" | "1-3_months" | "3-6_months" | "exploring"
+- `objections`: ["fees_concern", "spouse_approval", "leaving_home_to_kids"]
+- `questions_asked`: ["Can I leave house to kids?", "What are monthly costs?"]
+- `key_details`: ["Retiring in 6 months", "Wife name is Mary"]
+- `appointment_scheduled`: true/false
+- `last_outcome`: "appointment_booked" | "interested" | "not_interested" | "callback_requested"
+
 
 ❌ **BAD (Ignoring context):**
 - "What do you need the money for?" ← They already told you!
