@@ -9,6 +9,7 @@ const { PromptLayer } = require('promptlayer');
 
 class PromptLayerRealtime {
   constructor(apiKey) {
+    this.apiKey = apiKey;  // Store API key for REST API calls
     this.enabled = !!apiKey;
     if (this.enabled) {
       this.client = new PromptLayer({ apiKey });
@@ -48,7 +49,7 @@ class PromptLayerRealtime {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-KEY': apiKey || this.client?.apiKey || process.env.PROMPTLAYER_API_KEY
+          'X-API-KEY': this.apiKey
         },
         body: JSON.stringify({
           function_name: 'openai.realtime.conversation',
@@ -155,7 +156,7 @@ class PromptLayerRealtime {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-KEY': this.client.apiKey
+          'X-API-KEY': this.apiKey
         },
         body: JSON.stringify({
           request_id: callId,
@@ -194,7 +195,7 @@ class PromptLayerRealtime {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-KEY': this.client.apiKey
+          'X-API-KEY': this.apiKey
         },
         body: JSON.stringify({
           request_id: callId,
