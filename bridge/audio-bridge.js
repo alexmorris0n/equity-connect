@@ -108,6 +108,17 @@ class AudioBridge {
     // API compatibility (text vs input_text schema mismatch)
     this._pendingNudge = null;  // Track failed nudges for retry with alternate schema
     this._contentType = 'input_text';  // Default to 'input_text' (most compatible), will auto-switch if error
+    
+    // Watchdog timer - auto-recovers Barbara if speaking flag gets stuck
+    this.watchdogInterval = setInterval(() => {
+      if (this.speaking && Date.now() - this.lastResponseAt > 15000) {
+        console.error('🚨 WATCHDOG: Speaking flag stuck for 15s - force unlocking!');
+        this.logger.error('🚨 Watchdog detected stuck speaking flag - auto-recovering');
+        this.speaking = false;
+        this.responseInProgress = false;
+        this.drainResponseQueue();
+      }
+    }, 5000); // Check every 5s
   }
 
   /**
@@ -2125,6 +2136,13 @@ CONVERSATION GOALS (in order):
       clearInterval(this.autoResumeInterval);
       this.autoResumeInterval = null;
       debug('✅ Auto-resume monitor stopped');
+    }
+    
+    // Clear watchdog interval
+    if (this.watchdogInterval) {
+      clearInterval(this.watchdogInterval);
+      this.watchdogInterval = null;
+      debug('✅ Watchdog stopped');
     }
     
     try {
