@@ -538,9 +538,9 @@ class AudioBridge {
         max_response_output_tokens: 400,  // Enough for detailed Q&A while prompt keeps responses concise
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.8,  // High but not max - catches speech, reduces phone handling triggers
-          prefix_padding_ms: 300,  // Standard padding
-          silence_duration_ms: 600  // Balanced for seniors who trail off
+          threshold: 0.95,  // Very high - ignores phone alerts, notifications, handling noise
+          prefix_padding_ms: 200,  // Reduced padding
+          silence_duration_ms: 900  // Longer for seniors who pause mid-thought
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -682,15 +682,15 @@ class AudioBridge {
         this.userSpeechSince = Date.now();
         debug('👤 User started speaking');
         
-        // VAPI-style barge-in: require 600ms of speech (≈2-3 words) before canceling
-        // This prevents mouse clicks, coughs, single syllables from interrupting
+        // Barge-in protection: require 750ms of speech before canceling (≈2.5-3 words)
+        // This blocks phone alerts, mouse clicks, coughs while staying responsive
         if (this.responseInProgress && !this.cancelDebounceTimer) {
           this.cancelDebounceTimer = setTimeout(() => {
             const speechDuration = Date.now() - (this.userSpeechSince || Date.now());
             
-            // Only cancel if user spoke for at least 600ms (real speech, not noise)
-            if (this.responseInProgress && speechDuration >= 600) {
-              debug('⚠️ Real barge-in detected (600ms speech) - canceling Barbara');
+            // Only cancel if user spoke for at least 750ms (real speech, not alerts/noise)
+            if (this.responseInProgress && speechDuration >= 750) {
+              debug('⚠️ Real barge-in detected (750ms speech) - canceling Barbara');
               this.openaiSocket.send(JSON.stringify({
                 type: 'response.cancel'
               }));
@@ -704,25 +704,41 @@ class AudioBridge {
               this.hasAppendedSinceLastCommit = false;
               this.commitLockedUntil = Date.now() + 600;
             } else {
-              debug('⚠️ Short noise detected (<600ms) - NOT canceling Barbara');
+              debug('⚠️ Short noise detected (<750ms) - NOT canceling Barbara');
             }
             this.cancelDebounceTimer = null;
-          }, 620); // Wait 620ms to measure speech duration
+          }, 770); // Wait 770ms to measure speech duration
         }
         break;
       
       case 'input_audio_buffer.speech_stopped':
         // User stopped speaking
         this.userSpeaking = false;
-        this.userSpeechSince = 0;
+        const speechDur = this.userSpeechSince ? Date.now() - this.userSpeechSince : 0;
         
-        // Clear debounce timer if speech stopped before reaching 600ms threshold
+        // Clear debounce timer if speech stopped before reaching threshold
         if (this.cancelDebounceTimer) {
           clearTimeout(this.cancelDebounceTimer);
           this.cancelDebounceTimer = null;
-          debug('⏹️ Speech stopped before 600ms - cancel timer cleared');
+          debug('⏹️ Speech stopped before 750ms threshold - cancel timer cleared');
         }
         
+        // If short burst (<750ms) that interrupted Barbara, treat as noise and resume
+        if (!this.responseInProgress && speechDur > 0 && speechDur < 750 && this.currentResponseTranscript) {
+          debug('🔄 Short noise burst detected (<750ms) - clearing buffer and resuming');
+          this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
+          this.bufferedAudioBytes = 0;
+          this.hasAppendedSinceLastCommit = false;
+          this.commitLockedUntil = Date.now() + 600;
+          
+          setTimeout(() => {
+            if (!this.userSpeaking && !this.responseInProgress) {
+              this.resumeWithContext();
+            }
+          }, 200);
+        }
+        
+        this.userSpeechSince = 0;
         debug('👤 User stopped speaking');
         
         // If Barbara was interrupted but user said nothing (false positive from noise),
@@ -747,8 +763,19 @@ class AudioBridge {
         await this.handleToolCall(event);
         break;
 
+      case 'conversation.item.created':
+        // This event contains the user's speech item with transcript
+        if (event.item?.type === 'message' && event.item?.role === 'user') {
+          const audioContent = event.item.content?.find(c => c.type === 'input_audio');
+          if (audioContent?.transcript) {
+            console.log('👤 User said:', audioContent.transcript);
+            this.logger.info({ transcript: audioContent.transcript, item_id: event.item.id }, '👤 User transcription');
+          }
+        }
+        break;
+
       case 'conversation.item.input_audio_transcription.completed':
-        // Log user's input transcription
+        // Log user's input transcription (fallback if above doesn't catch it)
         const userTranscript = event.transcript;
         console.log('👤 User said:', userTranscript);
         this.logger.info({ transcript: userTranscript, item_id: event.item_id }, '👤 User transcription');
@@ -965,12 +992,12 @@ class AudioBridge {
           return;
         }
 
-        // ⛔ BACKPRESSURE: Sample audio lightly during backoff (keeps VAD alive)
-        // Don't drop ALL frames or barge-in detection will fail
+        // ⛔ BACKPRESSURE: Sample audio during backoff to keep VAD alive
+        // Don't starve VAD or barge-in detection will fail
         if (!this.canSend()) {
           const now = Date.now();
           this._lastSampleAt = this._lastSampleAt || 0;
-          if (now - this._lastSampleAt < 200) return;  // Sample ~5 fps during backoff
+          if (now - this._lastSampleAt < 50) return;  // Sample ~20 fps during backoff (was 5 fps)
           this._lastSampleAt = now;
           debug('⏳ Sampling audio during backoff (keep VAD alive)');
         }
