@@ -676,6 +676,11 @@ class AudioBridge {
         this.speaking = false;  // No longer speaking - ready for next response
         debug('✅ Response completed, tracking for auto-resume');
         
+        // Log backoff status after response completes
+        const backoffActive = Date.now() < this.backoffUntil;
+        const waitMs = backoffActive ? this.backoffUntil - Date.now() : 0;
+        console.log(`📊 Response done - backoff ${backoffActive ? 'ACTIVE' : 'cleared'} (${waitMs}ms remaining), canSend: ${this.canSend()}`);
+        
         // Drain queued responses (single-flight pattern)
         this.drainResponseQueue();
         
@@ -752,6 +757,8 @@ class AudioBridge {
         this.userSpeaking = false;
         const speechDur = this.userSpeechSince ? Date.now() - this.userSpeechSince : 0;
         
+        console.log(`👤 User stopped speaking (duration: ${speechDur}ms, responseInProgress: ${this.responseInProgress}, hasTranscript: ${!!this.currentResponseTranscript})`);
+        
         // Clear debounce timer if speech stopped before reaching threshold
         if (this.cancelDebounceTimer) {
           clearTimeout(this.cancelDebounceTimer);
@@ -759,23 +766,25 @@ class AudioBridge {
           debug('⏹️ Speech stopped before 750ms threshold - cancel timer cleared');
         }
         
+        // DISABLED: This was clearing the buffer when user tried to speak after Barbara finished!
         // If short burst (<750ms) that interrupted Barbara, treat as noise and resume
-        if (!this.responseInProgress && speechDur > 0 && speechDur < 750 && this.currentResponseTranscript) {
-          debug('🔄 Short noise burst detected (<750ms) - clearing buffer and resuming');
-          this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
-          this.bufferedAudioBytes = 0;
-          this.hasAppendedSinceLastCommit = false;
-          this.commitLockedUntil = Date.now() + 600;
-          
-          setTimeout(() => {
-            if (!this.userSpeaking && !this.responseInProgress) {
-              this.resumeWithContext();
-            }
-          }, 200);
-        }
+        // if (!this.responseInProgress && speechDur > 0 && speechDur < 750 && this.currentResponseTranscript) {
+        //   console.log('🚫 SHORT SPEECH DETECTED - Would have cleared buffer, but this is disabled now');
+        //   console.log(`   Speech was ${speechDur}ms, Barbara was interrupted: ${!this.responseInProgress && this.currentResponseTranscript}`);
+        //   debug('🔄 Short noise burst detected (<750ms) - clearing buffer and resuming');
+        //   this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
+        //   this.bufferedAudioBytes = 0;
+        //   this.hasAppendedSinceLastCommit = false;
+        //   this.commitLockedUntil = Date.now() + 600;
+        //   
+        //   setTimeout(() => {
+        //     if (!this.userSpeaking && !this.responseInProgress) {
+        //       this.resumeWithContext();
+        //     }
+        //   }, 200);
+        // }
         
         this.userSpeechSince = 0;
-        debug('👤 User stopped speaking');
         
         // If Barbara was interrupted but user said nothing (false positive from noise),
         // resume her response after brief delay
@@ -1051,7 +1060,8 @@ class AudioBridge {
           this._lastSampleAt = this._lastSampleAt || 0;
           if (now - this._lastSampleAt < 50) return;  // Sample ~20 fps during backoff (was 5 fps)
           this._lastSampleAt = now;
-          debug('⏳ Sampling audio during backoff (keep VAD alive)');
+          const waitMs = this.backoffUntil - Date.now();
+          console.log(`⏳ AUDIO THROTTLED - Sampling only (backoff active, ${waitMs}ms remaining)`);
         }
         
         if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
@@ -1271,6 +1281,13 @@ class AudioBridge {
       });
       this.logger.warn({ throttled, backoffMs: maxReset * 1000 }, '⏳ Rate limit backoff');
     } else {
+      // CRITICAL: Explicitly clear backoff when rate limits are OK
+      const wasInBackoff = Date.now() < this.backoffUntil;
+      this.backoffUntil = 0;
+      
+      if (wasInBackoff) {
+        console.log('✅ Rate limits OK - backoff CLEARED, audio should flow normally now');
+      }
       debug('📊 Rate limits OK:', metrics.map(m => `${m.name}: ${m.remaining}/${m.limit}`).join(', '));
     }
   }
