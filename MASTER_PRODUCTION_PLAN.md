@@ -684,11 +684,8 @@ Flow:
 - **Monthly cost per broker:** $124/month
 
 ### Broker Revenue (Performance-Based)
-- Qualified lead (email verified): $10
-- Appointment set: $50
-- Appointment showed: $100
-- Application submitted: $250
-- Deal funded: $1,500-$3,000
+- **Appointment showed:** $300-$350 per show
+- **That's it.** Simple, clean pricing.
 
 ### Daily Economics (Moonshot: 100 Brokers × 100 Leads/Day)
 
