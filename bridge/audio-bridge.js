@@ -7,6 +7,7 @@
 
 const WebSocket = require('ws');
 const { toolDefinitions, executeTool } = require('./tools');
+const { getPromptForCall, injectVariables } = require('./prompt-manager');
 const fs = require('fs');
 const path = require('path');
 
@@ -506,37 +507,96 @@ class AudioBridge {
 
   /**
    * Configure OpenAI Realtime session
-   * Note: Now looks up lead context for inbound calls to personalize prompt
+   * Now uses smart PromptLayer integration with local fallback
    */
   async configureSession() {
     debug('🔵 configureSession() called');
     
     let instructions;
+    let leadContextData = null;
     
-    if (this.callContext.instructions) {
-      // n8n/Barbara MCP sent fully customized prompt (outbound calls)
-      instructions = this.callContext.instructions;
-      debug('🔵 Using custom instructions from n8n/MCP (outbound)');
-    } else {
-      // Inbound call - look up lead context and process template
-      debug('🔵 Inbound call - looking up lead context to personalize prompt');
-      
-      try {
-        const leadContext = await this.lookupAndBuildPrompt();
-        instructions = leadContext.prompt;
-        debug('🔵 Built personalized inbound prompt', {
-          hasName: !!leadContext.variables.leadFirstName,
-          hasCity: !!leadContext.variables.propertyCity,
-          promptLength: instructions.length
+    // Step 1: Look up lead context (for variable injection)
+    try {
+      if (!this.callContext.instructions && this.callerPhone) {
+        // Look up lead context for personalization
+        leadContextData = await executeTool('get_lead_context', { 
+          phone: this.callerPhone 
         });
-      } catch (err) {
-        console.error('❌ Failed to build personalized prompt, using minimal:', err);
-        // Fallback to minimal prompt
-        instructions = this.buildPromptFromTemplate({ callContext: 'inbound' });
+        
+        if (leadContextData && leadContextData.found) {
+          debug('🔵 Found lead context:', {
+            hasName: !!leadContextData.raw?.first_name,
+            hasCity: !!leadContextData.raw?.property_city,
+            hasEquity: !!leadContextData.estimated_equity
+          });
+        }
       }
+    } catch (err) {
+      console.warn('⚠️ Failed to lookup lead context:', err.message);
     }
     
-    debug('🔵 Instructions length:', instructions.length, 'Custom:', !!this.callContext.instructions);
+    // Step 2: Build call context for prompt selection
+    const promptCallContext = {
+      context: this.callContext.context || 'inbound',
+      lead_id: leadContextData?.lead_id || this.callContext.lead_id,
+      from_phone: this.callerPhone,
+      to_phone: this.callContext.to_phone,
+      has_property_data: !!(leadContextData?.estimated_equity || leadContextData?.property_value)
+    };
+    
+    // Step 3: Get the right prompt from PromptLayer (or fallback to local)
+    const promptTemplate = await getPromptForCall(
+      promptCallContext,
+      this.callContext.instructions  // Custom instructions override everything
+    );
+    
+    debug('🔵 Got prompt template:', {
+      length: promptTemplate.length,
+      isCustom: !!this.callContext.instructions,
+      context: promptCallContext.context,
+      hasLeadData: !!leadContextData
+    });
+    
+    // Step 4: Inject variables into the prompt
+    if (leadContextData && leadContextData.found) {
+      // We have lead data - personalize the prompt
+      const variables = {
+        // Lead info
+        leadFirstName: leadContextData.raw?.first_name || '',
+        leadLastName: leadContextData.raw?.last_name || '',
+        leadFullName: `${leadContextData.raw?.first_name || ''} ${leadContextData.raw?.last_name || ''}`.trim(),
+        leadEmail: leadContextData.raw?.primary_email || '',
+        leadPhone: this.callerPhone || '',
+        
+        // Property info
+        propertyAddress: leadContextData.raw?.property_address || '',
+        propertyCity: leadContextData.raw?.property_city || '',
+        propertyState: leadContextData.raw?.property_state || '',
+        propertyZipcode: leadContextData.raw?.property_zipcode || '',
+        propertyValue: leadContextData.property_value || '',
+        
+        // Equity info
+        estimatedEquity: leadContextData.estimated_equity || '',
+        
+        // Broker info (if available)
+        brokerFullName: leadContextData.broker?.contact_name || '',
+        brokerFirstName: leadContextData.broker?.contact_name?.split(' ')[0] || '',
+        brokerCompany: leadContextData.broker?.company_name || '',
+        brokerPhone: leadContextData.broker?.phone || '',
+        
+        // Call context
+        callContext: promptCallContext.context
+      };
+      
+      instructions = injectVariables(promptTemplate, variables);
+      debug('🔵 Injected variables into prompt');
+    } else {
+      // No lead data - use prompt as-is
+      instructions = promptTemplate;
+      debug('🔵 Using prompt without variable injection (no lead data)');
+    }
+    
+    debug('🔵 Final instructions length:', instructions.length);
     
     const sessionConfig = {
       type: 'session.update',

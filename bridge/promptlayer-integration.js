@@ -53,7 +53,7 @@ class PromptLayerRealtime {
         provider_type: 'openai',
         args: [],
         kwargs: {
-          model: 'gpt-4o-realtime-preview-2024-10-01',
+          model: process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28',
           messages: messages,
           temperature: 0.75,
           max_tokens: 400
@@ -68,13 +68,13 @@ class PromptLayerRealtime {
         ],
         request_response: {
           request: {
-            model: 'gpt-4o-realtime-preview-2024-10-01',
+            model: process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28',
             messages: messages.slice(0, 5), // First 5 exchanges
             tools: toolCalls.map(t => t.name)
           },
           response: {
             id: callId,
-            model: 'gpt-4o-realtime-preview-2024-10-01',
+            model: process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28',
             choices: [{
               message: {
                 role: 'assistant',
