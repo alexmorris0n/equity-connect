@@ -542,9 +542,9 @@ class AudioBridge {
         max_response_output_tokens: 400,  // Enough for detailed Q&A while prompt keeps responses concise
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.7,  // Lower - more sensitive to user speech (was 0.95 - too high)
-          prefix_padding_ms: 300,  // Slightly more padding to catch start of speech
-          silence_duration_ms: 800  // Wait 800ms before Barbara speaks
+          threshold: 0.80,  // Very high - ignores phone alerts, notifications, handling noise
+          prefix_padding_ms: 200,  // Reduced padding
+          silence_duration_ms: 900  // Longer for seniors who pause mid-thought
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -591,11 +591,26 @@ class AudioBridge {
             console.log(`🎯 First audio out: ${firstAudioMs}ms from call start`);
             this.firstAudioLogged = true;
           }
-          this.sendMediaToSignalWire(event.delta);
+          // Track pending audio sends to ensure completion
+          if (!this.pendingAudioSends) {
+            this.pendingAudioSends = [];
+          }
+          const sendPromise = this.sendMediaToSignalWire(event.delta);
+          if (sendPromise instanceof Promise) {
+            this.pendingAudioSends.push(sendPromise);
+          }
         }
         break;
 
       case 'response.audio.done':
+        // CRITICAL: Wait for all pending audio chunks to finish sending!
+        if (this.pendingAudioSends && this.pendingAudioSends.length > 0) {
+          debug(`⏳ Waiting for ${this.pendingAudioSends.length} pending audio chunks to complete...`);
+          await Promise.all(this.pendingAudioSends);
+          this.pendingAudioSends = [];
+          debug('✅ All pending audio chunks sent completely');
+        }
+        
         // Mark not speaking
         this.speaking = false;
         this.responseInProgress = false;
@@ -821,6 +836,12 @@ class AudioBridge {
           this.nudgedOnce = false;  // Reset nudge flag for this new question
         }
         this.currentResponseTranscript = '';  // Reset for next response
+        break;
+      
+      case 'response.content_part.done':
+        // Content part completed (text/audio segment finished)
+        // This fires when a discrete content part is done
+        debug('✅ Content part completed');
         break;
 
       case 'rate_limits.updated':
@@ -1061,7 +1082,7 @@ class AudioBridge {
   /**
    * Send media (audio) to SignalWire
    */
-  sendMediaToSignalWire(audioData) {
+  async sendMediaToSignalWire(audioData) {
     // During graceful shutdown, silently drop audio instead of logging errors
     if (this.gracefulShutdown && this.swSocket.readyState !== WebSocket.OPEN) {
       debug('🔇 Graceful shutdown - dropping audio chunk');
@@ -1092,8 +1113,9 @@ class AudioBridge {
         });
       }
       
-      // Send pieces sequentially with throttling to preserve order
-      this.sendChunksInOrder(pieces);
+      // Send pieces sequentially with throttling to preserve order - AWAIT completion!
+      await this.sendChunksInOrder(pieces);
+      debug(`✅ All chunks sent completely (${audioBuffer.length} bytes)`);
     } else {
       // Normal size - send as-is
       this.sendSingleChunk(audioData, audioData.length);
