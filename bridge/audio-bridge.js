@@ -615,7 +615,7 @@ class AudioBridge {
           type: 'server_vad',
           threshold: 0.80,  // Very high - ignores phone alerts, notifications, handling noise
           prefix_padding_ms: 200,  // Reduced padding
-          silence_duration_ms: 500  // Reduced from 900ms - faster response, more natural conversation flow
+          silence_duration_ms: 700  // Optimal for telephony (per OpenAI best practices) - balance between responsiveness and stability
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -1119,6 +1119,20 @@ class AudioBridge {
           return;
         }
 
+        // Track incoming media for diagnostics
+        if (!this._lastInputAudioAt) {
+          this._lastInputAudioAt = 0;
+          this._inputAudioCount = 0;
+        }
+        this._inputAudioCount++;
+        this._lastInputAudioAt = Date.now();
+        
+        // Log periodically to confirm audio is flowing (every 5 seconds)
+        if (!this._lastInputAudioLog || Date.now() - this._lastInputAudioLog > 5000) {
+          console.log(`📊 Input audio flowing: ${this._inputAudioCount} packets, last: ${new Date(this._lastInputAudioAt).toISOString()}`);
+          this._lastInputAudioLog = Date.now();
+        }
+
         // ⛔ BACKPRESSURE: Sample audio during backoff to keep VAD alive
         // Don't starve VAD or barge-in detection will fail
         if (!this.canSend()) {
@@ -1151,6 +1165,10 @@ class AudioBridge {
           } catch (err) {
             debug('⚠️ Failed to count audio bytes:', err);
           }
+        } else if (!msg.media?.payload) {
+          console.error('❌ Media event with no payload!');
+        } else if (this.openaiSocket?.readyState !== WebSocket.OPEN) {
+          console.error(`❌ Cannot forward audio - OpenAI socket state: ${this.openaiSocket?.readyState}`);
         }
         break;
 
@@ -1231,19 +1249,33 @@ class AudioBridge {
     return new Promise((resolve) => {
       const now = Date.now();
       const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
-      const minDelay = 30; // 30ms throttle
+      const minDelay = 50; // 50ms throttle (increased from 30ms for better network pacing)
       
-      const sendFn = () => {
+      const sendFn = async () => {
         if (this.swSocket.readyState === WebSocket.OPEN) {
-          this.swSocket.send(JSON.stringify({
-            event: 'media',
-            streamSid: this.callSid || 'unknown',
-            media: {
-              payload: audioData
+          try {
+            // CRITICAL: Check buffer before sending to prevent overflow (WebSocket best practice)
+            // If buffer is too full, wait for it to drain
+            while (this.swSocket.bufferedAmount > 16000) {
+              debug(`⏸️ WebSocket buffer full (${this.swSocket.bufferedAmount} bytes), waiting...`);
+              await new Promise(r => setTimeout(r, 50));
             }
-          }));
-          this._lastAudioSentAt = Date.now();
-          debug(`✅ Audio sent to SignalWire (${logInfo})`);
+            
+            this.swSocket.send(JSON.stringify({
+              event: 'media',
+              streamSid: this.callSid || 'unknown',
+              media: {
+                payload: audioData
+              }
+            }));
+            this._lastAudioSentAt = Date.now();
+            debug(`✅ Audio sent to SignalWire (${logInfo})`);
+          } catch (err) {
+            console.error(`❌ Failed to send audio chunk to SignalWire: ${err.message}`);
+            this.logger.error({ err, logInfo }, 'Failed to send audio chunk to SignalWire');
+          }
+        } else {
+          console.error(`❌ Cannot send audio chunk - SignalWire socket state: ${this.swSocket.readyState}`);
         }
         resolve();
       };
@@ -1261,31 +1293,45 @@ class AudioBridge {
   /**
    * Send a single audio chunk to SignalWire with throttling (for non-split chunks)
    */
-  sendSingleChunk(audioData, logInfo) {
+  async sendSingleChunk(audioData, logInfo) {
     const now = Date.now();
     const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
-    const minDelay = 30; // 30ms throttle
+    const minDelay = 50; // 50ms throttle (increased from 30ms for better network pacing)
     
-    const sendFn = () => {
+    const sendFn = async () => {
       if (this.swSocket.readyState === WebSocket.OPEN) {
-        this.swSocket.send(JSON.stringify({
-          event: 'media',
-          streamSid: this.callSid || 'unknown',
-          media: {
-            payload: audioData
+        try {
+          // CRITICAL: Check buffer before sending to prevent overflow (WebSocket best practice)
+          while (this.swSocket.bufferedAmount > 16000) {
+            debug(`⏸️ WebSocket buffer full (${this.swSocket.bufferedAmount} bytes), waiting...`);
+            await new Promise(r => setTimeout(r, 50));
           }
-        }));
-        this._lastAudioSentAt = Date.now();
-        debug(`✅ Audio sent to SignalWire (${logInfo})`);
+          
+          this.swSocket.send(JSON.stringify({
+            event: 'media',
+            streamSid: this.callSid || 'unknown',
+            media: {
+              payload: audioData
+            }
+          }));
+          this._lastAudioSentAt = Date.now();
+          debug(`✅ Audio sent to SignalWire (${logInfo})`);
+        } catch (err) {
+          console.error(`❌ Failed to send audio chunk to SignalWire: ${err.message}`);
+          this.logger.error({ err, logInfo }, 'Failed to send audio chunk to SignalWire');
+        }
+      } else {
+        console.error(`❌ Cannot send audio chunk - SignalWire socket state: ${this.swSocket.readyState}`);
       }
     };
     
     if (timeSinceLastSend < minDelay) {
       // Too fast - wait
-      setTimeout(sendFn, minDelay - timeSinceLastSend);
+      await new Promise(r => setTimeout(r, minDelay - timeSinceLastSend));
+      await sendFn();
     } else {
       // Send immediately
-      sendFn();
+      await sendFn();
     }
   }
 
@@ -1296,6 +1342,25 @@ class AudioBridge {
     // Check every 500ms if we need to nudge (but never auto-continue)
     this.autoResumeInterval = setInterval(() => {
       const idleTime = Date.now() - this.lastResponseAt;
+      
+      // VAD RECOVERY: If no speech detected for 10s after Barbara finished,
+      // and input audio is flowing, VAD might be stuck - clear buffer to reset
+      if (idleTime > 10000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
+        const timeSinceLastInput = Date.now() - (this._lastInputAudioAt || 0);
+        // Only recover if audio is still flowing (< 2s since last packet)
+        if (timeSinceLastInput < 2000 && !this._vadRecoveredRecently) {
+          console.log('🔄 VAD RECOVERY: No speech detected for 10s but audio flowing - clearing buffer to reset VAD');
+          if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+            this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
+            this.bufferedAudioBytes = 0;
+            this.hasAppendedSinceLastCommit = false;
+            this.commitLockedUntil = Date.now() + 600;
+            this._vadRecoveredRecently = true;
+            // Reset flag after 30s to allow another recovery if needed
+            setTimeout(() => { this._vadRecoveredRecently = false; }, 30000);
+          }
+        }
+      }
       
       // If Barbara asked a question and user hasn't responded in 12 seconds (increased from 8s)
       // Give ONE gentle nudge, then stop (don't auto-progress through script)
@@ -1320,6 +1385,7 @@ class AudioBridge {
     }, 500);
     
     debug('✅ Auto-nudge monitor started (12s threshold - one nudge per question, no auto-continue)');
+    debug('✅ VAD recovery enabled (10s threshold - clears buffer if audio flowing but VAD stuck)');
   }
   
   /**
