@@ -606,7 +606,13 @@ class AudioBridge {
         // CRITICAL: Wait for all pending audio chunks to finish sending!
         if (this.pendingAudioSends && this.pendingAudioSends.length > 0) {
           debug(`⏳ Waiting for ${this.pendingAudioSends.length} pending audio chunks to complete...`);
-          await Promise.all(this.pendingAudioSends);
+          
+          // Add 30s timeout to prevent infinite wait and memory leaks
+          await Promise.race([
+            Promise.all(this.pendingAudioSends),
+            new Promise(resolve => setTimeout(resolve, 30000))
+          ]);
+          
           this.pendingAudioSends = [];
           debug('✅ All pending audio chunks sent completely');
         }
@@ -2077,6 +2083,11 @@ CONVERSATION GOALS (in order):
    * Cleanup connections
    */
   cleanup() {
+    // CRITICAL: Force unlock response queue to prevent deadlock
+    this.speaking = false;
+    this.responseInProgress = false;
+    this.responseQueue = [];
+    
     if (this.gracefulShutdownTimer) {
       clearTimeout(this.gracefulShutdownTimer);
       this.gracefulShutdownTimer = null;
