@@ -615,7 +615,7 @@ class AudioBridge {
           type: 'server_vad',
           threshold: 0.80,  // Very high - ignores phone alerts, notifications, handling noise
           prefix_padding_ms: 200,  // Reduced padding
-          silence_duration_ms: 900  // Longer for seniors who pause mid-thought
+          silence_duration_ms: 500  // Reduced from 900ms - faster response, more natural conversation flow
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -708,6 +708,11 @@ class AudioBridge {
             debug('🔇 Sent 300ms silence tail to prevent clip/pitch drop');
           }
           
+          // Set lastResponseAt HERE - after audio is done streaming and playing
+          // This ensures auto-nudge timer doesn't start until Barbara actually finishes talking to the user
+          this.lastResponseAt = Date.now();
+          console.log('⏰ Audio playback complete - auto-nudge timer started');
+          
           // Now drain queue after tail is sent
           this.drainResponseQueue();
         }, 100); // 100ms delay to ensure last audio chunk is fully sent first
@@ -731,7 +736,8 @@ class AudioBridge {
       case 'response.done':
       case 'response.completed':
         // Track when Barbara finished speaking
-        this.lastResponseAt = Date.now();
+        // NOTE: Don't set lastResponseAt here - we set it after audio finishes playing (in audio.done handler)
+        // This prevents auto-nudge from firing before Barbara's audio finishes streaming to the user
         this.responseInProgress = false;  // Response fully completed
         this.speaking = false;  // No longer speaking - ready for next response
         debug('✅ Response completed, tracking for auto-resume');
@@ -1291,12 +1297,12 @@ class AudioBridge {
     this.autoResumeInterval = setInterval(() => {
       const idleTime = Date.now() - this.lastResponseAt;
       
-      // If Barbara asked a question and user hasn't responded in 8 seconds
+      // If Barbara asked a question and user hasn't responded in 12 seconds (increased from 8s)
       // Give ONE gentle nudge, then stop (don't auto-progress through script)
-      if (idleTime > 8000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
+      if (idleTime > 12000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
         // Only nudge if Barbara asked a question and we haven't nudged yet
         if (this.awaitingUser && !this.nudgedOnce) {
-          debug('🔔 User silent after question - sending gentle nudge');
+          console.log(`🔔 User silent for ${Math.round(idleTime/1000)}s after question - sending gentle nudge`);
           
           // Track for potential retry if schema mismatch
           this._pendingNudge = 'User is silent; give a gentle, single-sentence nudge like: "Take your time."';
@@ -1313,7 +1319,7 @@ class AudioBridge {
       }
     }, 500);
     
-    debug('✅ Auto-nudge monitor started (8s threshold - one nudge per question, no auto-continue)');
+    debug('✅ Auto-nudge monitor started (12s threshold - one nudge per question, no auto-continue)');
   }
   
   /**
