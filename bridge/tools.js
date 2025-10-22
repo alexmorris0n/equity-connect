@@ -515,8 +515,9 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     // Call Nylas Free/Busy API
     // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
     // NOTE: In Nylas v3, grant ID is the email address (not a UUID)
+    // Endpoint format: POST /v3/grants/{grant_id}/calendars/free-busy
     const nylasStartTime = Date.now();
-    const freeBusyUrl = `${NYLAS_API_URL}/v3/calendars/free-busy`;
+    const freeBusyUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/calendars/free-busy`;
     const response = await fetch(freeBusyUrl, {
       method: 'POST',
       headers: {
@@ -526,8 +527,7 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
       },
       body: JSON.stringify({
         start_time: startTime,
-        end_time: endTime,
-        emails: [broker.email]
+        end_time: endTime
       })
     });
     
