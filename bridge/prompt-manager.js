@@ -155,8 +155,20 @@ async function getPromptFromPromptLayer(promptName) {
     }
     // Format 3: Chat format - combine messages
     else if (result.prompt_template?.messages && Array.isArray(result.prompt_template.messages)) {
+      console.log(`🔍 DEBUG - Extracting from messages array (${result.prompt_template.messages.length} messages)`);
       promptText = result.prompt_template.messages
-        .map(m => m.content)
+        .map((m, i) => {
+          // Message content can be string or object
+          let content = '';
+          if (typeof m.content === 'string') {
+            content = m.content;
+          } else if (typeof m.content === 'object' && m.content) {
+            // If it's an object, try to extract text
+            content = m.content.text || JSON.stringify(m.content);
+          }
+          console.log(`   Message ${i} (role: ${m.role}): ${content.substring(0, 50)}...`);
+          return content;
+        })
         .join('\n\n');
     }
     // Format 4: Plain prompt field
