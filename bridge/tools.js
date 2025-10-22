@@ -517,6 +517,11 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     // This endpoint finds available meeting times based on criteria
     const nylasStartTime = Date.now();
     const availabilityUrl = `${NYLAS_API_URL}/v3/calendars/availability`;
+    
+    // Nylas requires both start_time and end_time to be multiples of 5 minutes
+    const roundedStartTime = Math.floor(startTime / 300) * 300; // Round down to nearest 5 minutes
+    const roundedEndTime = Math.floor(endTime / 300) * 300; // Round down to nearest 5 minutes
+    
     const response = await fetch(availabilityUrl, {
       method: 'POST',
       headers: {
@@ -525,8 +530,8 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
         'Accept': 'application/json, application/gzip'
       },
       body: JSON.stringify({
-        start_time: startTime,  // Start of time range to check (now)
-        end_time: endTime,      // End of time range (14 days from now)
+        start_time: roundedStartTime,  // Start of time range to check (rounded to 5 min)
+        end_time: roundedEndTime,      // End of time range (rounded to 5 min)
         duration_minutes: 60,   // 1 hour appointments
         interval_minutes: 30,   // Check every 30 minutes for slots
         participants: [
