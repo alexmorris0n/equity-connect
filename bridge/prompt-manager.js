@@ -158,14 +158,25 @@ async function getPromptFromPromptLayer(promptName) {
       console.log(`🔍 DEBUG - Extracting from messages array (${result.prompt_template.messages.length} messages)`);
       promptText = result.prompt_template.messages
         .map((m, i) => {
-          // Message content can be string or object
+          // Message content can be:
+          // 1. A string
+          // 2. An object with .text property
+          // 3. An array of objects with .text property (OpenAI format)
           let content = '';
+          
           if (typeof m.content === 'string') {
             content = m.content;
+          } else if (Array.isArray(m.content)) {
+            // Content is an array of text blocks
+            content = m.content
+              .filter(c => c.type === 'text' || typeof c === 'string')
+              .map(c => typeof c === 'string' ? c : c.text)
+              .join('\n');
           } else if (typeof m.content === 'object' && m.content) {
             // If it's an object, try to extract text
             content = m.content.text || JSON.stringify(m.content);
           }
+          
           console.log(`   Message ${i} (role: ${m.role}): ${content.substring(0, 50)}...`);
           return content;
         })
