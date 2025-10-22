@@ -3,24 +3,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import fastify from 'fastify';
 import cors from '@fastify/cors';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
-
-// ES Module equivalent of __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Import bridge's prompt manager for PromptLayer integration
-const require = createRequire(import.meta.url);
-const { getPromptForCall, injectVariables } = require('../bridge/prompt-manager.js');
-
-// Load hybrid prompt template as fallback only
-const HYBRID_PROMPT_TEMPLATE = fs.readFileSync(
-  path.join(__dirname, '../prompts/BarbaraRealtimePrompt'),
-  'utf8'
-);
 
 // Initialize Fastify for HTTP streaming transport
 const app = fastify({
@@ -56,101 +38,6 @@ if (!BRIDGE_API_KEY) {
 
 if (!NYLAS_API_KEY) {
   app.log.warn('NYLAS_API_KEY not set - Nylas tools will not be available');
-}
-
-/**
- * Convert number to words (for Barbara to speak naturally)
- * Examples: 1500000 -> "one point five million", 750000 -> "seven hundred fifty thousand"
- */
-function numberToWords(value) {
-  if (!value || value === 0) return 'zero';
-  
-  const num = parseInt(value);
-  
-  // Handle millions
-  if (num >= 1000000) {
-    const millions = num / 1000000;
-    if (millions === Math.floor(millions)) {
-      return `${millions === 1 ? 'one' : millions} million`;
-    } else {
-      return `${millions.toFixed(1)} million`;
-    }
-  }
-  
-  // Handle thousands
-  if (num >= 1000) {
-    const thousands = num / 1000;
-    if (thousands === Math.floor(thousands)) {
-      return `${numberWord(thousands)} thousand`;
-    } else {
-      return `${thousands.toFixed(0)} thousand`;
-    }
-  }
-  
-  return numberWord(num);
-}
-
-/**
- * Convert single numbers to words (1-999)
- */
-function numberWord(num) {
-  const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
-  const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
-  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
-  
-  if (num < 10) return ones[num];
-  if (num < 20) return teens[num - 10];
-  if (num < 100) {
-    const tenPart = Math.floor(num / 10);
-    const onePart = num % 10;
-    return tens[tenPart] + (onePart > 0 ? ' ' + ones[onePart] : '');
-  }
-  
-  const hundreds = Math.floor(num / 100);
-  const remainder = num % 100;
-  return ones[hundreds] + ' hundred' + (remainder > 0 ? ' ' + numberWord(remainder) : '');
-}
-
-/**
- * Build customized prompt by replacing handlebars-style placeholders
- */
-function buildCustomPrompt(variables) {
-  let prompt = HYBRID_PROMPT_TEMPLATE;
-  
-  // Helper to safely replace placeholders
-  const replace = (key, value) => {
-    const placeholder = `{{${key}}}`;
-    const safeValue = value || '';
-    prompt = prompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), safeValue);
-  };
-  
-  // Handle handlebars conditionals (simple implementation)
-  // {{#if propertyCity}}...{{/if}}
-  const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
-  prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
-    return variables[varName] ? content : '';
-  });
-  
-  // {{#if personaFirstName}}...{{else}}...{{/if}}
-  const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
-  prompt = prompt.replace(conditionalElseRegex, (match, varName, ifContent, elseContent) => {
-    return variables[varName] ? ifContent : elseContent;
-  });
-  
-  // Replace all variable placeholders
-  Object.keys(variables).forEach(key => {
-    replace(key, variables[key]);
-  });
-  
-  return prompt;
-}
-
-/**
- * Extract first name from full name
- */
-function extractFirstName(fullName) {
-  if (!fullName) return '';
-  return fullName.split(' ')[0];
 }
 
 // Tool definitions
@@ -477,16 +364,6 @@ async function executeTool(name, args) {
       app.log.info({ to_phone, lead_id, broker_id, hasVariables: Object.keys(variables).length }, '📞 Creating outbound call');
       
       try {
-        // Extract first names for Barbara's use
-        const brokerFirstName = extractFirstName(variables.broker_full_name);
-        const personaFirstName = extractFirstName(variables.persona_sender_name);
-        
-        // Convert numeric values to words for speech
-        const propertyValueWords = variables.property_value ? numberToWords(variables.property_value) : '';
-        const estimatedEquityWords = variables.estimated_equity ? numberToWords(variables.estimated_equity) : '';
-        const equity50Words = variables.equity_50_percent ? numberToWords(variables.equity_50_percent) : '';
-        const equity60Words = variables.equity_60_percent ? numberToWords(variables.equity_60_percent) : '';
-        
         // Determine if lead is qualified (has property/equity data)
         const hasPropertyData = !!(variables.property_value || variables.estimated_equity);
         const isQualified = variables.qualified === true || hasPropertyData;
@@ -498,86 +375,26 @@ async function executeTool(name, args) {
           estimated_equity: variables.estimated_equity
         }, '🎯 Lead qualification determined');
         
-        // Build call context for PromptLayer
-        const callContext = {
-          context: 'outbound',
-          lead_id: lead_id,
-          has_property_data: hasPropertyData,
-          is_qualified: isQualified
+        // Build lead context to pass to bridge
+        // The bridge will use its prompt-manager to select the correct PromptLayer template
+        const leadContext = {
+          qualified: isQualified,
+          first_name: variables.lead_first_name || '',
+          last_name: variables.lead_last_name || '',
+          primary_email: variables.lead_email || '',
+          property_city: variables.property_city || '',
+          property_state: variables.property_state || '',
+          property_value: variables.property_value || null,
+          estimated_equity: variables.estimated_equity || null,
+          mortgage_balance: variables.mortgage_balance || null
         };
         
-        // Fetch the correct prompt from PromptLayer
-        // This will return either 'barbara-outbound-warm' or 'barbara-outbound-cold'
-        app.log.info({ callContext }, '🔍 Fetching prompt from PromptLayer');
-        const promptTemplate = await getPromptForCall(callContext, null);
-        
-        if (!promptTemplate) {
-          throw new Error('Failed to fetch prompt from PromptLayer');
-        }
-        
         app.log.info({ 
-          promptLength: promptTemplate.length,
-          isQualified 
-        }, `📋 Using ${isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'}`);
+          leadContext,
+          willUsePrompt: isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'
+        }, '📋 Sending lead context to bridge for PromptLayer selection');
         
-        // Build complete variables object for prompt injection
-        const promptVariables = {
-          // Call context
-          callContext: 'outbound',
-          signalwireNumber: '',  // Will be populated by bridge from selected number
-          
-          // Lead info
-          leadFirstName: variables.lead_first_name || '',
-          leadLastName: variables.lead_last_name || '',
-          leadFullName: variables.lead_full_name || '',
-          leadEmail: variables.lead_email || '',
-          leadPhone: variables.lead_phone || to_phone,
-          
-          // Property info
-          propertyAddress: variables.property_address || '',
-          propertyCity: variables.property_city || '',
-          propertyState: variables.property_state || '',
-          propertyZipcode: variables.property_zipcode || '',
-          propertyValue: variables.property_value || '',
-          propertyValueWords: propertyValueWords,
-          mortgageBalanceWords: variables.mortgage_balance ? numberToWords(variables.mortgage_balance) : '',
-          
-          // Equity
-          estimatedEquity: variables.estimated_equity || '',
-          estimatedEquityWords: estimatedEquityWords,
-          equity50Percent: variables.equity_50_percent || '',
-          equity50FormattedWords: equity50Words,
-          equity60Percent: variables.equity_60_percent || '',
-          equity60FormattedWords: equity60Words,
-          
-          // Campaign
-          campaignArchetype: variables.campaign_archetype || 'direct',
-          personaAssignment: variables.persona_assignment || 'general',
-          personaSenderName: variables.persona_sender_name || '',
-          personaFirstName: personaFirstName,
-          
-          // Broker
-          brokerCompany: variables.broker_company || '',
-          brokerFullName: variables.broker_full_name || '',
-          brokerFirstName: brokerFirstName,
-          brokerNmls: variables.broker_nmls || '',
-          brokerPhone: variables.broker_phone || '',
-          brokerDisplay: variables.broker_display || '',
-          
-          // Qualification flag
-          qualified: isQualified
-        };
-        
-        // Inject variables into PromptLayer template
-        const customizedPrompt = injectVariables(promptTemplate, promptVariables);
-        
-        app.log.info({ 
-          finalPromptLength: customizedPrompt.length,
-          hasCity: !!promptVariables.propertyCity,
-          hasPersona: !!promptVariables.personaFirstName 
-        }, '📝 Injected variables into PromptLayer template');
-        
-        // Call the bridge API with customized prompt
+        // Call the bridge API - it will handle PromptLayer prompt selection
         const response = await fetch(`${BRIDGE_URL}/api/outbound-call`, {
           method: 'POST',
           headers: {
@@ -588,7 +405,7 @@ async function executeTool(name, args) {
             to_phone,
             lead_id,
             broker_id,
-            instructions: customizedPrompt  // Pass PromptLayer-sourced prompt to bridge
+            lead_context: leadContext  // Bridge will use this for prompt selection
           })
         });
         
@@ -604,9 +421,7 @@ async function executeTool(name, args) {
                       `📞 Call ID: ${result.call_id}\n` +
                       `📱 From: ${result.from}\n` +
                       `📱 To: ${result.to}\n` +
-                      `👤 Lead: ${promptVariables.leadFirstName} ${promptVariables.leadLastName}\n` +
-                      `🏢 Broker: ${promptVariables.brokerFirstName}\n` +
-                      `🎯 Prompt: ${isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'}\n` +
+                      `🎯 Prompt: ${isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'} (selected by bridge)\n` +
                       `💬 Message: ${result.message}`
               }
             ]
