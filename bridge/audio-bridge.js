@@ -755,8 +755,9 @@ class AudioBridge {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'alloy',  // Fallback if 'sage' not available
         instructions: instructions,  // Static prompt (cacheable)
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
+        // DO NOT set input_audio_format or output_audio_format for SIP/WebRTC
+        // Per OpenAI Staff (juberti): "don't set format, it's not needed when using WebRTC/SIP"
+        // Setting these causes audio bugs with SignalWire gateway
         input_audio_transcription: {
           model: 'whisper-1'
         },
