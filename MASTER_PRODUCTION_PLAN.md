@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** October 21, 2025  
+**Last Updated:** October 22, 2025  
 **Status:** Production Ready  
 **Current Phase:** Calendar Integration Complete - Barbara Books Real Appointments + Advanced Commitment Building
-**Latest Updates:** Nylas calendar integration, PromptLayer analytics, live call dashboard, production stability fixes (deadlock prevention, memory leak protection, watchdog timer)
+**Latest Updates:** Appointment booking fix (Nylas grant ID), token limit removal (no more mid-sentence cutoffs), tool timeout extensions, PromptLayer timestamp fix, VAD recovery disabled, performance tracking added
 
 ---
 
@@ -106,19 +106,22 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
   - Stores persona_sender_name in database
 - **Status:** ✅ Production Ready (QUESTION ✅, PHONE_PROVIDED with pool management ✅)
 
-**3. Vector Store Knowledge Base** ⭐ PRODUCTION OCT 16
-- **80 searchable chunks** uploaded to Supabase pgvector
-- Reverse mortgage knowledge (eligibility, psychology, objections, archetypes)
-- Broker-agnostic ({{broker_name}}, {{broker_nmls}} placeholders)
-- Compliance-approved language
+**3. Vector Store Knowledge Base** ⭐ PRODUCTION OCT 16, CLEANED OCT 22
+- **Content:** Reverse mortgage knowledge (eligibility, psychology, objections, fees, compliance)
+- **Source Files:** `docs/REVERSE_MORTGAGE_VECTOR_DATABASE/` (5 section files)
+- **Broker-agnostic:** ({{broker_name}}, {{broker_nmls}} placeholders)
+- **Compliance-approved language**
 - **Schema:** `vector_embeddings` table with HNSW index
-- **Integration:** Barbara searches KB during calls via `search_knowledge` tool
+- **Integration:** Barbara searches KB during calls via `search_knowledge` tool (20s timeout)
+- **Model:** text-embedding-3-small (3x faster than ada-002, cheaper, similar quality)
 - **Used By:**
   - n8n email reply handler (instant accurate responses)
   - Barbara voice calls (prevents hallucinations on factual questions)
-- **Status:** ✅ Live - 80 chunks indexed and searchable
+- **Oct 22 Cleanup:** Deleted 5,779 rows of wrong content (system docs, .gitignore files)
+- **n8n Upload Workflow:** `kuDxW8kPndFKXZHP` configured to load only reverse mortgage KB files
+- **Status:** ✅ Cleaned, ready for proper KB upload from GitHub
 
-**5. OpenAI Realtime Voice Bridge** ⭐ PRODUCTION (OCT 18-21) - **VAPI REPLACED**
+**5. OpenAI Realtime Voice Bridge** ⭐ PRODUCTION (OCT 18-22) - **VAPI REPLACED**
 - **Architecture:** Custom Node.js bridge connects SignalWire PSTN ↔ OpenAI Realtime API
 - **Deployment:** Northflank (Docker container, WebSocket support) - **LIVE**
 - **Repository:** `equity-connect/bridge/` (same repo, separate service)
@@ -126,7 +129,7 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 - **Annual Savings:** **$173,880** at scale (180,000 calls/year)
 - **Key Components:**
   - **Bridge Server** (`bridge/server.js`) - Fastify + WebSocket, health checks, `/api/active-calls` endpoint
-  - **Audio Relay** (`bridge/audio-bridge.js`) - SignalWire ↔ OpenAI bidirectional streaming (2,168 lines)
+  - **Audio Relay** (`bridge/audio-bridge.js`) - SignalWire ↔ OpenAI bidirectional streaming (2,562 lines)
   - **7 Supabase Tools** (`bridge/tools.js`) - Lead lookup, KB search, Nylas calendar, booking, logging with rich metadata
   - **Number Formatter** - Converts numbers to words (prevents TTS pitch issues)
   - **SignalWire Client** - REST API for outbound call placement
@@ -136,21 +139,24 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
   - ✅ **Inbound calls** - SignalWire number → LaML → WebSocket stream
   - ✅ **Outbound calls** - n8n → Bridge → SignalWire REST → Lead answers
   - ✅ **Custom prompts from n8n** - Different Barbara per use case
-  - ✅ **Knowledge base search** - 80 chunks via vector similarity
-  - ✅ **Nylas calendar integration** - Real availability checking, appointment booking
+  - ✅ **Knowledge base search** - Vector similarity with 20s timeout (no more timeouts!)
+  - ✅ **Nylas calendar integration** - Real availability checking, appointment booking (15s timeouts)
   - ✅ **Static prompt caching** - OpenAI caches repeated content (50% cost reduction)
   - ✅ **Production error handling** - Logging, health checks, session cleanup
   - ✅ **Deadlock prevention** - Watchdog timer auto-recovers Barbara if stuck (15s)
   - ✅ **Memory leak protection** - 30s timeout on pending audio promises
   - ✅ **Audio cutoff fix** - Awaits all audio chunks before marking response complete
-- **Tool Definitions:**
-  1. `get_lead_context` - Query lead by phone (includes last call metadata for follow-ups)
-  2. `search_knowledge` - Search reverse mortgage KB (vector store)
-  3. `check_consent_dnc` - Verify calling permissions
-  4. `update_lead_info` - Save collected data during call
-  5. `check_broker_availability` - Nylas calendar with smart slot suggestions (business hours, 2hr notice, same-day priority)
-  6. `book_appointment` - Nylas Events API + calendar_id query param + billing event
-  7. `save_interaction` - Log full conversation transcript + rich metadata (money purpose, objections, commitment points, etc.)
+  - ✅ **No token limits** (Oct 22) - Removed artificial 400 token cap that caused mid-sentence cutoffs
+  - ✅ **VAD recovery disabled** (Oct 22) - Was clearing legitimate user speech after 10s of silence
+  - ✅ **Performance tracking** (Oct 22) - Detailed timing logs for all external API calls
+- **Tool Definitions & Timeouts:**
+  1. `get_lead_context` (10s) - Query lead by phone (includes last call metadata for follow-ups)
+  2. `search_knowledge` (20s) - Search reverse mortgage KB with text-embedding-3-small (faster than ada-002)
+  3. `check_consent_dnc` (10s) - Verify calling permissions
+  4. `update_lead_info` (10s) - Save collected data during call
+  5. `check_broker_availability` (15s) - Nylas free/busy API with smart slot suggestions (business hours, 2hr notice, same-day priority)
+  6. `book_appointment` (15s) - Nylas Events API (uses email as grant ID) + billing event
+  7. `save_interaction` (10s) - Log full conversation transcript + rich metadata (money purpose, objections, commitment points, etc.)
 - **Rich Metadata Capture:**
   - Money purpose, specific needs, amount needed, timeline
   - Objections raised, questions asked, key details
@@ -180,14 +186,23 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
   - Memory leak protection (30s timeout on audio promises)
   - Watchdog timer (15s auto-recovery from stuck speaking flag)
   - Audio cutoff fix (await all chunks before response.audio.done)
+- **Critical Fixes (Oct 22):**
+  - **Nylas appointment booking** - Fixed grant ID (email instead of UUID), fixing all 404 errors
+  - **Token limit removed** - Changed from 400 to 'inf' (was cutting Barbara off mid-sentence)
+  - **VAD recovery disabled** - Was deleting legitimate user speech ("hello hello" attempts)
+  - **Tool timeouts extended** - 20s for KB search, 15s for Nylas API calls (prevents timeouts)
+  - **PromptLayer timestamps** - Fixed format (Unix seconds, not ISO strings)
+  - **Performance tracking** - Added detailed timing logs to all tools for optimization
 - **Documentation:**
   - `IMPLEMENTATION_SUMMARY.md` - Complete project overview
   - `VOICE_BRIDGE_DEPLOYMENT.md` - Deployment guide
   - `N8N_BARBARA_WORKFLOW.md` - n8n workflow setup
   - `MICROSITE_INSTANT_CALL_FLOW.md` - Hot lead instant calls
+  - `BARBARA_APPOINTMENT_BOOKING_FIX.md` - Nylas grant ID and timeout fixes (Oct 22)
+  - `KNOWLEDGE_BASE_TIMEOUT_FIX.md` - KB search optimization (Oct 22)
   - `bridge/README.md` - Technical details
 
-**6. Nylas Calendar Integration** ⭐ NEW OCT 20-21
+**6. Nylas Calendar Integration** ⭐ PRODUCTION OCT 20-22
 - **Provider:** Nylas v3 API - Production-grade calendar platform
 - **Features:**
   - Real-time broker availability checking via Free/Busy API
@@ -196,9 +211,9 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
   - Calendar invite sent automatically to lead's email
   - Event creation/deletion tested and working
 - **Implementation:**
-  - `check_broker_availability` tool - `/v3/grants/{grant_id}/calendars/free-busy`
-  - `book_appointment` tool - `/v3/grants/{grant_id}/events?calendar_id=primary`
-  - Nylas grant ID + email stored per broker in `brokers` table
+  - `check_broker_availability` tool - `/v3/calendars/free-busy` (15s timeout)
+  - `book_appointment` tool - `/v3/grants/{email}/events` with `calendar_id` in body (15s timeout)
+  - **CRITICAL FIX (Oct 22):** Nylas v3 uses **email as grant ID**, not UUID
   - Works with any calendar provider (Google, Outlook, iCloud, etc.)
 - **Barbara's Booking Flow:**
   1. Checks broker's real calendar for available slots
@@ -209,10 +224,11 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
   6. Books appointment in broker's calendar
   7. Sends calendar invite to lead
   8. Creates billing event in Supabase
-- **Status:** ✅ Production Ready
+- **Performance Tracking:** Detailed timing logs for Nylas API calls, DB operations
+- **Status:** ✅ Production Ready (Fixed Oct 22)
 - **Next:** OAuth flow for broker self-service (requires production Nylas account)
 
-**7. PromptLayer Integration** ⭐ NEW OCT 21
+**7. PromptLayer Integration** ⭐ PRODUCTION OCT 21-22
 - **Purpose:** Prompt management, A/B testing, analytics for rapid iteration
 - **Features:**
   - Auto-logs every conversation to PromptLayer at call end
@@ -223,8 +239,9 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 - **Implementation:**
   - `bridge/promptlayer-integration.js` - REST API wrapper
   - Integrated into `save_interaction` - logs automatically
-  - Uses PromptLayer REST API (not SDK - more control)
-- **Status:** ✅ Live - Logging all calls
+  - Uses PromptLayer REST API with correct timestamp format (Unix seconds)
+  - **CRITICAL FIX (Oct 22):** Changed from ISO strings to Unix timestamps (float)
+- **Status:** ✅ Live - Logging all calls successfully
 - **Use Case:** Helps iterate on Barbara's prompt without guessing
 
 **8. Live Call Intelligence Dashboard** ⭐ NEW OCT 21
