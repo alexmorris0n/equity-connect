@@ -689,17 +689,6 @@ class AudioBridge {
 
       console.log('🎂 Got prompt template from PromptLayer, injecting variables...');
       instructions = injectVariables(promptTemplate, variables);
-      
-      // Prepend language enforcement based on lead's preferred language
-      const language = variables.preferredLanguage || 'en';
-      const languageInstruction = language === 'en' 
-        ? 'CRITICAL INSTRUCTION: Speak ONLY in English. Never use Spanish or any other language.'
-        : language === 'es'
-        ? 'CRITICAL INSTRUCTION: Speak ONLY in Spanish. Never use English or any other language.'
-        : `CRITICAL INSTRUCTION: Speak ONLY in ${language}. Do not use any other language.`;
-      
-      instructions = `${languageInstruction}\n\n${instructions}`;
-      
       promptSource = 'promptlayer';
       
       // Store which prompt variant was used for PromptLayer logging
@@ -748,12 +737,16 @@ class AudioBridge {
       preview: instructions.substring(0, 150).replace(/\n/g, ' ')
     });
     
+    // Get language from variables (defaults to 'en')
+    const sessionLanguage = variables.preferredLanguage || 'en';
+    
     const sessionConfig = {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'alloy',  // Fallback if 'sage' not available
         instructions: instructions,  // Static prompt (cacheable)
+        language: sessionLanguage,  // Force response language (prevents Spanish bug)
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
