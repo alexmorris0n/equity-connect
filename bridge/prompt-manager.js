@@ -95,12 +95,12 @@ function determinePromptName(callContext) {
 /**
  * Get prompt from cache or PromptLayer
  */
-async function getPromptFromPromptLayer(promptName) {
+async function getPromptFromPromptLayer(promptName, variables = {}) {
   // Check cache first
   const cached = promptCache.get(promptName);
   if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
     console.log(`📋 Using cached prompt: ${promptName}`);
-    return cached.prompt;
+    return injectVariables(cached.prompt, variables);
   }
   
   try {
@@ -246,11 +246,14 @@ async function getPromptFromPromptLayer(promptName) {
       timestamp: Date.now()
     });
     
-    // Cache to disk for fallback
-    saveToDiskCache(promptName, promptText);
+    // Inject variables BEFORE returning (fixes PromptLayer validation)
+    const injectedPrompt = injectVariables(promptText, variables);
     
-    console.log(`🍰 Fetched prompt from PromptLayer: ${promptName} (${promptText.length} chars)`);
-    return promptText;
+    // Cache to disk for fallback
+    saveToDiskCache(promptName, injectedPrompt);
+    
+    console.log(`🍰 Fetched prompt from PromptLayer: ${promptName} (${injectedPrompt.length} chars)`);
+    return injectedPrompt;
     
   } catch (error) {
     console.error(`❌ Failed to fetch prompt '${promptName}' from PromptLayer:`, error.message);
@@ -278,8 +281,8 @@ async function getPromptForCall(callContext, customInstructions = null) {
   const promptName = determinePromptName(callContext);
   console.log(`📋 Selected prompt variant: ${promptName}`);
   
-  // Try to get from PromptLayer
-  let promptFromPL = await getPromptFromPromptLayer(promptName);
+  // Try to get from PromptLayer with variables injected
+  let promptFromPL = await getPromptFromPromptLayer(promptName, variables);
   
   if (promptFromPL) {
     return promptFromPL;
