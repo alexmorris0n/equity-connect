@@ -126,8 +126,17 @@ async function getPromptFromPromptLayer(promptName) {
     
     if (!result || !result.prompt_template) {
       console.warn(`⚠️ Prompt '${promptName}' returned empty from PromptLayer`);
+      console.log('   Full response:', JSON.stringify(result).substring(0, 500));
       return null;
     }
+    
+    // DEBUG: Log the full response structure
+    console.log(`🔍 DEBUG - Full PromptLayer response for ${promptName}:`, {
+      keys: Object.keys(result),
+      prompt_template_type: typeof result.prompt_template,
+      prompt_template_keys: typeof result.prompt_template === 'object' ? Object.keys(result.prompt_template) : 'N/A',
+      prompt_template_value: typeof result.prompt_template === 'string' ? result.prompt_template.substring(0, 100) : result.prompt_template
+    });
     
     // Extract prompt text from template
     let promptText = '';
@@ -135,17 +144,24 @@ async function getPromptFromPromptLayer(promptName) {
     // PromptLayer templates can be in different formats
     if (typeof result.prompt_template === 'string') {
       promptText = result.prompt_template;
-    } else if (result.prompt_template.messages) {
+    } else if (result.prompt_template && result.prompt_template.messages) {
       // Chat format - combine system + user messages
       promptText = result.prompt_template.messages
         .map(m => m.content)
         .join('\n\n');
-    } else if (result.prompt_template.prompt) {
+    } else if (result.prompt_template && result.prompt_template.prompt) {
       promptText = result.prompt_template.prompt;
+    } else if (result.prompt_template && typeof result.prompt_template === 'object') {
+      // Try to find the actual prompt text in other common fields
+      promptText = result.prompt_template.system_prompt || 
+                   result.prompt_template.template || 
+                   result.prompt_template.content || 
+                   '';
     }
     
     if (!promptText) {
       console.warn(`⚠️ Could not extract prompt text from '${promptName}'`);
+      console.warn(`   Available keys in prompt_template:`, Object.keys(result.prompt_template || {}));
       return null;
     }
     
