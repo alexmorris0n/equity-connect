@@ -506,9 +506,10 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     const startTime = Math.floor(Date.now() / 1000);
     const endTime = Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000);
     
-    // Call Nylas Free/Busy API (grant-specific endpoint)
+    // Call Nylas Free/Busy API (access token endpoint)
     // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
-    const freeBusyUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/calendars/free-busy`;
+    // When using Bearer token auth, use /v3/calendars/free-busy (not /grants/)
+    const freeBusyUrl = `${NYLAS_API_URL}/v3/calendars/free-busy`;
     const response = await fetch(freeBusyUrl, {
       method: 'POST',
       headers: {
@@ -796,7 +797,8 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     
     // Create calendar event via Nylas Events API
     // NOTE: calendar_id MUST be query parameter, not in body!
-    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events?calendar_id=primary`;
+    // When using Bearer token auth, use /v3/me/events (not /grants/)
+    const createEventUrl = `${NYLAS_API_URL}/v3/me/events?calendar_id=primary`;
     
     const eventBody = {
       title: `Reverse Mortgage Consultation - ${leadName}`,
