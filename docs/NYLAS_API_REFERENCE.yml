@@ -1,0 +1,336 @@
+openapi: 3.0.0
+info:
+  title: Nylas API Testing
+  version: 1.0.0
+servers:
+  - url: https://api.us.nylas.com
+tags:
+  - name: Calender
+  - name: Contacts
+  - name: Events
+  - name: reply message
+  - name: Draft
+paths:
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/calendars:
+    post:
+      tags:
+        - Calender
+      summary: Create a Calendar
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: updated calender test
+                description: Description of my new calendar
+                location: Location description
+                timezone: America/Los_Angeles
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    get:
+      tags:
+        - Calender
+      summary: Return All Calender
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/53871e01-4a7f-447d-bdc5-1c4e40967413/calendars/c_a2b50b2e6941a723c06a356f633739d79ec5fe45184d9ef6d2abdaaad6a7a1f2@group.calendar.google.com:
+    get:
+      tags:
+        - Calender
+      summary: Get a calender with calenderID
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_U9UMwep6eQ8FckbJ9b47IlBaNGRy1dVErF6LcxIU4ZqPCLcp3emkmYj9k5hu5UOs
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    put:
+      tags:
+        - Calender
+      summary: Update a Calender
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: Updated Calender with update api
+                description: Description of my new calendar
+                location: Location description
+                timezone: America/Los_Angeles
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_U9UMwep6eQ8FckbJ9b47IlBaNGRy1dVErF6LcxIU4ZqPCLcp3emkmYj9k5hu5UOs
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/calendars/c_f257b17bcadb0d7971204174c9174489e3bf551b08b36cbdc028d6b2a31d3fcb@group.calendar.google.com:
+    delete:
+      tags:
+        - Calender
+      summary: Delete a Calender
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/events:
+    post:
+      tags:
+        - Events
+      summary: Create a Event
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                title: Annual Philosophy Club Meeting
+                status: confirmed
+                busy: true
+                description: Come ready to talk philosophy!
+                when:
+                  time: 1700060400
+                location: New York Public Library, Cave room
+                metadata: {}
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+        - name: calendar_id
+          in: query
+          schema:
+            type: string
+          example: >-
+            c_c1f27d044c120bca0e1816da758c50ddd091a0e0b23b07b94e1d8b3c267efcb0@group.calendar.google.com
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/messages/send:
+    post:
+      tags:
+        - reply message
+      summary: >-
+        https://api.us.nylas.com/v3/grants/07494eba-7259-4494-b6da-956edae24150/messages/send
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                subject: aayush, I hope your trial is going well
+                body: hi testing the reply
+                to:
+                  - name: Dhruv from Saleshandy
+                    email: dhruv.p@connectsaleshandy.com
+                reply_to_message_id: 18d7564c38204935
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/messages/18d7564c38204935:
+    get:
+      tags:
+        - reply message
+      summary: get a message with id
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/messages:
+    get:
+      tags:
+        - reply message
+      summary: get all messages
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+        - name: limit
+          in: query
+          schema:
+            type: integer
+          example: '100'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/messages/18da34ba19cdb0ab:
+    delete:
+      tags:
+        - reply message
+      summary: delete a message
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/messages/18d3716a15330134:
+    put:
+      tags:
+        - reply message
+      summary: update message
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                starred: false
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /v3/grants/07494eba-7259-4494-b6da-956edae24150/drafts:
+    post:
+      tags:
+        - Draft
+      summary: create draft
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                subject: From Nylas
+                to:
+                  - email: dorothy@example.com
+                    name: Dorothy Vaughan
+                cc:
+                  - email: George Washington Carver
+                    name: carver@example.com
+                bcc:
+                  - email: Albert Einstein
+                    name: al@example.com
+                reply_to:
+                  - email: skwolek@example.com
+                    name: Stephanie Kwolek
+                body: >-
+                  This email was sent using the Nylas email API. Visit
+                  https://nylas.com for details.
+                tracking_options:
+                  opens: true
+                  links: true
+                  thread_replies: true
+                  label: hey just testing
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    get:
+      tags:
+        - Draft
+      summary: get all drafts
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+          example: >-
+            Bearer
+            nyk_v0_cGVJHOrZO4O8LsOQjgRnGVztXgSu6hPWJK5NWfraAHvyFlj55sZLDxQ3Ehcooo6n
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}

@@ -5,11 +5,13 @@
 1. Go to https://promptlayer.com/dashboard
 2. Click "Prompt Registry" → "Create Template"
 3. For each prompt below:
-   - Copy the **Name** (exact spelling!)
-   - Copy the **Template Content**
-   - Paste into PromptLayer
-   - Set **Provider**: OpenAI
-   - Set **Model**: gpt-4o-realtime-preview-2024-12-17 (or gpt-realtime-2025-08-28)
+   - **Name**: Copy exact name (e.g., `barbara-inbound-qualified`)
+   - **LLM Provider**: OpenAI
+   - **Model**: gpt-4o-mini (closest match to gpt-realtime-2025-08-28)
+   - **API**: Chat Completions API
+   - **System Message**: Paste the **Template Content** below
+   - **Temperature**: 1 (or 0.75 to match your system)
+   - **Maximum Completion Tokens**: 4096 (or 400 to match your system)
    - Click **Save**
    - Click **Labels** → Create label `production` → Assign to this prompt
 

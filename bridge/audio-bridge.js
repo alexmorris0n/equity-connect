@@ -120,6 +120,39 @@ class AudioBridge {
         this.drainResponseQueue();
       }
     }, 5000); // Check every 5s
+
+    // Streaming coordination and soft-finish fallback tracking
+    this.lastAudioDoneAt = 0;               // When we last saw response.audio.done
+    this.lastResponseCompletedAt = 0;       // When we last saw response.done/completed
+    this.lastTranscriptDoneAt = 0;          // When we last saw response.audio_transcript.done
+    this.softFinishTimer = null;            // Timer to soft-finalize when audio.done is missing
+  }
+
+  /**
+   * Soft finalize the current response when we detect transcript completed
+   * but never received audio.done/response.done. This prevents stalls.
+   */
+  softFinalizeCurrentResponse(reason = 'unknown') {
+    try {
+      this.speaking = false;
+      this.responseInProgress = false;
+      // Send 300ms silence tail to flush telephony buffer
+      const silenceTail = Buffer.alloc(9600).toString('base64'); // 300ms @ 16kHz PCM16
+      if (this.swSocket?.readyState === WebSocket.OPEN) {
+        this.swSocket.send(JSON.stringify({
+          event: 'media',
+          streamSid: this.callSid || 'unknown',
+          media: { payload: silenceTail }
+        }));
+      }
+      // Start idle timer from now (playback presumed finished)
+      this.lastResponseAt = Date.now();
+      console.warn(`🟠 Soft finalize executed (${reason}) - unlocking and draining queue`);
+      // Drain queued responses so next turn can proceed
+      this.drainResponseQueue();
+    } catch (err) {
+      console.error('❌ Soft finalize error:', err);
+    }
   }
 
   /**
@@ -674,6 +707,12 @@ class AudioBridge {
         break;
 
       case 'response.audio.done':
+        // Track audio completion for soft-finish coordination
+        this.lastAudioDoneAt = Date.now();
+        if (this.softFinishTimer) {
+          clearTimeout(this.softFinishTimer);
+          this.softFinishTimer = null;
+        }
         // CRITICAL: Wait for all pending audio chunks to finish sending!
         if (this.pendingAudioSends && this.pendingAudioSends.length > 0) {
           debug(`⏳ Waiting for ${this.pendingAudioSends.length} pending audio chunks to complete...`);
@@ -735,6 +774,12 @@ class AudioBridge {
       
       case 'response.done':
       case 'response.completed':
+        // Track final completion for soft-finish coordination
+        this.lastResponseCompletedAt = Date.now();
+        if (this.softFinishTimer) {
+          clearTimeout(this.softFinishTimer);
+          this.softFinishTimer = null;
+        }
         // Track when Barbara finished speaking
         // NOTE: Don't set lastResponseAt here - we set it after audio finishes playing (in audio.done handler)
         // This prevents auto-nudge from firing before Barbara's audio finishes streaming to the user
@@ -928,6 +973,23 @@ class AudioBridge {
           this.nudgedOnce = false;  // Reset nudge flag for this new question
         }
         this.currentResponseTranscript = '';  // Reset for next response
+
+        // SOFT-FINISH FALLBACK: If audio.done/response.done does not arrive shortly after transcript.done,
+        // force-finish the turn so we don't stall and miss the user's barge-in/next turn.
+        this.lastTranscriptDoneAt = Date.now();
+        if (this.softFinishTimer) {
+          clearTimeout(this.softFinishTimer);
+          this.softFinishTimer = null;
+        }
+        this.softFinishTimer = setTimeout(() => {
+          const lastHardFinish = Math.max(this.lastAudioDoneAt || 0, this.lastResponseCompletedAt || 0);
+          const sinceHardFinishMs = Date.now() - lastHardFinish;
+          const hardFinishArrived = lastHardFinish > 0 && sinceHardFinishMs < 900; // arrived within ~0.9s
+          if (!hardFinishArrived) {
+            console.warn('🟠 Soft finalize: transcript.done without timely audio.done/response.done');
+            this.softFinalizeCurrentResponse('transcript_done_timeout');
+          }
+        }, 1200); // Wait ~1.2s for audio.done to arrive
         break;
       
       case 'response.content_part.done':
@@ -1228,8 +1290,9 @@ class AudioBridge {
       await this.sendChunksInOrder(pieces);
       debug(`✅ All chunks sent completely (${audioBuffer.length} bytes)`);
     } else {
-      // Normal size - send as-is
-      this.sendSingleChunk(audioData, audioData.length);
+      // Normal size - send as-is (await to ensure send ordering and avoid drops)
+      const sizeBytes = Buffer.from(audioData, 'base64').length;
+      await this.sendSingleChunk(audioData, sizeBytes);
     }
   }
   
@@ -2256,6 +2319,13 @@ CONVERSATION GOALS (in order):
     if (this.sessionConfigTimeout) {
       clearTimeout(this.sessionConfigTimeout);
       this.sessionConfigTimeout = null;
+    }
+    
+    // Clear soft-finish timer if pending
+    if (this.softFinishTimer) {
+      clearTimeout(this.softFinishTimer);
+      this.softFinishTimer = null;
+      debug('✅ Soft-finish timer cleared');
     }
     
     // Clear heartbeat

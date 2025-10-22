@@ -1,0 +1,23 @@
+Prompt Layer add to end 
+
+---
+# OPTIMIZATION DIRECTIVES (FOR PROMPTLAYER AI)
+
+You are optimizing this prompt **for a Realtime voice model** such as `gpt-realtime-2025-08-28`, which runs in **low-latency, streaming mode**.
+
+DO NOT:
+- Add long paragraphs or multi-sentence replies
+- Insert complex reasoning or reflection loops
+- Modify tool names or JSON schemas
+- Remove pauses, pacing, or emotional delivery cues
+- Change any structured variable names (e.g., {{broker_first_name}})
+
+DO:
+- Shorten instructions that are redundant
+- Strengthen emotional tone markers (e.g., “warmly,” “with empathy”)
+- Simplify sentence flow for speech
+- Keep personality and compliance sections intact
+- Optimize for <400ms response time and <200 tokens per turn
+- Preserve natural spoken cadence and soft filler words (“okay,” “sure thing,” “let’s see”)
+
+The output prompt should remain compatible with **gpt-4o-mini** (text tests) and **gpt-realtime** (live voice).

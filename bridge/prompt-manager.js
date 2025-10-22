@@ -170,14 +170,21 @@ async function getPromptForCall(callContext, customInstructions = null) {
   console.log(`📋 Selected prompt variant: ${promptName}`);
   
   // Try to get from PromptLayer
-  const promptFromPL = await getPromptFromPromptLayer(promptName);
+  let promptFromPL = await getPromptFromPromptLayer(promptName);
+  
+  if (!promptFromPL) {
+    if (promptName !== 'barbara-fallback') {
+      console.warn(`⚠️ Prompt '${promptName}' missing in PromptLayer - trying 'barbara-fallback'`);
+      promptFromPL = await getPromptFromPromptLayer('barbara-fallback');
+    }
+  }
   
   if (promptFromPL) {
     return promptFromPL;
   }
   
   // Fallback to local file
-  console.log('⚠️ PromptLayer unavailable, using local fallback');
+  console.log('⚠️ PromptLayer unavailable or prompt missing, using local fallback');
   return loadLocalFallbackPrompt();
 }
 
