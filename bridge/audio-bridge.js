@@ -2403,7 +2403,7 @@ CONVERSATION GOALS (in order):
           messages: this.conversationTranscript.length
         });
         
-        await executeTool('save_interaction', {
+        const saveResult = await executeTool('save_interaction', {
           lead_id: this.callContext.lead_id,
           broker_id: this.callContext.broker_id,
           duration_seconds: durationSeconds,
@@ -2414,6 +2414,80 @@ CONVERSATION GOALS (in order):
         });
         
         console.log('✅ Interaction saved and logged to PromptLayer');
+        
+        // Send comprehensive outcome data back to PromptLayer for optimization
+        const interactionId = saveResult?.interaction_id;
+        if (interactionId) {
+          try {
+            const { initPromptLayer } = require('./promptlayer-integration');
+            const promptLayer = initPromptLayer();
+            
+            // Calculate score based on outcome (0-100 scale)
+            let score = 50; // Default neutral
+            let success = false;
+            let comment = '';
+            
+            if (outcome === 'appointment_booked') {
+              score = 100;
+              success = true;
+              comment = 'Appointment booked successfully';
+            } else if (outcome === 'positive' || outcome === 'follow_up_needed') {
+              score = 75;
+              success = true;
+              comment = 'Positive engagement, follow-up needed';
+            } else if (outcome === 'neutral') {
+              score = 50;
+              success = false;
+              comment = 'Neutral conversation, no clear outcome';
+            } else if (outcome === 'not_interested') {
+              score = 25;
+              success = false;
+              comment = 'Lead not interested';
+            } else if (outcome === 'negative') {
+              score = 0;
+              success = false;
+              comment = 'Negative outcome or hang-up';
+            }
+            
+            await promptLayer.logScore({
+              callId: interactionId,
+              score: score,
+              outcome: outcome,
+              metadata: {
+                // Outcome tracking
+                success: success,
+                comment: comment,
+                
+                // Call metrics
+                duration_seconds: durationSeconds,
+                num_turns: this.conversationTranscript.length,
+                conversation_duration_ms: durationSeconds * 1000,
+                
+                // Prompt tracking
+                prompt_version: this.promptName,
+                prompt_source: this.promptSource,
+                
+                // Quality indicators
+                interruptions: metadata.interruptions || 0,
+                tool_calls_count: metadata.tool_calls_made?.length || 0,
+                tool_calls: metadata.tool_calls_made || [],
+                
+                // Lead qualification data
+                money_purpose: metadata.money_purpose,
+                timeline: metadata.timeline,
+                appointment_scheduled: metadata.appointment_scheduled || false,
+                
+                // Contact verification
+                email_verified: metadata.email_verified || false,
+                phone_verified: metadata.phone_verified || false
+              }
+            });
+            
+            console.log(`✅ Score sent to PromptLayer: ${score}/100 (${outcome}) - ${comment}`);
+          } catch (scoreErr) {
+            console.warn('⚠️ Failed to log score to PromptLayer (non-critical):', scoreErr.message);
+          }
+        }
         
       } catch (err) {
         console.error('❌ Failed to save interaction:', err.message);
