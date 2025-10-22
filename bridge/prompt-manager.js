@@ -280,14 +280,8 @@ async function getPromptForCall(callContext, customInstructions = null) {
   
   // TEMPORARY: Skip PromptLayer to avoid validation errors
   console.log('⚠️ TEMPORARY: Skipping PromptLayer due to validation issues');
-  // let promptFromPL = await getPromptFromPromptLayer(promptName);
-  // 
-  // if (promptFromPL) {
-  //   return promptFromPL;
-  // }
   
-  // PromptLayer failed - try disk cache
-  console.warn(`⚠️ PromptLayer unavailable for '${promptName}', trying disk cache...`);
+  // Try disk cache first
   const cachedPrompt = loadFromDiskCache(promptName);
   
   if (cachedPrompt) {
