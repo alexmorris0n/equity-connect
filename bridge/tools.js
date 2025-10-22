@@ -796,9 +796,8 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     const endTime = startTime + 3600; // 1 hour appointment
     
     // Create calendar event via Nylas Events API
-    // NOTE: calendar_id MUST be query parameter, not in body!
-    // When using Bearer token auth, use /v3/me/events (not /grants/)
-    const createEventUrl = `${NYLAS_API_URL}/v3/me/events?calendar_id=primary`;
+    // Use grant-specific endpoint for proper calendar access
+    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events`;
     
     const eventBody = {
       title: `Reverse Mortgage Consultation - ${leadName}`,
@@ -821,6 +820,7 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
           email: broker.email
         }
       ],
+      calendar_id: 'primary',  // Specify which calendar to create event in
       busy: true
     };
     
@@ -844,7 +844,9 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('❌ Nylas create event failed:', response.status, errorText);
-      return { success: false, error: 'Failed to create calendar event' };
+      console.error('❌ Request URL:', createEventUrl);
+      console.error('❌ Request body:', JSON.stringify(eventBody, null, 2));
+      return { success: false, error: `Failed to create calendar event: ${response.status} - ${errorText}` };
     }
     
     const eventData = await response.json();

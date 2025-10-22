@@ -2193,7 +2193,7 @@ CONVERSATION GOALS (in order):
   /**
    * Wrap promise with timeout to prevent stalls
    */
-  withTimeout(promise, ms = 2500) {
+  withTimeout(promise, ms = 10000) {
     return Promise.race([
       promise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('Tool execution timeout')), ms))
@@ -2209,6 +2209,13 @@ CONVERSATION GOALS (in order):
     console.log('🔧 Tool called:', name, 'call_id:', call_id);
     console.log('🔧 Tool args (raw):', argsJson);
     this.logger.info({ function: name, call_id }, '🔧 Tool called');
+    
+    // Verify socket is still connected before proceeding
+    if (!this.openaiSocket || this.openaiSocket.readyState !== WebSocket.OPEN) {
+      console.error('❌ Cannot execute tool - OpenAI socket not connected (state:', this.openaiSocket?.readyState, ')');
+      this.logger.error({ function: name, socketState: this.openaiSocket?.readyState }, '❌ Tool call aborted - socket closed');
+      return;
+    }
     
     try {
       // Parse args safely
@@ -2227,13 +2234,20 @@ CONVERSATION GOALS (in order):
         args.metadata.prompt_source = this.promptSource || 'unknown';
       }
       
-      // Execute with timeout to prevent stalls
-      console.log('⏱️ Executing tool:', name, 'with timeout...');
+      // Execute with timeout to prevent stalls (10s timeout for complex tools like booking)
+      console.log('⏱️ Executing tool:', name, 'with 10s timeout...');
       const result = await this.withTimeout(executeTool(name, args));
       
       console.log('✅ Tool executed successfully:', name);
       console.log('✅ Tool result:', JSON.stringify(result).substring(0, 200));
       this.logger.info({ function: name, result }, '✅ Tool executed');
+      
+      // Verify socket is still open before sending result
+      if (this.openaiSocket.readyState !== WebSocket.OPEN) {
+        console.error('❌ Socket closed during tool execution - cannot send result');
+        this.logger.error({ function: name, socketState: this.openaiSocket.readyState }, '❌ Socket closed during tool execution');
+        return;
+      }
       
       // Send result back to OpenAI
       this.openaiSocket.send(JSON.stringify({
@@ -2275,21 +2289,33 @@ CONVERSATION GOALS (in order):
           fallbackMessage = 'I\'m having a little trouble with that right now, but I can still help you!';
       }
       
-      // Send graceful error message to OpenAI
-      this.openaiSocket.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'function_call_output',
-          call_id,
-          output: JSON.stringify({ 
-            error: err.message,
-            fallback_message: fallbackMessage
-          })
-        }
-      }));
+      // Verify socket is still open before sending error
+      if (this.openaiSocket.readyState !== WebSocket.OPEN) {
+        console.error('❌ Socket closed during error handling - cannot send fallback');
+        this.logger.error({ function: name, socketState: this.openaiSocket.readyState }, '❌ Socket closed during error handling');
+        return;
+      }
       
-      // Continue response so Barbara can speak the fallback (use queue)
-      this.enqueueResponse({});
+      // Send graceful error message to OpenAI
+      try {
+        this.openaiSocket.send(JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            call_id,
+            output: JSON.stringify({ 
+              error: err.message,
+              fallback_message: fallbackMessage
+            })
+          }
+        }));
+        
+        // Continue response so Barbara can speak the fallback (use queue)
+        this.enqueueResponse({});
+      } catch (sendErr) {
+        console.error('❌ Failed to send error response to OpenAI:', sendErr);
+        this.logger.error({ err: sendErr, function: name }, '❌ Failed to send error response');
+      }
     }
   }
 
