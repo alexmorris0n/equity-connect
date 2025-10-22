@@ -620,42 +620,98 @@ class AudioBridge {
     debug('🔵 configureSession() called');
     
     let instructions;
+    let promptSource = 'unknown';
+
+    // Step 1: Get lead context and build variables
+    let variables = {};
+    let promptCallContext = {
+      context: this.callContext.context || 'inbound',
+      lead_id: this.callContext.lead_id,
+      from_phone: this.callerPhone,
+      to_phone: this.callContext.to_phone,
+      has_property_data: false,
+      is_qualified: false
+    };
 
     try {
       const promptBuildResult = await this.lookupAndBuildPrompt();
 
-      if (!promptBuildResult || !promptBuildResult.variables) {
-        throw new Error('lookupAndBuildPrompt returned empty result');
+      if (promptBuildResult && promptBuildResult.variables) {
+        variables = promptBuildResult.variables;
+        
+        const { propertyValueNumber, estimatedEquityNumber, qualifiedFlag } = promptBuildResult;
+        const hasPropertyData = (propertyValueNumber !== null && !Number.isNaN(propertyValueNumber))
+          || (estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber));
+
+        promptCallContext = {
+          context: this.callContext.context || 'inbound',
+          lead_id: promptBuildResult.lead_id || this.callContext.lead_id,
+          from_phone: this.callerPhone,
+          to_phone: this.callContext.to_phone,
+          has_property_data: hasPropertyData,
+          is_qualified: qualifiedFlag
+        };
+        
+        console.log('✅ Lead context retrieved:', {
+          lead_id: promptCallContext.lead_id,
+          has_data: hasPropertyData,
+          qualified: qualifiedFlag,
+          variables_count: Object.keys(variables).length
+        });
+      } else {
+        console.warn('⚠️ lookupAndBuildPrompt returned empty - using minimal context');
+        variables = { callContext: 'inbound' };
       }
-
-      const { prompt, variables, propertyValueNumber, estimatedEquityNumber, mortgageBalanceNumber, qualifiedFlag } = promptBuildResult;
-
-      const hasPropertyData = (propertyValueNumber !== null && !Number.isNaN(propertyValueNumber))
-        || (estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber));
-
-      const promptCallContext = {
-        context: this.callContext.context || 'inbound',
-        lead_id: promptBuildResult.lead_id || this.callContext.lead_id,
-        from_phone: this.callerPhone,
-        to_phone: this.callContext.to_phone,
-        has_property_data: hasPropertyData,
-        is_qualified: qualifiedFlag
-      };
-
-      const promptTemplate = await getPromptForCall(
-        promptCallContext,
-        this.callContext.instructions
-      );
-
-      instructions = injectVariables(promptTemplate, variables);
-
     } catch (err) {
-      console.warn('⚠️ configureSession: lookupAndBuildPrompt failed, using minimal fallback. Reason:', err.message);
-      const fallbackPrompt = loadPromptSafe();
-      instructions = fallbackPrompt;
+      console.error('❌ Failed to lookup lead context:', err.message);
+      console.warn('⚠️ Continuing with minimal variables');
+      variables = { callContext: 'inbound' };
     }
 
-    debug('🔵 Final instructions length:', instructions.length);
+    // Step 2: Try to get prompt from PromptLayer
+    try {
+      console.log('🔍 Fetching prompt from PromptLayer with context:', promptCallContext);
+      
+      const promptTemplate = await getPromptForCall(
+        promptCallContext,
+        this.callContext.instructions  // Custom instructions override everything
+      );
+
+      if (!promptTemplate || promptTemplate.length === 0) {
+        throw new Error('PromptLayer returned empty prompt');
+      }
+
+      console.log('✅ Got prompt template from PromptLayer, injecting variables...');
+      instructions = injectVariables(promptTemplate, variables);
+      promptSource = 'promptlayer';
+      
+      console.log(`✅ Successfully built prompt from PromptLayer (${instructions.length} chars)`);
+      
+    } catch (promptLayerError) {
+      // PromptLayer failed - fall back to local file
+      console.error('❌ PromptLayer fetch failed:', promptLayerError.message);
+      console.warn('⚠️ Falling back to local prompt file');
+      
+      try {
+        const fallbackPrompt = loadPromptSafe();
+        instructions = injectVariables(fallbackPrompt, variables);
+        promptSource = 'local_fallback';
+        console.log(`✅ Using local fallback prompt (${instructions.length} chars)`);
+      } catch (fallbackError) {
+        // Even fallback failed - use absolute minimal prompt
+        console.error('❌ Even fallback failed:', fallbackError.message);
+        instructions = "You are Barbara, a warm scheduling assistant. Keep responses short and friendly.";
+        promptSource = 'minimal_emergency';
+        console.warn('⚠️ Using emergency minimal prompt');
+      }
+    }
+
+    // Log final prompt details
+    console.log('📋 Final prompt details:', {
+      source: promptSource,
+      length: instructions.length,
+      preview: instructions.substring(0, 150).replace(/\n/g, ' ')
+    });
     
     const sessionConfig = {
       type: 'session.update',
@@ -689,11 +745,10 @@ class AudioBridge {
     
     debug('✅ Session configuration sent!');
     
-    const hasCustomInstructions = !!this.callContext.instructions;
     this.logger.info({ 
-      customInstructions: hasCustomInstructions,
+      promptSource,
       instructionsLength: instructions.length 
-    }, '✅ OpenAI session configured with cacheable prompt');
+    }, '✅ OpenAI session configured');
   }
 
   /**

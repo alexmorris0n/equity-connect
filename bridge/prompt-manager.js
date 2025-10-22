@@ -150,34 +150,60 @@ async function getPromptFromPromptLayer(promptName) {
     else if (typeof result.prompt_template === 'string') {
       promptText = result.prompt_template;
     }
-    // Format 3: Chat format - combine messages
+    // Format 3: Chat format - extract ONLY system message for Realtime API
     else if (result.prompt_template?.messages && Array.isArray(result.prompt_template.messages)) {
       console.log(`🔍 DEBUG - Extracting from messages array (${result.prompt_template.messages.length} messages)`);
-      promptText = result.prompt_template.messages
-        .map((m, i) => {
-          // Message content can be:
-          // 1. A string
-          // 2. An object with .text property
-          // 3. An array of objects with .text property (OpenAI format)
-          let content = '';
-          
-          if (typeof m.content === 'string') {
-            content = m.content;
-          } else if (Array.isArray(m.content)) {
-            // Content is an array of text blocks
-            content = m.content
-              .filter(c => c.type === 'text' || typeof c === 'string')
-              .map(c => typeof c === 'string' ? c : c.text)
-              .join('\n');
-          } else if (typeof m.content === 'object' && m.content) {
-            // If it's an object, try to extract text
-            content = m.content.text || JSON.stringify(m.content);
-          }
-          
-          console.log(`   Message ${i} (role: ${m.role}): ${content.substring(0, 50)}...`);
-          return content;
-        })
-        .join('\n\n');
+      
+      // For Realtime API, we only want the system message
+      // User messages with {{user_question}} are for chat completion API, not realtime
+      const systemMessages = result.prompt_template.messages.filter(m => m.role === 'system');
+      
+      if (systemMessages.length === 0) {
+        console.warn('⚠️ No system message found in PromptLayer template - falling back to concatenating all messages');
+        // Fallback: concatenate all messages
+        promptText = result.prompt_template.messages
+          .map((m, i) => {
+            let content = '';
+            
+            if (typeof m.content === 'string') {
+              content = m.content;
+            } else if (Array.isArray(m.content)) {
+              content = m.content
+                .filter(c => c.type === 'text' || typeof c === 'string')
+                .map(c => typeof c === 'string' ? c : c.text)
+                .join('\n');
+            } else if (typeof m.content === 'object' && m.content) {
+              content = m.content.text || JSON.stringify(m.content);
+            }
+            
+            console.log(`   Message ${i} (role: ${m.role}): ${content.substring(0, 50)}...`);
+            return content;
+          })
+          .join('\n\n');
+      } else {
+        // Extract only system messages
+        promptText = systemMessages
+          .map((m, i) => {
+            let content = '';
+            
+            if (typeof m.content === 'string') {
+              content = m.content;
+            } else if (Array.isArray(m.content)) {
+              content = m.content
+                .filter(c => c.type === 'text' || typeof c === 'string')
+                .map(c => typeof c === 'string' ? c : c.text)
+                .join('\n');
+            } else if (typeof m.content === 'object' && m.content) {
+              content = m.content.text || JSON.stringify(m.content);
+            }
+            
+            console.log(`   System Message ${i}: ${content.substring(0, 50)}...`);
+            return content;
+          })
+          .join('\n\n');
+        
+        console.log(`✅ Extracted ${systemMessages.length} system message(s), ignoring ${result.prompt_template.messages.length - systemMessages.length} user/assistant messages`);
+      }
     }
     // Format 4: Plain prompt field
     else if (result.prompt_template?.prompt) {
@@ -260,30 +286,56 @@ async function getPromptForCall(callContext, customInstructions = null) {
 /**
  * Inject variables into prompt template
  * Supports Handlebars-style placeholders: {{variableName}}
+ * 
+ * THIS FUNCTION MUST NEVER THROW - it's critical for resilience
  */
 function injectVariables(promptTemplate, variables) {
-  let prompt = promptTemplate;
-  
-  // Replace all {{variableName}} placeholders
-  Object.keys(variables).forEach(key => {
-    const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    const value = variables[key] || '';
-    prompt = prompt.replace(placeholder, value);
-  });
-  
-  // Handle conditionals: {{#if variable}}...{{/if}}
-  const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
-  prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
-    return variables[varName] ? content : '';
-  });
-  
-  // Handle conditionals with else: {{#if variable}}...{{else}}...{{/if}}
-  const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
-  prompt = prompt.replace(conditionalElseRegex, (match, varName, ifContent, elseContent) => {
-    return variables[varName] ? ifContent : elseContent;
-  });
-  
-  return prompt;
+  try {
+    let prompt = promptTemplate;
+    
+    // Add default values for common PromptLayer variables that might be missing
+    const enrichedVariables = {
+      ...variables,
+      user_question: variables.user_question || '',  // Remove this placeholder if present
+      user: variables.user || variables.leadFirstName || '',
+      context: variables.context || variables.callContext || 'inbound'
+    };
+    
+    // Replace all {{variableName}} placeholders
+    // If a variable is missing, replace with empty string (don't break the prompt)
+    Object.keys(enrichedVariables).forEach(key => {
+      const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      const value = enrichedVariables[key] || '';
+      prompt = prompt.replace(placeholder, value);
+    });
+    
+    // Also replace any remaining {{variables}} that weren't in enrichedVariables
+    // This ensures we don't send unfilled placeholders to OpenAI
+    prompt = prompt.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+      console.log(`⚠️ Variable {{${varName}}} not provided - replacing with empty string`);
+      return '';
+    });
+    
+    // Handle conditionals: {{#if variable}}...{{/if}}
+    const conditionalRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+    prompt = prompt.replace(conditionalRegex, (match, varName, content) => {
+      return enrichedVariables[varName] ? content : '';
+    });
+    
+    // Handle conditionals with else: {{#if variable}}...{{else}}...{{/if}}
+    const conditionalElseRegex = /\{\{#if (\w+)\}\}([\s\S]*?)\{\{else\}\}([\s\S]*?)\{\{\/if\}\}/g;
+    prompt = prompt.replace(conditionalElseRegex, (match, varName, ifContent, elseContent) => {
+      return enrichedVariables[varName] ? ifContent : elseContent;
+    });
+    
+    return prompt;
+    
+  } catch (error) {
+    // If variable injection somehow fails, return the template as-is
+    // Better to have a prompt with unfilled variables than no prompt at all
+    console.error('❌ Variable injection failed (using template as-is):', error.message);
+    return promptTemplate;
+  }
 }
 
 /**
