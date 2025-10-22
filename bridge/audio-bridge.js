@@ -2098,6 +2098,13 @@ CONVERSATION GOALS (in order):
         // Store lead ID and phone for tool calls
         this.callContext.lead_id = lead.id;
         this.callContext.caller_phone = callerPhone;
+        
+        // CRITICAL: Add IDs to context message for tool calls
+        contextMessage += `\n🔧 TOOL CALL IDs (use these exact values when booking appointments):\n`;
+        contextMessage += `- Lead ID: ${lead.id}\n`;
+        if (this.callContext.broker_id) {
+          contextMessage += `- Broker ID: ${this.callContext.broker_id}\n`;
+        }
       } else {
         // NEW CALLER - Create minimal lead record and use SignalWire number's broker
         contextMessage += `Caller Type: NEW CALLER (not in database)\n\n`;
@@ -2129,6 +2136,13 @@ CONVERSATION GOALS (in order):
         // Store phone for creating lead record later
         this.callContext.caller_phone = callerPhone;
         this.callContext.is_new_lead = true;
+        
+        // CRITICAL: Add IDs to context message for tool calls (even for new leads)
+        contextMessage += `\n🔧 TOOL CALL IDs (use these exact values when booking appointments):\n`;
+        contextMessage += `- Lead ID: Will be created during call (use phone number for now: ${callerPhone})\n`;
+        if (assignedBrokerId) {
+          contextMessage += `- Broker ID: ${assignedBrokerId}\n`;
+        }
       }
       
       // Inject as silent system message
