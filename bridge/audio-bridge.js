@@ -1399,7 +1399,7 @@ class AudioBridge {
     
     // Decode base64 to check actual size
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 16000; // Max bytes per chunk to prevent buffer overflow
+    const maxChunkSize = 4800; // 100ms of audio @ 24kHz PCM16 (2 bytes/sample) = smoother playback
     
     // If chunk is larger than max, split it into smaller pieces and send IN ORDER
     if (audioBuffer.length > maxChunkSize) {
@@ -1447,12 +1447,12 @@ class AudioBridge {
       const sendFn = async () => {
         if (this.swSocket.readyState === WebSocket.OPEN) {
           try {
-            // CRITICAL: Check buffer before sending to prevent overflow (WebSocket best practice)
-            // If buffer is too full, wait for it to drain
-            while (this.swSocket.bufferedAmount > 16000) {
-              debug(`⏸️ WebSocket buffer full (${this.swSocket.bufferedAmount} bytes), waiting...`);
-              await new Promise(r => setTimeout(r, 50));
-            }
+          // CRITICAL: Check buffer before sending to prevent overflow (WebSocket best practice)
+          // If buffer is too full, wait for it to drain (but don't create long gaps)
+          if (this.swSocket.bufferedAmount > 9600) {  // 200ms @ 24kHz PCM16
+            debug(`⏸️ WebSocket buffer high (${this.swSocket.bufferedAmount} bytes), brief wait...`);
+            await new Promise(r => setTimeout(r, 10));  // Shorter wait to prevent gaps
+          }
             
             this.swSocket.send(JSON.stringify({
               event: 'media',
@@ -1495,9 +1495,10 @@ class AudioBridge {
       if (this.swSocket.readyState === WebSocket.OPEN) {
         try {
           // CRITICAL: Check buffer before sending to prevent overflow (WebSocket best practice)
-          while (this.swSocket.bufferedAmount > 16000) {
-            debug(`⏸️ WebSocket buffer full (${this.swSocket.bufferedAmount} bytes), waiting...`);
-            await new Promise(r => setTimeout(r, 50));
+          // Brief check, no long waits that cause gaps
+          if (this.swSocket.bufferedAmount > 9600) {  // 200ms @ 24kHz PCM16
+            debug(`⏸️ WebSocket buffer high (${this.swSocket.bufferedAmount} bytes), brief wait...`);
+            await new Promise(r => setTimeout(r, 10));  // Shorter wait
           }
           
           this.swSocket.send(JSON.stringify({
