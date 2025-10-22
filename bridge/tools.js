@@ -802,10 +802,11 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     
     // Create calendar event via Nylas Events API
     // NOTE: In Nylas v3, grant ID is the broker's email address
-    // calendar_id MUST be a query parameter, not in the body (Nylas API requirement)
-    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/events?calendar_id=primary`;
+    // calendar_id MUST be in the body, not as a query parameter (Nylas API v3 requirement)
+    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/events`;
     
     const eventBody = {
+      calendar_id: "primary",  // Required in body for Nylas v3
       title: `Reverse Mortgage Consultation - ${leadName}`,
       description: [
         `Lead: ${leadName}`,
