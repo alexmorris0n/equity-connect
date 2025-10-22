@@ -1,15 +1,30 @@
 /**
- * Generate embeddings for knowledge base content
+ * Generate embeddings for knowledge base content using Vertex AI
  * This script can be run in production (Northflank) to populate embeddings
+ * Uses Vertex AI text-embedding-005 (768 dimensions) for optimal performance
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
+const { GoogleAuth } = require('google-auth-library');
+
+// Initialize Google Auth for Vertex AI
+let vertexAuthClient = null;
+async function getVertexAIToken() {
+  if (!vertexAuthClient) {
+    const auth = new GoogleAuth({
+      scopes: 'https://www.googleapis.com/auth/cloud-platform'
+    });
+    vertexAuthClient = await auth.getClient();
+  }
+  const token = await vertexAuthClient.getAccessToken();
+  return token.token;
+}
 
 async function generateKnowledgeBaseEmbeddings() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const projectId = process.env.GOOGLE_PROJECT_ID || 'barbara-475319';
   
   if (!supabaseUrl || !supabaseKey) {
     console.error('❌ Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
@@ -17,10 +32,7 @@ async function generateKnowledgeBaseEmbeddings() {
     return;
   }
   
-  if (!openaiKey) {
-    console.error('❌ Missing OPENAI_API_KEY');
-    return;
-  }
+  console.log(`✅ Using Vertex AI text-embedding-005 (Project: ${projectId})`);
   
   const supabase = createClient(supabaseUrl, supabaseKey);
   
@@ -55,28 +67,33 @@ async function generateKnowledgeBaseEmbeddings() {
       console.log(`${i + 1}/${content.length} Processing: ${preview}...`);
       
       try {
-        // Get embedding from OpenAI
-        const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: item.content
-          })
-        });
+        // Get embedding from Vertex AI text-embedding-005
+        const location = 'us-central1';
+        const model = 'text-embedding-005';
+        
+        const embeddingResponse = await fetch(
+          `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${await getVertexAIToken()}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              instances: [{ content: item.content }]
+            })
+          }
+        );
         
         if (!embeddingResponse.ok) {
           const errorText = await embeddingResponse.text();
-          console.error(`  ❌ OpenAI API failed (${embeddingResponse.status}):`, errorText);
+          console.error(`  ❌ Vertex AI API failed (${embeddingResponse.status}):`, errorText);
           failCount++;
           continue;
         }
         
         const embeddingData = await embeddingResponse.json();
-        const embedding = embeddingData.data[0].embedding;
+        const embedding = embeddingData.predictions[0].embeddings.values;
         
         // Update the record with the embedding
         const { error: updateError } = await supabase
@@ -115,18 +132,23 @@ async function generateKnowledgeBaseEmbeddings() {
       const testQuestion = "What if they still have a mortgage?";
       console.log(`Question: "${testQuestion}"`);
       
-      // Get embedding for test question
-      const questionEmbeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'text-embedding-3-small',
-          input: testQuestion
-        })
-      });
+      // Get embedding for test question from Vertex AI
+      const location = 'us-central1';
+      const model = 'text-embedding-005';
+      
+      const questionEmbeddingResponse = await fetch(
+        `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${await getVertexAIToken()}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            instances: [{ content: testQuestion }]
+          })
+        }
+      );
       
       if (!questionEmbeddingResponse.ok) {
         console.error('❌ Failed to get question embedding');
@@ -134,7 +156,7 @@ async function generateKnowledgeBaseEmbeddings() {
       }
       
       const questionEmbeddingData = await questionEmbeddingResponse.json();
-      const questionEmbedding = questionEmbeddingData.data[0].embedding;
+      const questionEmbedding = questionEmbeddingData.predictions[0].embeddings.values;
       
       // Search knowledge base
       const { data: searchResults, error: searchError } = await supabase.rpc('find_similar_content', {

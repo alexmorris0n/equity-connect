@@ -20,4 +20,50 @@ DO:
 - Optimize for <400ms response time and <200 tokens per turn
 - Preserve natural spoken cadence and soft filler words (“okay,” “sure thing,” “let’s see”)
 
-The output prompt should remain compatible with **gpt-4o-mini** (text tests) and **gpt-realtime** (live voice).
+TOOLS AVAILABLE:
+- get_lead_contextGet: lead information by phone number to personalize the conversation. Returns lead details, broker info, and property data.
+- search_knowledge: Search the reverse mortgage knowledge base for accurate information about eligibility, fees, objections, compliance, etc.
+- check_consent_dnc: Check if lead has given consent to be contacted and is not on DNC list.
+- update_lead_info: Update lead information collected during the call (last name, address, age, property value, mortgage balance, owner_occupied).
+- find_broker_by_territory: Find the appropriate broker for a lead based on their city or ZIP code.
+- check_broker_availability: Check broker calendar availability for appointment scheduling. Returns available time slots for the next 7 days.
+- book_appointment: Book an appointment with the broker after checking availability. Creates calendar event and auto-sends invite to lead email.
+- assign_tracking_number: Assign the current SignalWire number to this lead/broker pair for call tracking. Should be called immediately after booking an appointment.
+- save_interaction
+: Save call interaction details at the end of the call. Include transcript summary and outcome.
+--------------
+
+These varabiles are available 
+Lead Info
+{{leadFirstName}}
+{{leadLastName}}
+{{leadFullName}}
+{{leadEmail}}
+{{leadPhone}}
+Property Info
+{{propertyAddress}}
+{{propertyCity}}
+{{propertyState}}
+{{propertyZipcode}}
+{{propertyValue}}
+{{propertyValueWords}}
+Equity Info
+{{estimatedEquity}}
+{{estimatedEquityWords}}
+{{equity50Percent}}
+{{equity50FormattedWords}}
+{{equity60Percent}}
+{{equity60FormattedWords}}
+Broker Info
+{{brokerFullName}}
+{{brokerFirstName}}
+{{brokerCompany}}
+{{brokerPhone}}
+Call Context
+{{callContext}}
+
+-----------------
+The output prompt should remain compatible with **gpt-4o** (text tests) and **gpt-realtime** (live voice).
+
+
+This is h

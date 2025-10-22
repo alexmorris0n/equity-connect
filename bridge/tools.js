@@ -12,9 +12,23 @@
 const { createClient } = require('@supabase/supabase-js');
 const { formatCallContext } = require('./utils/number-formatter');
 const { initPromptLayer } = require('./promptlayer-integration');
+const { GoogleAuth } = require('google-auth-library');
 
 // Initialize Supabase client
 let supabase = null;
+
+// Initialize Google Auth for Vertex AI
+let vertexAuthClient = null;
+async function getVertexAIToken() {
+  if (!vertexAuthClient) {
+    const auth = new GoogleAuth({
+      scopes: 'https://www.googleapis.com/auth/cloud-platform'
+    });
+    vertexAuthClient = await auth.getClient();
+  }
+  const token = await vertexAuthClient.getAccessToken();
+  return token.token;
+}
 
 function initSupabase() {
   if (!supabase) {
@@ -1147,30 +1161,37 @@ async function searchKnowledge({ question }) {
     // Performance tracking
     console.log('🔍 Starting knowledge search:', question);
     
-    // Get embedding for the question from OpenAI
+    // Get embedding for the question from Vertex AI
     const fetch = require('node-fetch');
     const embeddingStartTime = Date.now();
     
-    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'text-embedding-3-small',  // Faster than ada-002, cheaper, similar quality
-        input: question
-      })
-    });
+    // Use Vertex AI text-embedding-005 (768 dimensions, faster, better quality)
+    const projectId = process.env.GOOGLE_PROJECT_ID || 'barbara-475319';
+    const location = 'us-central1';
+    const model = 'text-embedding-005';
+    
+    const embeddingResponse = await fetch(
+      `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${await getVertexAIToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          instances: [{ content: question }]
+        })
+      }
+    );
     
     if (!embeddingResponse.ok) {
       const errorText = await embeddingResponse.text();
-      console.error('❌ OpenAI embeddings failed:', embeddingResponse.status, errorText);
-      throw new Error(`OpenAI embeddings failed: ${embeddingResponse.status}`);
+      console.error('❌ Vertex AI embeddings failed:', embeddingResponse.status, errorText);
+      throw new Error(`Vertex AI embeddings failed: ${embeddingResponse.status}`);
     }
     
     const embeddingData = await embeddingResponse.json();
-    const queryEmbedding = embeddingData.data[0].embedding;
+    const queryEmbedding = embeddingData.predictions[0].embeddings.values;
     const embeddingTime = Date.now() - embeddingStartTime;
     console.log(`✅ Embedding generated in ${embeddingTime}ms`);
     
