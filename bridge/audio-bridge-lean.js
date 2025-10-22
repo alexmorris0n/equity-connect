@@ -828,8 +828,8 @@ class AudioBridge {
             audio: audioPayload
           }));
         } else if (!audioPayload && this._inputAudioCount < 10) {
-          // Warn on missing payload (first 10 frames only)
-          console.warn('⚠️ Media event missing audio payload:', JSON.stringify(msg).substring(0, 200));
+          // Warn on unrecognized structure (first 10 frames only) - means SignalWire changed format again
+          console.warn('⚠️ Media event with UNRECOGNIZED structure (audio in new location?):', JSON.stringify(msg).substring(0, 200));
         }
         break;
 
