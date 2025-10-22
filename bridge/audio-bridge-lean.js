@@ -169,10 +169,18 @@ class AudioBridge {
   setupSignalWireHandlers() {
     this.swSocket.on('message', (message) => {
       try {
+        // Check if binary frame (Buffer) vs JSON string
+        if (Buffer.isBuffer(message) && message.length > 0 && message[0] !== 0x7b) {
+          console.warn('⚠️ SignalWire sent BINARY frame - not implemented!', message.length, 'bytes');
+          this.logger.warn({ length: message.length }, '⚠️ Binary frame received - dropping');
+          return;
+        }
+        
         const msg = JSON.parse(message.toString());
         this.handleSignalWireEvent(msg);
       } catch (err) {
-        this.logger.error({ err }, 'Error processing SignalWire message');
+        console.error('❌ Failed to parse SignalWire message:', err.message);
+        this.logger.error({ err, messagePreview: message.toString().substring(0, 100) }, 'Error processing SignalWire message');
       }
     });
 
@@ -767,6 +775,20 @@ class AudioBridge {
         break;
 
       case 'media':
+        // Track incoming media for diagnostics
+        if (!this._lastInputAudioAt) {
+          this._lastInputAudioAt = 0;
+          this._inputAudioCount = 0;
+        }
+        this._inputAudioCount++;
+        this._lastInputAudioAt = Date.now();
+        
+        // Log periodically to confirm audio is flowing (every 5 seconds)
+        if (!this._lastInputAudioLog || Date.now() - this._lastInputAudioLog > 5000) {
+          console.log(`📊 Input audio flowing: ${this._inputAudioCount} packets, last: ${new Date(this._lastInputAudioAt).toISOString()}`);
+          this._lastInputAudioLog = Date.now();
+        }
+        
         if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
           this.openaiSocket.send(JSON.stringify({
             type: 'input_audio_buffer.append',
