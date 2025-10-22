@@ -525,12 +525,22 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
         'Accept': 'application/json, application/gzip'
       },
       body: JSON.stringify({
-        duration_minutes: 60,  // 1 hour appointments
-        end_time: endTime,
+        start_time: startTime,  // Start of time range to check (now)
+        end_time: endTime,      // End of time range (14 days from now)
+        duration_minutes: 60,   // 1 hour appointments
+        interval_minutes: 30,   // Check every 30 minutes for slots
         participants: [
           {
             email: broker.email,
-            calendar_ids: ['primary']
+            calendar_ids: ['primary'],
+            open_hours: [
+              {
+                days: [1, 2, 3, 4, 5],  // Monday-Friday
+                timezone: broker.timezone || 'America/Los_Angeles',
+                start: '10:00',  // Business hours: 10 AM
+                end: '17:00'     // to 5 PM
+              }
+            ]
           }
         ]
       })
