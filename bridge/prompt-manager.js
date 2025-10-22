@@ -17,35 +17,46 @@ const { initPromptLayer } = require('./promptlayer-integration');
 const promptCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Fallback prompt from local file
-let localFallbackPrompt = null;
+// Disk cache directory for PromptLayer templates
+const CACHE_DIR = path.join(__dirname, '.promptlayer-cache');
+
+// Ensure cache directory exists
+try {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('⚠️ Could not create PromptLayer cache directory:', err.message);
+}
 
 /**
- * Load local fallback prompt (only once)
+ * Save PromptLayer template to disk cache
  */
-function loadLocalFallbackPrompt() {
-  if (localFallbackPrompt) return localFallbackPrompt;
-  
-  const candidates = [
-    '../prompts/old big buitifl promtp.md',
-    '../prompts/BarbaraRealtimePrompt.md',
-    '../prompts/Prompt31_Master.md'
-  ];
-  
-  for (const rel of candidates) {
-    try {
-      const p = path.join(__dirname, rel);
-      localFallbackPrompt = fs.readFileSync(p, 'utf8');
-      console.log('✅ Loaded local fallback prompt:', rel, `(${localFallbackPrompt.length} chars)`);
-      return localFallbackPrompt;
-    } catch (err) {
-      // Try next candidate
-    }
+function saveToDiskCache(promptName, promptText) {
+  try {
+    const cachePath = path.join(CACHE_DIR, `${promptName}.txt`);
+    fs.writeFileSync(cachePath, promptText, 'utf8');
+    console.log(`💾 Cached PromptLayer template to disk: ${promptName}`);
+  } catch (err) {
+    console.warn(`⚠️ Failed to cache template ${promptName}:`, err.message);
   }
-  
-  console.warn('⚠️ No local fallback prompt found - using minimal');
-  localFallbackPrompt = "You are Barbara, a warm scheduling assistant for reverse mortgage consultations.";
-  return localFallbackPrompt;
+}
+
+/**
+ * Load PromptLayer template from disk cache
+ */
+function loadFromDiskCache(promptName) {
+  try {
+    const cachePath = path.join(CACHE_DIR, `${promptName}.txt`);
+    if (fs.existsSync(cachePath)) {
+      const cached = fs.readFileSync(cachePath, 'utf8');
+      console.log(`📂 Loaded cached PromptLayer template: ${promptName} (${cached.length} chars)`);
+      return cached;
+    }
+  } catch (err) {
+    console.warn(`⚠️ Failed to load cached template ${promptName}:`, err.message);
+  }
+  return null;
 }
 
 /**
@@ -229,11 +240,14 @@ async function getPromptFromPromptLayer(promptName) {
       return null;
     }
     
-    // Cache it
+    // Cache in memory
     promptCache.set(promptName, {
       prompt: promptText,
       timestamp: Date.now()
     });
+    
+    // Cache to disk for fallback
+    saveToDiskCache(promptName, promptText);
     
     console.log(`✅ Fetched prompt from PromptLayer: ${promptName} (${promptText.length} chars)`);
     return promptText;
@@ -267,20 +281,22 @@ async function getPromptForCall(callContext, customInstructions = null) {
   // Try to get from PromptLayer
   let promptFromPL = await getPromptFromPromptLayer(promptName);
   
-  if (!promptFromPL) {
-    if (promptName !== 'barbara-fallback') {
-      console.warn(`⚠️ Prompt '${promptName}' missing in PromptLayer - trying 'barbara-fallback'`);
-      promptFromPL = await getPromptFromPromptLayer('barbara-fallback');
-    }
-  }
-  
   if (promptFromPL) {
     return promptFromPL;
   }
   
-  // Fallback to local file
-  console.log('⚠️ PromptLayer unavailable or prompt missing, using local fallback');
-  return loadLocalFallbackPrompt();
+  // PromptLayer failed - try disk cache
+  console.warn(`⚠️ PromptLayer unavailable for '${promptName}', trying disk cache...`);
+  const cachedPrompt = loadFromDiskCache(promptName);
+  
+  if (cachedPrompt) {
+    console.log(`✅ Using cached PromptLayer template: ${promptName}`);
+    return cachedPrompt;
+  }
+  
+  // No cache - use minimal emergency prompt
+  console.error(`❌ No cached template for '${promptName}' - using minimal emergency prompt`);
+  return "You are Barbara, a warm and professional scheduling assistant for reverse mortgage consultations. Keep responses brief and friendly. Ask questions to understand their needs and help schedule a consultation.";
 }
 
 /**

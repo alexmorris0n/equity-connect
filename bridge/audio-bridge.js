@@ -701,15 +701,19 @@ class AudioBridge {
       console.warn('⚠️ Falling back to local prompt file');
       
       try {
-        const fallbackPrompt = loadPromptSafe();
-        instructions = injectVariables(fallbackPrompt, variables);
-        promptSource = 'local_fallback';
+        // Try to get cached PromptLayer template for this call type
+        const { determinePromptName } = require('./prompt-manager');
+        const fallbackPromptName = determinePromptName(promptCallContext);
+        const cachedPrompt = await getPromptForCall(promptCallContext);  // Will use disk cache if available
         
-        // Store fallback prompt info
-        this.promptName = 'local-fallback-prompt';
+        instructions = injectVariables(cachedPrompt, variables);
+        promptSource = 'cached_promptlayer';
+        
+        // Store cached prompt info
+        this.promptName = fallbackPromptName;
         this.promptSource = promptSource;
         
-        console.log(`✅ Using local fallback prompt (${instructions.length} chars)`);
+        console.log(`✅ Using cached PromptLayer template: ${fallbackPromptName} (${instructions.length} chars)`);
       } catch (fallbackError) {
         // Even fallback failed - use absolute minimal prompt
         console.error('❌ Even fallback failed:', fallbackError.message);
@@ -1239,15 +1243,8 @@ class AudioBridge {
             await this.configureSession();
             this.startAutoResumeMonitor();
             
-            // Inject caller-specific greeting instructions BEFORE starting conversation
-            console.log('🟢🟢🟢 ABOUT TO CALL injectCallerGreeting()');
-            try {
-              await this.injectCallerGreeting();
-              console.log('🟢🟢🟢 injectCallerGreeting() COMPLETED SUCCESSFULLY');
-            } catch (greetErr) {
-              console.error('🔴🔴🔴 injectCallerGreeting() FAILED:', greetErr);
-              console.error('🔴🔴🔴 Stack:', greetErr.stack);
-            }
+            // PromptLayer template handles greetings - no hardcoded greeting injection
+            console.log('✅ Using PromptLayer template for greeting (no hardcoded injection)');
             
             // Wait brief moment for session to be ready, then trigger greeting
             setTimeout(() => {
