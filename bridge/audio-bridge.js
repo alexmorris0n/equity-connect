@@ -676,7 +676,7 @@ class AudioBridge {
 
     // Step 2: Try to get prompt from PromptLayer
     try {
-      console.log('🎂 Fetching prompt from PromptLayer with context:', promptCallContext);
+      console.log('🍰 Fetching prompt from PromptLayer with context:', promptCallContext);
       
       const promptTemplate = await getPromptForCall(
         promptCallContext,
@@ -687,7 +687,7 @@ class AudioBridge {
         throw new Error('PromptLayer returned empty prompt');
       }
 
-      console.log('🎂 Got prompt template from PromptLayer, injecting variables...');
+      console.log('🍰 Got prompt template from PromptLayer, injecting variables...');
       instructions = injectVariables(promptTemplate, variables);
       promptSource = 'promptlayer';
       
@@ -695,7 +695,7 @@ class AudioBridge {
       this.promptName = determinePromptName(promptCallContext);
       this.promptSource = promptSource;
       
-      console.log(`🎂 Successfully built prompt from PromptLayer (${instructions.length} chars)`);
+      console.log(`🍰 Successfully built prompt from PromptLayer (${instructions.length} chars)`);
       
     } catch (promptLayerError) {
       // PromptLayer failed - fall back to local file
@@ -715,7 +715,7 @@ class AudioBridge {
         this.promptName = fallbackPromptName;
         this.promptSource = promptSource;
         
-        console.log(`🎂 Using cached PromptLayer template: ${fallbackPromptName} (${instructions.length} chars)`);
+        console.log(`🍰 Using cached PromptLayer template: ${fallbackPromptName} (${instructions.length} chars)`);
       } catch (fallbackError) {
         // Even fallback failed - use absolute minimal prompt
         console.error('❌ Even fallback failed:', fallbackError.message);
@@ -1250,7 +1250,7 @@ class AudioBridge {
             this.startAutoResumeMonitor();
             
             // PromptLayer template handles greetings - no hardcoded greeting injection
-            console.log('🎂 Using PromptLayer template for greeting (no hardcoded injection)');
+            console.log('🍰 Using PromptLayer template for greeting (no hardcoded injection)');
             
             // Wait brief moment for session to be ready, then trigger greeting
             setTimeout(() => {
