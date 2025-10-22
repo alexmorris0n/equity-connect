@@ -737,16 +737,12 @@ class AudioBridge {
       preview: instructions.substring(0, 150).replace(/\n/g, ' ')
     });
     
-    // Get language from variables (defaults to 'en')
-    const sessionLanguage = variables.preferredLanguage || 'en';
-    
     const sessionConfig = {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'alloy',  // Fallback if 'sage' not available
         instructions: instructions,  // Static prompt (cacheable)
-        language: sessionLanguage,  // Force response language (prevents Spanish bug)
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
