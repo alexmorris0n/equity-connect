@@ -753,6 +753,16 @@ class AudioBridge {
       case 'start':
         this.callSid = msg.start.callSid;
         
+        // Log SignalWire media format (CRITICAL for debugging silent audio)
+        const mediaFormat = msg.start?.mediaFormat || msg.start?.media_format;
+        const sampleRate = msg.start?.sampleRate || msg.start?.sample_rate;
+        console.log('🎙️ SignalWire Stream Started:', {
+          callSid: this.callSid,
+          mediaFormat: mediaFormat || 'unknown',
+          sampleRate: sampleRate || 'unknown',
+          streamSid: msg.start?.streamSid
+        });
+        
         const cp = msg.start?.customParameters || {};
         if (cp.from) {
           this.callContext.from = cp.from;
