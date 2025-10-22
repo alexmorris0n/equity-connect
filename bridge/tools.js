@@ -801,8 +801,7 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     const endTime = startTime + 3600; // 1 hour appointment
     
     // Create calendar event via Nylas Events API
-    // NOTE: In Nylas v3, grant ID is the broker's email address
-    // calendar_id MUST be a query parameter (Nylas API v3 requirement)
+    // NOTE: Events API works well for appointment booking and is already tested
     const createEventUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/events?calendar_id=primary`;
     
     const eventBody = {
