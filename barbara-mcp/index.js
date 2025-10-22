@@ -550,7 +550,6 @@ app.listen({ port, host }, (err, address) => {
   app.log.info(`🚀 Barbara MCP Server v2.0 running on ${address}`);
   app.log.info(`📡 Bridge URL: ${BRIDGE_URL}`);
   app.log.info(`🔧 MCP endpoint: ${address}/mcp`);
-  app.log.info(`📝 Outbound prompt loaded (${OUTBOUND_PROMPT_TEMPLATE.length} chars)`);
 });
 
 // Graceful shutdown
