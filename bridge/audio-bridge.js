@@ -2299,6 +2299,7 @@ CONVERSATION GOALS (in order):
 
   /**
    * Save call summary when call ends
+   * ALWAYS called to ensure PromptLayer logging happens
    */
   async saveCallSummary() {
     const durationSeconds = Math.floor((Date.now() - this.callStartTime) / 1000);
@@ -2308,20 +2309,54 @@ CONVERSATION GOALS (in order):
       duration: durationSeconds 
     }, '💾 Saving call summary');
     
-    // Tool will be called by OpenAI if needed, but we can also save basic log
-    // This is a fallback in case the tool wasn't called
+    // Always save interaction with full transcript for PromptLayer logging
     if (this.callContext.lead_id) {
       try {
+        // Detect outcome from conversation context
+        const lastMessages = this.conversationTranscript.slice(-3).map(t => t.text.toLowerCase()).join(' ');
+        let outcome = 'neutral';
+        
+        if (lastMessages.includes('booked') || lastMessages.includes('scheduled') || lastMessages.includes('appointment')) {
+          outcome = 'appointment_booked';
+        } else if (lastMessages.includes('follow up') || lastMessages.includes('call back') || lastMessages.includes('reach out')) {
+          outcome = 'follow_up_needed';
+        } else if (lastMessages.includes('not interested') || lastMessages.includes('no thank')) {
+          outcome = 'not_interested';
+        }
+        
+        // Build metadata from conversation
+        const metadata = {
+          prompt_version: this.promptName || 'unknown',
+          prompt_source: this.promptSource || 'unknown',
+          call_duration_seconds: durationSeconds,
+          message_count: this.conversationTranscript.length
+        };
+        
+        console.log('🍰 Saving interaction to PromptLayer:', {
+          lead_id: this.callContext.lead_id,
+          outcome,
+          duration: durationSeconds,
+          messages: this.conversationTranscript.length
+        });
+        
         await executeTool('save_interaction', {
           lead_id: this.callContext.lead_id,
           broker_id: this.callContext.broker_id,
           duration_seconds: durationSeconds,
-          outcome: 'neutral', // Will be updated by actual tool call if made
-          content: `Call completed. Duration: ${durationSeconds}s`
+          outcome: outcome,
+          content: `Call transcript with ${this.conversationTranscript.length} messages`,
+          transcript: this.conversationTranscript,
+          metadata: metadata
         });
+        
+        console.log('✅ Interaction saved and logged to PromptLayer');
+        
       } catch (err) {
+        console.error('❌ Failed to save interaction:', err.message);
         this.logger.error({ err }, 'Failed to save interaction fallback');
       }
+    } else {
+      console.warn('⚠️ No lead_id - skipping interaction save');
     }
   }
 
