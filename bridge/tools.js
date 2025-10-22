@@ -512,13 +512,12 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     const startTime = Math.floor(Date.now() / 1000);
     const endTime = Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000);
     
-    // Call Nylas Free/Busy API
-    // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
-    // NOTE: In Nylas v3, grant ID is the email address (not a UUID)
-    // Endpoint format: POST /v3/grants/{grant_id}/calendars/free-busy
+    // Call Nylas Availability API (better than free/busy for finding open slots)
+    // https://developer.nylas.com/docs/v3/calendar/calendar-availability/
+    // This endpoint finds available meeting times based on criteria
     const nylasStartTime = Date.now();
-    const freeBusyUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/calendars/free-busy`;
-    const response = await fetch(freeBusyUrl, {
+    const availabilityUrl = `${NYLAS_API_URL}/v3/calendars/availability`;
+    const response = await fetch(availabilityUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${NYLAS_API_KEY}`,
@@ -526,43 +525,46 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
         'Accept': 'application/json, application/gzip'
       },
       body: JSON.stringify({
-        start_time: startTime,
-        end_time: endTime
+        duration_minutes: 60,  // 1 hour appointments
+        end_time: endTime,
+        participants: [
+          {
+            email: broker.email,
+            calendar_ids: ['primary']
+          }
+        ]
       })
     });
     
     if (!response.ok) {
       const errorText = await response.text();
       const nylasTime = Date.now() - nylasStartTime;
-      console.error(`❌ Nylas free/busy API failed (${nylasTime}ms):`, response.status, errorText);
+      console.error(`❌ Nylas availability API failed (${nylasTime}ms):`, response.status, errorText);
       return generateFallbackSlots(preferred_day, preferred_time);
     }
     
-    const freeBusyData = await response.json();
+    const availabilityData = await response.json();
     const nylasTime = Date.now() - nylasStartTime;
-    console.log(`✅ Nylas free/busy API: ${nylasTime}ms`);
+    console.log(`✅ Nylas availability API: ${nylasTime}ms`);
     
-    // Extract busy times for the broker
-    const busyTimes = [];
-    if (freeBusyData && freeBusyData.length > 0) {
-      const emailData = freeBusyData[0];
-      if (emailData.time_slots) {
-        busyTimes.push(...emailData.time_slots.map(slot => ({
-          start: slot.start_time * 1000, // Convert Unix to milliseconds
-          end: slot.end_time * 1000
-        })));
-      }
+    // Extract available time slots directly from Nylas (they already calculated the gaps!)
+    let availableSlots = [];
+    if (availabilityData && availabilityData.time_slots && availabilityData.time_slots.length > 0) {
+      availableSlots = availabilityData.time_slots.map(slot => ({
+        start: slot.start_time * 1000, // Convert Unix to milliseconds
+        end: slot.end_time * 1000
+      }));
     }
     
-    console.log('✅ Got free/busy data from Nylas:', {
+    console.log('✅ Got availability data from Nylas:', {
       broker: broker.contact_name,
-      busy_count: busyTimes.length
+      available_count: availableSlots.length
     });
     
-    // Calculate available slots
+    // Filter and format available slots based on preferences
     const calcStartTime = Date.now();
-    const availableSlots = calculateAvailableSlots(
-      busyTimes,
+    const formattedSlots = formatAvailableSlots(
+      availableSlots,
       preferred_day,
       preferred_time,
       broker.timezone || 'America/Los_Angeles'
@@ -575,24 +577,24 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     
     // Generate smart response message
     let message = '';
-    if (availableSlots.length === 0) {
+    if (formattedSlots.length === 0) {
       message = 'No availability in the next 2 weeks within business hours (10 AM - 5 PM)';
     } else {
-      const sameDaySlots = availableSlots.filter(slot => slot.is_same_day);
-      const tomorrowSlots = availableSlots.filter(slot => slot.is_tomorrow);
+      const sameDaySlots = formattedSlots.filter(slot => slot.is_same_day);
+      const tomorrowSlots = formattedSlots.filter(slot => slot.is_tomorrow);
       
       if (sameDaySlots.length > 0) {
         message = `Great! I have ${sameDaySlots.length} slot(s) available today. The earliest is ${sameDaySlots[0].time}.`;
       } else if (tomorrowSlots.length > 0) {
         message = `I have ${tomorrowSlots.length} slot(s) available tomorrow. The earliest is ${tomorrowSlots[0].time}.`;
       } else {
-        message = `I have ${availableSlots.length} available times over the next 2 weeks.`;
+        message = `I have ${formattedSlots.length} available times over the next 2 weeks.`;
       }
     }
 
     return {
       success: true,
-      available_slots: availableSlots,
+      available_slots: formattedSlots,
       broker_name: broker.contact_name,
       calendar_provider: 'nylas',
       business_hours: '10:00 AM - 5:00 PM',
@@ -610,7 +612,7 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
 /**
  * Calculate available time slots from busy times
  */
-function calculateAvailableSlots(busyTimes, preferred_day, preferred_time, timezone) {
+function formatAvailableSlots(availableSlots, preferred_day, preferred_time, timezone) {
   const availableSlots = [];
   const businessStart = 10;  // 10 AM (updated business hours)
   const businessEnd = 17;    // 5 PM
