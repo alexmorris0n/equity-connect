@@ -5,10 +5,24 @@ A custom Model Context Protocol (MCP) server that exposes Barbara's outbound cal
 ## Features
 
 - **Outbound Call Creation**: Create calls to leads using Barbara AI voice assistant
+- **PromptLayer Integration**: Automatically selects correct prompt variant (warm/cold) based on lead qualification
 - **Lead Context Integration**: Automatically personalizes calls with lead information
 - **Broker Assignment**: Uses lead's assigned broker or specified broker ID
 - **SignalWire Integration**: Handles phone number normalization and call routing
 - **Error Handling**: Graceful fallbacks and comprehensive error reporting
+
+## Prompt Selection Logic
+
+The MCP server automatically fetches the correct prompt from PromptLayer based on lead qualification:
+
+- **`barbara-outbound-warm`**: For qualified leads (have property/equity data or marked qualified in DB)
+- **`barbara-outbound-cold`**: For unqualified leads (no property data, cold outreach)
+
+Qualification is determined by:
+1. `qualified` field in lead record (if provided)
+2. Presence of `property_value` or `estimated_equity` data
+
+This ensures Barbara uses the appropriate tone and approach for each call.
 
 ## Quick Start
 

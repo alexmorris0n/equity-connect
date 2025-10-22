@@ -6,12 +6,17 @@ import cors from '@fastify/cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 // ES Module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load hybrid prompt template (handles both inbound and outbound)
+// Import bridge's prompt manager for PromptLayer integration
+const require = createRequire(import.meta.url);
+const { getPromptForCall, injectVariables } = require('../bridge/prompt-manager.js');
+
+// Load hybrid prompt template as fallback only
 const HYBRID_PROMPT_TEMPLATE = fs.readFileSync(
   path.join(__dirname, '../prompts/BarbaraRealtimePrompt'),
   'utf8'
@@ -311,6 +316,9 @@ const tools = [
         broker_phone: { type: 'string', description: 'Broker phone number' },
         broker_display: { type: 'string', description: 'Broker display name with NMLS' },
         
+        // Qualification status
+        qualified: { type: 'boolean', description: 'Whether lead is qualified (has property/equity data or marked qualified in DB)' },
+        
         // Call context
         call_context: { type: 'string', description: 'Call context (always "outbound" for this tool)' }
       },
@@ -479,10 +487,43 @@ async function executeTool(name, args) {
         const equity50Words = variables.equity_50_percent ? numberToWords(variables.equity_50_percent) : '';
         const equity60Words = variables.equity_60_percent ? numberToWords(variables.equity_60_percent) : '';
         
+        // Determine if lead is qualified (has property/equity data)
+        const hasPropertyData = !!(variables.property_value || variables.estimated_equity);
+        const isQualified = variables.qualified === true || hasPropertyData;
+        
+        app.log.info({ 
+          hasPropertyData, 
+          isQualified,
+          property_value: variables.property_value,
+          estimated_equity: variables.estimated_equity
+        }, '🎯 Lead qualification determined');
+        
+        // Build call context for PromptLayer
+        const callContext = {
+          context: 'outbound',
+          lead_id: lead_id,
+          has_property_data: hasPropertyData,
+          is_qualified: isQualified
+        };
+        
+        // Fetch the correct prompt from PromptLayer
+        // This will return either 'barbara-outbound-warm' or 'barbara-outbound-cold'
+        app.log.info({ callContext }, '🔍 Fetching prompt from PromptLayer');
+        const promptTemplate = await getPromptForCall(callContext, null);
+        
+        if (!promptTemplate) {
+          throw new Error('Failed to fetch prompt from PromptLayer');
+        }
+        
+        app.log.info({ 
+          promptLength: promptTemplate.length,
+          isQualified 
+        }, `📋 Using ${isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'}`);
+        
         // Build complete variables object for prompt injection
         const promptVariables = {
           // Call context
-          callContext: variables.call_context || 'outbound',
+          callContext: 'outbound',
           signalwireNumber: '',  // Will be populated by bridge from selected number
           
           // Lead info
@@ -523,18 +564,18 @@ async function executeTool(name, args) {
           brokerPhone: variables.broker_phone || '',
           brokerDisplay: variables.broker_display || '',
           
-          // Context - CRITICAL: determines inbound vs outbound flow
-          callContext: variables.call_context || 'outbound'
+          // Qualification flag
+          qualified: isQualified
         };
         
-        // Build customized prompt
-        const customizedPrompt = buildCustomPrompt(promptVariables);
+        // Inject variables into PromptLayer template
+        const customizedPrompt = injectVariables(promptTemplate, promptVariables);
         
         app.log.info({ 
-          promptLength: customizedPrompt.length,
+          finalPromptLength: customizedPrompt.length,
           hasCity: !!promptVariables.propertyCity,
           hasPersona: !!promptVariables.personaFirstName 
-        }, '📝 Built customized prompt');
+        }, '📝 Injected variables into PromptLayer template');
         
         // Call the bridge API with customized prompt
         const response = await fetch(`${BRIDGE_URL}/api/outbound-call`, {
@@ -547,7 +588,7 @@ async function executeTool(name, args) {
             to_phone,
             lead_id,
             broker_id,
-            instructions: customizedPrompt  // Pass customized prompt to bridge
+            instructions: customizedPrompt  // Pass PromptLayer-sourced prompt to bridge
           })
         });
         
@@ -565,6 +606,7 @@ async function executeTool(name, args) {
                       `📱 To: ${result.to}\n` +
                       `👤 Lead: ${promptVariables.leadFirstName} ${promptVariables.leadLastName}\n` +
                       `🏢 Broker: ${promptVariables.brokerFirstName}\n` +
+                      `🎯 Prompt: ${isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'}\n` +
                       `💬 Message: ${result.message}`
               }
             ]
