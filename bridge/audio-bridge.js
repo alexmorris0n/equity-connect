@@ -7,7 +7,7 @@
 
 const WebSocket = require('ws');
 const { toolDefinitions, executeTool } = require('./tools');
-const { getPromptForCall, injectVariables } = require('./prompt-manager');
+const { getPromptForCall, injectVariables, determinePromptName } = require('./prompt-manager');
 const fs = require('fs');
 const path = require('path');
 
@@ -77,6 +77,10 @@ class AudioBridge {
     this.conversationTranscript = [];  // Array of { role: 'user'|'assistant', text: '', timestamp: '' }
     this.callStartTime = Date.now();  // Track call start for duration calculation
     this.sessionConfigTimeout = null;  // Timeout to ensure session gets configured (fallback)
+    
+    // Track which prompt was used for PromptLayer logging
+    this.promptName = null;  // e.g., 'barbara-inbound-qualified'
+    this.promptSource = null;  // 'promptlayer' | 'local_fallback' | 'minimal_emergency'
     
     // Rate limiting and response queue management
     this.responseQueue = [];  // Queue for pending response.create calls
@@ -685,6 +689,10 @@ class AudioBridge {
       instructions = injectVariables(promptTemplate, variables);
       promptSource = 'promptlayer';
       
+      // Store which prompt variant was used for PromptLayer logging
+      this.promptName = determinePromptName(promptCallContext);
+      this.promptSource = promptSource;
+      
       console.log(`✅ Successfully built prompt from PromptLayer (${instructions.length} chars)`);
       
     } catch (promptLayerError) {
@@ -696,12 +704,22 @@ class AudioBridge {
         const fallbackPrompt = loadPromptSafe();
         instructions = injectVariables(fallbackPrompt, variables);
         promptSource = 'local_fallback';
+        
+        // Store fallback prompt info
+        this.promptName = 'local-fallback-prompt';
+        this.promptSource = promptSource;
+        
         console.log(`✅ Using local fallback prompt (${instructions.length} chars)`);
       } catch (fallbackError) {
         // Even fallback failed - use absolute minimal prompt
         console.error('❌ Even fallback failed:', fallbackError.message);
         instructions = "You are Barbara, a warm scheduling assistant. Keep responses short and friendly.";
         promptSource = 'minimal_emergency';
+        
+        // Store minimal prompt info
+        this.promptName = 'minimal-emergency-prompt';
+        this.promptSource = promptSource;
+        
         console.warn('⚠️ Using emergency minimal prompt');
       }
     }
@@ -2202,6 +2220,12 @@ CONVERSATION GOALS (in order):
       } catch (parseErr) {
         console.error('⚠️ Failed to parse tool args, using empty:', parseErr);
         args = {};
+      }
+      
+      // Inject prompt version for save_interaction (for PromptLayer logging)
+      if (name === 'save_interaction' && args.metadata) {
+        args.metadata.prompt_version = this.promptName || 'unknown';
+        args.metadata.prompt_source = this.promptSource || 'unknown';
       }
       
       // Execute with timeout to prevent stalls
