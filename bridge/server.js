@@ -14,7 +14,7 @@ require('dotenv').config();
 const Fastify = require('fastify');
 const fastifyWebsocket = require('@fastify/websocket');
 const fastifyFormbody = require('@fastify/formbody');
-const AudioBridge = require('./audio-bridge');
+const AudioBridge = require('./audio-bridge-lean'); // TESTING: Using lean version (850 lines vs 2671)
 const SignalWireClient = require('./signalwire-client');
 const { initSupabase } = require('./tools');
 
