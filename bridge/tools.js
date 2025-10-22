@@ -612,8 +612,8 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
 /**
  * Calculate available time slots from busy times
  */
-function formatAvailableSlots(availableSlots, preferred_day, preferred_time, timezone) {
-  const availableSlots = [];
+function formatAvailableSlots(rawSlots, preferred_day, preferred_time, timezone) {
+  const formattedSlots = [];
   const businessStart = 10;  // 10 AM (updated business hours)
   const businessEnd = 17;    // 5 PM
   const minNoticeHours = 2;  // Minimum 2 hours notice
@@ -664,7 +664,7 @@ function formatAvailableSlots(availableSlots, preferred_day, preferred_time, tim
         const isToday = dayOffset === 0;
         const isTomorrow = dayOffset === 1;
         
-        availableSlots.push({
+        formattedSlots.push({
           datetime: slotStart.toISOString(),
           unix_timestamp: Math.floor(slotStartMs / 1000),
           display: `${slotStart.toLocaleDateString('en-US', { 
@@ -690,13 +690,13 @@ function formatAvailableSlots(availableSlots, preferred_day, preferred_time, tim
     }
     
     // Limit to 5 best options
-    if (availableSlots.length >= 5) break;
+    if (formattedSlots.length >= 5) break;
   }
   
   // Sort by priority (same day first, then tomorrow, then others)
-  availableSlots.sort((a, b) => a.priority - b.priority);
+  formattedSlots.sort((a, b) => a.priority - b.priority);
   
-  return availableSlots.slice(0, 5);
+  return formattedSlots.slice(0, 5);
 }
 
 /**
