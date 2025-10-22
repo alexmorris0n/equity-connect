@@ -534,6 +534,13 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
         end_time: roundedEndTime,      // End of time range (rounded to 5 min)
         duration_minutes: 60,   // 1 hour appointments
         interval_minutes: 30,   // Check every 30 minutes for slots
+        availability_rules: {
+          availability_method: 'collective',
+          buffer: {
+            before: 15,  // 15 minutes before meeting for prep
+            after: 15   // 15 minutes after meeting for notes
+          }
+        },
         participants: [
           {
             email: broker.email,
