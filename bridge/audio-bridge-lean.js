@@ -591,8 +591,8 @@ class AudioBridge {
         max_response_output_tokens: 'inf',  // FIX #1: No artificial limit
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.80,
-          prefix_padding_ms: 200,
+          threshold: 0.5,  // Lowered from 0.80 - high threshold ignores short words like "hello" (OpenAI bug Oct 20, 2025)
+          prefix_padding_ms: 300,  // Increased padding to reduce false triggers
           silence_duration_ms: 700
         },
         tools: toolDefinitions,
