@@ -590,6 +590,18 @@ class AudioBridge {
       hasLeadData: !!leadContextData
     });
     
+    // SAFETY: Ensure promptTemplate is a string
+    let promptText = promptTemplate;
+    if (typeof promptTemplate !== 'string') {
+      console.warn('⚠️ PROMPT IS NOT A STRING! Type:', typeof promptTemplate);
+      console.warn('   Attempting to extract text...');
+      promptText = JSON.stringify(promptTemplate);
+      if (promptText === '{}' || promptText.length < 50) {
+        console.error('❌ FAILED to extract prompt - falling back to default');
+        promptText = loadPromptSafe();
+      }
+    }
+    
     // Step 4: Inject variables into the prompt
     if (leadContextData && leadContextData.found) {
       // We have lead data - personalize the prompt
@@ -621,11 +633,11 @@ class AudioBridge {
         callContext: promptCallContext.context
       };
       
-      instructions = injectVariables(promptTemplate, variables);
+      instructions = injectVariables(promptText, variables);
       debug('🔵 Injected variables into prompt');
     } else {
       // No lead data - use prompt as-is
-      instructions = promptTemplate;
+      instructions = promptText;
       debug('🔵 Using prompt without variable injection (no lead data)');
     }
     
