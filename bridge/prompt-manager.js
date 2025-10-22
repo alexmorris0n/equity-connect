@@ -314,7 +314,33 @@ function injectVariables(promptTemplate, variables) {
       ...variables,
       user_question: variables.user_question || '',  // Remove this placeholder if present
       user: variables.user || variables.leadFirstName || '',
-      context: variables.context || variables.callContext || 'inbound'
+      context: variables.context || variables.callContext || 'inbound',
+      
+      // PromptLayer template variables (provide defaults to prevent missing variable errors)
+      brokerCompany: variables.brokerCompany || '',
+      brokerFirstName: variables.brokerFirstName || '',
+      brokerFullName: variables.brokerFullName || '',
+      brokerLastName: variables.brokerLastName || '',
+      brokerPhone: variables.brokerPhone || '',
+      broker_first_name: variables.broker_first_name || variables.brokerFirstName || '',
+      callContext: variables.callContext || 'inbound',
+      equity50FormattedWords: variables.equity50FormattedWords || '',
+      equity50Percent: variables.equity50Percent || '',
+      equity60FormattedWords: variables.equity60FormattedWords || '',
+      equity60Percent: variables.equity60Percent || '',
+      estimatedEquity: variables.estimatedEquity || '',
+      estimatedEquityWords: variables.estimatedEquityWords || '',
+      leadEmail: variables.leadEmail || '',
+      leadFirstName: variables.leadFirstName || '',
+      leadFullName: variables.leadFullName || '',
+      leadLastName: variables.leadLastName || '',
+      leadPhone: variables.leadPhone || '',
+      propertyAddress: variables.propertyAddress || '',
+      propertyCity: variables.propertyCity || '',
+      propertyState: variables.propertyState || '',
+      propertyValue: variables.propertyValue || '',
+      propertyValueWords: variables.propertyValueWords || '',
+      propertyZipcode: variables.propertyZipcode || ''
     };
     
     // Replace all {{variableName}} placeholders
