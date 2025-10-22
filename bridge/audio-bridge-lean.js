@@ -231,23 +231,86 @@ class AudioBridge {
         };
       }
 
-      // Build variables from lead data
+      // Calculate property and equity values with formatting
+      const propertyValueRaw = result?.property_value ?? result?.raw?.property_value ?? null;
+      const propertyValueNumber = propertyValueRaw !== null && propertyValueRaw !== undefined && propertyValueRaw !== ''
+        ? Number(propertyValueRaw)
+        : null;
+      const propertyValueFormatted = propertyValueNumber !== null && !Number.isNaN(propertyValueNumber)
+        ? Math.round(propertyValueNumber).toLocaleString('en-US')
+        : '';
+      const propertyValueWords = propertyValueNumber !== null && !Number.isNaN(propertyValueNumber)
+        ? this.numberToWords(Math.round(propertyValueNumber))
+        : '';
+
+      const equityRaw = result?.estimated_equity ?? result?.raw?.estimated_equity ?? null;
+      const estimatedEquityNumber = equityRaw !== null && equityRaw !== undefined && equityRaw !== ''
+        ? Number(equityRaw)
+        : null;
+      const estimatedEquityFormatted = estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber)
+        ? Math.round(estimatedEquityNumber).toLocaleString('en-US')
+        : '';
+      const estimatedEquityWords = estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber)
+        ? this.numberToWords(Math.round(estimatedEquityNumber))
+        : '';
+
+      const mortgageRaw = result?.raw?.mortgage_balance ?? null;
+      const mortgageBalanceNumber = mortgageRaw !== null && mortgageRaw !== undefined && mortgageRaw !== ''
+        ? Number(mortgageRaw)
+        : null;
+      const mortgageBalanceWords = mortgageBalanceNumber !== null && !Number.isNaN(mortgageBalanceNumber)
+        ? this.numberToWords(Math.round(mortgageBalanceNumber))
+        : '';
+
+      const qualifiedFlag = result?.qualified === true || result?.raw?.qualified === true || result?.status === 'qualified';
+
+      // Build complete variables object with all property/equity data
       const variables = {
         callContext: 'inbound',
+        signalwireNumber: this.callContext.to || '',
         leadFirstName: result?.raw?.first_name || '',
         leadLastName: result?.raw?.last_name || '',
+        leadFullName: result?.raw?.first_name
+          ? `${result.raw.first_name} ${result.raw.last_name || ''}`.trim()
+          : '',
         leadEmail: result?.raw?.primary_email || '',
         leadPhone: callerPhone,
+        propertyAddress: result?.raw?.property_address || '',
         propertyCity: result?.raw?.property_city || '',
-        brokerFirstName: result?.broker?.contact_name ? result.broker.contact_name.split(' ')[0] : '',
+        propertyState: result?.raw?.property_state || '',
+        propertyZipcode: result?.raw?.property_zip || '',
+        propertyValue: propertyValueFormatted,
+        propertyValueWords,
+        estimatedEquity: estimatedEquityFormatted,
+        estimatedEquityWords,
+        equity50Percent: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? Math.floor(estimatedEquityNumber * 0.5) : '',
+        equity50FormattedWords: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? this.numberToWords(Math.floor(estimatedEquityNumber * 0.5)) : '',
+        equity60Percent: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? Math.floor(estimatedEquityNumber * 0.6) : '',
+        equity60FormattedWords: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? this.numberToWords(Math.floor(estimatedEquityNumber * 0.6)) : '',
+        mortgageBalanceWords,
+        qualified: qualifiedFlag,
+        leadStatus: result?.status || '',
+        brokerCompany: result?.broker?.company_name || '',
         brokerFullName: result?.broker?.contact_name || '',
+        brokerFirstName: result?.broker?.contact_name ? result.broker.contact_name.split(' ')[0] : '',
+        brokerNmls: result?.broker?.nmls_number || '',
+        brokerPhone: result?.broker?.phone || '',
+        brokerDisplay: result?.broker?.contact_name
+          ? `${result.broker.contact_name}, NMLS ${result.broker.nmls_number || 'licensed'}`
+          : '',
+        personaSenderName: '',
+        personaFirstName: '',
+        campaignArchetype: '',
+        personaAssignment: '',
         preferredLanguage: result?.raw?.preferred_language || 'en'
       };
 
       console.log('✅ Lead context retrieved:', {
         found: result?.found,
         name: variables.leadFirstName,
-        city: variables.propertyCity
+        city: variables.propertyCity,
+        broker: variables.brokerFirstName,
+        qualified: qualifiedFlag
       });
 
       const prompt = this.buildPromptFromTemplate(variables);
@@ -255,19 +318,30 @@ class AudioBridge {
       return {
         prompt,
         variables,
+        propertyValueNumber,
+        estimatedEquityNumber,
+        mortgageBalanceNumber,
+        qualifiedFlag,
         lead_id: result.lead_id,
         broker_id: result.broker_id,
+        leadStatus: result.status || '',
         context: this.callContext.context || 'inbound'
       };
 
     } catch (err) {
       console.error('❌ Failed to lookup lead context:', err);
+      console.error('❌ Error stack:', err.stack);
       const prompt = this.buildPromptFromTemplate({ callContext: 'inbound' });
       return {
         prompt,
         variables: { callContext: 'inbound' },
+        propertyValueNumber: null,
+        estimatedEquityNumber: null,
+        mortgageBalanceNumber: null,
+        qualifiedFlag: false,
         lead_id: null,
         broker_id: null,
+        leadStatus: '',
         context: this.callContext.context || 'inbound'
       };
     }
@@ -305,6 +379,63 @@ class AudioBridge {
     prompt = prompt.replace(/\{\{(\w+)\}\}/g, (match, key) => variables[key] ?? '');
     
     return prompt;
+  }
+  
+  /**
+   * Convert number to words (for natural speech)
+   */
+  numberToWords(value) {
+    if (value === null || value === undefined) return '';
+    
+    // Clean input - remove commas, dollar signs, etc.
+    const cleaned = String(value).replace(/[^\d.]/g, '');
+    const num = Math.floor(Number(cleaned));
+    
+    if (!Number.isFinite(num) || num < 0) return '';
+    if (num === 0) return 'zero';
+
+    // Handle millions
+    if (num >= 1_000_000) {
+      const m = num / 1_000_000;
+      const whole = Math.floor(m);
+      const frac = m - whole;
+      
+      return frac === 0
+        ? `${this.numberWord(whole)} million`
+        : `${m.toFixed(1)} million`;
+    }
+    
+    // Handle thousands
+    if (num >= 1_000) {
+      const thousands = Math.floor(num / 1_000);
+      const remainder = num % 1_000;
+      return remainder
+        ? `${this.numberWord(thousands)} thousand ${this.numberWord(remainder)}`
+        : `${this.numberWord(thousands)} thousand`;
+    }
+    
+    return this.numberWord(num);
+  }
+  
+  /**
+   * Convert single numbers to words (1-999)
+   */
+  numberWord(num) {
+    const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+    
+    if (num < 10) return ones[num];
+    if (num < 20) return teens[num - 10];
+    if (num < 100) {
+      const tenPart = Math.floor(num / 10);
+      const onePart = num % 10;
+      return tens[tenPart] + (onePart > 0 ? ' ' + ones[onePart] : '');
+    }
+    
+    const hundreds = Math.floor(num / 100);
+    const remainder = num % 100;
+    return ones[hundreds] + ' hundred' + (remainder > 0 ? ' ' + this.numberWord(remainder) : '');
   }
 
   /**
