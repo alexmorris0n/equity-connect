@@ -546,13 +546,13 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
       body: JSON.stringify({
         start_time: roundedStartTime,  // Start of time range to check (rounded to 5 min)
         end_time: roundedEndTime,      // End of time range (rounded to 5 min)
-        duration_minutes: 60,   // 1 hour appointments
-        interval_minutes: 30,   // Check every 30 minutes for slots
+        duration_minutes: 20,   // 20 minute appointments
+        interval_minutes: 15,   // Check every 15 minutes for slots
         availability_rules: {
           availability_method: 'collective',
           buffer: {
-            before: 15,  // 15 minutes before meeting for prep
-            after: 15   // 15 minutes after meeting for notes
+            before: 5,   // 5 minutes before meeting for prep
+            after: 5     // 5 minutes after meeting for notes
           }
         },
         participants: [
