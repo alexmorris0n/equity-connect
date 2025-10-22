@@ -814,11 +814,22 @@ class AudioBridge {
           this._lastInputAudioLog = Date.now();
         }
         
-        if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
+        // Extract audio payload from various SignalWire JSON structures
+        // - Standard: msg.media.payload
+        // - Legacy: msg.rawEvent.media.payload
+        // - Alternative: msg.payload.audio
+        const audioPayload = msg.media?.payload 
+          || msg.rawEvent?.media?.payload 
+          || msg.payload?.audio;
+        
+        if (audioPayload && this.openaiSocket?.readyState === WebSocket.OPEN) {
           this.openaiSocket.send(JSON.stringify({
             type: 'input_audio_buffer.append',
-            audio: msg.media.payload
+            audio: audioPayload
           }));
+        } else if (!audioPayload && this._inputAudioCount < 10) {
+          // Warn on missing payload (first 10 frames only)
+          console.warn('⚠️ Media event missing audio payload:', JSON.stringify(msg).substring(0, 200));
         }
         break;
 
