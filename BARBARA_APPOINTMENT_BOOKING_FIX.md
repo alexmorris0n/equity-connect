@@ -5,6 +5,25 @@
 
 ## 🐛 Problems Identified
 
+### 0. **CRITICAL: Wrong Grant ID Format** ❗
+**Location:** `bridge/tools.js` lines 491, 767, 800
+
+Nylas API v3 requires the **email address** as the grant ID, not a UUID.
+
+**Error:**
+```
+❌ Nylas free/busy API failed: 404
+❌ Request URL: https://api.us.nylas.com/v3/grants/c18c3f0f-2cb2-4b39-bc87-3a72ee4f10aa/events
+```
+
+**Root cause:** The code was using `broker.nylas_grant_id` (a UUID) instead of `broker.email`.
+
+**Correct format:**
+```
+https://api.us.nylas.com/v3/grants/walter@example.com/events  ✅ CORRECT
+https://api.us.nylas.com/v3/grants/c18c3f0f-2cb2-4b39-bc87-3a72ee4f10aa/events  ❌ WRONG
+```
+
 ### 1. Tool Timeout Too Short (2.5 seconds)
 **Location:** `bridge/audio-bridge.js` line 2196
 
@@ -52,6 +71,27 @@ When Nylas API calls failed, there wasn't enough diagnostic information to debug
 Tool calls were attempting to execute even when the OpenAI socket was already closed, causing cascading errors.
 
 ## ✅ Fixes Applied
+
+### 0. **Fixed Grant ID to Use Email Address** ❗ (CRITICAL)
+**File:** `bridge/tools.js` lines 488-503, 764-777, 800
+
+```javascript
+// Before
+const { data: broker } = await sb
+  .from('brokers')
+  .select('nylas_grant_id, contact_name, email, timezone')
+  ...
+const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events`;
+
+// After
+const { data: broker } = await sb
+  .from('brokers')
+  .select('contact_name, email, timezone')  // No longer need nylas_grant_id
+  ...
+const createEventUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/events`;
+```
+
+**Impact:** Nylas API now receives correct grant identifier (email) instead of UUID, fixing all 404 errors.
 
 ### 1. Increased Tool Timeout: 2.5s → 10s
 **File:** `bridge/audio-bridge.js` line 2196
@@ -185,10 +225,25 @@ SUPABASE_SERVICE_KEY=your_service_key
 
 ## 📚 Nylas API v3 Reference
 
-- **Free/Busy Check:** `POST /v3/calendars/free-busy` (no grant needed)
-- **Create Event:** `POST /v3/grants/{grant_id}/events?calendar_id=primary`
+- **Free/Busy Check:** `POST /v3/calendars/free-busy` (uses email in request body)
+- **Create Event:** `POST /v3/grants/{email}/events` (email is the grant ID, calendar_id in body)
+- **Grant ID Format:** Must be the email address (e.g., `walter@example.com`), NOT a UUID
 - **Auth:** Bearer token with API key in Authorization header
 - **Docs:** https://developer.nylas.com/docs/v3/calendar/
+
+### Important Note on Grant IDs
+
+In Nylas API v3, the grant ID **IS the email address**:
+
+```javascript
+// ✅ CORRECT
+https://api.us.nylas.com/v3/grants/walter@example.com/events
+
+// ❌ WRONG
+https://api.us.nylas.com/v3/grants/c18c3f0f-2cb2-4b39-bc87-3a72ee4f10aa/events
+```
+
+The `nylas_grant_id` database field is no longer needed for API v3 - just use the broker's email address.
 
 ## 🎯 Related Files
 

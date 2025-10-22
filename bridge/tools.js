@@ -485,10 +485,10 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
   const sb = initSupabase();
   
   try {
-    // Get broker's nylas_grant_id and email
+    // Get broker's email for Nylas grant ID (v3 uses email as grant identifier)
     const { data: broker, error: brokerError } = await sb
       .from('brokers')
-      .select('nylas_grant_id, contact_name, email, timezone')
+      .select('contact_name, email, timezone')
       .eq('id', broker_id)
       .single();
     
@@ -497,8 +497,8 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
       return generateFallbackSlots(preferred_day, preferred_time);
     }
     
-    if (!broker.nylas_grant_id) {
-      console.warn('⚠️  Broker calendar not synced, using fallback slots');
+    if (!broker.email) {
+      console.warn('⚠️  Broker has no email - cannot access calendar');
       return generateFallbackSlots(preferred_day, preferred_time);
     }
     
@@ -506,9 +506,9 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     const startTime = Math.floor(Date.now() / 1000);
     const endTime = Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000);
     
-    // Call Nylas Free/Busy API (access token endpoint)
+    // Call Nylas Free/Busy API
     // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
-    // When using Bearer token auth, use /v3/calendars/free-busy (not /grants/)
+    // NOTE: In Nylas v3, grant ID is the email address (not a UUID)
     const freeBusyUrl = `${NYLAS_API_URL}/v3/calendars/free-busy`;
     const response = await fetch(freeBusyUrl, {
       method: 'POST',
@@ -761,10 +761,10 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
   const sb = initSupabase();
   
   try {
-    // Get broker's nylas_grant_id and info
+    // Get broker info (Nylas v3 uses email as grant ID)
     const { data: broker, error: brokerError } = await sb
       .from('brokers')
-      .select('nylas_grant_id, contact_name, email, timezone')
+      .select('contact_name, email, timezone')
       .eq('id', broker_id)
       .single();
     
@@ -772,8 +772,8 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
       return { success: false, error: 'Broker not found' };
     }
     
-    if (!broker.nylas_grant_id) {
-      return { success: false, error: 'Broker calendar not synced' };
+    if (!broker.email) {
+      return { success: false, error: 'Broker has no email - cannot access calendar' };
     }
     
     // Get lead info for calendar event
@@ -796,8 +796,8 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     const endTime = startTime + 3600; // 1 hour appointment
     
     // Create calendar event via Nylas Events API
-    // Use grant-specific endpoint for proper calendar access
-    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events`;
+    // NOTE: In Nylas v3, grant ID is the broker's email address
+    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/events`;
     
     const eventBody = {
       title: `Reverse Mortgage Consultation - ${leadName}`,
