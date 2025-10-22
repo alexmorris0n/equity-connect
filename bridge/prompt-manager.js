@@ -142,26 +142,44 @@ async function getPromptFromPromptLayer(promptName) {
     let promptText = '';
     
     // PromptLayer templates can be in different formats
-    if (typeof result.prompt_template === 'string') {
+    // Format 1: content array with text blocks (current PromptLayer format)
+    if (result.prompt_template?.content && Array.isArray(result.prompt_template.content)) {
+      promptText = result.prompt_template.content
+        .filter(c => c.type === 'text')
+        .map(c => c.text)
+        .join('\n');
+    }
+    // Format 2: Direct string
+    else if (typeof result.prompt_template === 'string') {
       promptText = result.prompt_template;
-    } else if (result.prompt_template && result.prompt_template.messages) {
-      // Chat format - combine system + user messages
+    }
+    // Format 3: Chat format - combine messages
+    else if (result.prompt_template?.messages && Array.isArray(result.prompt_template.messages)) {
       promptText = result.prompt_template.messages
         .map(m => m.content)
         .join('\n\n');
-    } else if (result.prompt_template && result.prompt_template.prompt) {
+    }
+    // Format 4: Plain prompt field
+    else if (result.prompt_template?.prompt) {
       promptText = result.prompt_template.prompt;
-    } else if (result.prompt_template && typeof result.prompt_template === 'object') {
-      // Try to find the actual prompt text in other common fields
-      promptText = result.prompt_template.system_prompt || 
-                   result.prompt_template.template || 
-                   result.prompt_template.content || 
-                   '';
+    }
+    // Format 5: system_prompt field
+    else if (result.prompt_template?.system_prompt) {
+      promptText = result.prompt_template.system_prompt;
+    }
+    // Format 6: template field
+    else if (result.prompt_template?.template) {
+      promptText = result.prompt_template.template;
+    }
+    // Format 7: content field
+    else if (result.prompt_template?.content && typeof result.prompt_template.content === 'string') {
+      promptText = result.prompt_template.content;
     }
     
     if (!promptText) {
       console.warn(`⚠️ Could not extract prompt text from '${promptName}'`);
       console.warn(`   Available keys in prompt_template:`, Object.keys(result.prompt_template || {}));
+      console.warn(`   Full structure:`, JSON.stringify(result.prompt_template).substring(0, 200));
       return null;
     }
     
