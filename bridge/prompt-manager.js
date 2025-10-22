@@ -278,12 +278,13 @@ async function getPromptForCall(callContext, customInstructions = null) {
   const promptName = determinePromptName(callContext);
   console.log(`📋 Selected prompt variant: ${promptName}`);
   
-  // Try to get from PromptLayer
-  let promptFromPL = await getPromptFromPromptLayer(promptName);
-  
-  if (promptFromPL) {
-    return promptFromPL;
-  }
+  // TEMPORARY: Skip PromptLayer to avoid validation errors
+  console.log('⚠️ TEMPORARY: Skipping PromptLayer due to validation issues');
+  // let promptFromPL = await getPromptFromPromptLayer(promptName);
+  // 
+  // if (promptFromPL) {
+  //   return promptFromPL;
+  // }
   
   // PromptLayer failed - try disk cache
   console.warn(`⚠️ PromptLayer unavailable for '${promptName}', trying disk cache...`);
@@ -322,7 +323,7 @@ function injectVariables(promptTemplate, variables) {
       brokerFullName: variables.brokerFullName || 'one of our advisors',
       brokerLastName: variables.brokerLastName || '',
       brokerPhone: variables.brokerPhone || '',
-      broker_first_name: variables.broker_first_name || variables.brokerFirstName || '',
+      broker_first_name: variables.broker_first_name || variables.brokerFirstName || 'one of our advisors',
       callContext: variables.callContext || 'inbound',
       equity50FormattedWords: variables.equity50FormattedWords || '',
       equity50Percent: variables.equity50Percent || '',
