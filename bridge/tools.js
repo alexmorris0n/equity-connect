@@ -313,6 +313,10 @@ async function getLeadContext({ phone }) {
     broker_id: lead.assigned_broker_id,
     broker: broker, // Include full broker object with all fields
     context: formattedContext,
+    property_value: lead.property_value || null,
+    estimated_equity: lead.estimated_equity || null,
+    qualified: lead.qualified === true,
+    status: lead.status,
     
     // Last call context (for personalization)
     last_call: {
@@ -340,7 +344,8 @@ async function getLeadContext({ phone }) {
       estimated_equity: lead.estimated_equity,
       age: lead.age,
       owner_occupied: lead.owner_occupied,
-      status: lead.status
+      status: lead.status,
+      qualified: lead.qualified === true
     }
   };
 }
@@ -965,7 +970,24 @@ async function assignTrackingNumber({ lead_id, broker_id, signalwire_number, app
  */
 async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, content, recording_url, metadata, transcript }) {
   const sb = initSupabase();
-  
+
+  const metadataWithFlags = metadata || {};
+  const qualifiesByMetadata = metadataWithFlags.qualified === true
+    || metadataWithFlags.met_qualification_requirements === true
+    || metadataWithFlags.qualification_status === 'qualified';
+  const qualifiesByOutcome = outcome === 'appointment_booked' || outcome === 'positive';
+
+  if (qualifiesByMetadata || qualifiesByOutcome) {
+    try {
+      await sb
+        .from('leads')
+        .update({ qualified: true, updated_at: new Date().toISOString() })
+        .eq('id', lead_id);
+    } catch (updateError) {
+      console.warn('⚠️ Failed to update lead qualification status:', updateError.message);
+    }
+  }
+
   // Build comprehensive metadata
   const interactionMetadata = {
     ai_agent: 'barbara',

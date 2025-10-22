@@ -295,14 +295,35 @@ class AudioBridge {
     debug('🔄 Personalizing prompt with caller context');
     
     try {
-      const { prompt, variables } = await this.lookupAndBuildPrompt();
-      
-      // Update session with personalized prompt
-      debug('📤 Sending session update with personalized prompt');
+      const buildResult = await this.lookupAndBuildPrompt();
+      const { variables, propertyValueNumber, estimatedEquityNumber, qualifiedFlag, lead_id } = buildResult;
+
+      if (!variables) {
+        throw new Error('lookupAndBuildPrompt returned no variables');
+      }
+
+      const hasPropertyData = (propertyValueNumber !== null && !Number.isNaN(propertyValueNumber))
+        || (estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber));
+
+      const promptCallContext = {
+        context: buildResult.context || this.callContext.context || 'inbound',
+        lead_id: lead_id || this.callContext.lead_id,
+        from_phone: this.callerPhone,
+        to_phone: this.callContext.to_phone,
+        has_property_data: hasPropertyData,
+        is_qualified: qualifiedFlag
+      };
+
+      const promptTemplate = await getPromptForCall(
+        promptCallContext,
+        this.callContext.instructions
+      );
+
+      const personalizedPrompt = injectVariables(promptTemplate, variables);
       this.openaiSocket.send(JSON.stringify({
         type: 'session.update',
         session: {
-          instructions: prompt
+          instructions: personalizedPrompt
         }
       }));
       
@@ -321,36 +342,40 @@ class AudioBridge {
    * Look up lead context and build personalized prompt
    */
   async lookupAndBuildPrompt() {
-    // Extract caller phone from SignalWire metadata
     const callerPhone = this.extractCallerPhone();
-    
     if (!callerPhone) {
       console.log('⚠️ WARNING: No caller phone found, using minimal prompt');
+      const prompt = this.buildPromptFromTemplate({ callContext: 'inbound' });
       return {
-        prompt: this.buildPromptFromTemplate({ callContext: 'inbound' }),
-        variables: { callContext: 'inbound' }
+        prompt,
+        variables: { callContext: 'inbound' },
+        propertyValueNumber: null,
+        estimatedEquityNumber: null,
+        mortgageBalanceNumber: null,
+        qualifiedFlag: false,
+        lead_id: null,
+        broker_id: null,
+        leadStatus: '',
+        context: 'inbound'
       };
     }
-    
+
     console.log('📞 Looking up lead context for:', callerPhone);
-    
+
     try {
-      // Look up lead from database
       const result = await executeTool('get_lead_context', { phone: callerPhone });
-      
-      // Check if lead was found
+
       if (!result || !result.found || result.error) {
         console.log('⚠️ Lead not found in database - treating as new caller');
         console.log('📝 Will create new lead record during call with phone:', callerPhone);
-        
-        // Return new caller prompt (friendly, collect info during call)
+        const prompt = this.buildPromptFromTemplate({
+          callContext: 'inbound',
+          leadPhone: callerPhone,
+          isNewCaller: true
+        });
         return {
-          prompt: this.buildPromptFromTemplate({ 
-            callContext: 'inbound',
-            leadPhone: callerPhone,
-            isNewCaller: true 
-          }),
-          variables: { 
+          prompt,
+          variables: {
             callContext: 'inbound',
             leadPhone: callerPhone,
             isNewCaller: true,
@@ -358,78 +383,127 @@ class AudioBridge {
             leadLastName: '',
             propertyCity: '',
             brokerFirstName: 'one of our advisors'
-          }
+          },
+          propertyValueNumber: null,
+          estimatedEquityNumber: null,
+          mortgageBalanceNumber: null,
+          qualifiedFlag: false,
+          lead_id: null,
+          broker_id: null,
+          leadStatus: '',
+          context: 'inbound'
         };
       }
-      
-      // Build variables object from lead context
+
+      const propertyValueRaw = result?.property_value ?? result?.raw?.property_value ?? null;
+      const propertyValueNumber = propertyValueRaw !== null && propertyValueRaw !== undefined && propertyValueRaw !== ''
+        ? Number(propertyValueRaw)
+        : null;
+      const propertyValueFormatted = propertyValueNumber !== null && !Number.isNaN(propertyValueNumber)
+        ? Math.round(propertyValueNumber).toLocaleString('en-US')
+        : '';
+      const propertyValueWords = propertyValueNumber !== null && !Number.isNaN(propertyValueNumber)
+        ? this.numberToWords(Math.round(propertyValueNumber))
+        : '';
+
+      const equityRaw = result?.estimated_equity ?? result?.raw?.estimated_equity ?? null;
+      const estimatedEquityNumber = equityRaw !== null && equityRaw !== undefined && equityRaw !== ''
+        ? Number(equityRaw)
+        : null;
+      const estimatedEquityFormatted = estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber)
+        ? Math.round(estimatedEquityNumber).toLocaleString('en-US')
+        : '';
+      const estimatedEquityWords = estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber)
+        ? this.numberToWords(Math.round(estimatedEquityNumber))
+        : '';
+
+      const mortgageRaw = result?.raw?.mortgage_balance ?? null;
+      const mortgageBalanceNumber = mortgageRaw !== null && mortgageRaw !== undefined && mortgageRaw !== ''
+        ? Number(mortgageRaw)
+        : null;
+      const mortgageBalanceWords = mortgageBalanceNumber !== null && !Number.isNaN(mortgageBalanceNumber)
+        ? this.numberToWords(Math.round(mortgageBalanceNumber))
+        : '';
+
+      const qualifiedFlag = result?.qualified === true || result?.raw?.qualified === true || result?.status === 'qualified';
+
       const variables = {
-        // Call context
         callContext: 'inbound',
-        signalwireNumber: this.callContext.to || '',  // The SignalWire number that was called
-        
-        // Lead info
+        signalwireNumber: this.callContext.to || '',
         leadFirstName: result?.raw?.first_name || '',
         leadLastName: result?.raw?.last_name || '',
-        leadFullName: result?.raw?.first_name 
-          ? `${result.raw.first_name} ${result.raw.last_name || ''}`.trim() 
+        leadFullName: result?.raw?.first_name
+          ? `${result.raw.first_name} ${result.raw.last_name || ''}`.trim()
           : '',
         leadEmail: result?.raw?.primary_email || '',
         leadPhone: callerPhone,
-        
-        // Property info
         propertyAddress: result?.raw?.property_address || '',
         propertyCity: result?.raw?.property_city || '',
         propertyState: result?.raw?.property_state || '',
         propertyZipcode: result?.raw?.property_zip || '',
-        propertyValue: result?.raw?.property_value || '',
-        propertyValueWords: result?.raw?.property_value ? this.numberToWords(result.raw.property_value) : '',
-        mortgageBalanceWords: result?.raw?.mortgage_balance ? this.numberToWords(result.raw.mortgage_balance) : '',
-        
-        // Equity
-        estimatedEquity: result?.raw?.estimated_equity || '',
-        estimatedEquityWords: result?.raw?.estimated_equity ? this.numberToWords(result.raw.estimated_equity) : '',
-        equity50Percent: result?.raw?.estimated_equity ? Math.floor(result.raw.estimated_equity * 0.5) : '',
-        equity50FormattedWords: result?.raw?.estimated_equity ? this.numberToWords(Math.floor(result.raw.estimated_equity * 0.5)) : '',
-        equity60Percent: result?.raw?.estimated_equity ? Math.floor(result.raw.estimated_equity * 0.6) : '',
-        equity60FormattedWords: result?.raw?.estimated_equity ? this.numberToWords(Math.floor(result.raw.estimated_equity * 0.6)) : '',
-        
-        // Broker info
+        propertyValue: propertyValueFormatted,
+        propertyValueWords,
+        estimatedEquity: estimatedEquityFormatted,
+        estimatedEquityWords,
+        equity50Percent: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? Math.floor(estimatedEquityNumber * 0.5) : '',
+        equity50FormattedWords: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? this.numberToWords(Math.floor(estimatedEquityNumber * 0.5)) : '',
+        equity60Percent: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? Math.floor(estimatedEquityNumber * 0.6) : '',
+        equity60FormattedWords: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? this.numberToWords(Math.floor(estimatedEquityNumber * 0.6)) : '',
+        mortgageBalanceWords,
+        qualified: qualifiedFlag,
+        leadStatus: result?.status || '',
         brokerCompany: result?.broker?.company_name || '',
         brokerFullName: result?.broker?.contact_name || '',
         brokerFirstName: result?.broker?.contact_name ? result.broker.contact_name.split(' ')[0] : '',
         brokerNmls: result?.broker?.nmls_number || '',
         brokerPhone: result?.broker?.phone || '',
-        brokerDisplay: result?.broker?.contact_name 
+        brokerDisplay: result?.broker?.contact_name
           ? `${result.broker.contact_name}, NMLS ${result.broker.nmls_number || 'licensed'}`
           : '',
-        
-        // Persona - empty for inbound (they called us)
         personaSenderName: '',
         personaFirstName: '',
         campaignArchetype: '',
         personaAssignment: ''
       };
-      
+
       console.log('✅ Lead context retrieved:', {
         found: result?.found,
         name: variables.leadFirstName,
         city: variables.propertyCity,
-        broker: variables.brokerFirstName
+        broker: variables.brokerFirstName,
+        qualified: qualifiedFlag
       });
-      
-      // Build prompt from template with variables
+
       const prompt = this.buildPromptFromTemplate(variables);
-      
-      return { prompt, variables };
-      
+
+      return {
+        prompt,
+        variables,
+        propertyValueNumber,
+        estimatedEquityNumber,
+        mortgageBalanceNumber,
+        qualifiedFlag,
+        lead_id: result.lead_id,
+        broker_id: result.broker_id,
+        leadStatus: result.status || '',
+        context: this.callContext.context || 'inbound'
+      };
+
     } catch (err) {
       console.error('❌ Failed to lookup lead context:', err);
       console.error('❌ Error stack:', err.stack);
-      // Return minimal prompt on error
+      const prompt = this.buildPromptFromTemplate({ callContext: 'inbound' });
       return {
-        prompt: this.buildPromptFromTemplate({ callContext: 'inbound' }),
-        variables: { callContext: 'inbound' }
+        prompt,
+        variables: { callContext: 'inbound' },
+        propertyValueNumber: null,
+        estimatedEquityNumber: null,
+        mortgageBalanceNumber: null,
+        qualifiedFlag: false,
+        lead_id: null,
+        broker_id: null,
+        leadStatus: '',
+        context: this.callContext.context || 'inbound'
       };
     }
   }
@@ -546,101 +620,41 @@ class AudioBridge {
     debug('🔵 configureSession() called');
     
     let instructions;
-    let leadContextData = null;
-    
-    // Step 1: Look up lead context (for variable injection)
+
     try {
-      if (!this.callContext.instructions && this.callerPhone) {
-        // Look up lead context for personalization
-        leadContextData = await executeTool('get_lead_context', { 
-          phone: this.callerPhone 
-        });
-        
-        if (leadContextData && leadContextData.found) {
-          debug('🔵 Found lead context:', {
-            hasName: !!leadContextData.raw?.first_name,
-            hasCity: !!leadContextData.raw?.property_city,
-            hasEquity: !!leadContextData.estimated_equity
-          });
-        }
+      const promptBuildResult = await this.lookupAndBuildPrompt();
+
+      if (!promptBuildResult || !promptBuildResult.variables) {
+        throw new Error('lookupAndBuildPrompt returned empty result');
       }
-    } catch (err) {
-      console.warn('⚠️ Failed to lookup lead context:', err.message);
-    }
-    
-    // Step 2: Build call context for prompt selection
-    const promptCallContext = {
-      context: this.callContext.context || 'inbound',
-      lead_id: leadContextData?.lead_id || this.callContext.lead_id,
-      from_phone: this.callerPhone,
-      to_phone: this.callContext.to_phone,
-      has_property_data: !!(leadContextData?.estimated_equity || leadContextData?.property_value)
-    };
-    
-    // Step 3: Get the right prompt from PromptLayer (or fallback to local)
-    const promptTemplate = await getPromptForCall(
-      promptCallContext,
-      this.callContext.instructions  // Custom instructions override everything
-    );
-    
-    debug('🔵 Got prompt template:', {
-      length: promptTemplate.length,
-      isCustom: !!this.callContext.instructions,
-      context: promptCallContext.context,
-      hasLeadData: !!leadContextData
-    });
-    
-    // SAFETY: Ensure promptTemplate is a string
-    let promptText = promptTemplate;
-    if (typeof promptTemplate !== 'string') {
-      console.warn('⚠️ PROMPT IS NOT A STRING! Type:', typeof promptTemplate);
-      console.warn('   Attempting to extract text...');
-      promptText = JSON.stringify(promptTemplate);
-      if (promptText === '{}' || promptText.length < 50) {
-        console.error('❌ FAILED to extract prompt - falling back to default');
-        promptText = loadPromptSafe();
-      }
-    }
-    
-    // Step 4: Inject variables into the prompt
-    if (leadContextData && leadContextData.found) {
-      // We have lead data - personalize the prompt
-      const variables = {
-        // Lead info
-        leadFirstName: leadContextData.raw?.first_name || '',
-        leadLastName: leadContextData.raw?.last_name || '',
-        leadFullName: `${leadContextData.raw?.first_name || ''} ${leadContextData.raw?.last_name || ''}`.trim(),
-        leadEmail: leadContextData.raw?.primary_email || '',
-        leadPhone: this.callerPhone || '',
-        
-        // Property info
-        propertyAddress: leadContextData.raw?.property_address || '',
-        propertyCity: leadContextData.raw?.property_city || '',
-        propertyState: leadContextData.raw?.property_state || '',
-        propertyZipcode: leadContextData.raw?.property_zipcode || '',
-        propertyValue: leadContextData.property_value || '',
-        
-        // Equity info
-        estimatedEquity: leadContextData.estimated_equity || '',
-        
-        // Broker info (if available)
-        brokerFullName: leadContextData.broker?.contact_name || '',
-        brokerFirstName: leadContextData.broker?.contact_name?.split(' ')[0] || '',
-        brokerCompany: leadContextData.broker?.company_name || '',
-        brokerPhone: leadContextData.broker?.phone || '',
-        
-        // Call context
-        callContext: promptCallContext.context
+
+      const { prompt, variables, propertyValueNumber, estimatedEquityNumber, mortgageBalanceNumber, qualifiedFlag } = promptBuildResult;
+
+      const hasPropertyData = (propertyValueNumber !== null && !Number.isNaN(propertyValueNumber))
+        || (estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber));
+
+      const promptCallContext = {
+        context: this.callContext.context || 'inbound',
+        lead_id: promptBuildResult.lead_id || this.callContext.lead_id,
+        from_phone: this.callerPhone,
+        to_phone: this.callContext.to_phone,
+        has_property_data: hasPropertyData,
+        is_qualified: qualifiedFlag
       };
-      
-      instructions = injectVariables(promptText, variables);
-      debug('🔵 Injected variables into prompt');
-    } else {
-      // No lead data - use prompt as-is
-      instructions = promptText;
-      debug('🔵 Using prompt without variable injection (no lead data)');
+
+      const promptTemplate = await getPromptForCall(
+        promptCallContext,
+        this.callContext.instructions
+      );
+
+      instructions = injectVariables(promptTemplate, variables);
+
+    } catch (err) {
+      console.warn('⚠️ configureSession: lookupAndBuildPrompt failed, using minimal fallback. Reason:', err.message);
+      const fallbackPrompt = loadPromptSafe();
+      instructions = fallbackPrompt;
     }
-    
+
     debug('🔵 Final instructions length:', instructions.length);
     
     const sessionConfig = {

@@ -57,26 +57,23 @@ function determinePromptName(callContext) {
     lead_id,          // Is lead in database?
     from_phone,       // Caller's phone
     to_phone,         // Number they called
-    has_property_data // Do we have equity/property info?
+    has_property_data, // Do we have equity/property info?
+    is_qualified      // New flag indicating qualification status
   } = callContext;
   
   // Outbound calls
   if (context === 'outbound') {
-    // If we have lead data, it's a warm outbound call
-    if (lead_id && has_property_data) {
+    if (is_qualified || (lead_id && has_property_data)) {
       return 'barbara-outbound-warm';
     }
-    // Cold outbound (shouldn't happen often, but handle it)
     return 'barbara-outbound-cold';
   }
   
   // Inbound calls
   if (context === 'inbound') {
-    // If lead is in DB with property data, use qualified prompt
-    if (lead_id && has_property_data) {
+    if (is_qualified || (lead_id && has_property_data)) {
       return 'barbara-inbound-qualified';
     }
-    // Unknown caller or missing data, use unqualified (discovery) prompt
     return 'barbara-inbound-unqualified';
   }
   
