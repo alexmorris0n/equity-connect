@@ -23,6 +23,37 @@ class PromptLayerRealtime {
   }
 
   /**
+   * Convert timestamp to Unix seconds (float) as required by PromptLayer
+   * Per docs: request_start_time and request_end_time use Unix timestamps in seconds
+   */
+  toUnixSeconds(timestamp, durationSeconds = 0) {
+    try {
+      // If timestamp is already a number (assume it's unix ms)
+      if (typeof timestamp === 'number') {
+        // If it's already in seconds (< year 3000), return as-is
+        if (timestamp < 32503680000) {
+          return timestamp;
+        }
+        // Otherwise convert from milliseconds to seconds
+        return timestamp / 1000;
+      }
+      
+      // If timestamp is an ISO string
+      if (typeof timestamp === 'string' && timestamp.includes('T')) {
+        return new Date(timestamp).getTime() / 1000;
+      }
+      
+      // Fallback: calculate from current time minus duration
+      const startTimeMs = Date.now() - (durationSeconds * 1000);
+      return startTimeMs / 1000;
+    } catch (err) {
+      // Last resort fallback
+      console.warn('⚠️ Failed to parse timestamp, using current time:', err.message);
+      return Date.now() / 1000;
+    }
+  }
+
+  /**
    * Log a complete Realtime API conversation
    */
   async logRealtimeConversation({
@@ -83,8 +114,8 @@ class PromptLayerRealtime {
             }]
           }
         },
-        request_start_time: new Date(metadata?.call_start_time || Date.now() - (durationSeconds * 1000)).toISOString(),
-        request_end_time: new Date().toISOString(),
+        request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
+        request_end_time: Date.now() / 1000,  // Unix timestamp in seconds (float)
         prompt_name: metadata?.prompt_version || 'old-big-beautiful-prompt',
         prompt_input_variables: {
           lead_id: leadId,
