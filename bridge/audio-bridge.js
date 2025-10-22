@@ -652,9 +652,17 @@ class AudioBridge {
         const hasPropertyData = (propertyValueNumber !== null && !Number.isNaN(propertyValueNumber))
           || (estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber));
 
+        // CRITICAL: Update callContext with lead_id from lookup result
+        if (promptBuildResult.lead_id) {
+          this.callContext.lead_id = promptBuildResult.lead_id;
+        }
+        if (promptBuildResult.broker_id) {
+          this.callContext.broker_id = promptBuildResult.broker_id;
+        }
+
         promptCallContext = {
           context: this.callContext.context || 'inbound',
-          lead_id: promptBuildResult.lead_id || this.callContext.lead_id,
+          lead_id: this.callContext.lead_id,
           from_phone: this.callerPhone,
           to_phone: this.callContext.to_phone,
           has_property_data: hasPropertyData,
