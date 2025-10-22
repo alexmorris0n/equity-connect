@@ -103,14 +103,29 @@ async function getPromptFromPromptLayer(promptName) {
       return null;
     }
     
-    // Fetch prompt template from PromptLayer
-    const result = await promptLayer.client.templates.get(promptName, {
-      // Get latest version
-      label: 'production'  // or 'latest' or specific version
-    });
+    // Try fetching prompt template from PromptLayer
+    // First attempt: no label (gets latest version)
+    let result = null;
+    try {
+      console.log(`🔍 Fetching prompt from PromptLayer: ${promptName} (latest version)`);
+      result = await promptLayer.client.templates.get(promptName);
+    } catch (firstAttemptError) {
+      // If that fails, try with "prod" label
+      try {
+        console.log(`🔍 First attempt failed, trying with label: "prod"`);
+        result = await promptLayer.client.templates.get(promptName, {
+          label: 'prod'
+        });
+      } catch (secondAttemptError) {
+        console.warn(`⚠️ Prompt '${promptName}' not found in PromptLayer`);
+        console.warn(`   Error (no label): ${firstAttemptError.message}`);
+        console.warn(`   Error (prod label): ${secondAttemptError.message}`);
+        return null;
+      }
+    }
     
     if (!result || !result.prompt_template) {
-      console.warn(`⚠️ Prompt '${promptName}' not found in PromptLayer`);
+      console.warn(`⚠️ Prompt '${promptName}' returned empty from PromptLayer`);
       return null;
     }
     
@@ -246,11 +261,51 @@ async function prewarmCache() {
   console.log('✅ Prompt cache pre-warmed');
 }
 
+/**
+ * Diagnostic: List all available prompts from PromptLayer
+ */
+async function listAllPrompts() {
+  try {
+    const promptLayer = initPromptLayer();
+    
+    if (!promptLayer.enabled) {
+      console.log('⚠️ PromptLayer disabled (no API key)');
+      return [];
+    }
+    
+    console.log('🔍 Fetching all available prompts from PromptLayer...');
+    const allPrompts = await promptLayer.client.templates.all();
+    
+    if (!allPrompts || allPrompts.length === 0) {
+      console.log('⚠️ No prompts found in PromptLayer');
+      return [];
+    }
+    
+    console.log(`✅ Found ${allPrompts.length} prompts:`);
+    allPrompts.forEach((prompt, index) => {
+      console.log(`   ${index + 1}. ${prompt.name || prompt.id}`);
+      if (prompt.release_labels) {
+        console.log(`      Labels: ${prompt.release_labels.join(', ')}`);
+      }
+      if (prompt.version) {
+        console.log(`      Version: ${prompt.version}`);
+      }
+    });
+    
+    return allPrompts;
+    
+  } catch (error) {
+    console.error('❌ Failed to list prompts:', error.message);
+    return [];
+  }
+}
+
 module.exports = {
   getPromptForCall,
   injectVariables,
   determinePromptName,
   clearCache,
-  prewarmCache
+  prewarmCache,
+  listAllPrompts
 };
 
