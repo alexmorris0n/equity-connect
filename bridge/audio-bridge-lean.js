@@ -169,13 +169,38 @@ class AudioBridge {
   setupSignalWireHandlers() {
     this.swSocket.on('message', (message) => {
       try {
-        // Check if binary frame (Buffer) vs JSON string
+        // Check if binary frame (raw PCM) vs JSON string
         if (Buffer.isBuffer(message) && message.length > 0 && message[0] !== 0x7b) {
-          console.warn('⚠️ SignalWire sent BINARY frame - not implemented!', message.length, 'bytes');
-          this.logger.warn({ length: message.length }, '⚠️ Binary frame received - dropping');
+          // SignalWire sent raw binary audio - convert to base64 and forward
+          if (!this._binaryFrameWarned) {
+            console.warn('⚠️ SignalWire switched to BINARY frames - handling as raw audio');
+            this._binaryFrameWarned = true;
+          }
+          
+          // Track media flow
+          if (!this._lastInputAudioAt) {
+            this._lastInputAudioAt = 0;
+            this._inputAudioCount = 0;
+          }
+          this._inputAudioCount++;
+          this._lastInputAudioAt = Date.now();
+          
+          if (!this._lastInputAudioLog || Date.now() - this._lastInputAudioLog > 5000) {
+            console.log(`📊 Input audio flowing (BINARY): ${this._inputAudioCount} packets, last: ${new Date(this._lastInputAudioAt).toISOString()}`);
+            this._lastInputAudioLog = Date.now();
+          }
+          
+          // Forward raw binary as base64 to OpenAI
+          if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+            this.openaiSocket.send(JSON.stringify({
+              type: 'input_audio_buffer.append',
+              audio: message.toString('base64')
+            }));
+          }
           return;
         }
         
+        // Standard JSON message
         const msg = JSON.parse(message.toString());
         this.handleSignalWireEvent(msg);
       } catch (err) {
