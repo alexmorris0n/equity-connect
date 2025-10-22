@@ -91,6 +91,9 @@ class AudioBridge {
     
     // Track pending audio sends to ensure completion
     this.pendingAudioSends = [];
+    
+    // Media starvation detection (SignalWire idle timeout is ~10s)
+    this.mediaStarvationTimer = null;
   }
 
   /**
@@ -808,6 +811,16 @@ class AudioBridge {
         this._inputAudioCount++;
         this._lastInputAudioAt = Date.now();
         
+        // Reset starvation timer (SignalWire stops sending if idle >10s)
+        if (this.mediaStarvationTimer) {
+          clearTimeout(this.mediaStarvationTimer);
+        }
+        this.mediaStarvationTimer = setTimeout(() => {
+          console.warn('⚠️ MEDIA STARVATION: No audio from SignalWire for 12 seconds - connection may be dead');
+          console.warn('⚠️ Last media at:', new Date(this._lastInputAudioAt).toISOString());
+          console.warn('⚠️ Total packets received:', this._inputAudioCount);
+        }, 12000);
+        
         // Log periodically to confirm audio is flowing (every 5 seconds)
         if (!this._lastInputAudioLog || Date.now() - this._lastInputAudioLog > 5000) {
           console.log(`📊 Input audio flowing: ${this._inputAudioCount} packets, last: ${new Date(this._lastInputAudioAt).toISOString()}`);
@@ -1146,6 +1159,11 @@ class AudioBridge {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
       debug('✅ Heartbeat stopped');
+    }
+    
+    if (this.mediaStarvationTimer) {
+      clearTimeout(this.mediaStarvationTimer);
+      this.mediaStarvationTimer = null;
     }
     
     this.logger.info('🧹 Cleaning up audio bridge');
