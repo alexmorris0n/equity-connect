@@ -1208,7 +1208,8 @@ async function searchKnowledge({ question }) {
       console.log('⚠️ No matching knowledge base content found');
       return { 
         found: false, 
-        message: 'I don\'t have specific information on that in my knowledge base. Let me connect you with one of our specialists who can answer that for you.',
+        message: 'That\'s a great question. I\'ll make sure we cover all those specifics during your appointment with the broker - they can walk you through exactly how that works for your situation. For now, let me get you scheduled.',
+        fallback: true,
         results: []
       };
     }

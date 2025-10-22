@@ -203,9 +203,13 @@ class AudioBridge {
       // Audio commits will start when first audio is received
       this.startHeartbeat();
       
-      // OUTBOUND calls: Configure immediately (we have all context from n8n)
+      // OUTBOUND calls: Configure after socket is fully ready (we have all context from n8n)
       if (this.callContext.instructions) {
-        console.log('🔵 Outbound call - configuring session with provided context');
+        console.log('🔵 Outbound call - waiting for socket to be fully ready...');
+        // Even though we're in 'open' event, socket might still be CONNECTING
+        // Wait a brief moment for readyState to become OPEN (1)
+        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('🔵 Configuring session with provided context');
         await this.configureSession();
         this.startAutoResumeMonitor();
         
@@ -764,6 +768,12 @@ class AudioBridge {
     debug('🔵 Sending session.update to OpenAI...');
     debug('🔵 Session config:', JSON.stringify(sessionConfig).substring(0, 500));
     
+    // Safety check: Ensure socket is open before sending
+    if (!this.openaiSocket || this.openaiSocket.readyState !== WebSocket.OPEN) {
+      const currentState = this.openaiSocket?.readyState;
+      throw new Error(`Cannot configure session - OpenAI socket not ready (state: ${currentState})`);
+    }
+    
     this.openaiSocket.send(JSON.stringify(sessionConfig));
     this.sessionConfigured = true;
     
@@ -1064,6 +1074,18 @@ class AudioBridge {
         const barbaraTranscript = this.currentResponseTranscript || event.transcript || '';
         if (barbaraTranscript) {
           console.log('🤖 Barbara said:', barbaraTranscript);
+          
+          // Server-side guardrail: Log if response is excessively long (>120 words ~20s TTS)
+          const wordCount = barbaraTranscript.split(/\s+/).length;
+          if (wordCount > 120) {
+            console.warn(`⚠️ LONG RESPONSE: ${wordCount} words (~${Math.round(wordCount * 0.5)}s TTS) - consider prompt tuning`);
+            this.logger.warn({ 
+              wordCount, 
+              estimatedTTS: `${Math.round(wordCount * 0.5)}s`,
+              transcript: barbaraTranscript.substring(0, 200) 
+            }, '⚠️ Anomaly: Excessively long response');
+          }
+          
           this.logger.info({ transcript: barbaraTranscript, response_id: event.response_id }, '🤖 Barbara transcription');
           
           // Save to conversation transcript
@@ -1217,23 +1239,33 @@ class AudioBridge {
           }
           
           // WAIT for OpenAI socket to be fully open before configuring
-          const waitForOpen = () => new Promise((resolve) => {
+          const waitForOpen = () => new Promise((resolve, reject) => {
             if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+              console.log('✅ OpenAI socket already open');
               resolve();
-            } else {
-              const checkInterval = setInterval(() => {
-                if (this.openaiSocket?.readyState === WebSocket.OPEN) {
-                  clearInterval(checkInterval);
-                  resolve();
-                }
-              }, 50); // Check every 50ms
-              
-              // Timeout after 3 seconds
-              setTimeout(() => {
-                clearInterval(checkInterval);
-                resolve(); // Continue anyway
-              }, 3000);
+              return;
             }
+            
+            console.log('⏳ Waiting for OpenAI socket to open...');
+            const startWait = Date.now();
+            
+            const checkInterval = setInterval(() => {
+              if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+                clearInterval(checkInterval);
+                const waitTime = Date.now() - startWait;
+                console.log(`✅ OpenAI socket opened after ${waitTime}ms`);
+                resolve();
+              }
+            }, 50); // Check every 50ms
+            
+            // Timeout after 5 seconds (increased from 3s)
+            setTimeout(() => {
+              clearInterval(checkInterval);
+              const waitTime = Date.now() - startWait;
+              const state = this.openaiSocket?.readyState;
+              console.error(`❌ OpenAI socket failed to open after ${waitTime}ms (state: ${state})`);
+              reject(new Error(`OpenAI socket timeout - still in state ${state} after ${waitTime}ms`));
+            }, 5000);
           });
           
           try {
