@@ -749,7 +749,7 @@ class AudioBridge {
           model: 'whisper-1'
         },
         temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
-        max_response_output_tokens: 400,  // Enough for detailed Q&A while prompt keeps responses concise
+        max_response_output_tokens: 'inf',  // No artificial limit - let prompt control response length, not token cap
         turn_detection: {
           type: 'server_vad',
           threshold: 0.80,  // Very high - ignores phone alerts, notifications, handling noise
@@ -1504,24 +1504,26 @@ class AudioBridge {
     this.autoResumeInterval = setInterval(() => {
       const idleTime = Date.now() - this.lastResponseAt;
       
-      // VAD RECOVERY: If no speech detected for 10s after Barbara finished,
-      // and input audio is flowing, VAD might be stuck - clear buffer to reset
-      if (idleTime > 10000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
+      // VAD RECOVERY: Disabled - was too aggressive and cleared legitimate speech
+      // If VAD is stuck, the user can just hang up and call back
+      // The 10s window was too short and was clearing user's "hello" attempts
+      // Keeping code for reference but commented out:
+      /*
+      if (idleTime > 30000 && !this.userSpeaking && this.lastResponseAt > 0 && !this.responseInProgress) {
         const timeSinceLastInput = Date.now() - (this._lastInputAudioAt || 0);
-        // Only recover if audio is still flowing (< 2s since last packet)
         if (timeSinceLastInput < 2000 && !this._vadRecoveredRecently) {
-          console.log('🔄 VAD RECOVERY: No speech detected for 10s but audio flowing - clearing buffer to reset VAD');
+          console.log('🔄 VAD RECOVERY: No speech detected for 30s but audio flowing - clearing buffer to reset VAD');
           if (this.openaiSocket?.readyState === WebSocket.OPEN) {
             this.openaiSocket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }));
             this.bufferedAudioBytes = 0;
             this.hasAppendedSinceLastCommit = false;
             this.commitLockedUntil = Date.now() + 600;
             this._vadRecoveredRecently = true;
-            // Reset flag after 30s to allow another recovery if needed
             setTimeout(() => { this._vadRecoveredRecently = false; }, 30000);
           }
         }
       }
+      */
       
       // If Barbara asked a question and user hasn't responded in 12 seconds (increased from 8s)
       // Give ONE gentle nudge, then stop (don't auto-progress through script)
