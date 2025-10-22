@@ -610,90 +610,58 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
 }
 
 /**
- * Calculate available time slots from busy times
+ * Format available time slots from Nylas Availability API
+ * Nylas already calculated the available times, we just need to format and filter them
  */
 function formatAvailableSlots(rawSlots, preferred_day, preferred_time, timezone) {
+  if (!rawSlots || rawSlots.length === 0) return [];
+  
+  const now = Date.now();
   const formattedSlots = [];
-  const businessStart = 10;  // 10 AM (updated business hours)
-  const businessEnd = 17;    // 5 PM
-  const minNoticeHours = 2;  // Minimum 2 hours notice
   
-  const now = new Date();
-  const minBookingTime = new Date(now.getTime() + (minNoticeHours * 60 * 60 * 1000));
-  
-  // Generate slots for next 14 days
-  for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
-    const date = new Date();
-    date.setDate(date.getDate() + dayOffset);
-    const dayOfWeek = date.getDay();
-    
-    // Skip weekends
-    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-    
+  for (const slot of rawSlots) {
+    const slotStart = new Date(slot.start);
+    const slotEnd = new Date(slot.end);
+    const dayOfWeek = slotStart.getDay();
     const dayName = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][dayOfWeek];
+    const hour = slotStart.getHours();
     
     // Filter by preferred day
     if (preferred_day && preferred_day !== 'any' && preferred_day !== dayName) continue;
     
-    // Check each hour within business hours
-    for (let hour = businessStart; hour < businessEnd; hour++) {
-      // Filter by preferred time
-      if (preferred_time === 'morning' && hour >= 12) continue;
-      if (preferred_time === 'afternoon' && hour < 12) continue;
-      if (preferred_time === 'evening' && hour < 17) continue;
-      
-      const slotStart = new Date(date);
-      slotStart.setHours(hour, 0, 0, 0);
-      const slotEnd = new Date(slotStart);
-      slotEnd.setHours(hour + 1, 0, 0, 0);
-      
-      // Skip if slot is too soon (less than 2 hours notice)
-      if (slotStart < minBookingTime) continue;
-      
-      const slotStartMs = slotStart.getTime();
-      const slotEndMs = slotEnd.getTime();
-      
-      // Check for conflicts with busy times
-      const isConflict = busyTimes.some(busy => 
-        (slotStartMs >= busy.start && slotStartMs < busy.end) ||
-        (slotEndMs > busy.start && slotEndMs <= busy.end) ||
-        (slotStartMs <= busy.start && slotEndMs >= busy.end)
-      );
-      
-      if (!isConflict) {
-        const isToday = dayOffset === 0;
-        const isTomorrow = dayOffset === 1;
-        
-        formattedSlots.push({
-          datetime: slotStart.toISOString(),
-          unix_timestamp: Math.floor(slotStartMs / 1000),
-          display: `${slotStart.toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            month: 'short', 
-            day: 'numeric' 
-          })} at ${slotStart.toLocaleTimeString('en-US', { 
-            hour: 'numeric', 
-            minute: '2-digit', 
-            hour12: true 
-          })}`,
-          day: dayName,
-          time: slotStart.toLocaleTimeString('en-US', { 
-            hour: 'numeric', 
-            minute: '2-digit', 
-            hour12: true 
-          }),
-          priority: isToday ? 1 : (isTomorrow ? 2 : 3), // Prioritize today, then tomorrow
-          is_same_day: isToday,
-          is_tomorrow: isTomorrow
-        });
-      }
-    }
+    // Filter by preferred time
+    if (preferred_time === 'morning' && hour >= 12) continue;
+    if (preferred_time === 'afternoon' && hour < 12) continue;
+    if (preferred_time === 'evening' && hour < 17) continue;
     
-    // Limit to 5 best options
-    if (formattedSlots.length >= 5) break;
+    const isToday = slotStart.toDateString() === new Date().toDateString();
+    const isTomorrow = slotStart.toDateString() === new Date(Date.now() + 86400000).toDateString();
+    
+    formattedSlots.push({
+      datetime: slotStart.toISOString(),
+      unix_timestamp: Math.floor(slot.start / 1000),
+      display: `${slotStart.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric' 
+      })} at ${slotStart.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit', 
+        hour12: true 
+      })}`,
+      day: dayName,
+      time: slotStart.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit', 
+        hour12: true 
+      }),
+      priority: isToday ? 1 : (isTomorrow ? 2 : 3),
+      is_same_day: isToday,
+      is_tomorrow: isTomorrow
+    });
   }
   
-  // Sort by priority (same day first, then tomorrow, then others)
+  // Sort by priority (today first, then tomorrow, then rest)
   formattedSlots.sort((a, b) => a.priority - b.priority);
   
   return formattedSlots.slice(0, 5);
