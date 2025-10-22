@@ -317,9 +317,9 @@ function injectVariables(promptTemplate, variables) {
       context: variables.context || variables.callContext || 'inbound',
       
       // PromptLayer template variables (provide defaults to prevent missing variable errors)
-      brokerCompany: variables.brokerCompany || '',
-      brokerFirstName: variables.brokerFirstName || '',
-      brokerFullName: variables.brokerFullName || '',
+      brokerCompany: variables.brokerCompany || 'Equity Connect',
+      brokerFirstName: variables.brokerFirstName || 'one of our advisors',
+      brokerFullName: variables.brokerFullName || 'one of our advisors',
       brokerLastName: variables.brokerLastName || '',
       brokerPhone: variables.brokerPhone || '',
       broker_first_name: variables.broker_first_name || variables.brokerFirstName || '',
