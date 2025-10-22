@@ -2234,9 +2234,17 @@ CONVERSATION GOALS (in order):
         args.metadata.prompt_source = this.promptSource || 'unknown';
       }
       
-      // Execute with timeout to prevent stalls (10s timeout for complex tools like booking)
-      console.log('⏱️ Executing tool:', name, 'with 10s timeout...');
-      const result = await this.withTimeout(executeTool(name, args));
+      // Execute with timeout to prevent stalls
+      // Different timeouts for different tool types:
+      // - External API calls (Nylas, OpenAI): 15-20s
+      // - Database-only operations: 10s
+      let timeoutMs = 10000; // Default: 10s
+      if (name === 'search_knowledge') timeoutMs = 20000;  // OpenAI embeddings + vector search
+      if (name === 'check_broker_availability') timeoutMs = 15000;  // Nylas free/busy API
+      if (name === 'book_appointment') timeoutMs = 15000;  // Nylas events API + DB writes
+      
+      console.log(`⏱️ Executing tool: ${name} with ${timeoutMs/1000}s timeout...`);
+      const result = await this.withTimeout(executeTool(name, args), timeoutMs);
       
       console.log('✅ Tool executed successfully:', name);
       console.log('✅ Tool result:', JSON.stringify(result).substring(0, 200));

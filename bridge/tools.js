@@ -483,14 +483,20 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
   const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
   
   const sb = initSupabase();
+  const startTime = Date.now();
   
   try {
+    console.log('📅 Checking broker availability:', broker_id);
+    
     // Get broker's email for Nylas grant ID (v3 uses email as grant identifier)
+    const dbStartTime = Date.now();
     const { data: broker, error: brokerError } = await sb
       .from('brokers')
       .select('contact_name, email, timezone')
       .eq('id', broker_id)
       .single();
+    
+    console.log(`✅ Broker lookup: ${Date.now() - dbStartTime}ms`);
     
     if (brokerError || !broker) {
       console.error('❌ Broker not found:', brokerError);
@@ -509,6 +515,7 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     // Call Nylas Free/Busy API
     // https://developer.nylas.com/docs/v3/calendar/check-free-busy/
     // NOTE: In Nylas v3, grant ID is the email address (not a UUID)
+    const nylasStartTime = Date.now();
     const freeBusyUrl = `${NYLAS_API_URL}/v3/calendars/free-busy`;
     const response = await fetch(freeBusyUrl, {
       method: 'POST',
@@ -526,11 +533,14 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ Nylas free/busy API failed:', response.status, errorText);
+      const nylasTime = Date.now() - nylasStartTime;
+      console.error(`❌ Nylas free/busy API failed (${nylasTime}ms):`, response.status, errorText);
       return generateFallbackSlots(preferred_day, preferred_time);
     }
     
     const freeBusyData = await response.json();
+    const nylasTime = Date.now() - nylasStartTime;
+    console.log(`✅ Nylas free/busy API: ${nylasTime}ms`);
     
     // Extract busy times for the broker
     const busyTimes = [];
@@ -550,12 +560,18 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     });
     
     // Calculate available slots
+    const calcStartTime = Date.now();
     const availableSlots = calculateAvailableSlots(
       busyTimes,
       preferred_day,
       preferred_time,
       broker.timezone || 'America/Los_Angeles'
     );
+    const calcTime = Date.now() - calcStartTime;
+    const totalTime = Date.now() - startTime;
+    
+    console.log(`✅ Slot calculation: ${calcTime}ms`);
+    console.log(`✅ Total availability check: ${totalTime}ms`);
     
     // Generate smart response message
     let message = '';
@@ -759,9 +775,13 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
   const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
   
   const sb = initSupabase();
+  const startTime = Date.now();
   
   try {
+    console.log('📅 Booking appointment:', { lead_id, broker_id, scheduled_for });
+    
     // Get broker info (Nylas v3 uses email as grant ID)
+    const brokerStartTime = Date.now();
     const { data: broker, error: brokerError } = await sb
       .from('brokers')
       .select('contact_name, email, timezone')
@@ -776,7 +796,10 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
       return { success: false, error: 'Broker has no email - cannot access calendar' };
     }
     
+    console.log(`✅ Broker lookup: ${Date.now() - brokerStartTime}ms`);
+    
     // Get lead info for calendar event
+    const leadStartTime = Date.now();
     const { data: lead } = await sb
       .from('leads')
       .select('first_name, last_name, primary_phone, primary_email')
@@ -786,6 +809,8 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     if (!lead) {
       return { success: false, error: 'Lead not found' };
     }
+    
+    console.log(`✅ Lead lookup: ${Date.now() - leadStartTime}ms`);
     
     const leadName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Lead';
     const leadEmail = lead.primary_email || null;
@@ -832,6 +857,7 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
       });
     }
     
+    const nylasStartTime = Date.now();
     const response = await fetch(createEventUrl, {
       method: 'POST',
       headers: {
@@ -851,7 +877,9 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     
     const eventData = await response.json();
     const nylasEventId = eventData.data?.id;
+    const nylasTime = Date.now() - nylasStartTime;
     
+    console.log(`✅ Nylas event created: ${nylasTime}ms`);
     console.log('✅ Appointment booked via Nylas:', {
       event_id: nylasEventId,
       broker: broker.contact_name,
@@ -861,6 +889,7 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
     });
     
     // Log interaction to Supabase
+    const interactionStartTime = Date.now();
     await sb.from('interactions').insert({
       lead_id,
       broker_id,
@@ -876,8 +905,10 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
       },
       created_at: new Date().toISOString()
     });
+    console.log(`✅ Interaction logged: ${Date.now() - interactionStartTime}ms`);
     
     // Update lead status
+    const updateStartTime = Date.now();
     await sb
       .from('leads')
       .update({ 
@@ -885,8 +916,10 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
         last_engagement: new Date().toISOString()
       })
       .eq('id', lead_id);
+    console.log(`✅ Lead status updated: ${Date.now() - updateStartTime}ms`);
     
     // Create billing event
+    const billingStartTime = Date.now();
     await sb
       .from('billing_events')
       .insert({
@@ -901,6 +934,10 @@ async function bookAppointment({ lead_id, broker_id, scheduled_for, notes }) {
         },
         created_at: new Date().toISOString()
       });
+    console.log(`✅ Billing event created: ${Date.now() - billingStartTime}ms`);
+    
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ Total booking time: ${totalTime}ms`);
     
     return {
       success: true,
@@ -1109,13 +1146,20 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
 
 /**
  * Tool Handler: Search Knowledge Base
+ * Performance: Typically 8-15 seconds (OpenAI embeddings: 3-8s, Vector search: 2-5s)
  */
 async function searchKnowledge({ question }) {
   const sb = initSupabase();
+  const startTime = Date.now();
   
   try {
+    // Performance tracking
+    console.log('🔍 Starting knowledge search:', question);
+    
     // Get embedding for the question from OpenAI
     const fetch = require('node-fetch');
+    const embeddingStartTime = Date.now();
+    
     const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
@@ -1123,15 +1167,24 @@ async function searchKnowledge({ question }) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-small',  // Faster than ada-002, cheaper, similar quality
         input: question
       })
     });
     
+    if (!embeddingResponse.ok) {
+      const errorText = await embeddingResponse.text();
+      console.error('❌ OpenAI embeddings failed:', embeddingResponse.status, errorText);
+      throw new Error(`OpenAI embeddings failed: ${embeddingResponse.status}`);
+    }
+    
     const embeddingData = await embeddingResponse.json();
     const queryEmbedding = embeddingData.data[0].embedding;
+    const embeddingTime = Date.now() - embeddingStartTime;
+    console.log(`✅ Embedding generated in ${embeddingTime}ms`);
     
     // Search vector store using Supabase function
+    const vectorSearchStartTime = Date.now();
     const { data, error } = await sb.rpc('find_similar_content', {
       query_embedding: queryEmbedding,
       content_type_filter: 'reverse_mortgage_kb',
@@ -1139,14 +1192,23 @@ async function searchKnowledge({ question }) {
       match_count: 3
     });
     
+    const vectorSearchTime = Date.now() - vectorSearchStartTime;
+    console.log(`✅ Vector search completed in ${vectorSearchTime}ms`);
+    
     if (error) {
-      return { error: error.message, results: [] };
+      console.error('❌ Vector search error:', error);
+      return { 
+        error: error.message, 
+        found: false,
+        message: 'I\'m having trouble accessing that information. Let me connect you with one of our specialists.'
+      };
     }
     
     if (!data || data.length === 0) {
+      console.log('⚠️ No matching knowledge base content found');
       return { 
         found: false, 
-        message: 'No relevant information found in knowledge base',
+        message: 'I don\'t have specific information on that in my knowledge base. Let me connect you with one of our specialists who can answer that for you.',
         results: []
       };
     }
@@ -1154,7 +1216,7 @@ async function searchKnowledge({ question }) {
     // Format results for Barbara to use conversationally
     const formattedResults = data.map((item, index) => ({
       rank: index + 1,
-      content: item.content,  // FIXED: column is 'content' not 'content_text'
+      content: item.content,
       similarity: Math.round(item.similarity * 100) + '%'
     }));
     
@@ -1163,16 +1225,30 @@ async function searchKnowledge({ question }) {
       .map(r => r.content)
       .join('\n\n---\n\n');
     
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ Knowledge search complete in ${totalTime}ms (embedding: ${embeddingTime}ms, search: ${vectorSearchTime}ms)`);
+    
     return {
       found: true,
       question,
       answer: combinedKnowledge,
       sources_count: formattedResults.length,
-      message: 'Use this information to answer the lead\'s question conversationally in 2 sentences max.'
+      message: 'Use this information to answer the lead\'s question conversationally in 2 sentences max.',
+      performance: {
+        total_ms: totalTime,
+        embedding_ms: embeddingTime,
+        search_ms: vectorSearchTime
+      }
     };
     
   } catch (err) {
-    return { error: err.message, results: [] };
+    const totalTime = Date.now() - startTime;
+    console.error(`❌ Knowledge search failed after ${totalTime}ms:`, err.message);
+    return { 
+      error: err.message,
+      found: false,
+      message: 'I\'m having trouble accessing that information right now. Let me connect you with one of our specialists.'
+    };
   }
 }
 
