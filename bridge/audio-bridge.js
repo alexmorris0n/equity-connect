@@ -1440,10 +1440,6 @@ class AudioBridge {
    */
   sendSingleChunkAsync(audioData, logInfo) {
     return new Promise((resolve) => {
-      const now = Date.now();
-      const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
-      const minDelay = 50; // 50ms throttle (increased from 30ms for better network pacing)
-      
       const sendFn = async () => {
         if (this.swSocket.readyState === WebSocket.OPEN) {
           try {
@@ -1473,13 +1469,8 @@ class AudioBridge {
         resolve();
       };
       
-      if (timeSinceLastSend < minDelay) {
-        // Too fast - wait
-        setTimeout(sendFn, minDelay - timeSinceLastSend);
-      } else {
-        // Send immediately
-        sendFn();
-      }
+      // Send immediately - no throttle, buffer overflow protection handles backpressure
+      sendFn();
     });
   }
   
@@ -1487,10 +1478,6 @@ class AudioBridge {
    * Send a single audio chunk to SignalWire with throttling (for non-split chunks)
    */
   async sendSingleChunk(audioData, logInfo) {
-    const now = Date.now();
-    const timeSinceLastSend = now - (this._lastAudioSentAt || 0);
-    const minDelay = 50; // 50ms throttle (increased from 30ms for better network pacing)
-    
     const sendFn = async () => {
       if (this.swSocket.readyState === WebSocket.OPEN) {
         try {
@@ -1518,14 +1505,8 @@ class AudioBridge {
       }
     };
     
-    if (timeSinceLastSend < minDelay) {
-      // Too fast - wait
-      await new Promise(r => setTimeout(r, minDelay - timeSinceLastSend));
-      await sendFn();
-    } else {
-      // Send immediately
-      await sendFn();
-    }
+    // Send immediately - no artificial throttle, buffer overflow protection handles backpressure
+    await sendFn();
   }
 
   /**
