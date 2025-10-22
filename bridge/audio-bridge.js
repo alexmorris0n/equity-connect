@@ -467,7 +467,8 @@ class AudioBridge {
         personaSenderName: '',
         personaFirstName: '',
         campaignArchetype: '',
-        personaAssignment: ''
+        personaAssignment: '',
+        preferredLanguage: result?.raw?.preferred_language || 'en'
       };
 
       console.log('✅ Lead context retrieved:', {
@@ -660,7 +661,8 @@ class AudioBridge {
           lead_id: promptCallContext.lead_id,
           has_data: hasPropertyData,
           qualified: qualifiedFlag,
-          variables_count: Object.keys(variables).length
+          variables_count: Object.keys(variables).length,
+          language: variables.preferredLanguage || 'en'
         });
       } else {
         console.warn('⚠️ lookupAndBuildPrompt returned empty - using minimal context');
@@ -674,7 +676,7 @@ class AudioBridge {
 
     // Step 2: Try to get prompt from PromptLayer
     try {
-      console.log('🔍 Fetching prompt from PromptLayer with context:', promptCallContext);
+      console.log('🎂 Fetching prompt from PromptLayer with context:', promptCallContext);
       
       const promptTemplate = await getPromptForCall(
         promptCallContext,
@@ -685,15 +687,26 @@ class AudioBridge {
         throw new Error('PromptLayer returned empty prompt');
       }
 
-      console.log('✅ Got prompt template from PromptLayer, injecting variables...');
+      console.log('🎂 Got prompt template from PromptLayer, injecting variables...');
       instructions = injectVariables(promptTemplate, variables);
+      
+      // Prepend language enforcement based on lead's preferred language
+      const language = variables.preferredLanguage || 'en';
+      const languageInstruction = language === 'en' 
+        ? 'CRITICAL INSTRUCTION: Speak ONLY in English. Never use Spanish or any other language.'
+        : language === 'es'
+        ? 'CRITICAL INSTRUCTION: Speak ONLY in Spanish. Never use English or any other language.'
+        : `CRITICAL INSTRUCTION: Speak ONLY in ${language}. Do not use any other language.`;
+      
+      instructions = `${languageInstruction}\n\n${instructions}`;
+      
       promptSource = 'promptlayer';
       
       // Store which prompt variant was used for PromptLayer logging
       this.promptName = determinePromptName(promptCallContext);
       this.promptSource = promptSource;
       
-      console.log(`✅ Successfully built prompt from PromptLayer (${instructions.length} chars)`);
+      console.log(`🎂 Successfully built prompt from PromptLayer (${instructions.length} chars)`);
       
     } catch (promptLayerError) {
       // PromptLayer failed - fall back to local file
@@ -713,7 +726,7 @@ class AudioBridge {
         this.promptName = fallbackPromptName;
         this.promptSource = promptSource;
         
-        console.log(`✅ Using cached PromptLayer template: ${fallbackPromptName} (${instructions.length} chars)`);
+        console.log(`🎂 Using cached PromptLayer template: ${fallbackPromptName} (${instructions.length} chars)`);
       } catch (fallbackError) {
         // Even fallback failed - use absolute minimal prompt
         console.error('❌ Even fallback failed:', fallbackError.message);
@@ -1244,7 +1257,7 @@ class AudioBridge {
             this.startAutoResumeMonitor();
             
             // PromptLayer template handles greetings - no hardcoded greeting injection
-            console.log('✅ Using PromptLayer template for greeting (no hardcoded injection)');
+            console.log('🎂 Using PromptLayer template for greeting (no hardcoded injection)');
             
             // Wait brief moment for session to be ready, then trigger greeting
             setTimeout(() => {

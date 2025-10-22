@@ -36,7 +36,7 @@ function saveToDiskCache(promptName, promptText) {
   try {
     const cachePath = path.join(CACHE_DIR, `${promptName}.txt`);
     fs.writeFileSync(cachePath, promptText, 'utf8');
-    console.log(`💾 Cached PromptLayer template to disk: ${promptName}`);
+    console.log(`🎂 Cached PromptLayer template to disk: ${promptName}`);
   } catch (err) {
     console.warn(`⚠️ Failed to cache template ${promptName}:`, err.message);
   }
@@ -50,7 +50,7 @@ function loadFromDiskCache(promptName) {
     const cachePath = path.join(CACHE_DIR, `${promptName}.txt`);
     if (fs.existsSync(cachePath)) {
       const cached = fs.readFileSync(cachePath, 'utf8');
-      console.log(`📂 Loaded cached PromptLayer template: ${promptName} (${cached.length} chars)`);
+      console.log(`🎂 Loaded cached PromptLayer template: ${promptName} (${cached.length} chars)`);
       return cached;
     }
   } catch (err) {
@@ -115,7 +115,7 @@ async function getPromptFromPromptLayer(promptName) {
     // First attempt: no label (gets latest version)
     let result = null;
     try {
-      console.log(`🔍 Fetching prompt from PromptLayer: ${promptName} (latest version)`);
+      console.log(`🎂 Fetching prompt from PromptLayer: ${promptName} (latest version)`);
       result = await promptLayer.client.templates.get(promptName);
     } catch (firstAttemptError) {
       // If that fails, try with "prod" label
@@ -249,7 +249,7 @@ async function getPromptFromPromptLayer(promptName) {
     // Cache to disk for fallback
     saveToDiskCache(promptName, promptText);
     
-    console.log(`✅ Fetched prompt from PromptLayer: ${promptName} (${promptText.length} chars)`);
+    console.log(`🎂 Fetched prompt from PromptLayer: ${promptName} (${promptText.length} chars)`);
     return promptText;
     
   } catch (error) {
@@ -290,7 +290,7 @@ async function getPromptForCall(callContext, customInstructions = null) {
   const cachedPrompt = loadFromDiskCache(promptName);
   
   if (cachedPrompt) {
-    console.log(`✅ Using cached PromptLayer template: ${promptName}`);
+    console.log(`🎂 Using cached PromptLayer template: ${promptName}`);
     return cachedPrompt;
   }
   
