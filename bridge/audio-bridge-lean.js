@@ -582,9 +582,8 @@ class AudioBridge {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'alloy',
         instructions: instructions,
-        // REMOVED: input_audio_format & output_audio_format per OpenAI bug report Oct 22, 2025
-        // https://community.openai.com/t/bug-sip-realtime-distorted-or-missing-audio-noise-static-with-gpt-realtime-and-gpt-realtime-mini/1363490
-        // OpenAI engineer: "don't set format, it's not needed when using WebRTC/SIP"
+        input_audio_format: 'pcm16',
+        output_audio_format: 'pcm16',
         input_audio_transcription: {
           model: 'whisper-1'
         },
