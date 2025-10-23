@@ -198,7 +198,8 @@ class OpenAIWebRTCClient {
     ];
 
     this.peerConnection = new RTCPeerConnection({
-      iceServers: iceServers
+      iceServers: iceServers,
+      bundlePolicy: 'max-bundle'
     });
 
     console.log('📡 RTCPeerConnection created');
@@ -294,10 +295,10 @@ class OpenAIWebRTCClient {
       console.warn('⚠️ SDP still contains ice-options after munging');
     }
 
-    // Patch F: Make Opus explicitly mono with additional parameters
+    // Patch F: Make Opus explicitly mono (minimal parameters)
     sdp = sdp.replace(
       /a=fmtp:111 minptime=10;useinbandfec=1/g,
-      'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000'
+      'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0'
     );
     
     // Add ptime for better compatibility
@@ -359,6 +360,13 @@ class OpenAIWebRTCClient {
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
     console.log('🔍 Model:', this.model);
     
+    // SDP sanity checks
+    console.log('🔍 SDP type check:', offer.type);
+    console.log('🔍 SDP tail hex (last 12 chars):', Buffer.from(sdpToPost.slice(-12)).toString('hex'));
+    if (!sdpToPost.endsWith('\r\n\r\n')) {
+      console.warn('⚠️ SDP does not end with \\r\\n\\r\\n');
+    }
+    
     // 3) POST SDP to Realtime (session is now model-bound)
     const base = 'https://api.openai.com/v1/realtime/calls';
 
@@ -366,34 +374,44 @@ class OpenAIWebRTCClient {
       const FormData = require('form-data');
       const fd = new FormData();
       fd.set('sdp', sdpToPost);
-      fd.set('session', JSON.stringify({
+      
+      // Try minimal session first (common gotcha fix)
+      const sessionConfig = {
         type: 'realtime',
         model: this.model,
         audio: { output: { voice: 'marin' } }
-      }));
+      };
+      
+      console.log('🔍 Session config:', JSON.stringify(sessionConfig, null, 2));
+      fd.set('session', JSON.stringify(sessionConfig));
 
       console.log('🔍 URL:', base);
+      console.log('🔍 Auth key prefix:', this.apiKey.substring(0, 6) + '...');
+      console.log('🔍 Model:', this.model);
       console.log('🔍 Full SDP offer:\n' + sdpToPost);
 
       const res = await fetch(base, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`, // server key
-          'User-Agent': 'BarbaraBridge/1.0 (+node-wrtc)',
+          'Authorization': `Bearer ${this.apiKey}`,
           ...fd.getHeaders()
         },
-        body: fd,
-        cache: 'no-store'
+        body: fd
       });
 
-      const bodyText = await res.text();
-      console.log('🔍 Response status:', res.status);
-      console.log('🔍 Response headers:', Object.fromEntries(res.headers.entries()));
-      // log more of the body on 4xx so we can see server hints
-      if (!res.ok) console.log('🔍 Response body (first 2000 chars):', bodyText.slice(0, 2000));
-
-      if (!res.ok) throw new Error(`SDP POST failed ${res.status} ${bodyText ? `- ${bodyText}` : ''}`);
-      return bodyText;
+      const xrid = res.headers.get('x-request-id');
+      console.log('🔍 Response status:', res.status, 'req:', xrid);
+      
+      if (!res.ok) {
+        const bodyText = await res.text();
+        console.log('🔍 Response body (raw):', bodyText);
+        throw new Error(`Realtime calls failed ${res.status} (req ${xrid})\n${bodyText}`);
+      }
+      
+      const answerSdp = await res.text();
+      console.log('🔍 Answer SDP length:', answerSdp.length);
+      console.log('🔍 Answer SDP preview:', answerSdp.substring(0, 60) + '...');
+      return answerSdp;
     };
 
     console.log('🔄 Trying SDP exchange with unified interface...');
