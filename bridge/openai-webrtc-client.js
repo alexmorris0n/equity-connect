@@ -1,8 +1,3 @@
-/**
- * OpenAI Realtime API WebRTC Client (Node.js)
- * Uses ephemeral sessions + WebRTC for better audio quality and stability
- */
-
 const fetch = require('node-fetch');
 const { RTCPeerConnection, RTCSessionDescription } = require('wrtc');
 
@@ -14,7 +9,6 @@ class OpenAIWebRTCClient {
     this.dataChannel = null;
     this.sessionConfig = null;
     
-    // Event handlers
     this.onMessage = null;
     this.onAudioTrack = null;
     this.onConnected = null;
@@ -22,10 +16,6 @@ class OpenAIWebRTCClient {
     this.onError = null;
   }
 
-  /**
-   * Step 1: Create ephemeral session via REST API
-   * Returns client_secret for WebRTC connection
-   */
   async createEphemeralSession(sessionConfig) {
     console.log('📞 Creating OpenAI ephemeral session...');
     
@@ -69,27 +59,19 @@ class OpenAIWebRTCClient {
     };
   }
 
-  /**
-   * Step 2: Connect via WebRTC using client_secret
-   */
   async connectWebRTC(clientSecret) {
     console.log('🔌 Establishing WebRTC connection...');
     
-    // Configure ICE servers (using public STUN)
     const iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:stun.l.google.com:19302' }
     ];
 
-    // Create RTCPeerConnection
     this.peerConnection = new RTCPeerConnection({
-      iceServers: iceServers,
-      iceCandidatePoolSize: 10
+      iceServers: iceServers
     });
 
     console.log('📡 RTCPeerConnection created');
 
-    // Set up event handlers
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         console.log('🧊 ICE candidate:', event.candidate.type);
@@ -97,11 +79,11 @@ class OpenAIWebRTCClient {
     };
 
     this.peerConnection.ontrack = (event) => {
-      console.log('🎵 Received audio track');
+      console.log('🎵 Received audio track from OpenAI');
       if (this.onAudioTrack) {
         this.onAudioTrack(event.track, event.streams[0]);
       }
-    });
+    };
 
     this.peerConnection.onconnectionstatechange = () => {
       console.log('🔌 Connection state:', this.peerConnection.connectionState);
@@ -111,10 +93,11 @@ class OpenAIWebRTCClient {
       } else if (this.peerConnection.connectionState === 'failed') {
         console.error('❌ WebRTC connection failed');
         if (this.onError) this.onError(new Error('WebRTC connection failed'));
+      } else if (this.peerConnection.connectionState === 'disconnected') {
+        console.warn('⚠️ WebRTC disconnected');
       }
     };
 
-    // Create data channel for events (like WebSocket messages)
     this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
       ordered: true
     });
@@ -133,18 +116,18 @@ class OpenAIWebRTCClient {
       }
     };
 
-    // Add a transceiver for bidirectional audio (send and receive)
+    this.dataChannel.onerror = (error) => {
+      console.error('❌ Data channel error:', error);
+    };
+
     this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
 
-    // Create offer
     console.log('📤 Creating SDP offer...');
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
 
-    // Wait for ICE gathering to complete
     await this.waitForICEGathering();
 
-    // Send offer to OpenAI and get answer (per official OpenAI docs)
     console.log('📤 Sending SDP offer to OpenAI...');
     const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
       method: 'POST',
@@ -156,7 +139,8 @@ class OpenAIWebRTCClient {
     });
 
     if (!answerResponse.ok) {
-      throw new Error(`Failed to exchange SDP: ${await answerResponse.text()}`);
+      const errorText = await answerResponse.text();
+      throw new Error(`Failed to exchange SDP: ${answerResponse.status} - ${errorText}`);
     }
 
     const answerSdp = await answerResponse.text();
@@ -168,12 +152,9 @@ class OpenAIWebRTCClient {
       })
     );
 
-    console.log('✅ WebRTC connection established');
+    console.log('✅ WebRTC connection established - waiting for connection state...');
   }
 
-  /**
-   * Wait for ICE gathering to complete
-   */
   waitForICEGathering() {
     return new Promise((resolve) => {
       if (this.peerConnection.iceGatheringState === 'complete') {
@@ -190,9 +171,6 @@ class OpenAIWebRTCClient {
     });
   }
 
-  /**
-   * Send event via data channel
-   */
   sendEvent(event) {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
       this.dataChannel.send(JSON.stringify(event));
@@ -201,9 +179,6 @@ class OpenAIWebRTCClient {
     }
   }
 
-  /**
-   * Send audio data
-   */
   sendAudio(audioBase64) {
     this.sendEvent({
       type: 'input_audio_buffer.append',
@@ -211,9 +186,6 @@ class OpenAIWebRTCClient {
     });
   }
 
-  /**
-   * Close connection
-   */
   close() {
     if (this.dataChannel) {
       this.dataChannel.close();
@@ -225,4 +197,3 @@ class OpenAIWebRTCClient {
 }
 
 module.exports = { OpenAIWebRTCClient };
-
