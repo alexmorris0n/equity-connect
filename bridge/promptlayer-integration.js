@@ -110,46 +110,54 @@ class PromptLayerRealtime {
     if (!this.enabled) return null;
 
     try {
-      // Build CLEAN prompt messages from transcript (strings only, no timestamps)
-      // Filter out any empty messages
-      const messages = conversationTranscript
-        .filter(t => t && (t.text || t.content)) // Skip empty messages
-        .map(t => ({
-          role: String(t.role || 'user'),
-          content: String(t.text || t.content || '')
-        }))
-        .filter(m => m.content.trim().length > 0); // Skip messages with empty content
+      // Don't pass full transcript to avoid serialization issues
+      // Just track message count and summary
+      const messageCount = Array.isArray(conversationTranscript) ? conversationTranscript.length : 0;
+      
+      // Get first and last messages for context (strings only)
+      let firstUserMessage = '';
+      let lastAssistantMessage = '';
+      
+      if (Array.isArray(conversationTranscript) && conversationTranscript.length > 0) {
+        const userMessages = conversationTranscript.filter(t => t?.role === 'user' && t?.text);
+        const assistantMessages = conversationTranscript.filter(t => t?.role === 'assistant' && t?.text);
+        
+        if (userMessages.length > 0) {
+          firstUserMessage = String(userMessages[0].text || '').substring(0, 200);
+        }
+        if (assistantMessages.length > 0) {
+          lastAssistantMessage = String(assistantMessages[assistantMessages.length - 1].text || '').substring(0, 200);
+        }
+      }
 
       // Safely extract tool names (handle missing .name gracefully)
       const toolNames = Array.isArray(toolCalls) 
         ? toolCalls.map(t => typeof t === 'string' ? t : (t?.name || 'unknown')).filter(Boolean)
         : [];
 
-      // Last assistant message for response
-      const lastAssistantMessage = messages.filter(m => m.role === 'assistant').slice(-1)[0];
-      const lastAssistantContent = String(lastAssistantMessage?.content || '');
-
-      // Sanitize all data before sending to PromptLayer
+      // Sanitize all data before sending to PromptLayer (STRINGS/NUMBERS/BOOLEANS ONLY)
       const cleanMetadata = safeJSON({
-        call_id: callId,
-        lead_id: leadId,
-        broker_id: brokerId,
-        outcome: outcome,
-        duration_seconds: durationSeconds,
-        message_count: messages.length,
-        money_purpose: metadata?.money_purpose,
-        specific_need: metadata?.specific_need,
-        amount_needed: metadata?.amount_needed,
-        timeline: metadata?.timeline,
-        objections_count: Array.isArray(metadata?.objections) ? metadata.objections.length : 0,
-        questions_count: Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0,
-        commitment_points: metadata?.commitment_points_completed || 0,
-        appointment_scheduled: metadata?.appointment_scheduled || false,
-        tool_calls_count: toolNames.length,
-        tool_calls_list: toolNames.join(', ') || 'none',
-        interruptions: metadata?.interruptions || 0,
-        email_verified: metadata?.email_verified || false,
-        phone_verified: metadata?.phone_verified || false
+        call_id: String(callId || ''),
+        lead_id: String(leadId || ''),
+        broker_id: String(brokerId || ''),
+        outcome: String(outcome || ''),
+        duration_seconds: Number(durationSeconds || 0),
+        message_count: Number(messageCount),
+        first_user_message: String(firstUserMessage),
+        last_assistant_message: String(lastAssistantMessage),
+        money_purpose: String(metadata?.money_purpose || ''),
+        specific_need: String(metadata?.specific_need || ''),
+        amount_needed: String(metadata?.amount_needed || ''),
+        timeline: String(metadata?.timeline || ''),
+        objections_count: Number(Array.isArray(metadata?.objections) ? metadata.objections.length : 0),
+        questions_count: Number(Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0),
+        commitment_points: Number(metadata?.commitment_points_completed || 0),
+        appointment_scheduled: Boolean(metadata?.appointment_scheduled),
+        tool_calls_count: Number(toolNames.length),
+        tool_calls_list: String(toolNames.join(', ') || 'none'),
+        interruptions: Number(metadata?.interruptions || 0),
+        email_verified: Boolean(metadata?.email_verified),
+        phone_verified: Boolean(metadata?.phone_verified)
       });
       
       const cleanInputVars = safeJSON({
@@ -183,13 +191,13 @@ class PromptLayerRealtime {
         request_response: JSON.stringify({
           request: {
             model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-            message_count: messages.length,
-            tools_used: toolNames
+            message_count: messageCount,
+            tools_used: toolNames.join(', ')
           },
           response: {
             id: String(callId),
             model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-            last_message: lastAssistantContent.substring(0, 200)
+            last_message: lastAssistantMessage
           }
         }),
         request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
