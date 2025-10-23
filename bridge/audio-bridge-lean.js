@@ -532,17 +532,26 @@ class AudioBridge {
     let ringCount = 0;
     const MAX_RINGS = 2; // Maximum 2 rings before auto-stopping
     
-    // Generate a simple 440Hz + 480Hz dual-tone (typical ringback)
+    // Generate a gentle single-tone ringback (softer than dual-tone alarm)
     const generateRingTone = (durationMs, sampleRate = 8000) => {
       const numSamples = Math.floor((sampleRate * durationMs) / 1000);
       const buffer = Buffer.alloc(numSamples); // G.711 µ-law: 1 byte per sample
       
       for (let i = 0; i < numSamples; i++) {
-        // Mix 440Hz and 480Hz tones
+        // Gentle 440Hz tone with fade in/out for smoothness
         const t = i / sampleRate;
-        const sample = Math.sin(2 * Math.PI * 440 * t) * 0.3 + 
-                      Math.sin(2 * Math.PI * 480 * t) * 0.3;
-        // Convert linear PCM to µ-law (simplified - just scale for now)
+        const progress = i / numSamples;
+        
+        // Fade envelope: ramp up first 10%, ramp down last 10%
+        let envelope = 1.0;
+        if (progress < 0.1) {
+          envelope = progress / 0.1;
+        } else if (progress > 0.9) {
+          envelope = (1.0 - progress) / 0.1;
+        }
+        
+        // Single 440Hz tone at lower volume (0.15 instead of 0.6)
+        const sample = Math.sin(2 * Math.PI * 440 * t) * 0.15 * envelope;
         const linear = Math.floor(sample * 8159); // µ-law range
         buffer[i] = this.linearToMulaw(linear);
       }
