@@ -29,9 +29,7 @@ class OpenAIWebRTCClient {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          model: this.model
-        })
+        body: JSON.stringify({})
       });
 
       if (!response.ok) {
