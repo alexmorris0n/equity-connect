@@ -21,7 +21,15 @@ let supabase = null;
 let vertexAuthClient = null;
 async function getVertexAIToken() {
   if (!vertexAuthClient) {
+    // Use the JSON from environment variable directly
+    const credentialsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    if (!credentialsJson) {
+      throw new Error('GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set');
+    }
+    
+    const credentials = JSON.parse(credentialsJson);
     const auth = new GoogleAuth({
+      credentials: credentials,
       scopes: 'https://www.googleapis.com/auth/cloud-platform'
     });
     vertexAuthClient = await auth.getClient();
