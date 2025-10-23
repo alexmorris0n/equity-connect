@@ -129,7 +129,7 @@ class OpenAIWebRTCClient {
     const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        'Authorization': `Bearer ${clientSecret}`,
         'Content-Type': 'application/sdp'
       },
       body: this.peerConnection.localDescription.sdp
