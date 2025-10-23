@@ -442,28 +442,29 @@ class OpenAIWebRTCClient {
     }
 
     try {
-      // Decode base64 PCM16 (mono, 16kHz)
-      const pcmBuffer = Buffer.from(base64Audio, 'base64');
-      const incoming = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
+      // 16-bit PCM mono @16kHz
+      const buf = Buffer.from(base64Audio, 'base64');
+      const in16 = new Int16Array(buf.buffer, buf.byteOffset, buf.length / 2);
 
-      // Concatenate remainder + incoming
-      let combined;
+      // prepend any remainder from last call
+      let samples;
       if (this._pcmRemainder.length) {
-        combined = new Int16Array(this._pcmRemainder.length + incoming.length);
-        combined.set(this._pcmRemainder, 0);
-        combined.set(incoming, this._pcmRemainder.length);
+        samples = new Int16Array(this._pcmRemainder.length + in16.length);
+        samples.set(this._pcmRemainder, 0);
+        samples.set(in16, this._pcmRemainder.length);
+        this._pcmRemainder = new Int16Array(0);
       } else {
-        combined = incoming;
+        samples = in16;
       }
 
-      // Send in 10ms chunks (160 samples @ 16kHz == 320 bytes)
-      const FRAME = 160;
-      const totalFrames = Math.floor(combined.length / FRAME);
-      for (let i = 0; i < totalFrames; i++) {
-        const start = i * FRAME;
-        const slice = combined.subarray(start, start + FRAME); // Int16Array view, byteLength = 320
+      const FRAME = 160; // 10ms @16kHz
+      const fullFrames = Math.floor(samples.length / FRAME);
+
+      for (let i = 0; i < fullFrames; i++) {
+        const chunk = samples.subarray(i * FRAME, (i + 1) * FRAME); // Int16Array view, 160 samples
+
         this.audioSource.onData({
-          samples: slice,
+          samples: chunk,
           sampleRate: 16000,
           bitsPerSample: 16,
           channelCount: 1,
@@ -471,9 +472,11 @@ class OpenAIWebRTCClient {
         });
       }
 
-      // Keep any leftover < 160 for the next call
-      const leftover = combined.length - totalFrames * FRAME;
-      this._pcmRemainder = leftover ? combined.subarray(combined.length - leftover) : new Int16Array(0);
+      // store any tail for next call
+      const used = fullFrames * FRAME;
+      if (samples.length > used) {
+        this._pcmRemainder = samples.subarray(used).slice();
+      }
     } catch (error) {
       console.error('❌ Failed to send audio frame:', error);
     }
