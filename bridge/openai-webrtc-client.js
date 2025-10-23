@@ -188,16 +188,17 @@ class OpenAIWebRTCClient {
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
     console.log('🔍 Client secret prefix:', clientSecret.substring(0, 10) + '...');
     console.log('🔍 Model:', this.model);
-    console.log('🔍 URL:', url);
     
     // 3) POST SDP to Realtime (SDP flow)
     const url = `https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`;
+    console.log('🔍 URL:', url);
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         // ✅ must be the ephemeral ek_* here, NOT your server sk_*
         'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp'
+        'Content-Type': 'application/sdp',
+        'OpenAI-Beta': 'realtime=v1'
       },
       body: localSdp
     });
