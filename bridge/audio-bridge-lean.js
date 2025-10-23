@@ -298,7 +298,17 @@ class AudioBridge {
         ? this.numberToWords(Math.round(mortgageBalanceNumber))
         : '';
 
-      const qualifiedFlag = result?.qualified === true || result?.raw?.qualified === true || result?.status === 'qualified';
+      // Simple: qualified = status is 'qualified' or beyond
+      const qualifiedFlag = result?.status === 'qualified' 
+        || result?.status === 'appointment_set' 
+        || result?.status === 'showed' 
+        || result?.status === 'application' 
+        || result?.status === 'funded';
+
+      console.log('🔍 Qualification:', {
+        status: result?.status,
+        qualified: qualifiedFlag
+      });
 
       // Build complete variables object with all property/equity data
       const variables = {
@@ -500,6 +510,10 @@ class AudioBridge {
       if (promptBuildResult && promptBuildResult.variables) {
         variables = promptBuildResult.variables;
         
+        const { propertyValueNumber, estimatedEquityNumber, qualifiedFlag } = promptBuildResult;
+        const hasPropertyData = (propertyValueNumber !== null && !Number.isNaN(propertyValueNumber))
+          || (estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber));
+        
         // CRITICAL: Update callContext with lead_id from lookup result
         if (promptBuildResult.lead_id) {
           this.callContext.lead_id = promptBuildResult.lead_id;
@@ -513,12 +527,14 @@ class AudioBridge {
           lead_id: this.callContext.lead_id,
           from_phone: this.callerPhone,
           to_phone: this.callContext.to_phone,
-          has_property_data: false,
-          is_qualified: false
+          has_property_data: hasPropertyData,
+          is_qualified: qualifiedFlag
         };
         
         console.log('✅ Lead context retrieved:', {
           lead_id: promptCallContext.lead_id,
+          has_data: hasPropertyData,
+          qualified: qualifiedFlag,
           variables_count: Object.keys(variables).length
         });
       } else {
