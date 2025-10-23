@@ -29,10 +29,22 @@ class OpenAIWebRTCClient {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'OpenAI-Beta': 'realtime=v1'
         },
         body: JSON.stringify({
-          session: { type: 'realtime' }
+          model: this.model,
+          session: {
+            type: 'realtime',
+            modalities: ['audio', 'text'],
+            voice: 'shimmer',
+            turn_detection: { 
+              type: 'server_vad', 
+              threshold: 0.35, 
+              prefix_padding_ms: 500, 
+              silence_duration_ms: 2000 
+            }
+          }
         })
       });
 
@@ -163,6 +175,24 @@ class OpenAIWebRTCClient {
     });
     await this.peerConnection.setLocalDescription(offer);
 
+    // 1.5) Munge SDP to Opus-only for better compatibility
+    let sdp = this.peerConnection.localDescription.sdp;
+    
+    // Keep only opus (payload 111); strip others from the m=audio line
+    sdp = sdp.replace(
+      /(m=audio \d+ UDP\/TLS\/RTP\/SAVPF) .*\r\n/,
+      (_, head) => `${head} 111\r\n`
+    );
+
+    // Remove fmtp/rtpmap lines for removed codecs
+    sdp = sdp
+      .split('\r\n')
+      .filter(line => !/^a=(rtpmap|fmtp):(?!(111)\b)/.test(line))
+      .join('\r\n');
+
+    await this.peerConnection.setLocalDescription({ type: 'offer', sdp });
+    console.log('🎵 SDP munged to Opus-only for better compatibility');
+
     // 2) Wait for ICE gathering to complete (or timeout) so SDP isn't empty
     await new Promise((resolve) => {
       if (this.peerConnection.iceGatheringState === 'complete') return resolve();
@@ -212,6 +242,7 @@ class OpenAIWebRTCClient {
               // ✅ must be the ephemeral ek_* here, NOT your server sk_*
               'Authorization': `Bearer ${clientSecret}`,
               'Content-Type': 'application/sdp',
+              'Accept': 'application/sdp',
               'OpenAI-Beta': 'realtime=v1'
             },
             body: localSdp
