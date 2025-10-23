@@ -28,8 +28,8 @@ COPY bridge/ ./bridge/
 COPY prompts/ ./prompts/
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+RUN groupadd --gid 1001 nodejs && \
+    useradd --uid 1001 --gid nodejs --shell /usr/sbin/nologin --create-home nodejs
 
 # Change ownership
 RUN chown -R nodejs:nodejs /app
