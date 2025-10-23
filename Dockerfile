@@ -21,7 +21,7 @@ COPY package*.json ./
 
 # Install node-pre-gyp globally (needed by wrtc) and production deps
 RUN npm install -g node-pre-gyp node-gyp && \
-    npm ci --omit=dev
+    npm install --omit=dev
 
 # Copy application code
 COPY bridge/ ./bridge/
