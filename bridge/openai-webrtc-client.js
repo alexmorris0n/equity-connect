@@ -1,5 +1,6 @@
 const fetch = require('node-fetch');
 const { RTCPeerConnection, RTCSessionDescription } = require('wrtc');
+const FormData = require('form-data');
 
 class OpenAIWebRTCClient {
   constructor(apiKey, model = 'gpt-4o-realtime-preview-2024-12-17') {
