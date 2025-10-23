@@ -873,11 +873,11 @@ class AudioBridge {
         break;
       
       case 'input_audio_buffer.speech_started':
-        debug('👤 User started speaking');
+        console.log('👤 User started speaking');
         break;
       
       case 'input_audio_buffer.speech_stopped':
-        debug('👤 User stopped speaking');
+        console.log('👤 User stopped speaking');
         break;
 
       case 'response.function_call_arguments.done':
