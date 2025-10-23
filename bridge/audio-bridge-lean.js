@@ -766,9 +766,9 @@ class AudioBridge {
         max_response_output_tokens: 'inf',  // No artificial limit - let prompt control response length
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.4,  // More sensitive - responds faster to user speech
-          prefix_padding_ms: 300,  // Standard padding
-          silence_duration_ms: 200  // Fast cutoff - Barbara responds quickly (more natural conversation)
+          threshold: 0.35,  // Relaxed threshold - less aggressive interruption
+          prefix_padding_ms: 500,  // More context before speech starts
+          silence_duration_ms: 2500  // 2.5 seconds - extra time for seniors to process and respond
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -1077,7 +1077,7 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 2560; // 80ms @ 16kHz PCM16 - smaller chunks = smoother, more fluid delivery
+    const maxChunkSize = 1280; // 40ms @ 16kHz PCM16 - reduces playback offset and improves timing accuracy
     
     if (audioBuffer.length > maxChunkSize) {
       debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
@@ -1116,6 +1116,30 @@ class AudioBridge {
   }
 
   /**
+   * Send 50ms silence primer to warm up RTP session (prevents clipping)
+   */
+  sendSilencePrimer() {
+    if (this.swSocket?.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    // Generate 50ms of silence @ 24kHz, 16-bit PCM
+    const sampleRate = 24000;
+    const durationMs = 50;
+    const numSamples = Math.floor((sampleRate * durationMs) / 1000);
+    const silenceBuffer = Buffer.alloc(numSamples * 2); // All zeros = silence
+    
+    debug('🔇 Sending 50ms silence primer to warm up RTP session');
+    
+    this.swSocket.send(JSON.stringify({
+      event: 'media',
+      media: {
+        payload: silenceBuffer.toString('base64')
+      }
+    }));
+  }
+
+  /**
    * Start conversation with initial greeting
    */
   startConversation() {
@@ -1127,6 +1151,9 @@ class AudioBridge {
     }
     
     if (this.openaiSocket?.readyState === WebSocket.OPEN) {
+      // Send 50ms silence primer to warm up RTP session (prevents start clipping)
+      this.sendSilencePrimer();
+      
       setTimeout(() => {
         debug('🔵 Sending greeting trigger');
 
