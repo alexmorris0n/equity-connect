@@ -516,7 +516,7 @@ class AudioBridge {
     const MAX_RINGS = 2; // Maximum 2 rings before auto-stopping
     
     // Generate a simple 440Hz + 480Hz dual-tone (typical ringback) for PCM16
-    const generateRingTone = (durationMs, sampleRate = 16000) => {
+    const generateRingTone = (durationMs, sampleRate = 24000) => {
       const numSamples = Math.floor((sampleRate * durationMs) / 1000);
       const buffer = Buffer.alloc(numSamples * 2); // 16-bit samples = 2 bytes per sample
       
@@ -838,7 +838,7 @@ class AudioBridge {
         this.speaking = false;
         
         // Add 100ms silence tail to prevent telephony buffer clip (less dead air = more conversational)
-        const silenceTail = Buffer.alloc(3200).toString('base64'); // 100ms @ 16kHz PCM16
+        const silenceTail = Buffer.alloc(4800).toString('base64'); // 100ms @ 24kHz PCM16
         
         setTimeout(() => {
           if (this.swSocket?.readyState === WebSocket.OPEN) {
@@ -1077,7 +1077,7 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 1280; // 40ms @ 16kHz PCM16 - reduces playback offset
+    const maxChunkSize = 1920; // 40ms @ 24kHz PCM16 - reduces playback offset
     
     if (audioBuffer.length > maxChunkSize) {
       debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
@@ -1123,8 +1123,8 @@ class AudioBridge {
       return;
     }
     
-    // Generate 50ms of silence @ 16kHz PCM16
-    const sampleRate = 16000;
+    // Generate 50ms of silence @ 24kHz PCM16
+    const sampleRate = 24000;
     const durationMs = 50;
     const numSamples = Math.floor((sampleRate * durationMs) / 1000);
     const silenceBuffer = Buffer.alloc(numSamples * 2); // 16-bit = 2 bytes per sample, all zeros = silence
