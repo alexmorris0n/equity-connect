@@ -10,7 +10,6 @@
  */
 
 require('dotenv').config();
-const { Voice } = require('@signalwire/realtime-api');
 const FabricBridge = require('./fabric-bridge');
 const { app: swaigApp } = require('./swaig-server');
 const { initSupabase } = require('./tools');
@@ -64,11 +63,15 @@ const activeCalls = new Map();
  */
 async function initializeFabricClient() {
   try {
-    const voiceClient = await Voice({
+    const { Voice } = require('@signalwire/realtime-api');
+    
+    const voiceClient = new Voice.Client({
       project: process.env.SW_PROJECT,
       token: process.env.SW_TOKEN,
-      space: process.env.SW_SPACE
+      contexts: ['office']
     });
+
+    await voiceClient.connect();
 
     logger.info('✅ SignalWire Fabric client initialized');
 
