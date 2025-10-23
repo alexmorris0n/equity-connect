@@ -223,14 +223,16 @@ class OpenAIWebRTCClient {
     };
 
     this.peerConnection.onconnectionstatechange = () => {
-      console.log('🔌 Connection state:', this.peerConnection.connectionState);
-      if (this.peerConnection.connectionState === 'connected') {
+      if (!this.peerConnection) return;                 // ← guard
+      const state = this.peerConnection.connectionState;
+      console.log('🔌 Connection state:', state);
+      if (state === 'connected') {
         console.log('✅ WebRTC connected!');
-        if (this.onConnected) this.onConnected();
-      } else if (this.peerConnection.connectionState === 'failed') {
+        this.onConnected && this.onConnected();
+      } else if (state === 'failed') {
         console.error('❌ WebRTC connection failed');
-        if (this.onError) this.onError(new Error('WebRTC connection failed'));
-      } else if (this.peerConnection.connectionState === 'disconnected') {
+        this.onError && this.onError(new Error('WebRTC connection failed'));
+      } else if (state === 'disconnected') {
         console.warn('⚠️ WebRTC disconnected');
       }
     };
@@ -552,7 +554,8 @@ class OpenAIWebRTCClient {
     }
     if (this.peerConnection) {
       try {
-      this.peerConnection.close();
+        this.peerConnection.onconnectionstatechange = null; // ← detach
+        this.peerConnection.close();
       } catch (error) {
         console.error('⚠️ Error closing peer connection:', error);
       }

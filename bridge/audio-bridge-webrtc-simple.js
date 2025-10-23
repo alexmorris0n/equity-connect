@@ -34,6 +34,10 @@ class AudioBridgeWebRTC {
     this.sessionId = null;
     this.streamSid = null;
     
+    // Audio buffering for proper 20ms frames to SignalWire
+    this._oaiToSw8kRemainder = new Int16Array(0);
+    this._sentFrames = 0;
+    
     // Debug: Log the call info passed from server
     if (ENABLE_DEBUG_LOGGING) {
       console.log('🔍 Call info from server:', JSON.stringify(callInfo, null, 2));
@@ -129,6 +133,7 @@ class AudioBridgeWebRTC {
       const sessionUpdate = {
         type: 'session.update',
         session: {
+          type: 'realtime',  // ✅ Required field
           voice: this.sessionConfig.voice,
           instructions: this.lastPrompt || this.sessionConfig.instructions,
           temperature: this.sessionConfig.temperature,
@@ -187,55 +192,76 @@ class AudioBridgeWebRTC {
     let gotFirstFrame = false;
 
     sink.ondata = ({ samples, sampleRate }) => {
-      // OpenAI sends 48kHz or 24kHz WebRTC audio, we need 8kHz µ-law for SignalWire
+      // 1) Convert OpenAI audio to 8k PCM16 (mono)
       let pcm16;
-      
       if (sampleRate === 48000) {
-        // Fast decimate 48k -> 16k -> 8k
-        // First reduce by 3: keep every 3rd sample
+        // quick decimate 48k -> 16k
         const len16 = Math.floor(samples.length / 3);
         const tmp16 = new Int16Array(len16);
-        for (let i = 0, j = 0; j < len16; i += 3, j++) {
-          tmp16[j] = samples[i];
-        }
-        // Then 16k -> 8k
+        for (let i = 0, j = 0; j < len16; i += 3, j++) tmp16[j] = samples[i];
+        // 16k -> 8k
         pcm16 = downsampleTo8k(tmp16);
       } else if (sampleRate === 24000) {
-        // Decimate 24k -> 16k -> 8k
         const len16 = Math.floor(samples.length / 1.5);
         const tmp16 = new Int16Array(len16);
-        for (let i = 0, j = 0; j < len16; i += 1.5, j++) {
-          tmp16[j] = samples[Math.floor(i)];
-        }
+        for (let i = 0, j = 0; j < len16; i += 1.5, j++) tmp16[j] = samples[Math.floor(i)];
         pcm16 = downsampleTo8k(tmp16);
       } else if (sampleRate === 16000) {
-        // Just downsample 16k -> 8k
         pcm16 = downsampleTo8k(samples);
+      } else if (sampleRate === 8000) {
+        pcm16 = samples;
       } else {
-        // Fallback: simple 2:1 decimation
-        const half = Math.floor(samples.length / 2);
-        const tmp = new Int16Array(half);
-        for (let i = 0; i < half; i++) {
-          tmp[i] = samples[i * 2];
+        // unknown rate: bail early
+        return;
+      }
+
+      // 2) Concatenate with any leftover from last callback
+      if (this._oaiToSw8kRemainder.length) {
+        const merged = new Int16Array(this._oaiToSw8kRemainder.length + pcm16.length);
+        merged.set(this._oaiToSw8kRemainder, 0);
+        merged.set(pcm16, this._oaiToSw8kRemainder.length);
+        pcm16 = merged;
+        this._oaiToSw8kRemainder = new Int16Array(0);
+      }
+
+      // 3) Frame into exact 20 ms blocks (160 samples @ 8kHz)
+      const FRAME = 160;
+      const fullFrames = Math.floor(pcm16.length / FRAME);
+      const used = fullFrames * FRAME;
+      const leftover = pcm16.length - used;
+
+      // 4) Send each 20 ms frame as its own WS 'media' event
+      if (fullFrames > 0 && this.streamSid && this.signalwireWs?.readyState === 1) {
+        for (let i = 0; i < fullFrames; i++) {
+          const start = i * FRAME;
+          const end = start + FRAME;
+          const frame16 = pcm16.slice(start, end);           // 160 samples
+          const ulaw   = encodeMulaw(frame16);               // 160 bytes
+          const b64    = Buffer.from(ulaw).toString('base64');
+
+          this.signalwireWs.send(JSON.stringify({
+            event: 'media',
+            streamSid: this.streamSid,
+            media: { payload: b64 }                           // one 20ms frame
+          }));
         }
-        pcm16 = tmp;
       }
 
-      // μ-law encode and send to SignalWire
-      const ulaw = encodeMulaw(pcm16);
-      const base64 = Buffer.from(ulaw).toString('base64');
-
-      if (this.streamSid && this.signalwireWs?.readyState === 1) {
-        this.signalwireWs.send(JSON.stringify({
-          event: 'media',
-          streamSid: this.streamSid,
-          media: { payload: base64 }
-        }));
+      // 5) Keep remainder for next callback
+      if (leftover > 0) {
+        this._oaiToSw8kRemainder = pcm16.slice(used);
       }
 
+      // Frame counting for debugging
+      this._sentFrames += fullFrames;
+      if (this._sentFrames % 100 === 0) {
+        console.log(`➡️ Sent ${this._sentFrames} x 20ms frames to SignalWire`);
+      }
+
+      // First-frame bookkeeping
       if (!gotFirstFrame) {
         gotFirstFrame = true;
-        this.setSpeaking(true); // Mark "Barbara is speaking"
+        this.setSpeaking(true);
         console.log('🎤 Started forwarding OpenAI audio to SignalWire');
       }
     };
