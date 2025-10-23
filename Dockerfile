@@ -1,15 +1,17 @@
 # OpenAI Realtime Voice Bridge - Dockerfile
 # For deployment to Northflank
 
-FROM node:20-alpine
+FROM node:20-slim
 
 # Install dumb-init and build dependencies for native modules (wrtc)
-RUN apk add --no-cache \
-    dumb-init \
-    python3 \
-    make \
-    g++ \
-    cmake
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      dumb-init \
+      python3 \
+      make \
+      g++ \
+      cmake && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create app directory
 WORKDIR /app
@@ -17,14 +19,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install node-pre-gyp globally (needed by wrtc)
-RUN npm install -g node-pre-gyp node-gyp
-
-# Install production dependencies
-RUN npm ci --omit=dev
-
-# Remove build dependencies to reduce image size
-RUN apk del python3 make g++ cmake
+# Install node-pre-gyp globally (needed by wrtc) and production deps
+RUN npm install -g node-pre-gyp node-gyp && \
+    npm ci --omit=dev
 
 # Copy application code
 COPY bridge/ ./bridge/
