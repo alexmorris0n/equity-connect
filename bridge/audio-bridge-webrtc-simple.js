@@ -39,6 +39,10 @@ class AudioBridgeWebRTC {
     this.audioContext = null;
     this.mediaStreamDestination = null;
     
+    // Speaking flag management (prevents stuck states)
+    this.speaking = false;
+    this.speakingTimeout = null;
+    
     this.logger.info(`🎙️ WebRTC Audio Bridge created for call: ${callInfo.CallSid || 'unknown'}`);
   }
 
@@ -133,6 +137,27 @@ class AudioBridgeWebRTC {
   }
 
   /**
+   * Set speaking flag with timeout protection
+   */
+  setSpeaking(speaking) {
+    if (this.speakingTimeout) {
+      clearTimeout(this.speakingTimeout);
+      this.speakingTimeout = null;
+    }
+    
+    this.speaking = speaking;
+    
+    if (speaking) {
+      // Auto-unlock after 15 seconds to prevent stuck states
+      this.speakingTimeout = setTimeout(() => {
+        console.log('🚨 WATCHDOG: Speaking flag stuck for 15s - force unlocking!');
+        this.speaking = false;
+        this.speakingTimeout = null;
+      }, 15000);
+    }
+  }
+
+  /**
    * Handle audio track from OpenAI
    * This receives OpenAI's voice responses via WebRTC
    */
@@ -143,40 +168,49 @@ class AudioBridgeWebRTC {
     track.onunmute = () => this.logger.info('🔊 OpenAI audio track unmuted');
     track.onended = () => this.logger.info('🔚 OpenAI audio track ended');
 
-    const reader = stream.getReader ? stream.getReader() : null;
-    if (!reader) {
-      this.logger.warn('⚠️ WebRTC stream does not expose getReader; audio forwarding disabled');
-      return;
-    }
+    // Create audio context for processing WebRTC audio
+    this.audioContext = new (require('audio-context') || require('web-audio-api').AudioContext)();
+    this.mediaStreamDestination = this.audioContext.createMediaStreamDestination();
+    
+    // Connect the WebRTC track to our processing pipeline
+    const source = this.audioContext.createMediaStreamSource(stream);
+    const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+    
+    processor.onaudioprocess = (event) => {
+      if (!this.signalwireWs || this.signalwireWs.readyState !== 1) {
+        return;
+      }
 
-    const pump = async () => {
-      try {
-        const { value, done } = await reader.read();
-        if (done) {
-          this.logger.info('ℹ️ Finished reading audio from OpenAI stream');
-          return;
-        }
+      const inputBuffer = event.inputBuffer;
+      const inputData = inputBuffer.getChannelData(0);
+      
+      // Convert Float32 to Int16 PCM
+      const pcm16 = new Int16Array(inputData.length);
+      for (let i = 0; i < inputData.length; i++) {
+        pcm16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+      }
 
-        if (value?.byteLength && this.signalwireWs?.readyState === 1) {
-          const pcm16 = new Int16Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
-          const pcm8 = downsampleTo8k(pcm16);
-          const mulaw = encodeMulaw(pcm8);
-          const payload = mulaw.toString('base64');
+      if (pcm16.length > 0) {
+        // Set speaking flag when audio is being sent
+        this.setSpeaking(true);
+        
+        // Convert PCM16 16kHz to PCM8 8kHz, then to μ-law
+        const pcm8 = downsampleTo8k(pcm16);
+        const mulaw = encodeMulaw(pcm8);
+        const payload = mulaw.toString('base64');
 
-          this.signalwireWs.send(JSON.stringify({
-            event: 'media',
-            streamSid: this.streamSid,
-            media: { payload },
-          }));
-        }
-
-        pump();
-      } catch (error) {
-        console.error('❌ Error forwarding OpenAI audio to SignalWire:', error);
+        this.signalwireWs.send(JSON.stringify({
+          event: 'media',
+          streamSid: this.streamSid,
+          media: { payload },
+        }));
+        
+        console.log(`✅ Audio sent to SignalWire (${pcm16.length})`);
       }
     };
 
-    pump();
+    source.connect(processor);
+    processor.connect(this.mediaStreamDestination);
   }
 
   /**
@@ -190,17 +224,43 @@ class AudioBridgeWebRTC {
         if (msg.event === 'start') {
           this.streamSid = msg.start.streamSid;
           console.log('📞 Stream started:', this.streamSid);
+          
+          // Extract call information from SignalWire start event
+          if (msg.start.callSid) {
+            this.callInfo.CallSid = msg.start.callSid;
+          }
+          if (msg.start.from) {
+            this.callInfo.From = msg.start.from;
+            console.log('📞 Caller phone number:', msg.start.from);
+          }
+          if (msg.start.to) {
+            this.callInfo.To = msg.start.to;
+          }
+          
+          // Log complete call info for debugging
+          console.log('📋 Call information:', {
+            CallSid: this.callInfo.CallSid,
+            From: this.callInfo.From,
+            To: this.callInfo.To
+          });
         } else if (msg.event === 'media' && msg.media?.payload) {
           if (!this.isConnected) {
             return;
           }
 
           try {
+            // Convert SignalWire μ-law (8kHz) to PCM16 (16kHz) for OpenAI
             const mulawBuffer = Buffer.from(msg.media.payload, 'base64');
             const pcm8 = decodeMulaw(mulawBuffer);
             const pcm16 = upsampleTo16k(pcm8);
             const pcmBuffer = int16ToBuffer(pcm16);
             const base64PCM = pcmBuffer.toString('base64');
+
+            // Debug: log audio levels to verify data is flowing
+            const maxAmplitude = Math.max(...Array.from(pcm16).map(Math.abs));
+            if (maxAmplitude > 100) { // Only log if there's actual audio
+              console.log(`🎤 SignalWire audio: ${pcm16.length} samples, max amplitude: ${maxAmplitude}`);
+            }
 
             this.openaiClient.sendAudio(base64PCM);
           } catch (error) {
@@ -253,6 +313,12 @@ class AudioBridgeWebRTC {
         debug('🎵 Audio delta received via WebRTC');
         break;
 
+      case 'response.audio.done':
+        // Audio response completed - clear speaking flag
+        this.setSpeaking(false);
+        console.log('✅ Response queue empty');
+        break;
+
       case 'response.audio_transcript.done':
         console.log('🤖 Barbara:', event.transcript);
         break;
@@ -290,13 +356,20 @@ class AudioBridgeWebRTC {
     try {
       const args = JSON.parse(event.arguments);
       
-      // Add call context
+      // Add call context (use extracted call info)
       const enrichedArgs = {
         ...args,
         callSid: this.callInfo.CallSid,
         from: this.callInfo.From,
         to: this.callInfo.To
       };
+      
+      console.log('🔧 Tool call with context:', {
+        functionName,
+        callSid: this.callInfo.CallSid,
+        from: this.callInfo.From,
+        to: this.callInfo.To
+      });
 
       // Execute tool
       const result = await executeTool(functionName, enrichedArgs);
@@ -364,6 +437,18 @@ class AudioBridgeWebRTC {
   close() {
     console.log('🔌 Closing WebRTC bridge...');
     
+    // Clear speaking timeout
+    if (this.speakingTimeout) {
+      clearTimeout(this.speakingTimeout);
+      this.speakingTimeout = null;
+    }
+    
+    // Clean up audio context
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    
     if (this.openaiClient) {
       this.openaiClient.close();
     }
@@ -373,6 +458,7 @@ class AudioBridgeWebRTC {
     }
 
     this.isConnected = false;
+    this.speaking = false;
     
     console.log('✅ Bridge closed');
   }
