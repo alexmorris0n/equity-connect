@@ -161,7 +161,9 @@ class PromptLayerRealtime {
         ? toolCalls.map(t => typeof t === 'string' ? t : (t?.name || 'unknown')).filter(Boolean)
         : [];
 
-      // Clean metadata (primitives only)
+      // Clean metadata (primitives only) - sanitize the entire metadata object first
+      const sanitizedMetadata = this.safeJSON(metadata || {});
+      
       const cleanMetadata = {
         call_id: String(callId || ''),
         lead_id: String(leadId || ''),
@@ -171,18 +173,18 @@ class PromptLayerRealtime {
         outcome: String(outcome || ''),
         duration_seconds: Number(durationSeconds || 0),
         message_count: Number(blueprintMessages.length),
-        money_purpose: String(metadata?.money_purpose || ''),
-        specific_need: String(metadata?.specific_need || ''),
-        amount_needed: String(metadata?.amount_needed || ''),
-        timeline: String(metadata?.timeline || ''),
-        objections_count: Number(metadata?.objections_count || 0),
-        questions_count: Number(metadata?.questions_count || 0),
-        commitment_points: Number(metadata?.commitment_points_completed || 0),
-        appointment_scheduled: Boolean(metadata?.appointment_scheduled),
+        money_purpose: String(sanitizedMetadata?.money_purpose || ''),
+        specific_need: String(sanitizedMetadata?.specific_need || ''),
+        amount_needed: String(sanitizedMetadata?.amount_needed || ''),
+        timeline: String(sanitizedMetadata?.timeline || ''),
+        objections_count: Number(sanitizedMetadata?.objections_count || 0),
+        questions_count: Number(sanitizedMetadata?.questions_count || 0),
+        commitment_points: Number(sanitizedMetadata?.commitment_points_completed || 0),
+        appointment_scheduled: Boolean(sanitizedMetadata?.appointment_scheduled),
         tool_calls: String(toolNames.join(', ') || 'none'),
-        interruptions: Number(metadata?.interruptions || 0),
-        email_verified: Boolean(metadata?.email_verified),
-        phone_verified: Boolean(metadata?.phone_verified)
+        interruptions: Number(sanitizedMetadata?.interruptions || 0),
+        email_verified: Boolean(sanitizedMetadata?.email_verified),
+        phone_verified: Boolean(sanitizedMetadata?.phone_verified)
       };
       
       const cleanInputVars = {
@@ -190,8 +192,8 @@ class PromptLayerRealtime {
         broker_id: String(brokerId || ''),
         lead_name: String(leadName || ''),
         broker_name: String(brokerName || ''),
-        money_purpose: String(metadata?.money_purpose || ''),
-        timeline: String(metadata?.timeline || '')
+        money_purpose: String(sanitizedMetadata?.money_purpose || ''),
+        timeline: String(sanitizedMetadata?.timeline || '')
       };
 
       // Use PromptLayer's CORRECT API format (Blueprint)
