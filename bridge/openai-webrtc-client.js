@@ -24,6 +24,29 @@ function waitForIceGatheringComplete(pc, timeoutMs = 2500) {
   });
 }
 
+// Fix 1: Put a=end-of-candidates inside the audio m-section
+function insertEndOfCandidatesInAudio(sdp) {
+  // Find the audio m-section [m=audio ... up to next m= or end]
+  return sdp.replace(/(m=audio[\s\S]*?)(\r?\n)(?=m=|$)/, (full, audioBlock, tailNewline) => {
+    // If audio block already has end-of-candidates, keep as is
+    if (/\r?\na=end-of-candidates(?:\r?\n|$)/m.test(audioBlock)) return full;
+    // Append end-of-candidates at the end of the audio block
+    const fixed = audioBlock.replace(/\s*$/, '') + '\r\na=end-of-candidates';
+    return fixed + tailNewline;
+  });
+}
+
+// Fix 2: Normalize CRLF and guarantee final CRLF
+function normalizeSdpCrLf(sdp) {
+  // Convert to CRLF
+  let out = sdp.replace(/\r?\n/g, '\r\n');
+  // Collapse accidental double blank lines that can appear during munging
+  out = out.replace(/(\r\n){3,}/g, '\r\n\r\n');
+  // Ensure SDP ends with a single CRLF
+  if (!out.endsWith('\r\n')) out += '\r\n';
+  return out;
+}
+
 class OpenAIWebRTCClient {
   constructor(apiKey, model = 'gpt-realtime') {
     this.apiKey = apiKey;
@@ -234,17 +257,27 @@ class OpenAIWebRTCClient {
     // Final SDP preparation for maximum compatibility
     let sdpToPost = localSdp;
     
-    // 1. Append end-of-candidates sentinel (some parsers like it explicit)
-    if (!/^\s*a=end-of-candidates/m.test(sdpToPost)) {
-      sdpToPost += '\r\na=end-of-candidates';
-    }
+    // 1. Insert end-of-candidates INSIDE the audio section (not at the end)
+    sdpToPost = insertEndOfCandidatesInAudio(sdpToPost);
     
-    // 2. Force CRLF line endings (SDP wants \r\n)
-    sdpToPost = sdpToPost.replace(/\r?\n/g, '\r\n');
+    // 2. Normalize CRLF and guarantee final CRLF
+    sdpToPost = normalizeSdpCrLf(sdpToPost);
     
     // 3. Add CBR=0 for mid-call bitrate adaptation (some stacks like it)
     sdpToPost = sdpToPost.replace(/a=fmtp:111 [^\r\n]*/g,
       'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000;cbr=0');
+
+    // 4. Sanity checks
+    if (!/^v=0\r\n/.test(sdpToPost)) console.warn('⚠️ SDP does not start with v=0');
+    if (/a=ice-options:/m.test(sdpToPost)) console.warn('⚠️ Trickle still present');
+    if (!/m=audio .* 111(?:\r\n|$)/.test(sdpToPost)) console.warn('⚠️ Not Opus-only');
+    if (!/\r\na=end-of-candidates\r\n?$/.test(sdpToPost) && !/m=application/.test(sdpToPost)) {
+      console.warn('⚠️ No end-of-candidates in audio block');
+    }
+
+    // 5. Quick verification log (hex tail)
+    const tail = Buffer.from(sdpToPost.slice(-80), 'utf8');
+    console.log('🔎 SDP tail hex:', tail.toString('hex'));
 
     console.log('📤 Sending SDP offer to OpenAI...');
     console.log('🔍 SDP offer length:', sdpToPost.length);
@@ -277,7 +310,7 @@ class OpenAIWebRTCClient {
               'Accept': 'application/sdp',
               'OpenAI-Beta': 'realtime=v1'
             },
-            body: sdpToPost
+            body: Buffer.from(sdpToPost, 'utf8')
           });
 
           const bodyText = await res.text();
