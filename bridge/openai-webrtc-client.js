@@ -119,7 +119,7 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
@@ -143,6 +143,18 @@ class OpenAIWebRTCClient {
     );
 
     console.log('✅ WebRTC connection established - waiting for connection state...');
+  }
+
+  sendAudio(base64Audio) {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      const message = {
+        type: 'input_audio_buffer.append',
+        audio: base64Audio
+      };
+      this.dataChannel.send(JSON.stringify(message));
+    } else {
+      console.log('⚠️ Data channel not ready for audio');
+    }
   }
 
   waitForICEGathering() {

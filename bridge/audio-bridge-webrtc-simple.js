@@ -257,7 +257,12 @@ class AudioBridgeWebRTC {
               console.log(`🎤 SignalWire audio: ${pcm16.length} samples, max amplitude: ${maxAmplitude}`);
             }
 
-            this.openaiClient.sendAudio(base64PCM);
+            // Send audio to OpenAI via WebRTC data channel
+            if (this.openaiClient && this.openaiClient.dataChannel) {
+              this.openaiClient.sendAudio(base64PCM);
+            } else {
+              console.log('⚠️ WebRTC data channel not ready, skipping audio');
+            }
           } catch (error) {
             console.error('❌ Failed to convert mulaw to PCM16:', error);
           }
