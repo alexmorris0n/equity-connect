@@ -552,14 +552,15 @@ class AudioBridge {
       
       const promptTemplate = await getPromptForCall(
         promptCallContext,
-        this.callContext.instructions
+        this.callContext.instructions,
+        variables  // Pass variables for injection INSIDE getPromptForCall
       );
 
       if (!promptTemplate || promptTemplate.length === 0) {
         throw new Error('PromptLayer returned empty prompt');
       }
 
-      instructions = injectVariables(promptTemplate, variables);
+      instructions = promptTemplate;  // Already injected inside getPromptForCall
       promptSource = 'promptlayer';
       this.promptName = determinePromptName(promptCallContext);
       this.promptSource = promptSource;
@@ -571,8 +572,8 @@ class AudioBridge {
       console.warn('⚠️ Falling back to local prompt file');
       
       try {
-        const cachedPrompt = await getPromptForCall(promptCallContext);
-        instructions = injectVariables(cachedPrompt, variables);
+        const cachedPrompt = await getPromptForCall(promptCallContext, null, variables);
+        instructions = cachedPrompt;  // Already injected inside getPromptForCall
         promptSource = 'cached_promptlayer';
         this.promptName = determinePromptName(promptCallContext);
         this.promptSource = promptSource;
