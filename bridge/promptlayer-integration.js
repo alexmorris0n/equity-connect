@@ -72,10 +72,14 @@ class PromptLayerRealtime {
 
     try {
       // Build CLEAN prompt messages from transcript (strings only, no timestamps)
-      const messages = conversationTranscript.map(t => ({
-        role: t.role || 'user',
-        content: String(t.text || t.content || '')
-      }));
+      // Filter out any empty messages
+      const messages = conversationTranscript
+        .filter(t => t && (t.text || t.content)) // Skip empty messages
+        .map(t => ({
+          role: String(t.role || 'user'),
+          content: String(t.text || t.content || '')
+        }))
+        .filter(m => m.content.trim().length > 0); // Skip messages with empty content
 
       // Safely extract tool names (handle missing .name gracefully)
       const toolNames = Array.isArray(toolCalls) 
@@ -86,14 +90,14 @@ class PromptLayerRealtime {
       const lastAssistantMessage = messages.filter(m => m.role === 'assistant').slice(-1)[0];
       const lastAssistantContent = String(lastAssistantMessage?.content || '');
 
-      // Use PromptLayer SDK's logRequest method (correct way!)
+      // Use PromptLayer SDK's logRequest method
+      // For Realtime API, we simplify the structure since it's not a standard chat completion
       const result = await this.client.logRequest({
         function_name: 'openai.realtime.conversation',
         provider_type: 'openai',
         args: [],
         kwargs: {
-          model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-          messages: messages,
+          model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
           temperature: 0.75,
           max_tokens: 400
         },
@@ -105,23 +109,18 @@ class PromptLayerRealtime {
           `broker:${String(brokerName)}`,
           `lead:${String(leadName)}`
         ],
-        request_response: {
+        request_response: JSON.stringify({
           request: {
-            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-            messages: messages.slice(0, 5), // First 5 exchanges
-            tools: toolNames
+            model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
+            message_count: messages.length,
+            tools_used: toolNames
           },
           response: {
             id: String(callId),
-            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-            choices: [{
-              message: {
-                role: 'assistant',
-                content: lastAssistantContent
-              }
-            }]
+            model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
+            last_message: lastAssistantContent.substring(0, 200)
           }
-        },
+        }),
         request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
         request_end_time: Date.now() / 1000,  // Unix timestamp in seconds (float)
         prompt_name: String(metadata?.prompt_version || 'old-big-beautiful-prompt'),
@@ -134,12 +133,13 @@ class PromptLayerRealtime {
           timeline: String(metadata?.timeline || '')
         },
         metadata: {
-          // Call metadata (all strings/numbers/booleans)
+          // Call metadata (all primitives only - no objects/arrays)
           call_id: String(callId),
           lead_id: String(leadId || ''),
           broker_id: String(brokerId || ''),
           outcome: String(outcome || ''),
           duration_seconds: Number(durationSeconds || 0),
+          message_count: Number(messages.length),
           
           // Barbara-specific metadata (clean types)
           money_purpose: String(metadata?.money_purpose || ''),
@@ -153,12 +153,15 @@ class PromptLayerRealtime {
           
           // Quality metrics
           tool_calls_count: toolNames.length,
-          tool_calls_list: toolNames.join(', '),
+          tool_calls_list: toolNames.join(', ') || 'none',
           interruptions: Number(metadata?.interruptions || 0),
           
           // Contact verification
           email_verified: Boolean(metadata?.email_verified),
-          phone_verified: Boolean(metadata?.phone_verified)
+          phone_verified: Boolean(metadata?.phone_verified),
+          
+          // Transcript as JSON string (to avoid object serialization issues)
+          transcript_json: JSON.stringify(messages)
         }
       });
 
