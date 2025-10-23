@@ -435,6 +435,13 @@ class AudioBridge {
 
       const qualifiedFlag = result?.qualified === true || result?.raw?.qualified === true || result?.status === 'qualified';
 
+      console.log('🔍 Qualification debug:', {
+        'result.qualified': result?.qualified,
+        'result.raw.qualified': result?.raw?.qualified,
+        'result.status': result?.status,
+        'qualifiedFlag': qualifiedFlag
+      });
+
       const variables = {
         callContext: 'inbound',
         signalwireNumber: this.callContext.to || '',
