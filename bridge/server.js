@@ -140,6 +140,8 @@ app.get('/public/inbound-xml', async (request, reply) => {
   <Connect>
     <Stream url="${wsUrl}/audiostream" codec="L16@24000h">
       <Parameter name="track" value="both_tracks" />
+      <Parameter name="silenceDetection" value="false" />
+      <Parameter name="context" value="inbound" />
       ${From ? `<Parameter name="from" value="${From}" />` : ''}
       ${To ? `<Parameter name="to" value="${To}" />` : ''}
     </Stream>
@@ -605,7 +607,7 @@ app.register(async function (fastify) {
   fastify.get('/audiostream', { websocket: true }, async (connection, req) => {
     // In @fastify/websocket, connection IS the WebSocket
     const swSocket = connection;
-    const { callId, call_id, context } = req.query;
+    const { callId, call_id, context, From, To } = req.query;
     
     // Support both callId (legacy n8n) and call_id (MCP)
     const actualCallId = call_id || callId;
@@ -613,6 +615,8 @@ app.register(async function (fastify) {
     app.log.info({ 
       callId: actualCallId,
       context,
+      from: From,
+      to: To,
       hasSocket: !!swSocket,
       socketType: typeof swSocket,
       hasOn: typeof swSocket?.on
@@ -643,6 +647,27 @@ app.register(async function (fastify) {
     } else {
       app.log.info('📞 Inbound call - will fetch context via tools');
     }
+    
+    // Add caller information from query parameters (SignalWire sends this in the URL)
+    if (From) {
+      callContext.from_phone = From;
+      callContext.callerPhone = From;
+    }
+    if (To) {
+      callContext.to_phone = To;
+    }
+    if (actualCallId) {
+      callContext.callSid = actualCallId;
+    }
+    
+    app.log.info({ 
+      callContext: {
+        from_phone: callContext.from_phone,
+        to_phone: callContext.to_phone,
+        callSid: callContext.callSid,
+        lead_id: callContext.lead_id
+      }
+    }, '📋 Final call context');
     
     // Create audio bridge with context (includes custom instructions if provided)
     const bridge = new AudioBridge(swSocket, app.log, callContext);
