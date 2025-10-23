@@ -291,6 +291,7 @@ class AudioBridgeWebRTC {
    */
   async handleOpenAIEvent(event) {
     debug('📨 OpenAI event:', event.type);
+    console.log('[DEBUG] 📨 OpenAI event:', event.type);
 
     switch (event.type) {
       case 'session.created':
