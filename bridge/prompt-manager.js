@@ -82,7 +82,10 @@ function determinePromptName(callContext) {
   
   // Inbound calls
   if (context === 'inbound') {
-    if (is_qualified || (lead_id && has_property_data)) {
+    if (is_qualified) {
+      return 'barbara-inbound-qualified';
+    }
+    if (lead_id && has_property_data) {
       return 'barbara-inbound-qualified';
     }
     return 'barbara-inbound-unqualified';
