@@ -144,9 +144,8 @@ class AudioBridgeWebRTC {
       };
       this.openaiClient.sendEvent(sessionUpdate);
       
-      // Optionally kick off first response (e.g., greeting)
-      this.openaiClient.sendEvent({ type: 'response.create' });
-      console.log('✅ Session configured and greeting initiated');
+      // Don't start greeting yet - wait for SignalWire stream to be ready
+      console.log('✅ Session configured - waiting for SignalWire stream...');
     };
 
     // Errors
@@ -291,6 +290,7 @@ class AudioBridgeWebRTC {
    */
   setupSignalWireForwarding() {
     this.signalwireWs.on('message', (message) => {
+      console.log('📨 SignalWire message received:', message.substring(0, 200) + '...');
       try {
         const msg = JSON.parse(message);
 
@@ -313,6 +313,12 @@ class AudioBridgeWebRTC {
           }
           if (msg.start.to) {
             this.callInfo.To = msg.start.to;
+          }
+
+          // Now both sides are ready — kick off Barbara's greeting
+          if (this.openaiClient) {
+            this.openaiClient.sendEvent({ type: 'response.create' });
+            console.log('✅ Greeting initiated after SignalWire start');
           }
           
           // Also check if call info is in the main message object
@@ -387,6 +393,10 @@ class AudioBridgeWebRTC {
     this.signalwireWs.on('close', () => {
       console.log('📞 SignalWire connection closed');
       this.close();
+    });
+
+    this.signalwireWs.on('open', () => {
+      console.log('🔌 SignalWire WebSocket connected');
     });
 
     this.signalwireWs.on('error', (error) => {
