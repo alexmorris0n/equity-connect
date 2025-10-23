@@ -503,31 +503,11 @@ class AudioBridge {
   }
 
   /**
-   * Convert linear PCM to µ-law (G.711)
-   * Simplified implementation for ringback tone generation
-   */
-  linearToMulaw(sample) {
-    const MULAW_MAX = 0x1FFF;
-    const MULAW_BIAS = 33;
-    let sign = (sample < 0) ? 0 : 0x80;
-    if (sign) sample = -sample;
-    if (sample > MULAW_MAX) sample = MULAW_MAX;
-    sample += MULAW_BIAS;
-    let exponent = 7;
-    for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1);
-    const mantissa = (sample >> (exponent + 3)) & 0x0F;
-    return ~(sign | (exponent << 4) | mantissa) & 0xFF;
-  }
-
-  /**
    * Play ringback tone while loading prompt/context
    * Generates classic North American ringback: 2 seconds on, 4 seconds off
    * Plays for up to 2 full rings (~12 seconds) or until session is ready
    */
   playRingbackTone() {
-    // Disabled - synthetic ring tone sounds like an alarm to users
-    return;
-    
     if (this.isPlayingRingback) return;
     
     this.isPlayingRingback = true;
@@ -535,28 +515,18 @@ class AudioBridge {
     let ringCount = 0;
     const MAX_RINGS = 2; // Maximum 2 rings before auto-stopping
     
-    // Generate a gentle single-tone ringback (softer than dual-tone alarm)
-    const generateRingTone = (durationMs, sampleRate = 8000) => {
+    // Generate a simple 440Hz + 480Hz dual-tone (typical ringback) for PCM16
+    const generateRingTone = (durationMs, sampleRate = 16000) => {
       const numSamples = Math.floor((sampleRate * durationMs) / 1000);
-      const buffer = Buffer.alloc(numSamples); // G.711 µ-law: 1 byte per sample
+      const buffer = Buffer.alloc(numSamples * 2); // 16-bit samples = 2 bytes per sample
       
       for (let i = 0; i < numSamples; i++) {
-        // Gentle 440Hz tone with fade in/out for smoothness
+        // Mix 440Hz and 480Hz tones
         const t = i / sampleRate;
-        const progress = i / numSamples;
-        
-        // Fade envelope: ramp up first 10%, ramp down last 10%
-        let envelope = 1.0;
-        if (progress < 0.1) {
-          envelope = progress / 0.1;
-        } else if (progress > 0.9) {
-          envelope = (1.0 - progress) / 0.1;
-        }
-        
-        // Single 440Hz tone at lower volume (0.15 instead of 0.6)
-        const sample = Math.sin(2 * Math.PI * 440 * t) * 0.15 * envelope;
-        const linear = Math.floor(sample * 8159); // µ-law range
-        buffer[i] = this.linearToMulaw(linear);
+        const sample = Math.sin(2 * Math.PI * 440 * t) * 0.3 + 
+                      Math.sin(2 * Math.PI * 480 * t) * 0.3;
+        const value = Math.floor(sample * 32767); // Convert to 16-bit PCM
+        buffer.writeInt16LE(value, i * 2);
       }
       
       return buffer.toString('base64');
