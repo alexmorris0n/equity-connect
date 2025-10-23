@@ -33,9 +33,7 @@ class OpenAIWebRTCClient {
           'OpenAI-Beta': 'realtime=v1'
         },
         body: JSON.stringify({
-          session: {
-            voice: 'shimmer'
-          }
+          session: { type: 'realtime' }
         })
       });
 
