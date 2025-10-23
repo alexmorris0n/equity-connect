@@ -93,7 +93,7 @@ class PromptLayerRealtime {
   }
 
   /**
-   * Log a complete Realtime API conversation
+   * Log a complete Realtime API conversation using PromptLayer Blueprint format
    */
   async logRealtimeConversation({
     callId,
@@ -110,76 +110,93 @@ class PromptLayerRealtime {
     if (!this.enabled) return null;
 
     try {
-      // Don't pass full transcript to avoid serialization issues
-      // Just track message count and summary
-      const messageCount = Array.isArray(conversationTranscript) ? conversationTranscript.length : 0;
+      // Convert conversation to PromptLayer Blueprint format
+      // Per docs: https://docs.promptlayer.com/features/prompt-history/custom-logging
+      const blueprintMessages = [];
       
-      // Get first and last messages for context (strings only)
-      let firstUserMessage = '';
-      let lastAssistantMessage = '';
-      
-      if (Array.isArray(conversationTranscript) && conversationTranscript.length > 0) {
-        const userMessages = conversationTranscript.filter(t => t?.role === 'user' && t?.text);
-        const assistantMessages = conversationTranscript.filter(t => t?.role === 'assistant' && t?.text);
-        
-        if (userMessages.length > 0) {
-          firstUserMessage = String(userMessages[0].text || '').substring(0, 200);
-        }
-        if (assistantMessages.length > 0) {
-          lastAssistantMessage = String(assistantMessages[assistantMessages.length - 1].text || '').substring(0, 200);
+      if (Array.isArray(conversationTranscript)) {
+        for (const msg of conversationTranscript) {
+          if (!msg || !msg.text) continue;
+          
+          blueprintMessages.push({
+            role: String(msg.role || 'user'),
+            content: [
+              {
+                type: 'text',
+                text: String(msg.text)
+              }
+            ]
+          });
         }
       }
+      
+      // Input Blueprint: The full conversation history
+      const inputBlueprint = {
+        type: 'chat',
+        messages: blueprintMessages
+      };
+      
+      // Output Blueprint: The final assistant response
+      const lastAssistantMsg = blueprintMessages.filter(m => m.role === 'assistant').pop();
+      const outputBlueprint = lastAssistantMsg ? {
+        type: 'chat',
+        messages: [lastAssistantMsg]
+      } : {
+        type: 'chat',
+        messages: [{
+          role: 'assistant',
+          content: [{ type: 'text', text: '' }]
+        }]
+      };
 
-      // Safely extract tool names (handle missing .name gracefully)
+      // Safely extract tool names
       const toolNames = Array.isArray(toolCalls) 
         ? toolCalls.map(t => typeof t === 'string' ? t : (t?.name || 'unknown')).filter(Boolean)
         : [];
 
-      // Sanitize all data before sending to PromptLayer (STRINGS/NUMBERS/BOOLEANS ONLY)
-      const cleanMetadata = safeJSON({
+      // Clean metadata (primitives only)
+      const cleanMetadata = {
         call_id: String(callId || ''),
         lead_id: String(leadId || ''),
         broker_id: String(brokerId || ''),
+        lead_name: String(leadName || ''),
+        broker_name: String(brokerName || ''),
         outcome: String(outcome || ''),
         duration_seconds: Number(durationSeconds || 0),
-        message_count: Number(messageCount),
-        first_user_message: String(firstUserMessage),
-        last_assistant_message: String(lastAssistantMessage),
+        message_count: Number(blueprintMessages.length),
         money_purpose: String(metadata?.money_purpose || ''),
         specific_need: String(metadata?.specific_need || ''),
         amount_needed: String(metadata?.amount_needed || ''),
         timeline: String(metadata?.timeline || ''),
-        objections_count: Number(Array.isArray(metadata?.objections) ? metadata.objections.length : 0),
-        questions_count: Number(Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0),
+        objections_count: Number(metadata?.objections_count || 0),
+        questions_count: Number(metadata?.questions_count || 0),
         commitment_points: Number(metadata?.commitment_points_completed || 0),
         appointment_scheduled: Boolean(metadata?.appointment_scheduled),
-        tool_calls_count: Number(toolNames.length),
-        tool_calls_list: String(toolNames.join(', ') || 'none'),
+        tool_calls: String(toolNames.join(', ') || 'none'),
         interruptions: Number(metadata?.interruptions || 0),
         email_verified: Boolean(metadata?.email_verified),
         phone_verified: Boolean(metadata?.phone_verified)
-      });
+      };
       
-      const cleanInputVars = safeJSON({
-        lead_id: leadId,
-        broker_id: brokerId,
-        lead_name: leadName,
-        broker_name: brokerName,
-        money_purpose: metadata?.money_purpose,
-        timeline: metadata?.timeline
-      });
+      const cleanInputVars = {
+        lead_id: String(leadId || ''),
+        broker_id: String(brokerId || ''),
+        lead_name: String(leadName || ''),
+        broker_name: String(brokerName || ''),
+        money_purpose: String(metadata?.money_purpose || ''),
+        timeline: String(metadata?.timeline || '')
+      };
 
-      // Use PromptLayer SDK's logRequest method
-      // For Realtime API, we simplify the structure since it's not a standard chat completion
+      // Use PromptLayer's CORRECT API format (Blueprint)
       const result = await this.client.logRequest({
-        function_name: 'openai.realtime.conversation',
-        provider_type: 'openai',
-        args: [],
-        kwargs: safeJSON({
-          model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-          temperature: 0.75,
-          max_tokens: 400
-        }),
+        provider: 'openai',  // Correct field name
+        model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
+        input: inputBlueprint,  // Blueprint format
+        output: outputBlueprint,  // Blueprint format
+        request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
+        request_end_time: Date.now() / 1000,
+        prompt_name: String(metadata?.prompt_version || 'old-big-beautiful-prompt'),
+        prompt_input_variables: cleanInputVars,
         tags: [
           'barbara',
           'realtime',
@@ -188,22 +205,6 @@ class PromptLayerRealtime {
           `broker:${String(brokerName)}`,
           `lead:${String(leadName)}`
         ],
-        request_response: JSON.stringify({
-          request: {
-            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-            message_count: messageCount,
-            tools_used: toolNames.join(', ')
-          },
-          response: {
-            id: String(callId),
-            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
-            last_message: lastAssistantMessage
-          }
-        }),
-        request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
-        request_end_time: Date.now() / 1000,
-        prompt_name: String(metadata?.prompt_version || 'old-big-beautiful-prompt'),
-        prompt_input_variables: cleanInputVars,
         metadata: cleanMetadata
       });
 
