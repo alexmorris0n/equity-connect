@@ -1,8 +1,14 @@
 /**
- * Audio Bridge Handler
+ * ⚠️ DEPRECATED - DO NOT USE IN PRODUCTION ⚠️
  * 
- * Manages WebSocket connections between SignalWire and OpenAI Realtime API.
- * Handles bidirectional audio streaming (PCM16 @ 16kHz) and tool execution.
+ * This file has been replaced by audio-bridge-lean.js
+ * 
+ * REASON: Token cutoff bug fix - this version became too complex with debugging code.
+ * The lean version strips out unnecessary complexity while maintaining all core functionality.
+ * 
+ * USE: bridge/audio-bridge-lean.js instead
+ * 
+ * This file is kept for reference only and may be removed in future cleanup.
  */
 
 const WebSocket = require('ws');
@@ -171,6 +177,7 @@ class AudioBridge {
     }
 
     // Use env variable for model (allows easy switching without code deploy)
+    // Using gpt-realtime-2025-08-28 (latest OpenAI Realtime model, released Aug 28, 2025)
     const realtimeModel = process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28';
     
     this.openaiSocket = new WebSocket(
@@ -774,7 +781,7 @@ class AudioBridge {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
-        voice: process.env.REALTIME_VOICE || 'alloy',  // Fallback if 'sage' not available
+        voice: process.env.REALTIME_VOICE || 'shimmer',  // Shimmer = most natural, warm female voice
         instructions: instructions,  // Static prompt (cacheable)
         // DO NOT set input_audio_format or output_audio_format for SIP/WebRTC
         // Per OpenAI Staff (juberti): "don't set format, it's not needed when using WebRTC/SIP"
@@ -782,7 +789,7 @@ class AudioBridge {
         input_audio_transcription: {
           model: 'whisper-1'
         },
-        temperature: 0.75,  // Warmer, more natural conversation (up from 0.6)
+        temperature: 0.95,  // HIGH temp = natural speech patterns, filler words, human-like variation
         max_response_output_tokens: 'inf',  // No artificial limit - let prompt control response length, not token cap
         turn_detection: {
           type: 'server_vad',

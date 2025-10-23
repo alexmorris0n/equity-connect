@@ -107,7 +107,7 @@ class AudioBridge {
       throw new Error('Missing OPENAI_API_KEY');
     }
 
-    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17';
+    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28';
     
     this.openaiSocket = new WebSocket(
       `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`,
@@ -580,7 +580,7 @@ class AudioBridge {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
-        voice: process.env.REALTIME_VOICE || 'alloy',
+        voice: process.env.REALTIME_VOICE || 'shimmer',  // Shimmer = most natural, warm female voice
         instructions: instructions,
         // DO NOT set input_audio_format or output_audio_format for SIP/WebRTC
         // Per OpenAI Staff (juberti): "don't set format, it's not needed when using WebRTC/SIP"
@@ -588,13 +588,13 @@ class AudioBridge {
         input_audio_transcription: {
           model: 'whisper-1'
         },
-        temperature: 0.75,
-        max_response_output_tokens: 'inf',  // FIX #1: No artificial limit
+        temperature: 0.95,  // HIGH temp = natural speech patterns, filler words, human-like variation
+        max_response_output_tokens: 'inf',  // No artificial limit - let prompt control response length
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.5,  // Lowered from 0.80 - high threshold ignores short words like "hello" (OpenAI bug Oct 20, 2025)
-          prefix_padding_ms: 300,  // Increased padding to reduce false triggers
-          silence_duration_ms: 700
+          threshold: 0.4,  // More sensitive - responds faster to user speech
+          prefix_padding_ms: 300,  // Standard padding
+          silence_duration_ms: 200  // Fast cutoff - Barbara responds quickly (more natural conversation)
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -653,8 +653,8 @@ class AudioBridge {
         
         this.speaking = false;
         
-        // Add 300ms silence tail to prevent telephony buffer clip
-        const silenceTail = Buffer.alloc(9600).toString('base64'); // 300ms @ 16kHz PCM16
+        // Add 100ms silence tail to prevent telephony buffer clip (less dead air = more conversational)
+        const silenceTail = Buffer.alloc(3200).toString('base64'); // 100ms @ 16kHz PCM16
         
         setTimeout(() => {
           if (this.swSocket?.readyState === WebSocket.OPEN) {
@@ -886,7 +886,7 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 6400; // FIX #3: 200ms @ 16kHz PCM16 (was 9600 for 24kHz)
+    const maxChunkSize = 2560; // 80ms @ 16kHz PCM16 - smaller chunks = smoother, more fluid delivery
     
     if (audioBuffer.length > maxChunkSize) {
       debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
