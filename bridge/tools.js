@@ -540,70 +540,50 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     // https://developer.nylas.com/docs/v3/calendar/calendar-availability/
     // This endpoint finds available meeting times based on criteria
     const nylasStartTime = Date.now();
-    const availabilityUrl = `${NYLAS_API_URL}/v3/calendars/availability`;
-    
-    // Nylas requires both start_time and end_time to be multiples of 5 minutes
+    // Use Events API to get broker's calendar events, then find gaps
+    // This is more reliable than Availability API which requires working hours config
     const roundedStartTime = Math.floor(startTime / 300) * 300; // Round down to nearest 5 minutes
-    const roundedEndTime = Math.floor(endTime / 300) * 300; // Round down to nearest 5 minutes
+    const roundedEndTime = Math.floor(endTime / 300) * 300;
     
-    const response = await fetch(availabilityUrl, {
-      method: 'POST',
+    const eventsUrl = `${NYLAS_API_URL}/v3/grants/${encodeURIComponent(broker.email)}/events?calendar_id=primary&start=${roundedStartTime}&end=${roundedEndTime}`;
+    
+    const response = await fetch(eventsUrl, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${NYLAS_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, application/gzip'
-      },
-      body: JSON.stringify({
-        start_time: roundedStartTime,  // Start of time range to check (rounded to 5 min)
-        end_time: roundedEndTime,      // End of time range (rounded to 5 min)
-        duration_minutes: 20,   // 20 minute appointments
-        interval_minutes: 15,   // Check every 15 minutes for slots
-        availability_rules: {
-          availability_method: 'collective',
-          buffer: {
-            before: 5,   // 5 minutes before meeting for prep
-            after: 5     // 5 minutes after meeting for notes
-          }
-        },
-        participants: [
-          {
-            email: broker.email,
-            calendar_ids: ['primary'],
-            open_hours: [
-              {
-                days: [1, 2, 3, 4, 5],  // Monday-Friday
-                timezone: broker.timezone || 'America/Los_Angeles',
-                start: '10:00',  // Business hours: 10 AM
-                end: '17:00'     // to 5 PM
-              }
-            ]
-          }
-        ]
-      })
+        'Content-Type': 'application/json'
+      }
     });
     
     if (!response.ok) {
       const errorText = await response.text();
       const nylasTime = Date.now() - nylasStartTime;
-      console.error(`❌ Nylas availability API failed (${nylasTime}ms):`, response.status, errorText);
+      console.error(`❌ Nylas events API failed (${nylasTime}ms):`, response.status, errorText);
       return generateFallbackSlots(preferred_day, preferred_time);
     }
     
-    const availabilityData = await response.json();
+    const eventsData = await response.json();
     const nylasTime = Date.now() - nylasStartTime;
-    console.log(`✅ Nylas availability API: ${nylasTime}ms`);
+    console.log(`✅ Nylas events API: ${nylasTime}ms, found ${eventsData.data?.length || 0} events`);
     
-    // Extract available time slots directly from Nylas (they already calculated the gaps!)
-    let availableSlots = [];
-    if (availabilityData && availabilityData.time_slots && availabilityData.time_slots.length > 0) {
-      availableSlots = availabilityData.time_slots.map(slot => ({
-        start: slot.start_time * 1000, // Convert Unix to milliseconds
-        end: slot.end_time * 1000
-      }));
-    }
+    // Extract busy times from events
+    const busyTimes = (eventsData.data || []).map(event => ({
+      start: event.when.start_time * 1000,
+      end: event.when.end_time * 1000
+    }));
     
-    console.log('✅ Got availability data from Nylas:', {
+    // Find free slots (gaps between busy times) during business hours
+    const availableSlots = findFreeSlots(
+      roundedStartTime * 1000,
+      roundedEndTime * 1000,
+      busyTimes,
+      20 * 60 * 1000,  // 20 minute appointments
+      broker.timezone || 'America/Los_Angeles'
+    );
+    
+    console.log('✅ Found free slots from calendar:', {
       broker: broker.contact_name,
+      busy_events: busyTimes.length,
       available_count: availableSlots.length
     });
     
@@ -653,6 +633,60 @@ async function checkBrokerAvailability({ broker_id, preferred_day, preferred_tim
     // Fallback to simple slots
     return generateFallbackSlots(preferred_day, preferred_time);
   }
+}
+
+/**
+ * Find free time slots by analyzing gaps between busy times
+ */
+function findFreeSlots(startMs, endMs, busyTimes, durationMs, timezone) {
+  const slots = [];
+  
+  // Sort busy times by start time
+  busyTimes.sort((a, b) => a.start - b.start);
+  
+  let currentTime = startMs;
+  
+  for (const busy of busyTimes) {
+    // If there's a gap before this busy time
+    if (currentTime + durationMs <= busy.start) {
+      // Find all possible slots in this gap
+      let slotStart = currentTime;
+      while (slotStart + durationMs <= busy.start) {
+        const slotEnd = slotStart + durationMs;
+        const slotDate = new Date(slotStart);
+        const dayOfWeek = slotDate.getDay();
+        const hour = slotDate.getHours();
+        
+        // Only business hours: Mon-Fri, 10am-5pm
+        if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 10 && hour < 17) {
+          slots.push({ start: slotStart, end: slotEnd });
+        }
+        
+        slotStart += 15 * 60 * 1000; // Move forward 15 minutes
+      }
+    }
+    
+    // Move past this busy time
+    currentTime = Math.max(currentTime, busy.end);
+  }
+  
+  // Check for free time after last busy period
+  let slotStart = currentTime;
+  while (slotStart + durationMs <= endMs) {
+    const slotEnd = slotStart + durationMs;
+    const slotDate = new Date(slotStart);
+    const dayOfWeek = slotDate.getDay();
+    const hour = slotDate.getHours();
+    
+    // Only business hours: Mon-Fri, 10am-5pm
+    if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 10 && hour < 17) {
+      slots.push({ start: slotStart, end: slotEnd });
+    }
+    
+    slotStart += 15 * 60 * 1000; // Move forward 15 minutes
+  }
+  
+  return slots;
 }
 
 /**
