@@ -2,6 +2,28 @@ const fetch = require('node-fetch');
 const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc');
 const { RTCAudioSource } = nonstandard;
 
+// Patch D: Wait for ICE gathering to complete (or end-of-candidates)
+function waitForIceGatheringComplete(pc, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve('complete');
+
+    let done = false;
+    const finish = (label) => {
+      if (done) return;
+      done = true;
+      pc.removeEventListener('icegatheringstatechange', onState);
+      pc.removeEventListener('icecandidate', onCand);
+      resolve(label || pc.iceGatheringState);
+    };
+    const onState = () => (pc.iceGatheringState === 'complete') && finish('complete');
+    const onCand = (e) => { if (!e.candidate) finish('end-of-candidates'); };
+
+    pc.addEventListener('icegatheringstatechange', onState);
+    pc.addEventListener('icecandidate', onCand);
+    setTimeout(() => finish('timeout'), timeoutMs);
+  });
+}
+
 class OpenAIWebRTCClient {
   constructor(apiKey, model = 'gpt-realtime') {
     this.apiKey = apiKey;
@@ -179,24 +201,26 @@ class OpenAIWebRTCClient {
       .filter(line => !/^a=(rtpmap|fmtp):(?!(111)\b)/.test(line))
       .join('\r\n');
 
+    // Patch E: Remove "a=ice-options:trickle" to avoid endpoints that reject trickle declarations
+    sdp = sdp.replace(/^a=ice-options:trickle\r?\n/m, '');
+
+    // Patch F: Make Opus explicitly mono with additional parameters
+    sdp = sdp.replace(
+      /a=fmtp:111 minptime=10;useinbandfec=1/g,
+      'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000'
+    );
+    
+    // Add ptime for better compatibility
+    if (!sdp.includes('a=ptime:')) {
+      sdp = sdp.replace(/(a=fmtp:111[^\r\n]*)/, '$1\r\na=ptime:20');
+    }
+
     await this.peerConnection.setLocalDescription({ type: 'offer', sdp });
     console.log('🎵 SDP munged to Opus-only for better compatibility');
 
-    // 2) Wait for ICE gathering to complete (or timeout) so SDP isn't empty
-    await new Promise((resolve) => {
-      if (this.peerConnection.iceGatheringState === 'complete') return resolve();
-      const done = () => {
-        if (this.peerConnection.iceGatheringState === 'complete') {
-          this.peerConnection.removeEventListener('icegatheringstatechange', done);
-          resolve();
-        }
-      };
-      this.peerConnection.addEventListener('icegatheringstatechange', done);
-      setTimeout(() => { 
-        this.peerConnection.removeEventListener('icegatheringstatechange', done); 
-        resolve(); 
-      }, 5000); // Increased timeout to 5s for better ICE gathering
-    });
+    // Patch D: Wait for ICE gathering to complete (or end-of-candidates)
+    const gatherState = await waitForIceGatheringComplete(this.peerConnection, 2500);
+    console.log(`🔍 ICE gathering final state: ${gatherState}`);
 
     const localSdp = this.peerConnection.localDescription?.sdp || '';
     if (!localSdp || !/m=audio/.test(localSdp)) {
