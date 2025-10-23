@@ -3,8 +3,13 @@
 
 FROM node:20-alpine
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init and build dependencies for native modules (wrtc)
+RUN apk add --no-cache \
+    dumb-init \
+    python3 \
+    make \
+    g++ \
+    cmake
 
 # Create app directory
 WORKDIR /app
@@ -14,6 +19,9 @@ COPY package*.json ./
 
 # Install production dependencies
 RUN npm ci --omit=dev
+
+# Remove build dependencies to reduce image size
+RUN apk del python3 make g++ cmake
 
 # Copy application code
 COPY bridge/ ./bridge/
