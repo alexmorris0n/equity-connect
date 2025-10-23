@@ -272,18 +272,18 @@ class AudioBridgeWebRTC {
         await this.handleToolCall(event);
         break;
 
-      case 'response.audio.delta':
+      case 'response.output_audio.delta':
         // Audio is handled via WebRTC track
         debug('🎵 Audio delta received via WebRTC');
         break;
 
-      case 'response.audio.done':
+      case 'response.output_audio.done':
         // Audio response completed - clear speaking flag
         this.setSpeaking(false);
         console.log('✅ Response queue empty');
         break;
 
-      case 'response.audio_transcript.done':
+      case 'response.output_audio_transcript.done':
         console.log('🤖 Barbara:', event.transcript);
         break;
 

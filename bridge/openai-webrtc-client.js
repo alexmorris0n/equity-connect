@@ -19,28 +19,30 @@ class OpenAIWebRTCClient {
   async createEphemeralSession(sessionConfig) {
     console.log('📞 Creating OpenAI ephemeral session...');
     
-    const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+    const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: this.model,
-        voice: sessionConfig.voice || 'shimmer',
-        instructions: sessionConfig.instructions,
-        modalities: ['audio', 'text'],
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        temperature: sessionConfig.temperature || 0.95,
-        turn_detection: sessionConfig.turn_detection || {
-          type: 'server_vad',
-          threshold: 0.35,
-          prefix_padding_ms: 500,
-          silence_duration_ms: 2000
-        },
-        tools: sessionConfig.tools || [],
-        tool_choice: sessionConfig.tool_choice || 'auto'
+        session: {
+          type: 'realtime',
+          model: this.model,
+          audio: {
+            output: { voice: sessionConfig.voice || 'shimmer' }
+          },
+          instructions: sessionConfig.instructions,
+          temperature: sessionConfig.temperature || 0.95,
+          turn_detection: sessionConfig.turn_detection || {
+            type: 'server_vad',
+            threshold: 0.35,
+            prefix_padding_ms: 500,
+            silence_duration_ms: 2000
+          },
+          tools: sessionConfig.tools || [],
+          tool_choice: sessionConfig.tool_choice || 'auto'
+        }
       })
     });
 
@@ -49,13 +51,13 @@ class OpenAIWebRTCClient {
       throw new Error(`Failed to create ephemeral session: ${error}`);
     }
 
-    const session = await response.json();
-    console.log('✅ Ephemeral session created:', session.id);
+    const data = await response.json();
+    console.log('✅ Ephemeral session created:', data.value);
     
     return {
-      client_secret: session.client_secret.value,
-      session_id: session.id,
-      expires_at: session.client_secret.expires_at
+      client_secret: data.value,
+      session_id: data.value, // Use the client secret as session ID for now
+      expires_at: data.expires_at || new Date(Date.now() + 24 * 60 * 60 * 1000) // Default 24h
     };
   }
 
@@ -130,7 +132,7 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
