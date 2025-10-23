@@ -134,12 +134,9 @@ class OpenAIWebRTCClient {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/sdp'
       },
-      body: JSON.stringify({
-        sdp: this.peerConnection.localDescription.sdp,
-        type: this.peerConnection.localDescription.type
-      })
+      body: this.peerConnection.localDescription.sdp
     });
 
     if (!answerResponse.ok) {
@@ -147,12 +144,12 @@ class OpenAIWebRTCClient {
       throw new Error(`Failed to exchange SDP: ${answerResponse.status} - ${errorText}`);
     }
 
-    const answerData = await answerResponse.json();
+    const answerSdp = await answerResponse.text();
     
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription({
         type: 'answer',
-        sdp: answerData.sdp
+        sdp: answerSdp
       })
     );
 
