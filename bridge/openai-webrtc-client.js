@@ -3,7 +3,7 @@ const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc'
 const { RTCAudioSource } = nonstandard;
 
 // Patch D: Wait for ICE gathering to complete (or end-of-candidates)
-function waitForIceGatheringComplete(pc, timeoutMs = 2500) {
+function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
   return new Promise((resolve) => {
     if (pc.iceGatheringState === 'complete') return resolve('complete');
 
@@ -48,7 +48,7 @@ function normalizeSdpCrLf(sdp) {
 }
 
 class OpenAIWebRTCClient {
-  constructor(apiKey, model = 'gpt-realtime') {
+  constructor(apiKey, model = process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview') {
     this.apiKey = apiKey;
     this.model = model;
     this.baseUrl = 'https://api.openai.com';
@@ -98,7 +98,17 @@ class OpenAIWebRTCClient {
         null;
 
       const sessionId = data?.session?.id || data?.session_id || null;
-      const expiresAt = data?.client_secret?.expires_at || data?.expires_at || null;
+      
+      // Fix expires_at parsing (handle seconds vs milliseconds)
+      const expiresAtRaw = data?.client_secret?.expires_at || data?.expires_at || null;
+      let expiresAt = null;
+      if (typeof expiresAtRaw === 'number') {
+        // If it looks like seconds, convert to ms
+        expiresAt = expiresAtRaw < 10_000_000_000 ? expiresAtRaw * 1000 : expiresAtRaw;
+      } else if (typeof expiresAtRaw === 'string') {
+        // ISO string
+        expiresAt = Date.parse(expiresAtRaw);
+      }
 
       if (!secret) {
         const keys = data && typeof data === 'object' ? Object.keys(data) : [];
@@ -110,6 +120,7 @@ class OpenAIWebRTCClient {
       console.log('✅ Ephemeral session created');
       console.log('🔑 Client secret:', secret ? 'present' : 'missing');
       if (sessionId) console.log('🆔 Session ID:', sessionId);
+      if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
       
       return {
         clientSecret: secret,
@@ -247,7 +258,7 @@ class OpenAIWebRTCClient {
     console.log('🎵 SDP munged to Opus-only for better compatibility');
 
     // Patch D: Wait for ICE gathering to complete (or end-of-candidates)
-    const gatherState = await waitForIceGatheringComplete(this.peerConnection, 2500);
+    const gatherState = await waitForIceGatheringComplete(this.peerConnection, 5000);
     console.log(`🔍 ICE gathering final state: ${gatherState}`);
 
     const localSdp = this.peerConnection.localDescription?.sdp || '';
@@ -299,67 +310,57 @@ class OpenAIWebRTCClient {
     console.log('🔍 Model:', this.model);
     console.log('🔍 Ephemeral age (ms):', Date.now() - this.sessionCreatedAt);
     
-    // 3) POST SDP to Realtime (SDP flow)
-    const url = `https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`;
-    console.log('🔍 URL:', url);
-    
-    // Log the full SDP for debugging
-    console.log('🔍 Full SDP offer:');
-    console.log(sdpToPost);
-    
-    // Retry logic for SDP POST with exponential backoff
-    const trySdpPost = async () => {
-      let delay = 250;
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        try {
-          console.log(`🔄 SDP attempt ${attempt}/5...`);
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              // ✅ must be the ephemeral ek_* here, NOT your server sk_*
-              'Authorization': `Bearer ${clientSecret}`,
-              'Content-Type': 'application/sdp',
-              'Accept': 'application/sdp',
-              'OpenAI-Beta': 'realtime=v1'
-            },
-            body: sdpToPost, // Raw string, not Buffer
-            cache: 'no-store'
-          });
+    // 3) POST SDP to Realtime with model fallback strategy
+    const base = 'https://api.openai.com/v1/realtime';
+    const tryModels = [
+      this.model,                       // env or passed in (first try)
+      'gpt-4o-realtime-preview',        // common, widely available preview
+      'gpt-4o-realtime-preview-2024-12-17', // older preview (kept for safety)
+    ];
 
-          const bodyText = await res.text();
-          console.log('🔍 Response status:', res.status);
-          console.log('🔍 Response headers:', Object.fromEntries(res.headers.entries()));
-          console.log('🔍 Response body:', bodyText.substring(0, 500));
-          
-          if (res.ok) {
-            console.log(`✅ SDP exchange successful on attempt ${attempt}`);
-            return bodyText;
-          }
-          
-          // Retry only on 5xx; bail fast on 4xx (auth, etc.)
-          if (res.status < 500) {
-            throw new Error(`Failed to exchange SDP: ${res.status} - ${bodyText || '<no body>'}`);
-          }
-          
-          console.warn(`⚠️ SDP attempt ${attempt} got ${res.status}; retrying in ${delay}ms...`);
-        } catch (e) {
-          // Network or CF edge hiccup: retry
-          if (attempt === 5) throw e;
-          console.warn(`⚠️ SDP attempt ${attempt} error: ${e.message}; retrying in ${delay}ms...`);
-        }
-        
-        if (attempt < 5) {
-          const jitter = Math.round(delay * (0.7 + Math.random() * 0.6));
-          await new Promise(r => setTimeout(r, jitter));
-          delay *= 2;
-        }
-      }
+    const postSdpOnce = async (modelStr) => {
+      const url = `${base}?model=${encodeURIComponent(modelStr)}&protocol=webrtc`;
+      console.log('🔍 URL:', url);
+      console.log('🔍 Full SDP offer:\n' + sdpToPost);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${clientSecret}`, // ek_ token
+          'Content-Type': 'application/sdp',
+          'Accept': 'application/sdp',
+          'OpenAI-Beta': 'realtime=v1',
+        },
+        body: sdpToPost,
+        cache: 'no-store'
+      });
+
+      const bodyText = await res.text();
+      console.log('🔍 Response status:', res.status);
+      console.log('🔍 Response headers:', Object.fromEntries(res.headers.entries()));
+      // log more of the body on 4xx so we can see server hints
+      if (!res.ok) console.log('🔍 Response body (first 2000 chars):', bodyText.slice(0, 2000));
+
+      if (!res.ok) throw new Error(`SDP POST failed ${res.status} for model "${modelStr}" ${bodyText ? `- ${bodyText}` : ''}`);
+      return bodyText;
     };
-    
-    const bodyText = await trySdpPost();
+
+    let answerSdp;
+    let lastErr;
+    for (const m of tryModels) {
+      try {
+        console.log(`🔄 Trying SDP exchange with model: ${m}`);
+        answerSdp = await postSdpOnce(m);
+        console.log(`✅ SDP exchange successful with model: ${m}`);
+        break;
+      } catch (e) {
+        console.warn(`⚠️ Model "${m}" failed: ${e.message}`);
+        lastErr = e;
+      }
+    }
+    if (!answerSdp) throw lastErr;
 
     // 4) Set remote description
-    const answerSdp = bodyText; // API returns SDP answer as plain text
     console.log('✅ Received SDP answer from OpenAI, length:', answerSdp.length);
     
     await this.peerConnection.setRemoteDescription(
