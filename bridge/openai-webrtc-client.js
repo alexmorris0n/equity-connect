@@ -33,7 +33,6 @@ class OpenAIWebRTCClient {
           'OpenAI-Beta': 'realtime=v1'
         },
         body: JSON.stringify({
-          model: this.model,
           session: {
             type: 'realtime',
             modalities: ['audio', 'text'],
