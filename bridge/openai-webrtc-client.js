@@ -159,8 +159,9 @@ class OpenAIWebRTCClient {
         audio: base64Audio
       };
       this.dataChannel.send(JSON.stringify(message));
+      console.log('📤 Sent audio chunk to OpenAI:', base64Audio.length, 'bytes');
     } else {
-      console.log('⚠️ Data channel not ready for audio');
+      console.log('⚠️ Data channel not ready for audio, state:', this.dataChannel?.readyState);
     }
   }
 
