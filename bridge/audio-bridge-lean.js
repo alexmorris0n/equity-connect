@@ -525,6 +525,9 @@ class AudioBridge {
    * Plays for up to 2 full rings (~12 seconds) or until session is ready
    */
   playRingbackTone() {
+    // Disabled - synthetic ring tone sounds like an alarm to users
+    return;
+    
     if (this.isPlayingRingback) return;
     
     this.isPlayingRingback = true;
@@ -783,8 +786,9 @@ class AudioBridge {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'shimmer',  // Shimmer = most natural, warm female voice
         instructions: finalInstructions,
-        input_audio_format: 'g711_ulaw',  // Enable compression: 2x smaller than pcm16 = less buffering lag
-        output_audio_format: 'g711_ulaw', // Match input format for consistency
+        // Revert to PCM16 - G.711 caused choppy audio
+        input_audio_format: 'pcm16',
+        output_audio_format: 'pcm16',
         input_audio_transcription: {
           model: 'whisper-1'
         },
@@ -864,7 +868,7 @@ class AudioBridge {
         this.speaking = false;
         
         // Add 100ms silence tail to prevent telephony buffer clip (less dead air = more conversational)
-        const silenceTail = Buffer.alloc(800, 0xFF).toString('base64'); // 100ms @ 8kHz G.711 µ-law
+        const silenceTail = Buffer.alloc(3200).toString('base64'); // 100ms @ 16kHz PCM16
         
         setTimeout(() => {
           if (this.swSocket?.readyState === WebSocket.OPEN) {
@@ -1103,7 +1107,7 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 320; // 40ms @ 8kHz G.711 µ-law (compressed) - reduces playback offset
+    const maxChunkSize = 1280; // 40ms @ 16kHz PCM16 - reduces playback offset
     
     if (audioBuffer.length > maxChunkSize) {
       debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
@@ -1149,12 +1153,11 @@ class AudioBridge {
       return;
     }
     
-    // Generate 50ms of silence @ 8kHz, G.711 µ-law
-    const sampleRate = 8000;
+    // Generate 50ms of silence @ 16kHz PCM16
+    const sampleRate = 16000;
     const durationMs = 50;
     const numSamples = Math.floor((sampleRate * durationMs) / 1000);
-    // G.711 µ-law silence = 0xFF for each sample (not 0x00)
-    const silenceBuffer = Buffer.alloc(numSamples, 0xFF);
+    const silenceBuffer = Buffer.alloc(numSamples * 2); // 16-bit = 2 bytes per sample, all zeros = silence
     
     debug('🔇 Sending 50ms silence primer to warm up RTP session');
     

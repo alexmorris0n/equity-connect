@@ -130,7 +130,7 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream" codec="PCMU@8000h">
+    <Stream url="${wsUrl}/audiostream" codec="L16@16000h">
       <Parameter name="track" value="both_tracks" />
       ${From ? `<Parameter name="from" value="${From}" />` : ''}
       ${To ? `<Parameter name="to" value="${To}" />` : ''}
@@ -157,7 +157,7 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="PCMU@8000h">
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@16000h">
       <Parameter name="track" value="both_tracks" />
       <Parameter name="silenceDetection" value="false" />
     </Stream>
@@ -181,7 +181,7 @@ app.post('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="PCMU@8000h">
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@16000h">
       <Parameter name="track" value="both_tracks" />
       <Parameter name="silenceDetection" value="false" />
     </Stream>
