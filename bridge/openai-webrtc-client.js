@@ -70,35 +70,81 @@ class OpenAIWebRTCClient {
       console.log('📞 Creating OpenAI ephemeral session...');
       this.sessionCreatedAt = Date.now(); // Track when session was created
       
-      const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'OpenAI-Beta': 'realtime=v1'
-        },
-        body: JSON.stringify({
-          // Declare the exact session contract up front
-          session: {
-            type: 'realtime',
-            model: this.model,                     // 👈 tie the ek_ to the model you'll use in SDP
-            voice: (sessionConfig && sessionConfig.voice) || 'shimmer',
-            modalities: ['text', 'audio'],
-            // Optional but good to pass through:
-            turn_detection: (sessionConfig && sessionConfig.turn_detection) || undefined,
-            // You can also include tool schemas at session create if you want them "baked in":
-            // tools: (sessionConfig && sessionConfig.tools) || undefined,
-          }
-        })
-      });
+      const url = 'https://api.openai.com/v1/realtime/client_secrets';
+      const headers = {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Beta': 'realtime=v1',
+      };
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(`HTTP ${response.status} creating client secret: ${text}`);
+      const postClientSecret = async (payload, label) => {
+        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+        const text = await res.text();
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status} creating client secret (${label}): ${text}`);
+        }
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error(`Invalid JSON from client_secrets (${label}): ${text}`); }
+        return data;
+      };
+
+      // 1) Preferred: minimal session wrapper (type + model only)
+      try {
+        const data = await postClientSecret({
+          session: { type: 'realtime', model: this.model }   // ✅ minimal, no voice/modalities here
+        }, 'session.model');
+        
+        // ✅ Accept multiple possible response shapes (defensive parsing)
+        const secret =
+          (data?.client_secret && typeof data.client_secret === 'string' && data.client_secret) ||
+          (data?.client_secret?.value && typeof data.client_secret.value === 'string' && data.client_secret.value) ||
+          (data?.value && typeof data.value === 'string' && data.value) ||
+          (data?.secret && typeof data.secret === 'string' && data.secret) ||
+          null;
+
+        const sessionId = data?.session?.id || data?.session_id || null;
+        
+        // Fix expires_at parsing (handle seconds vs milliseconds)
+        const expiresAtRaw = data?.client_secret?.expires_at || data?.expires_at || null;
+        let expiresAt = null;
+        if (typeof expiresAtRaw === 'number') {
+          // If it looks like seconds, convert to ms
+          expiresAt = expiresAtRaw < 10_000_000_000 ? expiresAtRaw * 1000 : expiresAtRaw;
+        } else if (typeof expiresAtRaw === 'string') {
+          // ISO string
+          expiresAt = Date.parse(expiresAtRaw);
+        }
+
+        if (!secret) {
+          const keys = data && typeof data === 'object' ? Object.keys(data) : [];
+          throw new Error(
+            `Missing client_secret in response. Available keys: [${keys.join(', ')}]`
+          );
+        }
+
+        console.log('✅ Ephemeral session created');
+        console.log('🔑 Client secret:', secret ? 'present' : 'missing');
+        if (sessionId) console.log('🆔 Session ID:', sessionId);
+        if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
+        console.log('🔍 Session bound model:', this.model);
+        
+        return {
+          clientSecret: secret,
+          sessionId: sessionId,
+          expiresAt: expiresAt
+        };
+      } catch (e) {
+        // If server doesn't like the session wrapper, fall back to top-level model
+        if (!/session\.voice|unknown parameter|session\./i.test(String(e.message))) throw e;
+        console.warn('⚠️ session.* rejected; retrying with top-level model', e.message);
       }
 
-      const data = await response.json();
-
+      // 2) Fallback: top-level model
+      const data = await postClientSecret({
+        model: this.model                                // ✅ top-level
+        // optional: expires_in_seconds: 60
+      }, 'model');
+      
       // ✅ Accept multiple possible response shapes (defensive parsing)
       const secret =
         (data?.client_secret && typeof data.client_secret === 'string' && data.client_secret) ||
@@ -127,7 +173,7 @@ class OpenAIWebRTCClient {
         );
       }
 
-      console.log('✅ Ephemeral session created');
+      console.log('✅ Ephemeral session created (top-level model)');
       console.log('🔑 Client secret:', secret ? 'present' : 'missing');
       if (sessionId) console.log('🆔 Session ID:', sessionId);
       if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
