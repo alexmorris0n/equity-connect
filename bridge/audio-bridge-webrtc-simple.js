@@ -174,42 +174,10 @@ class AudioBridgeWebRTC {
     // WebRTC audio handling - convert OpenAI audio back to SignalWire format
     console.log('🔊 WebRTC audio track received, setting up forwarding...');
     
-    // Create audio context for processing OpenAI audio
-    const audioContext = new (require('audio-context'))();
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
-    
-    processor.onaudioprocess = (event) => {
-      const inputBuffer = event.inputBuffer;
-      const inputData = inputBuffer.getChannelData(0);
-      
-      // Convert Float32 to Int16 PCM
-      const pcm16 = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        pcm16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-      }
-      
-      // Downsample from 16kHz to 8kHz and encode to μ-law
-      const pcm8 = downsampleTo8k(pcm16);
-      const mulawBuffer = encodeMulaw(pcm8);
-      const base64Mulaw = Buffer.from(mulawBuffer).toString('base64');
-      
-      // Send audio back to SignalWire
-      if (this.signalwireWs && this.signalwireWs.readyState === 1) {
-        this.signalwireWs.send(JSON.stringify({
-          event: 'media',
-          streamSid: this.streamSid,
-          media: {
-            payload: base64Mulaw
-          }
-        }));
-      }
-    };
-    
-    source.connect(processor);
-    processor.connect(audioContext.destination);
-    
-    console.log('📡 WebRTC audio track processing setup complete');
+    // For WebRTC, audio is handled via the data channel events
+    // The actual audio forwarding will be handled by the response.audio.delta events
+    // This is a placeholder for the WebRTC audio track processing
+    console.log('📡 WebRTC audio track ready for processing');
   }
 
   /**
