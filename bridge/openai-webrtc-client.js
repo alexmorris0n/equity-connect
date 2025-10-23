@@ -3,7 +3,7 @@ const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc'
 const { RTCAudioSource } = nonstandard;
 
 class OpenAIWebRTCClient {
-  constructor(apiKey, model = 'gpt-realtime-2025-08-28') {
+  constructor(apiKey, model = 'gpt-realtime') {
     this.apiKey = apiKey;
     this.model = model;
     this.peerConnection = null;
@@ -29,7 +29,9 @@ class OpenAIWebRTCClient {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({})
+        body: JSON.stringify({
+          session: { type: 'realtime' }
+        })
       });
 
       if (!response.ok) {
@@ -75,6 +77,11 @@ class OpenAIWebRTCClient {
   async connectWebRTC(clientSecret, sessionId) {
     console.log('🔌 Establishing WebRTC connection...');
     this.sessionId = sessionId;
+    
+    // 0) Sanity check: must be an ek_ token
+    if (!clientSecret || !/^ek_/.test(clientSecret)) {
+      throw new Error('Missing/invalid ephemeral client secret (expected ek_*)');
+    }
     
     const iceServers = [
       { urls: 'stun:stun.l.google.com:19302' }
@@ -146,35 +153,60 @@ class OpenAIWebRTCClient {
     this.peerConnection.addTrack(this.audioTrack);
     console.log('🎤 Added audio track to WebRTC connection');
 
+    // 1) Create offer with explicit audio configuration
     console.log('📤 Creating SDP offer...');
-    const offer = await this.peerConnection.createOffer();
+    const offer = await this.peerConnection.createOffer({ 
+      offerToReceiveAudio: true, 
+      offerToReceiveVideo: false 
+    });
     await this.peerConnection.setLocalDescription(offer);
 
-    await this.waitForICEGathering();
-
-    console.log('📤 Sending SDP offer to OpenAI...');
-    console.log('🔍 SDP offer length:', this.peerConnection.localDescription.sdp.length);
-    console.log('🔍 SDP offer preview:', this.peerConnection.localDescription.sdp.substring(0, 200) + '...');
-    console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
-    
-    // Send SDP to OpenAI Realtime API endpoint
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp',
-        'OpenAI-Beta': 'realtime=v1'
-      },
-      body: this.peerConnection.localDescription.sdp
+    // 2) Wait for ICE gathering to complete (or short timeout) so SDP isn't empty
+    await new Promise((resolve) => {
+      if (this.peerConnection.iceGatheringState === 'complete') return resolve();
+      const done = () => {
+        if (this.peerConnection.iceGatheringState === 'complete') {
+          this.peerConnection.removeEventListener('icegatheringstatechange', done);
+          resolve();
+        }
+      };
+      this.peerConnection.addEventListener('icegatheringstatechange', done);
+      setTimeout(() => { 
+        this.peerConnection.removeEventListener('icegatheringstatechange', done); 
+        resolve(); 
+      }, 1500);
     });
 
-    if (!answerResponse.ok) {
-      const errorText = await answerResponse.text();
-      console.error('❌ SDP exchange failed:', answerResponse.status, errorText);
-      throw new Error(`Failed to exchange SDP: ${answerResponse.status} - ${errorText}`);
+    const localSdp = this.peerConnection.localDescription?.sdp || '';
+    if (!localSdp || !/m=audio/.test(localSdp)) {
+      throw new Error('Local SDP missing or has no audio m-line');
     }
 
-    const answerSdp = await answerResponse.text();
+    console.log('📤 Sending SDP offer to OpenAI...');
+    console.log('🔍 SDP offer length:', localSdp.length);
+    console.log('🔍 SDP offer preview:', localSdp.substring(0, 200) + '...');
+    console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
+    
+    // 3) POST SDP to Realtime (SDP flow)
+    const url = `https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        // ✅ must be the ephemeral ek_* here, NOT your server sk_*
+        'Authorization': `Bearer ${clientSecret}`,
+        'Content-Type': 'application/sdp'
+      },
+      body: localSdp
+    });
+
+    const bodyText = await res.text();
+    if (!res.ok) {
+      // Surface whatever the API sent back (yours was empty)
+      throw new Error(`Failed to exchange SDP: ${res.status} - ${bodyText || '<no body>'}`);
+    }
+
+    // 4) Set remote description
+    const answerSdp = bodyText; // API returns SDP answer as plain text
     console.log('✅ Received SDP answer from OpenAI, length:', answerSdp.length);
     
     await this.peerConnection.setRemoteDescription(
