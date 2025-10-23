@@ -29,10 +29,11 @@ class OpenAIWebRTCClient {
         session: {
           type: 'realtime',
           model: this.model,
-          audio: {
-            output: { voice: sessionConfig.voice || 'shimmer' }
-          },
+          voice: sessionConfig.voice || 'shimmer',
           instructions: sessionConfig.instructions,
+          input_audio_format: 'pcm16',
+          output_audio_format: 'pcm16',
+          modalities: ['audio', 'text'],
           turn_detection: sessionConfig.turn_detection || {
             type: 'server_vad',
             threshold: 0.35,
