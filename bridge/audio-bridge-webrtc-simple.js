@@ -38,6 +38,9 @@ class AudioBridgeWebRTC {
     this._oaiToSw8kRemainder = new Int16Array(0);
     this._sentFrames = 0;
     
+    // Media starvation detection (SignalWire idle timeout is ~10s)
+    this.mediaStarvationTimer = null;
+    
     // Debug: Log the call info passed from server
     if (ENABLE_DEBUG_LOGGING) {
       console.log('🔍 Call info from server:', JSON.stringify(callInfo, null, 2));
@@ -300,20 +303,32 @@ class AudioBridgeWebRTC {
           console.log('📞 Stream started:', this.streamSid);
           console.log('✅ SignalWire media stream ready: stream_id=' + this.streamSid);
           
-          // Debug: Log the entire start event to see what SignalWire sends
-          console.log('🔍 SignalWire start event:', JSON.stringify(msg, null, 2));
-          
-          // Extract call information from SignalWire start event
-          // SignalWire sends call info in the start event, but structure may vary
-          if (msg.start.callSid) {
-            this.callInfo.CallSid = msg.start.callSid;
+          // ---- NEW: mirror lean handler semantics ----
+          // Media format + sample rate (critical when debugging silence)
+          const mediaFormat = msg.start?.mediaFormat || msg.start?.media_format;
+          const sampleRate  = msg.start?.sampleRate  || msg.start?.sample_rate;
+          console.log('🎙️ SignalWire Stream Started:', {
+            callSid: msg.start?.callSid,
+            mediaFormat: mediaFormat || 'unknown',
+            sampleRate:  sampleRate  || 'unknown',
+            streamSid:   msg.start?.streamSid
+          });
+
+          // Primary IDs
+          if (msg.start?.callSid) this.callInfo.CallSid = msg.start.callSid;
+
+          // Caller/callee — check multiple locations just like the lean path
+          if (msg.start?.from) this.callInfo.From = msg.start.from;
+          if (msg.start?.to)   this.callInfo.To   = msg.start.to;
+
+          // Custom parameters (often where SignalWire stashes from/to)
+          const cp = msg.start?.customParameters || {};
+          if (!this.callInfo.From && cp.from) {
+            this.callInfo.From = cp.from;
+            console.log('📞 Caller phone from customParameters:', cp.from);
           }
-          if (msg.start.from) {
-            this.callInfo.From = msg.start.from;
-            console.log('📞 Caller phone number from start event:', msg.start.from);
-          }
-          if (msg.start.to) {
-            this.callInfo.To = msg.start.to;
+          if (!this.callInfo.To && cp.to) {
+            this.callInfo.To = cp.to;
           }
 
           // Now both sides are ready — kick off Barbara's greeting
@@ -321,30 +336,11 @@ class AudioBridgeWebRTC {
             this.openaiClient.sendEvent({ type: 'response.create' });
             console.log('✅ Greeting initiated after SignalWire start');
           }
-          
-          // Also check if call info is in the main message object
-          if (msg.callSid && !this.callInfo.CallSid) {
-            this.callInfo.CallSid = msg.callSid;
-          }
-          if (msg.from && !this.callInfo.From) {
-            this.callInfo.From = msg.from;
-            console.log('📞 Caller phone number from main object:', msg.from);
-          }
-          if (msg.to && !this.callInfo.To) {
-            this.callInfo.To = msg.to;
-          }
-          
-          // Check for custom parameters (SignalWire sends these in the start event)
-          if (msg.start && msg.start.customParameters) {
-            const params = msg.start.customParameters;
-            if (params.from && !this.callInfo.From) {
-              this.callInfo.From = params.from;
-              console.log('📞 Caller phone number from custom parameters:', params.from);
-            }
-            if (params.to && !this.callInfo.To) {
-              this.callInfo.To = params.to;
-            }
-          }
+
+          // Fallbacks (rare, but keep as last resort)
+          if (msg.callSid && !this.callInfo.CallSid) this.callInfo.CallSid = msg.callSid;
+          if (msg.from && !this.callInfo.From) { this.callInfo.From = msg.from; console.log('📞 Caller phone (fallback main obj):', msg.from); }
+          if (msg.to && !this.callInfo.To)     this.callInfo.To   = msg.to;
           
           // Log complete call info for debugging
           console.log('📋 Call information:', {
@@ -353,6 +349,15 @@ class AudioBridgeWebRTC {
             To: this.callInfo.To
           });
         } else if (msg.event === 'media' && msg.media?.payload) {
+          // Reset starvation timer (SignalWire stops sending if idle >10s)
+          if (this.mediaStarvationTimer) {
+            clearTimeout(this.mediaStarvationTimer);
+          }
+          this.mediaStarvationTimer = setTimeout(() => {
+            console.warn('⚠️ MEDIA STARVATION: No audio from SignalWire for 12 seconds - connection may be dead');
+            console.warn('⚠️ Last media at:', new Date().toISOString());
+          }, 12000);
+          
           // Wait for WebRTC connection and data channel to be ready
           if (!this.isConnected || !this.openaiClient?.audioSource) {
             if (ENABLE_DEBUG_LOGGING) {
@@ -564,6 +569,12 @@ class AudioBridgeWebRTC {
     if (this.speakingTimeout) {
       clearTimeout(this.speakingTimeout);
       this.speakingTimeout = null;
+    }
+    
+    // Clear media starvation timer
+    if (this.mediaStarvationTimer) {
+      clearTimeout(this.mediaStarvationTimer);
+      this.mediaStarvationTimer = null;
     }
     
     if (this.openaiClient) {
