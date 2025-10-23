@@ -140,8 +140,8 @@ class AudioBridge {
     try {
       this.speaking = false;
       this.responseInProgress = false;
-      // Send 300ms silence tail to flush telephony buffer
-      const silenceTail = Buffer.alloc(9600).toString('base64'); // 300ms @ 16kHz PCM16
+      // Send 100ms silence tail to flush telephony buffer (less dead air = more natural)
+      const silenceTail = Buffer.alloc(3200).toString('base64'); // 100ms @ 16kHz PCM16
       if (this.swSocket?.readyState === WebSocket.OPEN) {
         this.swSocket.send(JSON.stringify({
           event: 'media',
@@ -786,9 +786,9 @@ class AudioBridge {
         max_response_output_tokens: 'inf',  // No artificial limit - let prompt control response length, not token cap
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.80,  // Very high - ignores phone alerts, notifications, handling noise
-          prefix_padding_ms: 200,  // Reduced padding
-          silence_duration_ms: 700  // Optimal for telephony (per OpenAI best practices) - balance between responsiveness and stability
+          threshold: 0.4,  // More sensitive - responds faster to user speech
+          prefix_padding_ms: 300,  // Standard padding
+          silence_duration_ms: 200  // Fast cutoff - Barbara responds quickly (more natural conversation)
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -876,9 +876,8 @@ class AudioBridge {
         this.speaking = false;
         this.responseInProgress = false;
         
-        // Add 300ms silence tail to prevent telephony buffer clip and pitch drop
-        // SignalWire's buffer may cut off last 100-200ms without padding
-        const silenceTail = Buffer.alloc(9600).toString('base64'); // 300ms @ 16kHz PCM16
+        // Add 100ms silence tail to prevent telephony buffer clip (less dead air = more conversational)
+        const silenceTail = Buffer.alloc(3200).toString('base64'); // 100ms @ 16kHz PCM16
         
         setTimeout(() => {
           if (this.swSocket?.readyState === WebSocket.OPEN) {
@@ -1355,15 +1354,14 @@ class AudioBridge {
           this._lastInputAudioLog = Date.now();
         }
 
-        // ⛔ BACKPRESSURE: Sample audio during backoff to keep VAD alive
-        // Don't starve VAD or barge-in detection will fail
+        // ⛔ BACKPRESSURE: Stream all audio during backoff (don't throttle)
+        // This prevents gaps and ensures smooth conversation when backoff ends
         if (!this.canSend()) {
-          const now = Date.now();
-          this._lastSampleAt = this._lastSampleAt || 0;
-          if (now - this._lastSampleAt < 50) return;  // Sample ~20 fps during backoff (was 5 fps)
-          this._lastSampleAt = now;
           const waitMs = this.backoffUntil - Date.now();
-          console.log(`⏳ AUDIO THROTTLED - Sampling only (backoff active, ${waitMs}ms remaining)`);
+          if (waitMs > 0) {
+            console.log(`⏳ Backoff active (${waitMs}ms remaining) - buffering audio normally`);
+          }
+          // Continue streaming - don't skip frames
         }
         
         if (msg.media?.payload && this.openaiSocket?.readyState === WebSocket.OPEN) {
@@ -1429,7 +1427,7 @@ class AudioBridge {
     
     // Decode base64 to check actual size
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 9600; // 200ms of audio @ 24kHz PCM16 - optimal for telephony (balance between latency and smoothness)
+    const maxChunkSize = 3840; // 80ms of audio @ 24kHz PCM16 - smaller chunks = smoother, more fluid delivery
     
     // If chunk is larger than max, split it into smaller pieces and send IN ORDER
     if (audioBuffer.length > maxChunkSize) {
@@ -2562,8 +2560,9 @@ CONVERSATION GOALS (in order):
       if (Date.now() < this.commitLockedUntil) return;  // Cooldown after buffer clear
       if (!this.hasAppendedSinceLastCommit) return;  // Nothing new to commit
 
-      // Need at least 100ms of PCM16@16kHz before committing: 16k * 2 bytes * 0.1s = 3,200 bytes
-      const BYTES_REQUIRED = 3200;
+      // Need at least 40ms of PCM16@16kHz before committing: 16k * 2 bytes * 0.04s = 1,280 bytes
+      // Lower buffer = faster response (more natural conversation)
+      const BYTES_REQUIRED = 1280;
 
       // Also require the last append to be recent (avoid committing long after stream stops)
       const appendIsRecent = Date.now() - this.lastAudioAppendAt < 750;
