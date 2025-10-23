@@ -5,14 +5,20 @@
   "main": "bridge/server.js",
   "scripts": {
     "start": "node bridge/server.js",
+    "start:fabric": "node bridge/fabric-server.js",
+    "start:swaig": "node bridge/swaig-server.js",
     "dev": "NODE_ENV=development node bridge/server.js",
-    "spike": "node bridge/spike.js"
+    "dev:fabric": "NODE_ENV=development node bridge/fabric-server.js",
+    "spike": "node bridge/spike.js",
+    "setup:fabric": "node scripts/setup-fabric-resource.js"
   },
   "dependencies": {
     "@fastify/formbody": "^7.4.0",
     "@fastify/websocket": "^10.0.1",
+    "@signalwire/realtime-api": "^4.1.0",
     "@supabase/supabase-js": "^2.39.7",
     "dotenv": "^16.4.1",
+    "express": "^4.18.2",
     "fastify": "^4.26.0",
     "google-auth-library": "^9.14.2",
     "node-fetch": "^2.7.0",
