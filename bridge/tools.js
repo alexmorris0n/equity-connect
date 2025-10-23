@@ -1079,24 +1079,28 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
   }
 
   // Build comprehensive metadata
+  // Note: conversation_transcript is kept as array for Supabase JSONB storage
+  // but will be sanitized before sending to PromptLayer
   const interactionMetadata = {
     ai_agent: 'barbara',
     version: '2.0',
     
-    // Merge any provided metadata
-    ...(metadata || {}),
-    
-    // Include full conversation transcript if provided
+    // Include full conversation transcript if provided (for Supabase)
     conversation_transcript: transcript || metadata?.conversation_transcript || null,
     
-    // Ensure these fields exist
+    // Ensure these fields exist (primitives only)
     money_purpose: metadata?.money_purpose || null,
     specific_need: metadata?.specific_need || null,
     amount_needed: metadata?.amount_needed || null,
     timeline: metadata?.timeline || null,
+    
+    // Convert arrays to counts/strings for safety
     objections: metadata?.objections || [],
+    objections_count: Array.isArray(metadata?.objections) ? metadata.objections.length : 0,
     questions_asked: metadata?.questions_asked || [],
+    questions_count: Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0,
     key_details: metadata?.key_details || [],
+    key_details_count: Array.isArray(metadata?.key_details) ? metadata.key_details.length : 0,
     
     // Appointment tracking
     appointment_scheduled: metadata?.appointment_scheduled || false,
@@ -1177,6 +1181,38 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
       );
     }
     
+    // Build PromptLayer-safe metadata (PRIMITIVES ONLY - no arrays or objects)
+    const promptLayerMetadata = {
+      ai_agent: 'barbara',
+      version: '2.0',
+      prompt_version: interactionMetadata.prompt_version,
+      prompt_source: interactionMetadata.prompt_source,
+      call_duration_seconds: interactionMetadata.call_duration_seconds,
+      message_count: interactionMetadata.message_count,
+      
+      // String/number/boolean fields only
+      money_purpose: String(interactionMetadata.money_purpose || ''),
+      specific_need: String(interactionMetadata.specific_need || ''),
+      amount_needed: String(interactionMetadata.amount_needed || ''),
+      timeline: String(interactionMetadata.timeline || ''),
+      
+      // Counts instead of arrays
+      objections_count: interactionMetadata.objections_count || 0,
+      questions_count: interactionMetadata.questions_count || 0,
+      key_details_count: interactionMetadata.key_details_count || 0,
+      
+      // Booleans
+      appointment_scheduled: Boolean(interactionMetadata.appointment_scheduled),
+      email_verified: Boolean(interactionMetadata.email_verified),
+      phone_verified: Boolean(interactionMetadata.phone_verified),
+      email_collected: Boolean(interactionMetadata.email_collected),
+      text_reminder_consented: Boolean(interactionMetadata.text_reminder_consented),
+      
+      // Numbers
+      commitment_points_completed: Number(interactionMetadata.commitment_points_completed || 0),
+      interruptions: Number(interactionMetadata.interruptions || 0)
+    };
+    
     const requestId = await promptLayer.logRealtimeConversation({
       callId: data.id,
       leadId: lead_id,
@@ -1184,7 +1220,7 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
       leadName: leadName,
       brokerName: brokerName,
       conversationTranscript: transcript,
-      metadata: interactionMetadata,
+      metadata: promptLayerMetadata,  // Use clean metadata instead
       outcome: outcome,
       durationSeconds: duration_seconds,
       toolCalls: toolCallNames
