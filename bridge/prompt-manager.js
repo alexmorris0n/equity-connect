@@ -117,16 +117,23 @@ async function getPromptFromPromptLayer(promptName, variables = {}) {
     }
     
     // Try fetching prompt template from PromptLayer
+    // Pass input_variables to avoid validation warnings
+    const templateOptions = {
+      input_variables: variables  // Pass variables to prevent PromptLayer warnings
+    };
+    
     // First attempt: no label (gets latest version)
     let result = null;
     try {
       console.log(`🍰 Fetching prompt from PromptLayer: ${promptName} (latest version)`);
-      result = await promptLayer.client.templates.get(promptName);
+      console.log(`   Variables passed: ${Object.keys(variables).length} keys`);
+      result = await promptLayer.client.templates.get(promptName, templateOptions);
     } catch (firstAttemptError) {
       // If that fails, try with "prod" label
       try {
         console.log(`🔍 First attempt failed, trying with label: "prod"`);
         result = await promptLayer.client.templates.get(promptName, {
+          ...templateOptions,
           label: 'prod'
         });
       } catch (secondAttemptError) {

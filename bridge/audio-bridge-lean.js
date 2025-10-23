@@ -89,6 +89,10 @@ class AudioBridge {
     // Simple speaking flag (no complex queue)
     this.speaking = false;
     
+    // Ringback tone control
+    this.ringbackInterval = null;
+    this.isPlayingRingback = false;
+    
     // Heartbeat to keep sockets alive
     this.heartbeatInterval = null;
     
@@ -499,6 +503,73 @@ class AudioBridge {
   }
 
   /**
+   * Play ringback tone while loading prompt/context
+   * Generates classic North American ringback: 2 seconds on, 4 seconds off
+   */
+  playRingbackTone() {
+    if (this.isPlayingRingback) return;
+    
+    this.isPlayingRingback = true;
+    let phase = 0;
+    
+    // Generate a simple 440Hz + 480Hz dual-tone (typical ringback)
+    const generateRingTone = (durationMs, sampleRate = 24000) => {
+      const numSamples = Math.floor((sampleRate * durationMs) / 1000);
+      const buffer = Buffer.alloc(numSamples * 2); // 16-bit samples
+      
+      for (let i = 0; i < numSamples; i++) {
+        // Mix 440Hz and 480Hz tones
+        const t = i / sampleRate;
+        const sample = Math.sin(2 * Math.PI * 440 * t) * 0.3 + 
+                      Math.sin(2 * Math.PI * 480 * t) * 0.3;
+        const value = Math.floor(sample * 32767); // Convert to 16-bit
+        buffer.writeInt16LE(value, i * 2);
+      }
+      
+      return buffer.toString('base64');
+    };
+    
+    // Ringback pattern: 2 seconds of tone, 4 seconds of silence, repeat
+    const ringTone = generateRingTone(2000); // 2 second tone
+    
+    this.ringbackInterval = setInterval(() => {
+      if (!this.swSocket || this.swSocket.readyState !== WebSocket.OPEN) {
+        this.stopRingbackTone();
+        return;
+      }
+      
+      if (phase === 0) {
+        // Send ring tone
+        this.swSocket.send(JSON.stringify({
+          event: 'media',
+          streamSid: this.swSocket._streamSid,
+          media: {
+            payload: ringTone
+          }
+        }));
+        phase = 1;
+      } else {
+        // Silent phase (no audio sent)
+        phase = 0;
+      }
+    }, 2000); // Check every 2 seconds
+    
+    console.log('📞 Ringback tone started');
+  }
+
+  /**
+   * Stop ringback tone (when Barbara starts speaking)
+   */
+  stopRingbackTone() {
+    if (this.ringbackInterval) {
+      clearInterval(this.ringbackInterval);
+      this.ringbackInterval = null;
+      this.isPlayingRingback = false;
+      console.log('📞 Ringback tone stopped');
+    }
+  }
+
+  /**
    * Get current time formatted in broker's local timezone (ISO 8601)
    * Returns format: "2025-10-22T20:42:00-07:00"
    */
@@ -723,6 +794,9 @@ class AudioBridge {
         this.logger.info('Session updated successfully');
         console.log('✅ Session fully configured - ready to start conversation');
         
+        // Stop ringback tone - Barbara is about to speak
+        this.stopRingbackTone();
+        
         // Now that session is fully configured, start the conversation
         // Add a small delay to ensure session is fully applied
         if (!this.greetingSent) {
@@ -881,6 +955,11 @@ class AudioBridge {
         // INBOUND: Configure session with caller context
         if (!this.callContext.instructions && this.callerPhone && !this.sessionConfigured) {
           console.log('🔄 Inbound call - configuring session with caller context');
+          console.log('📞 Playing ringback while loading prompt and context...');
+          
+          // Play ringback tone to caller while we build the session
+          // This makes it sound like the phone is ringing
+          this.playRingbackTone();
           
           // Wait for OpenAI socket to be open
           const waitForOpen = () => new Promise((resolve, reject) => {
@@ -906,8 +985,10 @@ class AudioBridge {
             await waitForOpen();
             await this.configureSession();
             // Don't start conversation yet - wait for session.updated event
+            // Ringback will stop when Barbara starts speaking
           } catch (err) {
             console.error('❌ Failed to configure session:', err);
+            this.stopRingbackTone();
             this.cleanup();
           }
         }
@@ -1265,6 +1346,9 @@ class AudioBridge {
    */
   cleanup() {
     this.speaking = false;
+    
+    // Stop ringback tone if still playing
+    this.stopRingbackTone();
     
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
