@@ -315,6 +315,10 @@ class AudioBridge {
       });
 
       // Build complete variables object with all property/equity data
+      const mortgageBalanceFormatted = mortgageBalanceNumber !== null && !Number.isNaN(mortgageBalanceNumber)
+        ? Math.round(mortgageBalanceNumber).toLocaleString('en-US')
+        : '';
+      
       const variables = {
         callContext: 'inbound',
         signalwireNumber: this.callContext.to || '',
@@ -325,6 +329,7 @@ class AudioBridge {
           : '',
         leadEmail: result?.raw?.primary_email || '',
         leadPhone: callerPhone,
+        leadAge: result?.raw?.age || '',
         propertyAddress: result?.raw?.property_address || '',
         propertyCity: result?.raw?.property_city || '',
         propertyState: result?.raw?.property_state || '',
@@ -337,12 +342,15 @@ class AudioBridge {
         equity50FormattedWords: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? this.numberToWords(Math.floor(estimatedEquityNumber * 0.5)) : '',
         equity60Percent: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? Math.floor(estimatedEquityNumber * 0.6) : '',
         equity60FormattedWords: estimatedEquityNumber !== null && !Number.isNaN(estimatedEquityNumber) ? this.numberToWords(Math.floor(estimatedEquityNumber * 0.6)) : '',
+        mortgageBalance: mortgageBalanceFormatted,
         mortgageBalanceWords,
+        ownerOccupied: result?.raw?.owner_occupied ? 'yes' : 'no',
         qualified: qualifiedFlag,
         leadStatus: result?.status || '',
         brokerCompany: result?.broker?.company_name || '',
         brokerFullName: result?.broker?.contact_name || '',
         brokerFirstName: result?.broker?.contact_name ? result.broker.contact_name.split(' ')[0] : '',
+        brokerLastName: result?.broker?.contact_name ? result.broker.contact_name.split(' ').slice(1).join(' ') : '',
         brokerNmls: result?.broker?.nmls_number || '',
         brokerPhone: result?.broker?.phone || '',
         brokerDisplay: result?.broker?.contact_name
@@ -889,6 +897,14 @@ class AudioBridge {
           
           try {
             await waitForOpen();
+            
+            // Let phone ring 1-2 times before answering (gives Barbara time to load)
+            // 1 ring ≈ 6 seconds, 2 rings ≈ 12 seconds
+            // Using 5 seconds = almost 1 full ring, enough time to load prompts/context
+            const ringDelayMs = parseInt(process.env.ANSWER_DELAY_MS || '5000');
+            console.log(`⏳ Letting phone ring for ${ringDelayMs}ms before answering...`);
+            await new Promise(resolve => setTimeout(resolve, ringDelayMs));
+            
             await this.configureSession();
             setTimeout(() => this.startConversation(), 500);
           } catch (err) {
