@@ -162,7 +162,7 @@ class PromptLayerRealtime {
         : [];
 
       // Clean metadata (primitives only) - sanitize the entire metadata object first
-      const sanitizedMetadata = this.safeJSON(metadata || {});
+      const sanitizedMetadata = safeJSON(metadata || {});
       
       const cleanMetadata = {
         call_id: String(callId || ''),
