@@ -25,6 +25,7 @@
     "pino": "^8.18.0",
     "pino-pretty": "^10.3.1",
     "promptlayer": "^1.0.51",
+    "wrtc": "^0.4.7",
     "ws": "^8.16.0"
   },
   "engines": {

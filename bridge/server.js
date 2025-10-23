@@ -14,7 +14,15 @@ require('dotenv').config();
 const Fastify = require('fastify');
 const fastifyWebsocket = require('@fastify/websocket');
 const fastifyFormbody = require('@fastify/formbody');
-const AudioBridge = require('./audio-bridge-lean'); // TESTING: Using lean version (850 lines vs 2671)
+
+// Choose bridge implementation based on environment
+const USE_WEBRTC = process.env.USE_WEBRTC === 'true';
+const { AudioBridge } = USE_WEBRTC 
+  ? require('./audio-bridge-webrtc-simple')
+  : { AudioBridge: require('./audio-bridge-lean') };
+
+console.log(`🔌 Using ${USE_WEBRTC ? 'WebRTC' : 'WebSocket'} bridge`);
+
 const SignalWireClient = require('./signalwire-client');
 const { initSupabase } = require('./tools');
 

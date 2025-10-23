@@ -44,7 +44,7 @@ const baseUrl = `https://${SW_SPACE}/api/fabric/resources`;
 async function createFabricResource() {
   console.log('\n🔧 Creating Fabric Resource...\n');
 
-  const swaigUrl = `${BRIDGE_URL}:${SWAIG_PORT}/swaig`;
+  const swaigUrl = `${BRIDGE_URL}/swaig`;
   
   const resourceConfig = {
     name: 'Barbara AI Assistant',
@@ -177,7 +177,14 @@ async function linkPhoneNumber(resourceId, phoneNumber) {
 async function testSwaigEndpoint() {
   console.log('\n🧪 Testing SWAIG endpoint...\n');
 
-  const swaigUrl = `${BRIDGE_URL}:${SWAIG_PORT}/swaig`;
+  // Northflank exposes port 8081 on p02 subdomain
+  let swaigUrl = `${BRIDGE_URL}/swaig`;
+  
+  // If using p01 subdomain, try p02 for port 8081
+  if (BRIDGE_URL.includes('p01--')) {
+    swaigUrl = BRIDGE_URL.replace('p01--', 'p02--') + '/swaig';
+    console.log('📍 Detected Northflank p01 subdomain, using p02 for port 8081');
+  }
 
   try {
     const response = await fetch(swaigUrl, {
@@ -200,7 +207,7 @@ async function testSwaigEndpoint() {
     });
     console.log();
 
-    return true;
+    return swaigUrl; // Return the working URL
 
   } catch (err) {
     console.error('❌ Failed to reach SWAIG endpoint:', err.message);
@@ -221,8 +228,8 @@ async function main() {
 
   try {
     // Step 1: Test SWAIG endpoint
-    const swaigOk = await testSwaigEndpoint();
-    if (!swaigOk) {
+    const swaigUrl = await testSwaigEndpoint();
+    if (!swaigUrl) {
       console.error('\n❌ Cannot proceed - SWAIG endpoint is not accessible');
       console.error('   Deploy your bridge first, then run this script again.\n');
       process.exit(1);
@@ -231,7 +238,7 @@ async function main() {
     // Step 2: List existing resources
     const existingResources = await listFabricResources();
     
-    const barbaraExists = existingResources.find(r => r.name.includes('Barbara'));
+    const barbaraExists = existingResources.find(r => r.name && r.name.includes('Barbara'));
     if (barbaraExists) {
       console.log('⚠️  A Barbara resource already exists:', barbaraExists.id);
       console.log('   Do you want to create another one? (Ctrl+C to cancel)\n');
@@ -239,8 +246,8 @@ async function main() {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    // Step 3: Create new resource
-    const resource = await createFabricResource();
+    // Step 3: Create new resource with the working SWAIG URL
+    const resource = await createFabricResource(swaigUrl);
 
     // Step 4: Instructions for phone number linking
     console.log('📞 Next Steps:');
