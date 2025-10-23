@@ -72,6 +72,15 @@ function determinePromptName(callContext) {
     is_qualified      // New flag indicating qualification status
   } = callContext;
   
+  console.log('🔍 Prompt selection debug:', {
+    context,
+    lead_id: !!lead_id,
+    has_property_data,
+    is_qualified,
+    from_phone,
+    to_phone
+  });
+  
   // Outbound calls
   if (context === 'outbound') {
     if (is_qualified || (lead_id && has_property_data)) {
