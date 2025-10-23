@@ -768,7 +768,7 @@ class AudioBridge {
           type: 'server_vad',
           threshold: 0.35,  // Relaxed threshold - less aggressive interruption
           prefix_padding_ms: 500,  // More context before speech starts
-          silence_duration_ms: 2500  // 2.5 seconds - extra time for seniors to process and respond
+          silence_duration_ms: 2000  // 2 seconds - balanced timing for seniors with audio delay
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
