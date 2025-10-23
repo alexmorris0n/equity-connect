@@ -130,13 +130,16 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/sessions/${this.sessionId}/offer`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp'
+        'Content-Type': 'application/json'
       },
-      body: this.peerConnection.localDescription.sdp
+      body: JSON.stringify({
+        sdp: this.peerConnection.localDescription.sdp,
+        type: this.peerConnection.localDescription.type
+      })
     });
 
     if (!answerResponse.ok) {
@@ -144,12 +147,12 @@ class OpenAIWebRTCClient {
       throw new Error(`Failed to exchange SDP: ${answerResponse.status} - ${errorText}`);
     }
 
-    const answerSdp = await answerResponse.text();
+    const answerData = await answerResponse.json();
     
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription({
         type: 'answer',
-        sdp: answerSdp
+        sdp: answerData.sdp
       })
     );
 
