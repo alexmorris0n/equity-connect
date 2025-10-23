@@ -130,6 +130,8 @@ class PromptLayerRealtime {
         }
       }
       
+      console.log(`🔍 Blueprint conversion: ${conversationTranscript.length} messages → ${blueprintMessages.length} blueprint messages`);
+      
       // Input Blueprint: The full conversation history
       const inputBlueprint = {
         type: 'chat',
@@ -138,6 +140,11 @@ class PromptLayerRealtime {
       
       // Output Blueprint: The final assistant response
       const lastAssistantMsg = blueprintMessages.filter(m => m.role === 'assistant').pop();
+      
+      if (!lastAssistantMsg) {
+        console.warn('⚠️ No assistant messages in transcript - using placeholder');
+      }
+      
       const outputBlueprint = lastAssistantMsg ? {
         type: 'chat',
         messages: [lastAssistantMsg]
@@ -145,7 +152,7 @@ class PromptLayerRealtime {
         type: 'chat',
         messages: [{
           role: 'assistant',
-          content: [{ type: 'text', text: '' }]
+          content: [{ type: 'text', text: 'No response captured' }]
         }]
       };
 
