@@ -188,19 +188,19 @@ class PromptLayerRealtime {
       };
 
       // Use PromptLayer's CORRECT API format (Blueprint)
-      // Start with MINIMAL payload to isolate serialization issues
       const result = await this.client.logRequest({
         provider: 'openai',
         model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
         input: inputBlueprint,
         output: outputBlueprint,
         request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
-        request_end_time: Date.now() / 1000
-        // Temporarily remove optional fields to test
-        // prompt_name: String(metadata?.prompt_version || 'old-big-beautiful-prompt'),
-        // prompt_input_variables: cleanInputVars,
-        // tags: [...],
-        // metadata: cleanMetadata
+        request_end_time: Date.now() / 1000,
+        tags: [
+          'barbara',
+          'realtime',
+          String(outcome || 'unknown')
+        ],
+        metadata: cleanMetadata
       });
 
       console.log('✅ Logged to PromptLayer:', result?.request_id);
