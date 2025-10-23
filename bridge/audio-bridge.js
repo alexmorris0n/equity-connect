@@ -350,7 +350,9 @@ class AudioBridge {
    * Look up lead context and build personalized prompt
    */
   async lookupAndBuildPrompt() {
+    console.log('🔍 lookupAndBuildPrompt() CALLED');
     const callerPhone = this.extractCallerPhone();
+    console.log('🔍 Extracted caller phone:', callerPhone);
     if (!callerPhone) {
       console.log('⚠️ WARNING: No caller phone found, using minimal prompt');
       const prompt = this.buildPromptFromTemplate({ callContext: 'inbound' });
@@ -371,7 +373,15 @@ class AudioBridge {
     console.log('📞 Looking up lead context for:', callerPhone);
 
     try {
+      console.log('🔍 Calling get_lead_context tool for phone:', callerPhone);
       const result = await executeTool('get_lead_context', { phone: callerPhone });
+      console.log('🔍 get_lead_context result:', { 
+        found: result?.found, 
+        error: result?.error,
+        qualified: result?.qualified,
+        raw_qualified: result?.raw?.qualified,
+        status: result?.status
+      });
 
       if (!result || !result.found || result.error) {
         console.log('⚠️ Lead not found in database - treating as new caller');
