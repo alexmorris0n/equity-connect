@@ -1169,6 +1169,14 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
     const leadName = lead ? `${lead.first_name} ${lead.last_name}`.trim() : 'Unknown';
     const brokerName = broker?.contact_name || 'Unknown';
     
+    // Clean tool calls - extract just the names (strings only)
+    let toolCallNames = [];
+    if (Array.isArray(interactionMetadata.tool_calls_made)) {
+      toolCallNames = interactionMetadata.tool_calls_made.map(tc => 
+        typeof tc === 'string' ? tc : (tc?.name || 'unknown')
+      );
+    }
+    
     const requestId = await promptLayer.logRealtimeConversation({
       callId: data.id,
       leadId: lead_id,
@@ -1179,7 +1187,7 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
       metadata: interactionMetadata,
       outcome: outcome,
       durationSeconds: duration_seconds,
-      toolCalls: interactionMetadata.tool_calls_made || []
+      toolCalls: toolCallNames
     });
     
     // Score the call based on outcome (0-100 scale)
