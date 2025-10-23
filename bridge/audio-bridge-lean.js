@@ -1077,7 +1077,7 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 1920; // 40ms @ 24kHz PCM16 - reduces playback offset
+    const maxChunkSize = 3840; // 80ms @ 24kHz PCM16 - smoother audio delivery
     
     if (audioBuffer.length > maxChunkSize) {
       debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
