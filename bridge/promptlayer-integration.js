@@ -7,6 +7,45 @@
 
 const { PromptLayer } = require('promptlayer');
 
+/**
+ * Sanitize data for PromptLayer - ensures JSON-safe primitives only
+ * Converts objects to strings, handles circular references, removes non-serializable data
+ */
+function safeJSON(obj) {
+  try {
+    // First pass: JSON.stringify with default handler for non-serializable
+    const jsonString = JSON.stringify(obj, (key, value) => {
+      // Handle undefined
+      if (value === undefined) return null;
+      
+      // Handle functions
+      if (typeof value === 'function') return value.toString();
+      
+      // Handle dates
+      if (value instanceof Date) return value.toISOString();
+      
+      // Handle buffers
+      if (Buffer.isBuffer(value)) return '[Buffer]';
+      
+      // Handle circular references or complex objects
+      if (typeof value === 'object' && value !== null) {
+        // If it has a custom toString that's not [object Object], use it
+        const str = value.toString();
+        if (str !== '[object Object]') return str;
+      }
+      
+      return value;
+    });
+    
+    // Second pass: Parse back to ensure it's valid JSON
+    return JSON.parse(jsonString);
+  } catch (err) {
+    // Last resort: convert to string
+    console.warn('⚠️ Failed to sanitize object for PromptLayer:', err.message);
+    return String(obj);
+  }
+}
+
 class PromptLayerRealtime {
   constructor(apiKey) {
     this.apiKey = apiKey;  // Store API key
@@ -90,17 +129,49 @@ class PromptLayerRealtime {
       const lastAssistantMessage = messages.filter(m => m.role === 'assistant').slice(-1)[0];
       const lastAssistantContent = String(lastAssistantMessage?.content || '');
 
+      // Sanitize all data before sending to PromptLayer
+      const cleanMetadata = safeJSON({
+        call_id: callId,
+        lead_id: leadId,
+        broker_id: brokerId,
+        outcome: outcome,
+        duration_seconds: durationSeconds,
+        message_count: messages.length,
+        money_purpose: metadata?.money_purpose,
+        specific_need: metadata?.specific_need,
+        amount_needed: metadata?.amount_needed,
+        timeline: metadata?.timeline,
+        objections_count: Array.isArray(metadata?.objections) ? metadata.objections.length : 0,
+        questions_count: Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0,
+        commitment_points: metadata?.commitment_points_completed || 0,
+        appointment_scheduled: metadata?.appointment_scheduled || false,
+        tool_calls_count: toolNames.length,
+        tool_calls_list: toolNames.join(', ') || 'none',
+        interruptions: metadata?.interruptions || 0,
+        email_verified: metadata?.email_verified || false,
+        phone_verified: metadata?.phone_verified || false
+      });
+      
+      const cleanInputVars = safeJSON({
+        lead_id: leadId,
+        broker_id: brokerId,
+        lead_name: leadName,
+        broker_name: brokerName,
+        money_purpose: metadata?.money_purpose,
+        timeline: metadata?.timeline
+      });
+
       // Use PromptLayer SDK's logRequest method
       // For Realtime API, we simplify the structure since it's not a standard chat completion
       const result = await this.client.logRequest({
         function_name: 'openai.realtime.conversation',
         provider_type: 'openai',
         args: [],
-        kwargs: {
-          model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
+        kwargs: safeJSON({
+          model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
           temperature: 0.75,
           max_tokens: 400
-        },
+        }),
         tags: [
           'barbara',
           'realtime',
@@ -111,58 +182,21 @@ class PromptLayerRealtime {
         ],
         request_response: JSON.stringify({
           request: {
-            model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
+            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
             message_count: messages.length,
             tools_used: toolNames
           },
           response: {
             id: String(callId),
-            model: String(process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview'),
+            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
             last_message: lastAssistantContent.substring(0, 200)
           }
         }),
         request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
-        request_end_time: Date.now() / 1000,  // Unix timestamp in seconds (float)
+        request_end_time: Date.now() / 1000,
         prompt_name: String(metadata?.prompt_version || 'old-big-beautiful-prompt'),
-        prompt_input_variables: {
-          lead_id: String(leadId || ''),
-          broker_id: String(brokerId || ''),
-          lead_name: String(leadName || ''),
-          broker_name: String(brokerName || ''),
-          money_purpose: String(metadata?.money_purpose || ''),
-          timeline: String(metadata?.timeline || '')
-        },
-        metadata: {
-          // Call metadata (all primitives only - no objects/arrays)
-          call_id: String(callId),
-          lead_id: String(leadId || ''),
-          broker_id: String(brokerId || ''),
-          outcome: String(outcome || ''),
-          duration_seconds: Number(durationSeconds || 0),
-          message_count: Number(messages.length),
-          
-          // Barbara-specific metadata (clean types)
-          money_purpose: String(metadata?.money_purpose || ''),
-          specific_need: String(metadata?.specific_need || ''),
-          amount_needed: String(metadata?.amount_needed || ''),
-          timeline: String(metadata?.timeline || ''),
-          objections_count: Array.isArray(metadata?.objections) ? metadata.objections.length : 0,
-          questions_count: Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0,
-          commitment_points: Number(metadata?.commitment_points_completed || 0),
-          appointment_scheduled: Boolean(metadata?.appointment_scheduled),
-          
-          // Quality metrics
-          tool_calls_count: toolNames.length,
-          tool_calls_list: toolNames.join(', ') || 'none',
-          interruptions: Number(metadata?.interruptions || 0),
-          
-          // Contact verification
-          email_verified: Boolean(metadata?.email_verified),
-          phone_verified: Boolean(metadata?.phone_verified),
-          
-          // Transcript as JSON string (to avoid object serialization issues)
-          transcript_json: JSON.stringify(messages)
-        }
+        prompt_input_variables: cleanInputVars,
+        metadata: cleanMetadata
       });
 
       console.log('✅ Logged to PromptLayer:', result?.request_id);
@@ -173,14 +207,14 @@ class PromptLayerRealtime {
           await this.client.track.prompt({
             request_id: result.request_id,
             prompt_name: String(metadata.prompt_version),
-            prompt_input_variables: {
-              lead_name: String(leadName || ''),
-              broker_name: String(brokerName || ''),
-              money_purpose: String(metadata?.money_purpose || ''),
-              timeline: String(metadata?.timeline || ''),
-              lead_id: String(leadId || ''),
-              broker_id: String(brokerId || '')
-            }
+            prompt_input_variables: safeJSON({
+              lead_name: leadName,
+              broker_name: brokerName,
+              money_purpose: metadata?.money_purpose,
+              timeline: metadata?.timeline,
+              lead_id: leadId,
+              broker_id: brokerId
+            })
           });
           console.log(`✅ Linked prompt template: ${metadata.prompt_version}`);
         } catch (trackError) {
@@ -214,10 +248,10 @@ class PromptLayerRealtime {
     if (!this.enabled) return null;
 
     try {
-      // Use SDK's track.metadata method (correct way!)
+      // Use SDK's track.metadata method with sanitized data
       await this.client.track.metadata({
         request_id: callId,
-        metadata: {
+        metadata: safeJSON({
           tool_call: {
             name: toolName,
             arguments: JSON.stringify(toolArgs),
@@ -226,7 +260,7 @@ class PromptLayerRealtime {
             error: errorMessage || '',
             timestamp: new Date().toISOString()
           }
-        }
+        })
       });
 
       console.log(`✅ Tool call logged to PromptLayer: ${toolName}`);
@@ -247,14 +281,14 @@ class PromptLayerRealtime {
     if (!this.enabled) return null;
 
     try {
-      // Use SDK's track.score method (correct way!)
+      // Use SDK's track.score method with sanitized metadata
       await this.client.track.score({
         request_id: callId,
         score: score, // 0-100
-        metadata: {
+        metadata: safeJSON({
           outcome: outcome,
           ...metadata
-        }
+        })
       });
 
       console.log(`✅ Score logged to PromptLayer: ${score}`);
