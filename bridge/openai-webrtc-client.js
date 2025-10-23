@@ -461,14 +461,30 @@ class OpenAIWebRTCClient {
       const fullFrames = Math.floor(samples.length / FRAME);
 
       for (let i = 0; i < fullFrames; i++) {
-        const chunk = samples.subarray(i * FRAME, (i + 1) * FRAME); // Int16Array view, 160 samples
+        // 1) Take a clean copy so the view is exactly 160 samples (320 bytes)
+        const start = i * FRAME;
+        const end = start + FRAME;
+        const frameI16 = samples.slice(start, end); // copies 160 Int16s
+
+        // 2) Convert to a Buffer whose byteLength is exactly 320
+        const frameBuf = Buffer.from(frameI16.buffer, frameI16.byteOffset, frameI16.byteLength);
+
+        // 3) Derive numberOfFrames from what we're actually sending
+        const n = frameI16.length; // should be 160
+
+        // Optional sanity guard (logs once if something goes off)
+        if (frameBuf.byteLength !== n * 2) {
+          console.warn(`⚠️ Frame size mismatch: bytes=${frameBuf.byteLength}, samples=${n}`);
+          continue;
+        }
 
         this.audioSource.onData({
-          samples: chunk,
+          // Pass a Buffer; wrtc is strict about .byteLength
+          samples: frameBuf,
           sampleRate: 16000,
           bitsPerSample: 16,
           channelCount: 1,
-          numberOfFrames: FRAME
+          numberOfFrames: n
         });
       }
 
