@@ -264,7 +264,7 @@ async function getPromptFromPromptLayer(promptName, variables = {}) {
 /**
  * Main function: Get the right prompt for this call
  */
-async function getPromptForCall(callContext, customInstructions = null) {
+async function getPromptForCall(callContext, customInstructions = null, variables = {}) {
   console.log('🔍 Getting prompt for call context:', {
     context: callContext.context,
     has_lead: !!callContext.lead_id,

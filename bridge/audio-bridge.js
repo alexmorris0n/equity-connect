@@ -692,7 +692,8 @@ class AudioBridge {
       
       const promptTemplate = await getPromptForCall(
         promptCallContext,
-        this.callContext.instructions  // Custom instructions override everything
+        this.callContext.instructions,  // Custom instructions override everything
+        variables  // Pass variables for injection
       );
 
       if (!promptTemplate || promptTemplate.length === 0) {
@@ -718,7 +719,7 @@ class AudioBridge {
         // Try to get cached PromptLayer template for this call type
         const { determinePromptName } = require('./prompt-manager');
         const fallbackPromptName = determinePromptName(promptCallContext);
-        const cachedPrompt = await getPromptForCall(promptCallContext);  // Will use disk cache if available
+        const cachedPrompt = await getPromptForCall(promptCallContext, null, variables);  // Will use disk cache if available
         
         instructions = injectVariables(cachedPrompt, variables);
         promptSource = 'cached_promptlayer';
