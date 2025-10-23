@@ -170,20 +170,27 @@ class OpenAIWebRTCClient {
       }
     };
 
-    // Set up server-initiated data channel handler
-    this.peerConnection.ondatachannel = (event) => {
-      this.dataChannel = event.channel;
-      console.log('📡 Data channel opened (server-initiated)');
+    // Set up data channel for events (BEFORE createOffer)
+    this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
+      ordered: true
+    });
+
+    this.dataChannel.onopen = () => {
+      console.log('📡 Data channel opened');
       if (this.onDataChannelOpen) this.onDataChannelOpen();
-      this.dataChannel.onmessage = (ev) => {
-        try { 
-          const msg = JSON.parse(ev.data); 
-          this.onMessage && this.onMessage(msg); 
-        } catch (e) { 
-          console.error('parse fail', e); 
-        }
-      };
-      this.dataChannel.onerror = (err) => console.error('❌ Data channel error:', err);
+    };
+
+    this.dataChannel.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (this.onMessage) this.onMessage(message);
+      } catch (err) {
+        console.error('❌ Failed to parse data channel message:', err);
+      }
+    };
+
+    this.dataChannel.onerror = (error) => {
+      console.error('❌ Data channel error:', error);
     };
 
     // Create audio source and track for sending audio to OpenAI
@@ -260,24 +267,29 @@ class OpenAIWebRTCClient {
     // 1. Insert end-of-candidates INSIDE the audio section (not at the end)
     sdpToPost = insertEndOfCandidatesInAudio(sdpToPost);
     
-    // 2. Normalize CRLF and guarantee final CRLF
-    sdpToPost = normalizeSdpCrLf(sdpToPost);
+    // 2. Normalize CRLF and guarantee double-CRLF termination
+    sdpToPost = sdpToPost.replace(/\r?\n/g, '\r\n');
+    if (!sdpToPost.endsWith('\r\n\r\n')) {
+      if (!sdpToPost.endsWith('\r\n')) sdpToPost += '\r\n';
+      sdpToPost += '\r\n';
+    }
     
     // 3. Add CBR=0 for mid-call bitrate adaptation (some stacks like it)
     sdpToPost = sdpToPost.replace(/a=fmtp:111 [^\r\n]*/g,
       'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000;cbr=0');
 
-    // 4. Sanity checks
+    // 4. Enhanced sanity checks
     if (!/^v=0\r\n/.test(sdpToPost)) console.warn('⚠️ SDP does not start with v=0');
     if (/a=ice-options:/m.test(sdpToPost)) console.warn('⚠️ Trickle still present');
     if (!/m=audio .* 111(?:\r\n|$)/.test(sdpToPost)) console.warn('⚠️ Not Opus-only');
-    if (!/\r\na=end-of-candidates\r\n?$/.test(sdpToPost) && !/m=application/.test(sdpToPost)) {
-      console.warn('⚠️ No end-of-candidates in audio block');
-    }
+    if (!/m=application.*webrtc-datachannel/.test(sdpToPost)) console.warn('⚠️ Missing data channel section');
+    if (!sdpToPost.endsWith('\r\n\r\n')) console.warn('⚠️ SDP missing double-CRLF termination');
+    if (sdpToPost.includes('\n') && !sdpToPost.includes('\r\n')) console.warn('⚠️ SDP not normalized to CRLF');
+    if (/^"/.test(sdpToPost) || sdpToPost.includes('\\n')) console.warn('⚠️ SDP looks JSON-escaped');
 
-    // 5. Quick verification log (hex tail)
-    const tail = Buffer.from(sdpToPost.slice(-80), 'utf8');
-    console.log('🔎 SDP tail hex:', tail.toString('hex'));
+    // 5. Quick verification log (hex tail - should end with 0d0a0d0a)
+    const tail = Buffer.from(sdpToPost.slice(-8), 'utf8');
+    console.log('🔎 SDP tail hex (last 8 chars):', tail.toString('hex'));
 
     console.log('📤 Sending SDP offer to OpenAI...');
     console.log('🔍 SDP offer length:', sdpToPost.length);
@@ -310,7 +322,8 @@ class OpenAIWebRTCClient {
               'Accept': 'application/sdp',
               'OpenAI-Beta': 'realtime=v1'
             },
-            body: Buffer.from(sdpToPost, 'utf8')
+            body: sdpToPost, // Raw string, not Buffer
+            cache: 'no-store'
           });
 
           const bodyText = await res.text();
@@ -356,29 +369,7 @@ class OpenAIWebRTCClient {
       })
     );
 
-    // Create client-initiated data channel after answer (if server didn't create one)
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      try {
-        this.dataChannel = this.peerConnection.createDataChannel('oai-events', { ordered: true });
-        this.dataChannel.onopen = () => {
-          console.log('📡 Data channel opened (client-initiated after answer)');
-          if (this.onDataChannelOpen) this.onDataChannelOpen();
-        };
-        this.dataChannel.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            if (this.onMessage) this.onMessage(message);
-          } catch (err) {
-            console.error('❌ Failed to parse data channel message:', err);
-          }
-        };
-        this.dataChannel.onerror = (error) => {
-          console.error('❌ Data channel error:', error);
-        };
-      } catch (err) {
-        console.warn('⚠️ Could not create client data channel:', err.message);
-      }
-    }
+    // Data channel is already created before the offer
 
     console.log('✅ WebRTC connection established - waiting for connection state...');
   }
