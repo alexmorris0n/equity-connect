@@ -71,12 +71,20 @@ class PromptLayerRealtime {
     if (!this.enabled) return null;
 
     try {
-      // Build prompt messages from transcript
+      // Build CLEAN prompt messages from transcript (strings only, no timestamps)
       const messages = conversationTranscript.map(t => ({
-        role: t.role,
-        content: t.text,
-        timestamp: t.timestamp
+        role: t.role || 'user',
+        content: String(t.text || t.content || '')
       }));
+
+      // Safely extract tool names (handle missing .name gracefully)
+      const toolNames = Array.isArray(toolCalls) 
+        ? toolCalls.map(t => typeof t === 'string' ? t : (t?.name || 'unknown')).filter(Boolean)
+        : [];
+
+      // Last assistant message for response
+      const lastAssistantMessage = messages.filter(m => m.role === 'assistant').slice(-1)[0];
+      const lastAssistantContent = String(lastAssistantMessage?.content || '');
 
       // Use PromptLayer SDK's logRequest method (correct way!)
       const result = await this.client.logRequest({
@@ -84,7 +92,7 @@ class PromptLayerRealtime {
         provider_type: 'openai',
         args: [],
         kwargs: {
-          model: process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28',
+          model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
           messages: messages,
           temperature: 0.75,
           max_tokens: 400
@@ -92,73 +100,98 @@ class PromptLayerRealtime {
         tags: [
           'barbara',
           'realtime',
-          outcome || 'unknown',
-          metadata?.money_purpose || 'unknown_purpose',
-          `broker:${brokerName}`,
-          `lead:${leadName}`
+          String(outcome || 'unknown'),
+          String(metadata?.money_purpose || 'unknown_purpose'),
+          `broker:${String(brokerName)}`,
+          `lead:${String(leadName)}`
         ],
         request_response: {
           request: {
-            model: process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28',
+            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
             messages: messages.slice(0, 5), // First 5 exchanges
-            tools: toolCalls.map(t => t.name)
+            tools: toolNames
           },
           response: {
-            id: callId,
-            model: process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28',
+            id: String(callId),
+            model: process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview',
             choices: [{
               message: {
                 role: 'assistant',
-                content: messages.filter(m => m.role === 'assistant').slice(-1)[0]?.content || ''
+                content: lastAssistantContent
               }
             }]
           }
         },
         request_start_time: this.toUnixSeconds(metadata?.call_start_time, durationSeconds),
         request_end_time: Date.now() / 1000,  // Unix timestamp in seconds (float)
-        prompt_name: metadata?.prompt_version || 'old-big-beautiful-prompt',
+        prompt_name: String(metadata?.prompt_version || 'old-big-beautiful-prompt'),
         prompt_input_variables: {
-          lead_id: leadId,
-          broker_id: brokerId,
-          lead_name: leadName,
-          broker_name: brokerName,
-          money_purpose: metadata?.money_purpose,
-          timeline: metadata?.timeline
+          lead_id: String(leadId || ''),
+          broker_id: String(brokerId || ''),
+          lead_name: String(leadName || ''),
+          broker_name: String(brokerName || ''),
+          money_purpose: String(metadata?.money_purpose || ''),
+          timeline: String(metadata?.timeline || '')
         },
         metadata: {
-          // Call metadata
-          call_id: callId,
-          lead_id: leadId,
-          broker_id: brokerId,
-          outcome: outcome,
-          duration_seconds: durationSeconds,
+          // Call metadata (all strings/numbers/booleans)
+          call_id: String(callId),
+          lead_id: String(leadId || ''),
+          broker_id: String(brokerId || ''),
+          outcome: String(outcome || ''),
+          duration_seconds: Number(durationSeconds || 0),
           
-          // Barbara-specific metadata
-          money_purpose: metadata?.money_purpose,
-          specific_need: metadata?.specific_need,
-          amount_needed: metadata?.amount_needed,
-          timeline: metadata?.timeline,
-          objections: metadata?.objections || [],
-          questions_asked: metadata?.questions_asked || [],
-          commitment_points: metadata?.commitment_points_completed || 0,
-          appointment_scheduled: metadata?.appointment_scheduled || false,
+          // Barbara-specific metadata (clean types)
+          money_purpose: String(metadata?.money_purpose || ''),
+          specific_need: String(metadata?.specific_need || ''),
+          amount_needed: String(metadata?.amount_needed || ''),
+          timeline: String(metadata?.timeline || ''),
+          objections_count: Array.isArray(metadata?.objections) ? metadata.objections.length : 0,
+          questions_count: Array.isArray(metadata?.questions_asked) ? metadata.questions_asked.length : 0,
+          commitment_points: Number(metadata?.commitment_points_completed || 0),
+          appointment_scheduled: Boolean(metadata?.appointment_scheduled),
           
           // Quality metrics
-          tool_calls_count: toolCalls.length,
-          tool_calls: toolCalls.map(t => t.name),
-          interruptions: metadata?.interruptions || 0,
+          tool_calls_count: toolNames.length,
+          tool_calls_list: toolNames.join(', '),
+          interruptions: Number(metadata?.interruptions || 0),
           
           // Contact verification
-          email_verified: metadata?.email_verified || false,
-          phone_verified: metadata?.phone_verified || false
+          email_verified: Boolean(metadata?.email_verified),
+          phone_verified: Boolean(metadata?.phone_verified)
         }
       });
 
       console.log('✅ Logged to PromptLayer:', result?.request_id);
+      
+      // Track which prompt template was used (critical for A/B testing & analytics)
+      if (result?.request_id && metadata?.prompt_version) {
+        try {
+          await this.client.track.prompt({
+            request_id: result.request_id,
+            prompt_name: String(metadata.prompt_version),
+            prompt_input_variables: {
+              lead_name: String(leadName || ''),
+              broker_name: String(brokerName || ''),
+              money_purpose: String(metadata?.money_purpose || ''),
+              timeline: String(metadata?.timeline || ''),
+              lead_id: String(leadId || ''),
+              broker_id: String(brokerId || '')
+            }
+          });
+          console.log(`✅ Linked prompt template: ${metadata.prompt_version}`);
+        } catch (trackError) {
+          console.warn('⚠️ Failed to track prompt (non-critical):', trackError.message);
+        }
+      }
+      
       return result?.request_id;
 
     } catch (error) {
       console.error('❌ PromptLayer logging failed:', error.message);
+      if (error.stack) {
+        console.error('   Stack:', error.stack.split('\n').slice(0, 3).join('\n'));
+      }
       // Don't fail the call if logging fails
       return null;
     }

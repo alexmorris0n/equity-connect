@@ -1169,7 +1169,7 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
     const leadName = lead ? `${lead.first_name} ${lead.last_name}`.trim() : 'Unknown';
     const brokerName = broker?.contact_name || 'Unknown';
     
-    await promptLayer.logRealtimeConversation({
+    const requestId = await promptLayer.logRealtimeConversation({
       callId: data.id,
       leadId: lead_id,
       brokerId: broker_id,
@@ -1181,6 +1181,35 @@ async function saveInteraction({ lead_id, broker_id, duration_seconds, outcome, 
       durationSeconds: duration_seconds,
       toolCalls: interactionMetadata.tool_calls_made || []
     });
+    
+    // Score the call based on outcome (0-100 scale)
+    if (requestId) {
+      let score = 50; // neutral default
+      
+      if (outcome === 'appointment_booked') {
+        score = 100; // Perfect outcome
+      } else if (outcome === 'positive') {
+        score = 75; // Good engagement, no appointment yet
+      } else if (outcome === 'follow_up_needed') {
+        score = 60; // Interested but needs more info
+      } else if (outcome === 'neutral') {
+        score = 50; // Non-committal
+      } else if (outcome === 'not_interested') {
+        score = 25; // Clear rejection
+      } else if (outcome === 'no_response') {
+        score = 0; // No engagement
+      }
+      
+      await promptLayer.logScore({
+        callId: requestId,
+        score: score,
+        outcome: outcome,
+        metadata: {
+          duration_seconds: duration_seconds,
+          appointment_scheduled: interactionMetadata.appointment_scheduled
+        }
+      });
+    }
   } catch (plError) {
     console.warn('⚠️ PromptLayer logging failed (non-critical):', plError.message);
   }
