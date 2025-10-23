@@ -34,15 +34,7 @@ class OpenAIWebRTCClient {
         },
         body: JSON.stringify({
           session: {
-            type: 'realtime',
-            modalities: ['audio', 'text'],
-            voice: 'shimmer',
-            turn_detection: { 
-              type: 'server_vad', 
-              threshold: 0.35, 
-              prefix_padding_ms: 500, 
-              silence_duration_ms: 2000 
-            }
+            voice: 'shimmer'
           }
         })
       });
