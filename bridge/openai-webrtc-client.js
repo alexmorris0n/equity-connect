@@ -23,6 +23,7 @@ class OpenAIWebRTCClient {
   async createEphemeralSession(sessionConfig) {
     try {
       console.log('📞 Creating OpenAI ephemeral session...');
+      this.sessionCreatedAt = Date.now(); // Track when session was created
       
       const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
         method: 'POST',
@@ -162,7 +163,7 @@ class OpenAIWebRTCClient {
     });
     await this.peerConnection.setLocalDescription(offer);
 
-    // 2) Wait for ICE gathering to complete (or short timeout) so SDP isn't empty
+    // 2) Wait for ICE gathering to complete (or timeout) so SDP isn't empty
     await new Promise((resolve) => {
       if (this.peerConnection.iceGatheringState === 'complete') return resolve();
       const done = () => {
@@ -175,7 +176,7 @@ class OpenAIWebRTCClient {
       setTimeout(() => { 
         this.peerConnection.removeEventListener('icegatheringstatechange', done); 
         resolve(); 
-      }, 3000);
+      }, 5000); // Increased timeout to 5s for better ICE gathering
     });
 
     const localSdp = this.peerConnection.localDescription?.sdp || '';
@@ -189,6 +190,7 @@ class OpenAIWebRTCClient {
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
     console.log('🔍 Client secret prefix:', clientSecret.substring(0, 10) + '...');
     console.log('🔍 Model:', this.model);
+    console.log('🔍 Ephemeral age (ms):', Date.now() - this.sessionCreatedAt);
     
     // 3) POST SDP to Realtime (SDP flow)
     const url = `https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`;
@@ -198,26 +200,54 @@ class OpenAIWebRTCClient {
     console.log('🔍 Full SDP offer:');
     console.log(localSdp);
     
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        // ✅ must be the ephemeral ek_* here, NOT your server sk_*
-        'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp',
-        'OpenAI-Beta': 'realtime=v1'
-      },
-      body: localSdp
-    });
+    // Retry logic for SDP POST with exponential backoff
+    const trySdpPost = async () => {
+      let delay = 250;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          console.log(`🔄 SDP attempt ${attempt}/5...`);
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              // ✅ must be the ephemeral ek_* here, NOT your server sk_*
+              'Authorization': `Bearer ${clientSecret}`,
+              'Content-Type': 'application/sdp',
+              'OpenAI-Beta': 'realtime=v1'
+            },
+            body: localSdp
+          });
 
-    const bodyText = await res.text();
-    console.log('🔍 Response status:', res.status);
-    console.log('🔍 Response headers:', Object.fromEntries(res.headers.entries()));
-    console.log('🔍 Response body:', bodyText.substring(0, 500));
+          const bodyText = await res.text();
+          console.log('🔍 Response status:', res.status);
+          console.log('🔍 Response headers:', Object.fromEntries(res.headers.entries()));
+          console.log('🔍 Response body:', bodyText.substring(0, 500));
+          
+          if (res.ok) {
+            console.log(`✅ SDP exchange successful on attempt ${attempt}`);
+            return bodyText;
+          }
+          
+          // Retry only on 5xx; bail fast on 4xx (auth, etc.)
+          if (res.status < 500) {
+            throw new Error(`Failed to exchange SDP: ${res.status} - ${bodyText || '<no body>'}`);
+          }
+          
+          console.warn(`⚠️ SDP attempt ${attempt} got ${res.status}; retrying in ${delay}ms...`);
+        } catch (e) {
+          // Network or CF edge hiccup: retry
+          if (attempt === 5) throw e;
+          console.warn(`⚠️ SDP attempt ${attempt} error: ${e.message}; retrying in ${delay}ms...`);
+        }
+        
+        if (attempt < 5) {
+          const jitter = Math.round(delay * (0.7 + Math.random() * 0.6));
+          await new Promise(r => setTimeout(r, jitter));
+          delay *= 2;
+        }
+      }
+    };
     
-    if (!res.ok) {
-      // Surface whatever the API sent back (yours was empty)
-      throw new Error(`Failed to exchange SDP: ${res.status} - ${bodyText || '<no body>'}`);
-    }
+    const bodyText = await trySdpPost();
 
     // 4) Set remote description
     const answerSdp = bodyText; // API returns SDP answer as plain text
