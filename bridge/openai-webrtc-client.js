@@ -20,37 +20,58 @@ class OpenAIWebRTCClient {
   }
 
   async createEphemeralSession(sessionConfig) {
-    console.log('📞 Creating OpenAI ephemeral session...');
-    
-    const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        session: {
-          type: 'realtime',
+    try {
+      console.log('📞 Creating OpenAI ephemeral session...');
+      
+      const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
           model: this.model
-        }
-      })
-    });
+        })
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to create ephemeral session: ${error}`);
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status} creating client secret: ${text}`);
+      }
+
+      const data = await response.json();
+
+      // ✅ Accept multiple possible response shapes (defensive parsing)
+      const secret =
+        (data?.client_secret && typeof data.client_secret === 'string' && data.client_secret) ||
+        (data?.client_secret?.value && typeof data.client_secret.value === 'string' && data.client_secret.value) ||
+        (data?.value && typeof data.value === 'string' && data.value) ||
+        (data?.secret && typeof data.secret === 'string' && data.secret) ||
+        null;
+
+      const sessionId = data?.session?.id || data?.session_id || null;
+      const expiresAt = data?.client_secret?.expires_at || data?.expires_at || null;
+
+      if (!secret) {
+        const keys = data && typeof data === 'object' ? Object.keys(data) : [];
+        throw new Error(
+          `Missing client_secret in response. Available keys: [${keys.join(', ')}]`
+        );
+      }
+
+      console.log('✅ Ephemeral session created');
+      console.log('🔑 Client secret:', secret ? 'present' : 'missing');
+      if (sessionId) console.log('🆔 Session ID:', sessionId);
+      
+      return {
+        clientSecret: secret,
+        sessionId: sessionId,
+        expiresAt: expiresAt
+      };
+    } catch (err) {
+      console.error(`❌ Failed to create ephemeral session: ${err.message}`);
+      throw err;
     }
-
-    const data = await response.json();
-    console.log('✅ Ephemeral session created');
-    console.log('🔑 Client secret:', data.client_secret?.value ? 'present' : 'missing');
-    console.log('🆔 Session ID:', data.session?.id || 'unknown');
-    
-    return {
-      client_secret: data.client_secret.value,
-      session_id: data.session.id,
-      expires_at: data.client_secret.expires_at
-    };
   }
 
   async connectWebRTC(clientSecret, sessionId) {

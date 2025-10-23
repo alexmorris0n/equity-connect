@@ -55,7 +55,10 @@ class AudioBridgeWebRTC {
 
       // Step 1: Get prompt and prepare session config
       const promptData = await getPromptForCall(this.callInfo);
-      const sessionConfig = {
+      
+      // Store prompt and session config for later use in session.update
+      this.lastPrompt = promptData.prompt;
+      this.sessionConfig = {
         voice: 'shimmer',
         instructions: promptData.prompt,
         temperature: 0.95,
@@ -82,14 +85,16 @@ class AudioBridgeWebRTC {
 
       // Step 4: Create ephemeral session
       console.log('📞 Creating ephemeral session...');
-      const sessionInfo = await this.openaiClient.createEphemeralSession(sessionConfig);
-      this.sessionId = sessionInfo.session_id;
+      const sessionInfo = await this.openaiClient.createEphemeralSession(this.sessionConfig);
+      this.sessionId = sessionInfo.sessionId;
       console.log('✅ Session created:', this.sessionId);
-      console.log('⏰ Expires at:', new Date(sessionInfo.expires_at));
+      if (sessionInfo.expiresAt) {
+        console.log('⏰ Expires at:', new Date(sessionInfo.expiresAt));
+      }
 
       // Step 5: Establish WebRTC connection
       console.log('🔌 Establishing WebRTC connection...');
-      await this.openaiClient.connectWebRTC(sessionInfo.client_secret, this.sessionId);
+      await this.openaiClient.connectWebRTC(sessionInfo.clientSecret, this.sessionId);
 
       console.log('✅ WebRTC bridge connected!');
 
@@ -127,6 +132,25 @@ class AudioBridgeWebRTC {
     // Data channel opened
     this.openaiClient.onDataChannelOpen = () => {
       console.log('📡 Data channel ready for events');
+      
+      // Send session.update to apply voice, instructions, VAD, and tools
+      console.log('📤 Sending session.update...');
+      const sessionUpdate = {
+        type: 'session.update',
+        session: {
+          voice: this.sessionConfig.voice,
+          instructions: this.lastPrompt || this.sessionConfig.instructions,
+          temperature: this.sessionConfig.temperature,
+          turn_detection: this.sessionConfig.turn_detection,
+          tools: this.sessionConfig.tools,
+          tool_choice: this.sessionConfig.tool_choice
+        }
+      };
+      this.openaiClient.sendEvent(sessionUpdate);
+      
+      // Optionally kick off first response (e.g., greeting)
+      this.openaiClient.sendEvent({ type: 'response.create' });
+      console.log('✅ Session configured and greeting initiated');
     };
 
     // Errors
@@ -163,18 +187,74 @@ class AudioBridgeWebRTC {
    */
   handleOpenAIAudioTrack(track, stream) {
     console.log('🔊 Setting up audio forwarding from OpenAI to SignalWire...');
-
-    track.onmute = () => this.logger.info('🔇 OpenAI audio track muted');
-    track.onunmute = () => this.logger.info('🔊 OpenAI audio track unmuted');
-    track.onended = () => this.logger.info('🔚 OpenAI audio track ended');
-
-    // WebRTC audio handling - convert OpenAI audio back to SignalWire format
-    console.log('🔊 WebRTC audio track received, setting up forwarding...');
     
-    // For WebRTC, audio is handled via the data channel events
-    // The actual audio forwarding will be handled by the response.audio.delta events
-    // This is a placeholder for the WebRTC audio track processing
-    console.log('📡 WebRTC audio track ready for processing');
+    const { nonstandard } = require('wrtc');
+    const { RTCAudioSink } = nonstandard;
+    const { downsampleTo8k, encodeMulaw } = require('./audio-utils');
+    
+    const sink = new RTCAudioSink(track);
+    let gotFirstFrame = false;
+
+    sink.ondata = ({ samples, sampleRate }) => {
+      // OpenAI sends 48kHz or 24kHz WebRTC audio, we need 8kHz µ-law for SignalWire
+      let pcm16;
+      
+      if (sampleRate === 48000) {
+        // Fast decimate 48k -> 16k -> 8k
+        // First reduce by 3: keep every 3rd sample
+        const len16 = Math.floor(samples.length / 3);
+        const tmp16 = new Int16Array(len16);
+        for (let i = 0, j = 0; j < len16; i += 3, j++) {
+          tmp16[j] = samples[i];
+        }
+        // Then 16k -> 8k
+        pcm16 = downsampleTo8k(tmp16);
+      } else if (sampleRate === 24000) {
+        // Decimate 24k -> 16k -> 8k
+        const len16 = Math.floor(samples.length / 1.5);
+        const tmp16 = new Int16Array(len16);
+        for (let i = 0, j = 0; j < len16; i += 1.5, j++) {
+          tmp16[j] = samples[Math.floor(i)];
+        }
+        pcm16 = downsampleTo8k(tmp16);
+      } else if (sampleRate === 16000) {
+        // Just downsample 16k -> 8k
+        pcm16 = downsampleTo8k(samples);
+      } else {
+        // Fallback: simple 2:1 decimation
+        const half = Math.floor(samples.length / 2);
+        const tmp = new Int16Array(half);
+        for (let i = 0; i < half; i++) {
+          tmp[i] = samples[i * 2];
+        }
+        pcm16 = tmp;
+      }
+
+      // μ-law encode and send to SignalWire
+      const ulaw = encodeMulaw(pcm16);
+      const base64 = Buffer.from(ulaw).toString('base64');
+
+      if (this.streamSid && this.signalwireWs?.readyState === 1) {
+        this.signalwireWs.send(JSON.stringify({
+          event: 'media',
+          streamSid: this.streamSid,
+          media: { payload: base64 }
+        }));
+      }
+
+      if (!gotFirstFrame) {
+        gotFirstFrame = true;
+        this.setSpeaking(true); // Mark "Barbara is speaking"
+        console.log('🎤 Started forwarding OpenAI audio to SignalWire');
+      }
+    };
+
+    track.onended = () => {
+      console.log('🔚 OpenAI audio track ended');
+      sink.stop();
+    };
+    track.onmute = () => console.log('🔇 OpenAI audio track muted');
+    track.onunmute = () => console.log('🔊 OpenAI audio track unmuted');
   }
 
   /**
@@ -325,6 +405,8 @@ class AudioBridgeWebRTC {
 
       case 'input_audio_buffer.speech_started':
         console.log('🎤 User started speaking');
+        // Cancel current response for barge-in
+        this.openaiClient.sendEvent({ type: 'response.cancel' });
         break;
 
       case 'input_audio_buffer.speech_stopped':
