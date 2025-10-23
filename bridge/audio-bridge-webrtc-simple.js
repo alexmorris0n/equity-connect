@@ -83,18 +83,9 @@ class AudioBridgeWebRTC {
       // Step 3: Set up event handlers
       this.setupEventHandlers();
 
-      // Step 4: Create ephemeral session
-      console.log('📞 Creating ephemeral session...');
-      const sessionInfo = await this.openaiClient.createEphemeralSession(this.sessionConfig);
-      this.sessionId = sessionInfo.sessionId;
-      console.log('✅ Session created:', this.sessionId);
-      if (sessionInfo.expiresAt) {
-        console.log('⏰ Expires at:', new Date(sessionInfo.expiresAt));
-      }
-
-      // Step 5: Establish WebRTC connection
-      console.log('🔌 Establishing WebRTC connection...');
-      await this.openaiClient.connectWebRTC(sessionInfo.clientSecret, this.sessionId);
+      // Step 4: Establish WebRTC connection (unified interface)
+      console.log('🔌 Establishing WebRTC connection (unified interface)...');
+      await this.openaiClient.connectWebRTC();
 
       console.log('✅ WebRTC bridge connected!');
 

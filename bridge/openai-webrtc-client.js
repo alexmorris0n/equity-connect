@@ -190,14 +190,8 @@ class OpenAIWebRTCClient {
     }
   }
 
-  async connectWebRTC(clientSecret, sessionId) {
-    console.log('🔌 Establishing WebRTC connection...');
-    this.sessionId = sessionId;
-    
-    // 0) Sanity check: must be an ek_ token
-    if (!clientSecret || !/^ek_/.test(clientSecret)) {
-      throw new Error('Missing/invalid ephemeral client secret (expected ek_*)');
-    }
+  async connectWebRTC() {
+    console.log('🔌 Establishing WebRTC connection (unified interface)...');
     
     const iceServers = [
       { urls: 'stun:stun.l.google.com:19302' }
@@ -363,29 +357,32 @@ class OpenAIWebRTCClient {
     console.log('🔍 SDP offer length:', sdpToPost.length);
     console.log('🔍 SDP offer preview:', sdpToPost.substring(0, 200) + '...');
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
-    console.log('🔍 Client secret prefix:', clientSecret.substring(0, 10) + '...');
     console.log('🔍 Model:', this.model);
-    console.log('🔍 Ephemeral age (ms):', Date.now() - this.sessionCreatedAt);
     
     // 3) POST SDP to Realtime (session is now model-bound)
-    const base = 'https://api.openai.com/v1/realtime';
-    const tryModels = [this.model]; // Session is bound to this model, so only try this one
+    const base = 'https://api.openai.com/v1/realtime/calls';
 
-    const postSdpOnce = async (modelStr) => {
-      const url = `${base}?model=${encodeURIComponent(modelStr)}&protocol=webrtc`;
-      console.log('🔍 URL:', url);
+    const postSdpOnce = async () => {
+      const FormData = require('form-data');
+      const fd = new FormData();
+      fd.set('sdp', sdpToPost);
+      fd.set('session', JSON.stringify({
+        type: 'realtime',
+        model: this.model,
+        audio: { output: { voice: 'marin' } }
+      }));
+
+      console.log('🔍 URL:', base);
       console.log('🔍 Full SDP offer:\n' + sdpToPost);
 
-      const res = await fetch(url, {
+      const res = await fetch(base, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${clientSecret}`, // ek_ token
-          'Content-Type': 'application/sdp',
-          'Accept': 'application/sdp',
-          'OpenAI-Beta': 'realtime=v1',
+          'Authorization': `Bearer ${this.apiKey}`, // server key
           'User-Agent': 'BarbaraBridge/1.0 (+node-wrtc)',
+          ...fd.getHeaders()
         },
-        body: sdpToPost,
+        body: fd,
         cache: 'no-store'
       });
 
@@ -395,24 +392,13 @@ class OpenAIWebRTCClient {
       // log more of the body on 4xx so we can see server hints
       if (!res.ok) console.log('🔍 Response body (first 2000 chars):', bodyText.slice(0, 2000));
 
-      if (!res.ok) throw new Error(`SDP POST failed ${res.status} for model "${modelStr}" ${bodyText ? `- ${bodyText}` : ''}`);
+      if (!res.ok) throw new Error(`SDP POST failed ${res.status} ${bodyText ? `- ${bodyText}` : ''}`);
       return bodyText;
     };
 
-    let answerSdp;
-    let lastErr;
-    for (const m of tryModels) {
-      try {
-        console.log(`🔄 Trying SDP exchange with model: ${m}`);
-        answerSdp = await postSdpOnce(m);
-        console.log(`✅ SDP exchange successful with model: ${m}`);
-        break;
-      } catch (e) {
-        console.warn(`⚠️ Model "${m}" failed: ${e.message}`);
-        lastErr = e;
-      }
-    }
-    if (!answerSdp) throw lastErr;
+    console.log('🔄 Trying SDP exchange with unified interface...');
+    const answerSdp = await postSdpOnce();
+    console.log('✅ SDP exchange successful with unified interface');
 
     // 4) Set remote description
     console.log('✅ Received SDP answer from OpenAI, length:', answerSdp.length);
