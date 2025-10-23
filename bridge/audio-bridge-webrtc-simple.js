@@ -128,13 +128,13 @@ class AudioBridgeWebRTC {
     this.openaiClient.onDataChannelOpen = () => {
       console.log('📡 Data channel ready for events');
       
-      // Send session.update to apply voice, instructions, VAD, and tools
+      // Send session.update to apply instructions, VAD, and tools
+      // Note: voice is set during session creation, not in session.update
       console.log('📤 Sending session.update...');
       const sessionUpdate = {
         type: 'session.update',
         session: {
           type: 'realtime',  // ✅ Required field
-          voice: this.sessionConfig.voice,
           instructions: this.lastPrompt || this.sessionConfig.instructions,
           temperature: this.sessionConfig.temperature,
           turn_detection: this.sessionConfig.turn_detection,
@@ -192,16 +192,23 @@ class AudioBridgeWebRTC {
     let gotFirstFrame = false;
 
     sink.ondata = ({ samples, sampleRate }) => {
-      // 1) Convert OpenAI audio to 8k PCM16 (mono)
+      // Guard: Only send if SignalWire stream is ready
+      if (!this.streamSid || !this.signalwireWs || this.signalwireWs.readyState !== 1) {
+        console.log('[DEBUG] ⚠️ Dropping audio frame - SignalWire not ready');
+        return;
+      }
+
+      // 1) Convert OpenAI audio to 8k PCM16 (mono) using proper resampling
       let pcm16;
       if (sampleRate === 48000) {
-        // quick decimate 48k -> 16k
+        // Proper 48k -> 16k decimation (every 3rd sample)
         const len16 = Math.floor(samples.length / 3);
         const tmp16 = new Int16Array(len16);
         for (let i = 0, j = 0; j < len16; i += 3, j++) tmp16[j] = samples[i];
-        // 16k -> 8k
+        // 16k -> 8k using audio utils
         pcm16 = downsampleTo8k(tmp16);
       } else if (sampleRate === 24000) {
+        // 24k -> 16k (every 1.5 samples, rounded)
         const len16 = Math.floor(samples.length / 1.5);
         const tmp16 = new Int16Array(len16);
         for (let i = 0, j = 0; j < len16; i += 1.5, j++) tmp16[j] = samples[Math.floor(i)];
@@ -211,7 +218,7 @@ class AudioBridgeWebRTC {
       } else if (sampleRate === 8000) {
         pcm16 = samples;
       } else {
-        // unknown rate: bail early
+        console.log(`⚠️ Unknown sample rate: ${sampleRate}, skipping`);
         return;
       }
 
@@ -225,19 +232,24 @@ class AudioBridgeWebRTC {
       }
 
       // 3) Frame into exact 20 ms blocks (160 samples @ 8kHz)
-      const FRAME = 160;
+      const FRAME = 160; // 20ms @ 8kHz = 160 samples
       const fullFrames = Math.floor(pcm16.length / FRAME);
       const used = fullFrames * FRAME;
       const leftover = pcm16.length - used;
 
       // 4) Send each 20 ms frame as its own WS 'media' event
-      if (fullFrames > 0 && this.streamSid && this.signalwireWs?.readyState === 1) {
+      if (fullFrames > 0) {
         for (let i = 0; i < fullFrames; i++) {
           const start = i * FRAME;
           const end = start + FRAME;
-          const frame16 = pcm16.slice(start, end);           // 160 samples
-          const ulaw   = encodeMulaw(frame16);               // 160 bytes
+          const frame16 = pcm16.slice(start, end);           // 160 samples @ 8kHz
+          const ulaw   = encodeMulaw(frame16);               // 160 bytes μ-law
           const b64    = Buffer.from(ulaw).toString('base64');
+
+          // Debug: Verify frame size
+          if (ulaw.length !== 160) {
+            console.warn(`⚠️ Wrong μ-law frame size: ${ulaw.length} bytes (expected 160)`);
+          }
 
           this.signalwireWs.send(JSON.stringify({
             event: 'media',
@@ -285,6 +297,7 @@ class AudioBridgeWebRTC {
         if (msg.event === 'start') {
           this.streamSid = msg.start.streamSid;
           console.log('📞 Stream started:', this.streamSid);
+          console.log('✅ SignalWire media stream ready: stream_id=' + this.streamSid);
           
           // Debug: Log the entire start event to see what SignalWire sends
           console.log('🔍 SignalWire start event:', JSON.stringify(msg, null, 2));
