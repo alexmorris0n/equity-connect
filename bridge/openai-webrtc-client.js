@@ -444,11 +444,7 @@ class OpenAIWebRTCClient {
     try {
       // Decode base64 PCM16 (mono, 16kHz)
       const pcmBuffer = Buffer.from(base64Audio, 'base64');
-      const incoming = new Int16Array(
-        pcmBuffer.buffer,
-        pcmBuffer.byteOffset,
-        pcmBuffer.length / 2
-      );
+      const incoming = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
 
       // Concatenate remainder + incoming
       let combined;
@@ -460,20 +456,14 @@ class OpenAIWebRTCClient {
         combined = incoming;
       }
 
-      // Send in 10ms chunks (160 samples @ 16kHz)
+      // Send in 10ms chunks (160 samples @ 16kHz == 320 bytes)
       const FRAME = 160;
-      const fullFrames = Math.floor(combined.length / FRAME);
-      for (let i = 0; i < fullFrames; i++) {
+      const totalFrames = Math.floor(combined.length / FRAME);
+      for (let i = 0; i < totalFrames; i++) {
         const start = i * FRAME;
-        const end = start + FRAME;
-        const slice = combined.subarray(start, end);
-        
-        // Create a new buffer with exactly 160 samples (320 bytes)
-        const frameBuffer = new Int16Array(FRAME);
-        frameBuffer.set(slice);
-
+        const slice = combined.subarray(start, start + FRAME); // Int16Array view, byteLength = 320
         this.audioSource.onData({
-          samples: frameBuffer,
+          samples: slice,
           sampleRate: 16000,
           bitsPerSample: 16,
           channelCount: 1,
@@ -482,12 +472,8 @@ class OpenAIWebRTCClient {
       }
 
       // Keep any leftover < 160 for the next call
-      const leftoverStart = fullFrames * FRAME;
-      if (leftoverStart < combined.length) {
-        this._pcmRemainder = combined.subarray(leftoverStart);
-      } else {
-        this._pcmRemainder = new Int16Array(0);
-      }
+      const leftover = combined.length - totalFrames * FRAME;
+      this._pcmRemainder = leftover ? combined.subarray(combined.length - leftover) : new Int16Array(0);
     } catch (error) {
       console.error('❌ Failed to send audio frame:', error);
     }
