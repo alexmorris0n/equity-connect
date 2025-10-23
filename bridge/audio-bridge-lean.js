@@ -721,6 +721,13 @@ class AudioBridge {
 
       case 'session.updated':
         this.logger.info('Session updated successfully');
+        console.log('✅ Session fully configured - ready to start conversation');
+        
+        // Now that session is fully configured, start the conversation
+        // Add a small delay to ensure session is fully applied
+        if (!this.greetingSent) {
+          setTimeout(() => this.startConversation(), 1000);
+        }
         break;
 
       case 'response.audio.delta':
@@ -897,16 +904,8 @@ class AudioBridge {
           
           try {
             await waitForOpen();
-            
-            // Let phone ring 1-2 times before answering (gives Barbara time to load)
-            // 1 ring ≈ 6 seconds, 2 rings ≈ 12 seconds
-            // Using 5 seconds = almost 1 full ring, enough time to load prompts/context
-            const ringDelayMs = parseInt(process.env.ANSWER_DELAY_MS || '5000');
-            console.log(`⏳ Letting phone ring for ${ringDelayMs}ms before answering...`);
-            await new Promise(resolve => setTimeout(resolve, ringDelayMs));
-            
             await this.configureSession();
-            setTimeout(() => this.startConversation(), 500);
+            // Don't start conversation yet - wait for session.updated event
           } catch (err) {
             console.error('❌ Failed to configure session:', err);
             this.cleanup();
