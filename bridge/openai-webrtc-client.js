@@ -67,9 +67,9 @@ class OpenAIWebRTCClient {
 
   async createEphemeralSession(sessionConfig) {
     try {
-      console.log('📞 Creating OpenAI ephemeral session...');
+    console.log('📞 Creating OpenAI ephemeral session...');
       this.sessionCreatedAt = Date.now(); // Track when session was created
-      
+    
       const url = 'https://api.openai.com/v1/realtime/client_secrets';
       const headers = {
         'Authorization': `Bearer ${this.apiKey}`,
@@ -178,8 +178,8 @@ class OpenAIWebRTCClient {
       if (sessionId) console.log('🆔 Session ID:', sessionId);
       if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
       console.log('🔍 Session bound model:', this.model);
-      
-      return {
+    
+    return {
         clientSecret: secret,
         sessionId: sessionId,
         expiresAt: expiresAt
@@ -213,9 +213,9 @@ class OpenAIWebRTCClient {
     this.peerConnection.ontrack = (event) => {
       // Only handle audio tracks
       if (event.track.kind === 'audio') {
-        console.log('🎵 Received audio track from OpenAI');
-        if (this.onAudioTrack) {
-          this.onAudioTrack(event.track, event.streams[0]);
+      console.log('🎵 Received audio track from OpenAI');
+      if (this.onAudioTrack) {
+        this.onAudioTrack(event.track, event.streams[0]);
         }
       }
     };
@@ -373,7 +373,7 @@ class OpenAIWebRTCClient {
     const postSdpOnce = async () => {
       const FormData = require('form-data');
       const fd = new FormData();
-      fd.set('sdp', sdpToPost);
+      fd.append('sdp', sdpToPost);
       
       // Try minimal session first (common gotcha fix)
       const sessionConfig = {
@@ -383,7 +383,7 @@ class OpenAIWebRTCClient {
       };
       
       console.log('🔍 Session config:', JSON.stringify(sessionConfig, null, 2));
-      fd.set('session', JSON.stringify(sessionConfig));
+      fd.append('session', JSON.stringify(sessionConfig));
 
       console.log('🔍 URL:', base);
       console.log('🔍 Auth key prefix:', this.apiKey.substring(0, 6) + '...');
@@ -391,8 +391,8 @@ class OpenAIWebRTCClient {
       console.log('🔍 Full SDP offer:\n' + sdpToPost);
 
       const res = await fetch(base, {
-        method: 'POST',
-        headers: {
+      method: 'POST',
+      headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           ...fd.getHeaders()
         },
@@ -504,7 +504,7 @@ class OpenAIWebRTCClient {
     if (this.dataChannel) {
       try {
         if (this.dataChannel.readyState === 'open') {
-          this.dataChannel.close();
+      this.dataChannel.close();
         }
       } catch (error) {
         console.error('⚠️ Error closing data channel:', error);
@@ -513,7 +513,7 @@ class OpenAIWebRTCClient {
     }
     if (this.peerConnection) {
       try {
-        this.peerConnection.close();
+      this.peerConnection.close();
       } catch (error) {
         console.error('⚠️ Error closing peer connection:', error);
       }
