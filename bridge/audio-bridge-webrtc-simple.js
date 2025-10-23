@@ -25,10 +25,10 @@ const debug = (...args) => {
 };
 
 class AudioBridgeWebRTC {
-  constructor(signalwireWs, logger, callInfo) {
-    this.signalwireWs = signalwireWs;
+  constructor(signalWireSocket, logger, callContext = {}) {
+    this.signalwireWs = signalWireSocket;
     this.logger = logger || console;
-    this.callInfo = callInfo || {};
+    this.callInfo = callContext || {};
     this.openaiClient = null;
     this.isConnected = false;
     this.sessionId = null;
@@ -43,14 +43,14 @@ class AudioBridgeWebRTC {
     
     // Debug: Log the call info passed from server
     if (ENABLE_DEBUG_LOGGING) {
-      console.log('🔍 Call info from server:', JSON.stringify(callInfo, null, 2));
+      console.log('🔍 Call info from server:', JSON.stringify(callContext, null, 2));
     }
     
     // Speaking flag management (prevents stuck states)
     this.speaking = false;
     this.speakingTimeout = null;
     
-    this.logger.info(`🎙️ WebRTC Audio Bridge created for call: ${callInfo.CallSid || 'unknown'}`);
+    this.logger.info(`🎙️ WebRTC Audio Bridge created for call: ${callContext.CallSid || 'unknown'}`);
   }
 
   /**
