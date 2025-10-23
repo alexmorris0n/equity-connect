@@ -63,6 +63,8 @@ class OpenAIWebRTCClient {
     this.onConnected = null;
     this.onDataChannelOpen = null;
     this.onError = null;
+
+    this._pcmRemainder = new Int16Array(0); // carryover between frames
   }
 
   async createEphemeralSession(sessionConfig) {
@@ -440,20 +442,48 @@ class OpenAIWebRTCClient {
     }
 
     try {
-      // Decode base64 PCM16 audio
+      // Decode base64 PCM16 (mono, 16kHz)
       const pcmBuffer = Buffer.from(base64Audio, 'base64');
-      const samples = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
-      
-      // Push audio frame to the RTC audio source
-      this.audioSource.onData({
-        samples: samples,
-        sampleRate: 16000, // OpenAI expects 16kHz
-        bitsPerSample: 16,
-        channelCount: 1,
-        numberOfFrames: samples.length
-      });
-      
-      // console.log('📤 Sent audio frame to OpenAI:', samples.length, 'samples');
+      const incoming = new Int16Array(
+        pcmBuffer.buffer,
+        pcmBuffer.byteOffset,
+        pcmBuffer.length / 2
+      );
+
+      // Concatenate remainder + incoming
+      let combined;
+      if (this._pcmRemainder.length) {
+        combined = new Int16Array(this._pcmRemainder.length + incoming.length);
+        combined.set(this._pcmRemainder, 0);
+        combined.set(incoming, this._pcmRemainder.length);
+      } else {
+        combined = incoming;
+      }
+
+      // Send in 10ms chunks (160 samples @ 16kHz)
+      const FRAME = 160;
+      const fullFrames = Math.floor(combined.length / FRAME);
+      for (let i = 0; i < fullFrames; i++) {
+        const start = i * FRAME;
+        const end = start + FRAME;
+        const slice = combined.subarray(start, end);
+
+        this.audioSource.onData({
+          samples: slice,
+          sampleRate: 16000,
+          bitsPerSample: 16,
+          channelCount: 1,
+          numberOfFrames: FRAME
+        });
+      }
+
+      // Keep any leftover < 160 for the next call
+      const leftoverStart = fullFrames * FRAME;
+      if (leftoverStart < combined.length) {
+        this._pcmRemainder = combined.subarray(leftoverStart);
+      } else {
+        this._pcmRemainder = new Int16Array(0);
+      }
     } catch (error) {
       console.error('❌ Failed to send audio frame:', error);
     }
