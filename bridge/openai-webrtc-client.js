@@ -28,10 +28,7 @@ class OpenAIWebRTCClient {
       body: JSON.stringify({
         session: {
           type: 'realtime',
-          model: this.model,
-          instructions: sessionConfig.instructions,
-          tools: sessionConfig.tools || [],
-          tool_choice: sessionConfig.tool_choice || 'auto'
+          model: this.model
         }
       })
     });
@@ -122,7 +119,7 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
