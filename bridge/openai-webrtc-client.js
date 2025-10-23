@@ -6,6 +6,7 @@ class OpenAIWebRTCClient {
   constructor(apiKey, model = 'gpt-realtime') {
     this.apiKey = apiKey;
     this.model = model;
+    this.baseUrl = 'https://api.openai.com';
     this.peerConnection = null;
     this.dataChannel = null;
     this.sessionConfig = null;
@@ -192,6 +193,11 @@ class OpenAIWebRTCClient {
     // 3) POST SDP to Realtime (SDP flow)
     const url = `https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`;
     console.log('🔍 URL:', url);
+    
+    // Log the full SDP for debugging
+    console.log('🔍 Full SDP offer:');
+    console.log(localSdp);
+    
     const res = await fetch(url, {
       method: 'POST',
       headers: {
