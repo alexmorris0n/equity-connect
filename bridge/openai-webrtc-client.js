@@ -3,7 +3,7 @@ const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc'
 const { RTCAudioSource } = nonstandard;
 
 class OpenAIWebRTCClient {
-  constructor(apiKey, model = 'gpt-4o-realtime-preview-2024-12-17') {
+  constructor(apiKey, model = 'gpt-realtime-2025-08-28') {
     this.apiKey = apiKey;
     this.model = model;
     this.peerConnection = null;

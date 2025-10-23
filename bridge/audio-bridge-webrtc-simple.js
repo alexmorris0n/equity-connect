@@ -77,7 +77,7 @@ class AudioBridgeWebRTC {
       // Step 2: Create OpenAI WebRTC client
       this.openaiClient = new OpenAIWebRTCClient(
         process.env.OPENAI_API_KEY,
-        'gpt-4o-realtime-preview-2024-12-17'
+        'gpt-realtime-2025-08-28'
       );
 
       // Step 3: Set up event handlers
