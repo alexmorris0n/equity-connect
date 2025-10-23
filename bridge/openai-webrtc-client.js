@@ -174,7 +174,7 @@ class OpenAIWebRTCClient {
       setTimeout(() => { 
         this.peerConnection.removeEventListener('icegatheringstatechange', done); 
         resolve(); 
-      }, 1500);
+      }, 3000);
     });
 
     const localSdp = this.peerConnection.localDescription?.sdp || '';
@@ -186,6 +186,9 @@ class OpenAIWebRTCClient {
     console.log('🔍 SDP offer length:', localSdp.length);
     console.log('🔍 SDP offer preview:', localSdp.substring(0, 200) + '...');
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
+    console.log('🔍 Client secret prefix:', clientSecret.substring(0, 10) + '...');
+    console.log('🔍 Model:', this.model);
+    console.log('🔍 URL:', url);
     
     // 3) POST SDP to Realtime (SDP flow)
     const url = `https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`;
@@ -200,6 +203,10 @@ class OpenAIWebRTCClient {
     });
 
     const bodyText = await res.text();
+    console.log('🔍 Response status:', res.status);
+    console.log('🔍 Response headers:', Object.fromEntries(res.headers.entries()));
+    console.log('🔍 Response body:', bodyText.substring(0, 500));
+    
     if (!res.ok) {
       // Surface whatever the API sent back (yours was empty)
       throw new Error(`Failed to exchange SDP: ${res.status} - ${bodyText || '<no body>'}`);
