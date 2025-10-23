@@ -158,11 +158,12 @@ class OpenAIWebRTCClient {
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
     
     // Send SDP to OpenAI Realtime API endpoint
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(this.model)}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp'
+        'Content-Type': 'application/sdp',
+        'OpenAI-Beta': 'realtime=v1'
       },
       body: this.peerConnection.localDescription.sdp
     });
