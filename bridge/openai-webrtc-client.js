@@ -467,9 +467,13 @@ class OpenAIWebRTCClient {
         const start = i * FRAME;
         const end = start + FRAME;
         const slice = combined.subarray(start, end);
+        
+        // Create a new buffer with exactly 160 samples (320 bytes)
+        const frameBuffer = new Int16Array(FRAME);
+        frameBuffer.set(slice);
 
         this.audioSource.onData({
-          samples: slice,
+          samples: frameBuffer,
           sampleRate: 16000,
           bitsPerSample: 16,
           channelCount: 1,
