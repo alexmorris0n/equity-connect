@@ -443,13 +443,16 @@ class AudioBridge {
         ? this.numberToWords(Math.round(mortgageBalanceNumber))
         : '';
 
-      const qualifiedFlag = result?.qualified === true || result?.raw?.qualified === true || result?.status === 'qualified';
+      // Simple: qualified = status is 'qualified' or beyond
+      const qualifiedFlag = result?.status === 'qualified' 
+        || result?.status === 'appointment_set' 
+        || result?.status === 'showed' 
+        || result?.status === 'application' 
+        || result?.status === 'funded';
 
-      console.log('🔍 Qualification debug:', {
-        'result.qualified': result?.qualified,
-        'result.raw.qualified': result?.raw?.qualified,
-        'result.status': result?.status,
-        'qualifiedFlag': qualifiedFlag
+      console.log('🔍 Qualification:', {
+        status: result?.status,
+        qualified: qualifiedFlag
       });
 
       const variables = {

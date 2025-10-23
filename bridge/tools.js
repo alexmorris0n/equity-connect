@@ -321,6 +321,9 @@ async function getLeadContext({ phone }) {
   // Format context for Barbara's prompt with number-to-words
   const formattedContext = formatCallContext(lead, broker);
   
+  // Determine if lead is qualified based on status (qualified or beyond)
+  const isQualified = ['qualified', 'appointment_set', 'showed', 'application', 'funded'].includes(lead.status);
+  
   return {
     found: true,
     lead_id: lead.id,
@@ -329,7 +332,7 @@ async function getLeadContext({ phone }) {
     context: formattedContext,
     property_value: lead.property_value || null,
     estimated_equity: lead.estimated_equity || null,
-    qualified: lead.qualified === true,
+    qualified: isQualified,
     status: lead.status,
     
     // Last call context (for personalization)
@@ -358,8 +361,7 @@ async function getLeadContext({ phone }) {
       estimated_equity: lead.estimated_equity,
       age: lead.age,
       owner_occupied: lead.owner_occupied,
-      status: lead.status,
-      qualified: lead.qualified === true
+      status: lead.status
     }
   };
 }

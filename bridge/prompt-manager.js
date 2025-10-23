@@ -81,23 +81,16 @@ function determinePromptName(callContext) {
     to_phone
   });
   
+  // Simple logic: qualified = qualified, not qualified = not qualified
+  
   // Outbound calls
   if (context === 'outbound') {
-    if (is_qualified || (lead_id && has_property_data)) {
-      return 'barbara-outbound-warm';
-    }
-    return 'barbara-outbound-cold';
+    return is_qualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold';
   }
   
   // Inbound calls
   if (context === 'inbound') {
-    if (is_qualified) {
-      return 'barbara-inbound-qualified';
-    }
-    if (lead_id && has_property_data) {
-      return 'barbara-inbound-qualified';
-    }
-    return 'barbara-inbound-unqualified';
+    return is_qualified ? 'barbara-inbound-qualified' : 'barbara-inbound-unqualified';
   }
   
   // Default fallback
