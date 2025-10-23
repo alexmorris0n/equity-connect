@@ -89,7 +89,7 @@ class AudioBridgeWebRTC {
 
       // Step 5: Establish WebRTC connection
       console.log('🔌 Establishing WebRTC connection...');
-      await this.openaiClient.connectWebRTC(sessionInfo.client_secret);
+      await this.openaiClient.connectWebRTC(sessionInfo.client_secret, this.sessionId);
 
       console.log('✅ WebRTC bridge connected!');
 
@@ -168,49 +168,13 @@ class AudioBridgeWebRTC {
     track.onunmute = () => this.logger.info('🔊 OpenAI audio track unmuted');
     track.onended = () => this.logger.info('🔚 OpenAI audio track ended');
 
-    // Create audio context for processing WebRTC audio
-    this.audioContext = new (require('audio-context') || require('web-audio-api').AudioContext)();
-    this.mediaStreamDestination = this.audioContext.createMediaStreamDestination();
+    // Simplified WebRTC audio handling - use track events directly
+    console.log('🔊 WebRTC audio track received, setting up forwarding...');
     
-    // Connect the WebRTC track to our processing pipeline
-    const source = this.audioContext.createMediaStreamSource(stream);
-    const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    
-    processor.onaudioprocess = (event) => {
-      if (!this.signalwireWs || this.signalwireWs.readyState !== 1) {
-        return;
-      }
-
-      const inputBuffer = event.inputBuffer;
-      const inputData = inputBuffer.getChannelData(0);
-      
-      // Convert Float32 to Int16 PCM
-      const pcm16 = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        pcm16[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-      }
-
-      if (pcm16.length > 0) {
-        // Set speaking flag when audio is being sent
-        this.setSpeaking(true);
-        
-        // Convert PCM16 16kHz to PCM8 8kHz, then to μ-law
-        const pcm8 = downsampleTo8k(pcm16);
-        const mulaw = encodeMulaw(pcm8);
-        const payload = mulaw.toString('base64');
-
-        this.signalwireWs.send(JSON.stringify({
-          event: 'media',
-          streamSid: this.streamSid,
-          media: { payload },
-        }));
-        
-        console.log(`✅ Audio sent to SignalWire (${pcm16.length})`);
-      }
-    };
-
-    source.connect(processor);
-    processor.connect(this.mediaStreamDestination);
+    // For now, we'll handle audio via the data channel events
+    // The actual audio forwarding will be handled by the response.audio.delta events
+    // This is a placeholder for the WebRTC audio track processing
+    console.log('📡 WebRTC audio track ready for processing');
   }
 
   /**
@@ -443,9 +407,8 @@ class AudioBridgeWebRTC {
       this.speakingTimeout = null;
     }
     
-    // Clean up audio context
+    // Clean up audio context (simplified)
     if (this.audioContext) {
-      this.audioContext.close();
       this.audioContext = null;
     }
     

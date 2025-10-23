@@ -59,8 +59,9 @@ class OpenAIWebRTCClient {
     };
   }
 
-  async connectWebRTC(clientSecret) {
+  async connectWebRTC(clientSecret, sessionId) {
     console.log('🔌 Establishing WebRTC connection...');
+    this.sessionId = sessionId;
     
     const iceServers = [
       { urls: 'stun:stun.l.google.com:19302' }
@@ -129,7 +130,7 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/sessions/${this.sessionId}/offer`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
