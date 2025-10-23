@@ -35,12 +35,9 @@ class AudioBridgeWebRTC {
     this.streamSid = null;
     
     // Debug: Log the call info passed from server
-    console.log('🔍 Call info from server:', JSON.stringify(callInfo, null, 2));
-    
-    // Audio handling
-    this.incomingAudioBuffer = [];
-    this.audioContext = null;
-    this.mediaStreamDestination = null;
+    if (ENABLE_DEBUG_LOGGING) {
+      console.log('🔍 Call info from server:', JSON.stringify(callInfo, null, 2));
+    }
     
     // Speaking flag management (prevents stuck states)
     this.speaking = false;
@@ -69,9 +66,9 @@ class AudioBridgeWebRTC {
           silence_duration_ms: 2000
         },
         tools: toolDefinitions,
-        tool_choice: 'auto',
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16'
+        tool_choice: 'auto'
+        // NOTE: input_audio_format and output_audio_format are NOT used in WebRTC mode
+        // Audio format is handled by the WebRTC media track (16kHz PCM16)
       };
 
       // Step 2: Create OpenAI WebRTC client
@@ -239,7 +236,11 @@ class AudioBridgeWebRTC {
             To: this.callInfo.To
           });
         } else if (msg.event === 'media' && msg.media?.payload) {
-          if (!this.isConnected) {
+          // Wait for WebRTC connection and data channel to be ready
+          if (!this.isConnected || !this.openaiClient?.audioSource) {
+            if (ENABLE_DEBUG_LOGGING) {
+              debug('⚠️ Dropping audio frame - WebRTC not ready');
+            }
             return;
           }
 
@@ -252,17 +253,15 @@ class AudioBridgeWebRTC {
             const base64PCM = pcmBuffer.toString('base64');
 
             // Debug: log audio levels to verify data is flowing
-            const maxAmplitude = Math.max(...Array.from(pcm16).map(Math.abs));
-            if (maxAmplitude > 100) { // Only log if there's actual audio
-              console.log(`🎤 SignalWire audio: ${pcm16.length} samples, max amplitude: ${maxAmplitude}`);
+            if (ENABLE_DEBUG_LOGGING) {
+              const maxAmplitude = Math.max(...Array.from(pcm16).map(Math.abs));
+              if (maxAmplitude > 100) { // Only log if there's actual audio
+                console.log(`🎤 SignalWire audio: ${pcm16.length} samples @ 16kHz, max amplitude: ${maxAmplitude}`);
+              }
             }
 
-            // Send audio to OpenAI via WebRTC data channel
-            if (this.openaiClient && this.openaiClient.dataChannel && this.openaiClient.dataChannel.readyState === 'open') {
-              this.openaiClient.sendAudio(base64PCM);
-            } else {
-              console.log('⚠️ WebRTC data channel not ready, skipping audio');
-            }
+            // Send audio to OpenAI via WebRTC audio track
+            this.openaiClient.sendAudio(base64PCM);
           } catch (error) {
             console.error('❌ Failed to convert mulaw to PCM16:', error);
           }
@@ -444,16 +443,16 @@ class AudioBridgeWebRTC {
       this.speakingTimeout = null;
     }
     
-    // Clean up audio context (simplified)
-    if (this.audioContext) {
-      this.audioContext = null;
-    }
-    
     if (this.openaiClient) {
-      this.openaiClient.close();
+      try {
+        this.openaiClient.close();
+      } catch (error) {
+        console.error('⚠️ Error closing OpenAI client:', error);
+      }
     }
 
     if (this.signalwireWs && this.signalwireWs.readyState === 1) {
+      this.signalwireWs.removeAllListeners();
       this.signalwireWs.close();
     }
 

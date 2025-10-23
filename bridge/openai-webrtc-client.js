@@ -1,5 +1,6 @@
 const fetch = require('node-fetch');
-const { RTCPeerConnection, RTCSessionDescription } = require('wrtc');
+const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc');
+const { RTCAudioSource } = nonstandard;
 
 class OpenAIWebRTCClient {
   constructor(apiKey, model = 'gpt-4o-realtime-preview-2024-12-17') {
@@ -8,6 +9,8 @@ class OpenAIWebRTCClient {
     this.peerConnection = null;
     this.dataChannel = null;
     this.sessionConfig = null;
+    this.audioSource = null;
+    this.audioTrack = null;
     
     this.onMessage = null;
     this.onAudioTrack = null;
@@ -39,12 +42,14 @@ class OpenAIWebRTCClient {
     }
 
     const data = await response.json();
-    console.log('✅ Ephemeral session created:', data.value);
+    console.log('✅ Ephemeral session created');
+    console.log('🔑 Client secret:', data.client_secret?.value ? 'present' : 'missing');
+    console.log('🆔 Session ID:', data.session?.id || 'unknown');
     
     return {
-      client_secret: data.value,
-      session_id: data.value, // Use the client secret as session ID for now
-      expires_at: data.expires_at || new Date(Date.now() + 24 * 60 * 60 * 1000) // Default 24h
+      client_secret: data.client_secret.value,
+      session_id: data.session.id,
+      expires_at: data.client_secret.expires_at
     };
   }
 
@@ -69,9 +74,12 @@ class OpenAIWebRTCClient {
     };
 
     this.peerConnection.ontrack = (event) => {
-      console.log('🎵 Received audio track from OpenAI');
-      if (this.onAudioTrack) {
-        this.onAudioTrack(event.track, event.streams[0]);
+      // Only handle audio tracks
+      if (event.track.kind === 'audio') {
+        console.log('🎵 Received audio track from OpenAI');
+        if (this.onAudioTrack) {
+          this.onAudioTrack(event.track, event.streams[0]);
+        }
       }
     };
 
@@ -111,9 +119,13 @@ class OpenAIWebRTCClient {
       console.error('❌ Data channel error:', error);
     };
 
-    // Add audio transceiver for bidirectional audio (required for WebRTC)
-    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    console.log('🎤 Added audio transceiver to WebRTC connection');
+    // Create audio source and track for sending audio to OpenAI
+    this.audioSource = new RTCAudioSource();
+    this.audioTrack = this.audioSource.createTrack();
+    
+    // Add the audio track to the peer connection (sendrecv for bidirectional)
+    this.peerConnection.addTrack(this.audioTrack);
+    console.log('🎤 Added audio track to WebRTC connection');
 
     console.log('📤 Creating SDP offer...');
     const offer = await this.peerConnection.createOffer();
@@ -124,9 +136,10 @@ class OpenAIWebRTCClient {
     console.log('📤 Sending SDP offer to OpenAI...');
     console.log('🔍 SDP offer length:', this.peerConnection.localDescription.sdp.length);
     console.log('🔍 SDP offer preview:', this.peerConnection.localDescription.sdp.substring(0, 200) + '...');
+    console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
     
-    // Use ephemeral token approach - send raw SDP with proper content type
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
+    // Send SDP to OpenAI Realtime API endpoint
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
@@ -137,10 +150,12 @@ class OpenAIWebRTCClient {
 
     if (!answerResponse.ok) {
       const errorText = await answerResponse.text();
+      console.error('❌ SDP exchange failed:', answerResponse.status, errorText);
       throw new Error(`Failed to exchange SDP: ${answerResponse.status} - ${errorText}`);
     }
 
     const answerSdp = await answerResponse.text();
+    console.log('✅ Received SDP answer from OpenAI, length:', answerSdp.length);
     
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription({
@@ -153,15 +168,28 @@ class OpenAIWebRTCClient {
   }
 
   sendAudio(base64Audio) {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      const message = {
-        type: 'input_audio_buffer.append',
-        audio: base64Audio
-      };
-      this.dataChannel.send(JSON.stringify(message));
-      console.log('📤 Sent audio chunk to OpenAI:', base64Audio.length, 'bytes');
-    } else {
-      console.log('⚠️ Data channel not ready for audio, state:', this.dataChannel?.readyState);
+    if (!this.audioSource || !this.audioTrack) {
+      console.log('⚠️ Audio source not ready');
+      return;
+    }
+
+    try {
+      // Decode base64 PCM16 audio
+      const pcmBuffer = Buffer.from(base64Audio, 'base64');
+      const samples = new Int16Array(pcmBuffer.buffer, pcmBuffer.byteOffset, pcmBuffer.length / 2);
+      
+      // Push audio frame to the RTC audio source
+      this.audioSource.onData({
+        samples: samples,
+        sampleRate: 16000, // OpenAI expects 16kHz
+        bitsPerSample: 16,
+        channelCount: 1,
+        numberOfFrames: samples.length
+      });
+      
+      // console.log('📤 Sent audio frame to OpenAI:', samples.length, 'samples');
+    } catch (error) {
+      console.error('❌ Failed to send audio frame:', error);
     }
   }
 
@@ -173,6 +201,7 @@ class OpenAIWebRTCClient {
         const checkState = () => {
           if (this.peerConnection.iceGatheringState === 'complete') {
             this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
+            console.log('✅ ICE gathering complete');
             resolve();
           }
         };
@@ -180,7 +209,9 @@ class OpenAIWebRTCClient {
         
         // Add timeout to prevent hanging
         setTimeout(() => {
-          console.log('⚠️ ICE gathering timeout, proceeding anyway');
+          console.log('⚠️ ICE gathering timeout after 5s');
+          console.log('🔍 ICE connection state:', this.peerConnection.iceConnectionState);
+          console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
           this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
           resolve();
         }, 5000);
@@ -196,19 +227,31 @@ class OpenAIWebRTCClient {
     }
   }
 
-  sendAudio(audioBase64) {
-    this.sendEvent({
-      type: 'input_audio_buffer.append',
-      audio: audioBase64
-    });
-  }
-
   close() {
+    if (this.audioTrack) {
+      this.audioTrack.stop();
+      this.audioTrack = null;
+    }
+    if (this.audioSource) {
+      this.audioSource = null;
+    }
     if (this.dataChannel) {
-      this.dataChannel.close();
+      try {
+        if (this.dataChannel.readyState === 'open') {
+          this.dataChannel.close();
+        }
+      } catch (error) {
+        console.error('⚠️ Error closing data channel:', error);
+      }
+      this.dataChannel = null;
     }
     if (this.peerConnection) {
-      this.peerConnection.close();
+      try {
+        this.peerConnection.close();
+      } catch (error) {
+        console.error('⚠️ Error closing peer connection:', error);
+      }
+      this.peerConnection = null;
     }
   }
 }
