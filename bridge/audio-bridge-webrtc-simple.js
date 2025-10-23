@@ -289,10 +289,11 @@ class AudioBridgeWebRTC {
    * Set up audio forwarding from SignalWire to OpenAI
    */
   setupSignalWireForwarding() {
-    this.signalwireWs.on('message', (message) => {
-      console.log('📨 SignalWire message received:', message.substring(0, 200) + '...');
-      try {
-        const msg = JSON.parse(message);
+        this.signalwireWs.on('message', (message) => {
+          const messageStr = message.toString();
+          console.log('📨 SignalWire message received:', messageStr.substring(0, 200) + '...');
+          try {
+            const msg = JSON.parse(messageStr);
 
         if (msg.event === 'start') {
           this.streamSid = msg.start.streamSid;
