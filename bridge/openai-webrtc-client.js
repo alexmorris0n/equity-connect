@@ -33,7 +33,6 @@ class OpenAIWebRTCClient {
             output: { voice: sessionConfig.voice || 'shimmer' }
           },
           instructions: sessionConfig.instructions,
-          temperature: sessionConfig.temperature || 0.95,
           turn_detection: sessionConfig.turn_detection || {
             type: 'server_vad',
             threshold: 0.35,
