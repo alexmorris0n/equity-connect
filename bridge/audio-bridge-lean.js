@@ -146,7 +146,7 @@ class AudioBridge {
       if (this.callContext.instructions) {
         await new Promise(resolve => setTimeout(resolve, 100));
         await this.configureSession();
-        setTimeout(() => this.startConversation(), 1000);
+        setTimeout(() => this.startConversation(), 500);
       }
       // INBOUND: Wait for SignalWire 'start' event
     });
@@ -505,12 +505,15 @@ class AudioBridge {
   /**
    * Play ringback tone while loading prompt/context
    * Generates classic North American ringback: 2 seconds on, 4 seconds off
+   * Plays for up to 2 full rings (~12 seconds) or until session is ready
    */
   playRingbackTone() {
     if (this.isPlayingRingback) return;
     
     this.isPlayingRingback = true;
     let phase = 0;
+    let ringCount = 0;
+    const MAX_RINGS = 2; // Maximum 2 rings before auto-stopping
     
     // Generate a simple 440Hz + 480Hz dual-tone (typical ringback)
     const generateRingTone = (durationMs, sampleRate = 24000) => {
@@ -548,13 +551,20 @@ class AudioBridge {
           }
         }));
         phase = 1;
+        ringCount++;
+        
+        // Stop after 2 rings if session isn't ready yet
+        if (ringCount >= MAX_RINGS) {
+          console.log('📞 Maximum 2 rings reached - stopping ringback');
+          this.stopRingbackTone();
+        }
       } else {
         // Silent phase (no audio sent)
         phase = 0;
       }
     }, 2000); // Check every 2 seconds
     
-    console.log('📞 Ringback tone started');
+    console.log('📞 Ringback tone started (max 2 rings)');
   }
 
   /**
@@ -798,9 +808,9 @@ class AudioBridge {
         this.stopRingbackTone();
         
         // Now that session is fully configured, start the conversation
-        // Add a small delay to ensure session is fully applied
+        // 500ms delay to ensure session is fully applied
         if (!this.greetingSent) {
-          setTimeout(() => this.startConversation(), 1000);
+          setTimeout(() => this.startConversation(), 500);
         }
         break;
 
