@@ -147,27 +147,20 @@ class OpenAIWebRTCClient {
       }
     };
 
-    // Set up data channel for events
-    this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
-      ordered: true
-    });
-
-    this.dataChannel.onopen = () => {
-      console.log('📡 Data channel opened');
+    // Set up server-initiated data channel handler
+    this.peerConnection.ondatachannel = (event) => {
+      this.dataChannel = event.channel;
+      console.log('📡 Data channel opened (server-initiated)');
       if (this.onDataChannelOpen) this.onDataChannelOpen();
-    };
-
-    this.dataChannel.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (this.onMessage) this.onMessage(message);
-      } catch (err) {
-        console.error('❌ Failed to parse data channel message:', err);
-      }
-    };
-
-    this.dataChannel.onerror = (error) => {
-      console.error('❌ Data channel error:', error);
+      this.dataChannel.onmessage = (ev) => {
+        try { 
+          const msg = JSON.parse(ev.data); 
+          this.onMessage && this.onMessage(msg); 
+        } catch (e) { 
+          console.error('parse fail', e); 
+        }
+      };
+      this.dataChannel.onerror = (err) => console.error('❌ Data channel error:', err);
     };
 
     // Create audio source and track for sending audio to OpenAI
@@ -201,8 +194,13 @@ class OpenAIWebRTCClient {
       .filter(line => !/^a=(rtpmap|fmtp):(?!(111)\b)/.test(line))
       .join('\r\n');
 
-    // Patch E: Remove "a=ice-options:trickle" to avoid endpoints that reject trickle declarations
-    sdp = sdp.replace(/^a=ice-options:trickle\r?\n/m, '');
+    // Patch E: Remove ALL "a=ice-options:*" lines anywhere in the SDP
+    sdp = sdp.replace(/^a=ice-options:.*\r?\n/gm, '');
+    
+    // Sanity check for remaining trickle lines
+    if (/\na=ice-options:/m.test(sdp)) {
+      console.warn('⚠️ SDP still contains ice-options after munging');
+    }
 
     // Patch F: Make Opus explicitly mono with additional parameters
     sdp = sdp.replace(
@@ -227,9 +225,30 @@ class OpenAIWebRTCClient {
       throw new Error('Local SDP missing or has no audio m-line');
     }
 
+    // Preflight validation to prevent mystery 400s
+    if (!/m=audio /.test(localSdp)) throw new Error('Local SDP missing audio m= line');
+    if (/a=ice-options:/.test(localSdp)) console.warn('⚠️ ice-options line still present');
+    if (!/a=rtpmap:111 opus\/48000\/2/.test(localSdp)) console.warn('⚠️ opus rtpmap missing');
+    if (!/a=fmtp:111/.test(localSdp)) console.warn('⚠️ opus fmtp missing');
+
+    // Final SDP preparation for maximum compatibility
+    let sdpToPost = localSdp;
+    
+    // 1. Append end-of-candidates sentinel (some parsers like it explicit)
+    if (!/^\s*a=end-of-candidates/m.test(sdpToPost)) {
+      sdpToPost += '\r\na=end-of-candidates';
+    }
+    
+    // 2. Force CRLF line endings (SDP wants \r\n)
+    sdpToPost = sdpToPost.replace(/\r?\n/g, '\r\n');
+    
+    // 3. Add CBR=0 for mid-call bitrate adaptation (some stacks like it)
+    sdpToPost = sdpToPost.replace(/a=fmtp:111 [^\r\n]*/g,
+      'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000;cbr=0');
+
     console.log('📤 Sending SDP offer to OpenAI...');
-    console.log('🔍 SDP offer length:', localSdp.length);
-    console.log('🔍 SDP offer preview:', localSdp.substring(0, 200) + '...');
+    console.log('🔍 SDP offer length:', sdpToPost.length);
+    console.log('🔍 SDP offer preview:', sdpToPost.substring(0, 200) + '...');
     console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
     console.log('🔍 Client secret prefix:', clientSecret.substring(0, 10) + '...');
     console.log('🔍 Model:', this.model);
@@ -241,7 +260,7 @@ class OpenAIWebRTCClient {
     
     // Log the full SDP for debugging
     console.log('🔍 Full SDP offer:');
-    console.log(localSdp);
+    console.log(sdpToPost);
     
     // Retry logic for SDP POST with exponential backoff
     const trySdpPost = async () => {
@@ -258,7 +277,7 @@ class OpenAIWebRTCClient {
               'Accept': 'application/sdp',
               'OpenAI-Beta': 'realtime=v1'
             },
-            body: localSdp
+            body: sdpToPost
           });
 
           const bodyText = await res.text();
@@ -303,6 +322,30 @@ class OpenAIWebRTCClient {
         sdp: answerSdp
       })
     );
+
+    // Create client-initiated data channel after answer (if server didn't create one)
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+      try {
+        this.dataChannel = this.peerConnection.createDataChannel('oai-events', { ordered: true });
+        this.dataChannel.onopen = () => {
+          console.log('📡 Data channel opened (client-initiated after answer)');
+          if (this.onDataChannelOpen) this.onDataChannelOpen();
+        };
+        this.dataChannel.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (this.onMessage) this.onMessage(message);
+          } catch (err) {
+            console.error('❌ Failed to parse data channel message:', err);
+          }
+        };
+        this.dataChannel.onerror = (error) => {
+          console.error('❌ Data channel error:', error);
+        };
+      } catch (err) {
+        console.warn('⚠️ Could not create client data channel:', err.message);
+      }
+    }
 
     console.log('✅ WebRTC connection established - waiting for connection state...');
   }
