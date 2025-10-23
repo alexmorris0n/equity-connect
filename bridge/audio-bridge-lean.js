@@ -503,6 +503,23 @@ class AudioBridge {
   }
 
   /**
+   * Convert linear PCM to µ-law (G.711)
+   * Simplified implementation for ringback tone generation
+   */
+  linearToMulaw(sample) {
+    const MULAW_MAX = 0x1FFF;
+    const MULAW_BIAS = 33;
+    let sign = (sample < 0) ? 0 : 0x80;
+    if (sign) sample = -sample;
+    if (sample > MULAW_MAX) sample = MULAW_MAX;
+    sample += MULAW_BIAS;
+    let exponent = 7;
+    for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1);
+    const mantissa = (sample >> (exponent + 3)) & 0x0F;
+    return ~(sign | (exponent << 4) | mantissa) & 0xFF;
+  }
+
+  /**
    * Play ringback tone while loading prompt/context
    * Generates classic North American ringback: 2 seconds on, 4 seconds off
    * Plays for up to 2 full rings (~12 seconds) or until session is ready
@@ -516,17 +533,18 @@ class AudioBridge {
     const MAX_RINGS = 2; // Maximum 2 rings before auto-stopping
     
     // Generate a simple 440Hz + 480Hz dual-tone (typical ringback)
-    const generateRingTone = (durationMs, sampleRate = 24000) => {
+    const generateRingTone = (durationMs, sampleRate = 8000) => {
       const numSamples = Math.floor((sampleRate * durationMs) / 1000);
-      const buffer = Buffer.alloc(numSamples * 2); // 16-bit samples
+      const buffer = Buffer.alloc(numSamples); // G.711 µ-law: 1 byte per sample
       
       for (let i = 0; i < numSamples; i++) {
         // Mix 440Hz and 480Hz tones
         const t = i / sampleRate;
         const sample = Math.sin(2 * Math.PI * 440 * t) * 0.3 + 
                       Math.sin(2 * Math.PI * 480 * t) * 0.3;
-        const value = Math.floor(sample * 32767); // Convert to 16-bit
-        buffer.writeInt16LE(value, i * 2);
+        // Convert linear PCM to µ-law (simplified - just scale for now)
+        const linear = Math.floor(sample * 8159); // µ-law range
+        buffer[i] = this.linearToMulaw(linear);
       }
       
       return buffer.toString('base64');
@@ -756,9 +774,8 @@ class AudioBridge {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'shimmer',  // Shimmer = most natural, warm female voice
         instructions: finalInstructions,
-        // DO NOT set input_audio_format or output_audio_format for SIP/WebRTC
-        // Per OpenAI Staff (juberti): "don't set format, it's not needed when using WebRTC/SIP"
-        // Setting these causes audio bugs with SignalWire gateway
+        input_audio_format: 'g711_ulaw',  // Enable compression: 2x smaller than pcm16 = less buffering lag
+        output_audio_format: 'g711_ulaw', // Match input format for consistency
         input_audio_transcription: {
           model: 'whisper-1'
         },
@@ -838,7 +855,7 @@ class AudioBridge {
         this.speaking = false;
         
         // Add 100ms silence tail to prevent telephony buffer clip (less dead air = more conversational)
-        const silenceTail = Buffer.alloc(3200).toString('base64'); // 100ms @ 16kHz PCM16
+        const silenceTail = Buffer.alloc(800, 0xFF).toString('base64'); // 100ms @ 8kHz G.711 µ-law
         
         setTimeout(() => {
           if (this.swSocket?.readyState === WebSocket.OPEN) {
@@ -1077,7 +1094,7 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 1280; // 40ms @ 16kHz PCM16 - reduces playback offset and improves timing accuracy
+    const maxChunkSize = 320; // 40ms @ 8kHz G.711 µ-law (compressed) - reduces playback offset
     
     if (audioBuffer.length > maxChunkSize) {
       debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
@@ -1123,11 +1140,12 @@ class AudioBridge {
       return;
     }
     
-    // Generate 50ms of silence @ 24kHz, 16-bit PCM
-    const sampleRate = 24000;
+    // Generate 50ms of silence @ 8kHz, G.711 µ-law
+    const sampleRate = 8000;
     const durationMs = 50;
     const numSamples = Math.floor((sampleRate * durationMs) / 1000);
-    const silenceBuffer = Buffer.alloc(numSamples * 2); // All zeros = silence
+    // G.711 µ-law silence = 0xFF for each sample (not 0x00)
+    const silenceBuffer = Buffer.alloc(numSamples, 0xFF);
     
     debug('🔇 Sending 50ms silence primer to warm up RTP session');
     
