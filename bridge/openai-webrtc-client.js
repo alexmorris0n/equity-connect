@@ -78,7 +78,17 @@ class OpenAIWebRTCClient {
           'OpenAI-Beta': 'realtime=v1'
         },
         body: JSON.stringify({
-          session: { type: 'realtime' }
+          // Declare the exact session contract up front
+          session: {
+            type: 'realtime',
+            model: this.model,                     // 👈 tie the ek_ to the model you'll use in SDP
+            voice: (sessionConfig && sessionConfig.voice) || 'shimmer',
+            modalities: ['text', 'audio'],
+            // Optional but good to pass through:
+            turn_detection: (sessionConfig && sessionConfig.turn_detection) || undefined,
+            // You can also include tool schemas at session create if you want them "baked in":
+            // tools: (sessionConfig && sessionConfig.tools) || undefined,
+          }
         })
       });
 
@@ -121,6 +131,7 @@ class OpenAIWebRTCClient {
       console.log('🔑 Client secret:', secret ? 'present' : 'missing');
       if (sessionId) console.log('🆔 Session ID:', sessionId);
       if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
+      console.log('🔍 Session bound model:', this.model);
       
       return {
         clientSecret: secret,
@@ -310,13 +321,9 @@ class OpenAIWebRTCClient {
     console.log('🔍 Model:', this.model);
     console.log('🔍 Ephemeral age (ms):', Date.now() - this.sessionCreatedAt);
     
-    // 3) POST SDP to Realtime with model fallback strategy
+    // 3) POST SDP to Realtime (session is now model-bound)
     const base = 'https://api.openai.com/v1/realtime';
-    const tryModels = [
-      this.model,                       // env or passed in (first try)
-      'gpt-4o-realtime-preview',        // common, widely available preview
-      'gpt-4o-realtime-preview-2024-12-17', // older preview (kept for safety)
-    ];
+    const tryModels = [this.model]; // Session is bound to this model, so only try this one
 
     const postSdpOnce = async (modelStr) => {
       const url = `${base}?model=${encodeURIComponent(modelStr)}&protocol=webrtc`;
@@ -330,6 +337,7 @@ class OpenAIWebRTCClient {
           'Content-Type': 'application/sdp',
           'Accept': 'application/sdp',
           'OpenAI-Beta': 'realtime=v1',
+          'User-Agent': 'BarbaraBridge/1.0 (+node-wrtc)',
         },
         body: sdpToPost,
         cache: 'no-store'
