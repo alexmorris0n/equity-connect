@@ -63,15 +63,14 @@ const activeCalls = new Map();
  */
 async function initializeFabricClient() {
   try {
-    const { Voice } = require('@signalwire/realtime-api');
+    const { SignalWire } = require('@signalwire/realtime-api');
     
-    const voiceClient = new Voice.Client({
+    const client = await SignalWire({ 
       project: process.env.SW_PROJECT,
-      token: process.env.SW_TOKEN,
-      contexts: ['office']
+      token: process.env.SW_TOKEN
     });
-
-    await voiceClient.connect();
+    
+    const voiceClient = client.voice;
 
     logger.info('✅ SignalWire Fabric client initialized');
 
