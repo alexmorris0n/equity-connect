@@ -48,7 +48,7 @@ function normalizeSdpCrLf(sdp) {
 }
 
 class OpenAIWebRTCClient {
-  constructor(apiKey, model = process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17') {
+  constructor(apiKey, model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime') {
     this.apiKey = apiKey;
     this.model = model;
     this.baseUrl = 'https://api.openai.com';
