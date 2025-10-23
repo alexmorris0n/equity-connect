@@ -88,6 +88,7 @@ class OpenAIWebRTCClient {
       }
     };
 
+    // Set up data channel for events
     this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
       ordered: true
     });
@@ -110,8 +111,9 @@ class OpenAIWebRTCClient {
       console.error('❌ Data channel error:', error);
     };
 
-    // Add audio transceiver for bidirectional audio
+    // Add audio transceiver for bidirectional audio (required for WebRTC)
     this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    console.log('🎤 Added audio transceiver to WebRTC connection');
 
     console.log('📤 Creating SDP offer...');
     const offer = await this.peerConnection.createOffer();
@@ -123,13 +125,23 @@ class OpenAIWebRTCClient {
     console.log('🔍 SDP offer length:', this.peerConnection.localDescription.sdp.length);
     console.log('🔍 SDP offer preview:', this.peerConnection.localDescription.sdp.substring(0, 200) + '...');
     
+    // Use unified interface - send SDP with session config
+    const sessionConfig = JSON.stringify({
+      type: "realtime",
+      model: this.model,
+      audio: { output: { voice: "marin" } }
+    });
+    
+    const formData = new FormData();
+    formData.set('sdp', this.peerConnection.localDescription.sdp);
+    formData.set('session', sessionConfig);
+    
     const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${clientSecret}`,
-        'Content-Type': 'application/sdp'
+        'Authorization': `Bearer ${this.apiKey}`,
       },
-      body: this.peerConnection.localDescription.sdp
+      body: formData
     });
 
     if (!answerResponse.ok) {
