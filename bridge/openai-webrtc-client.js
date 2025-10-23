@@ -249,7 +249,8 @@ class OpenAIWebRTCClient {
 
     this.dataChannel.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data);
+        const dataStr = typeof event.data === 'string' ? event.data : event.data.toString();
+        const message = JSON.parse(dataStr);
         if (this.onMessage) this.onMessage(message);
       } catch (err) {
         console.error('❌ Failed to parse data channel message:', err);
