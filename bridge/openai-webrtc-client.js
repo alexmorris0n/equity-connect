@@ -1,6 +1,5 @@
 const fetch = require('node-fetch');
 const { RTCPeerConnection, RTCSessionDescription } = require('wrtc');
-const FormData = require('form-data');
 
 class OpenAIWebRTCClient {
   constructor(apiKey, model = 'gpt-4o-realtime-preview-2024-12-17') {
@@ -126,23 +125,14 @@ class OpenAIWebRTCClient {
     console.log('🔍 SDP offer length:', this.peerConnection.localDescription.sdp.length);
     console.log('🔍 SDP offer preview:', this.peerConnection.localDescription.sdp.substring(0, 200) + '...');
     
-    // Use unified interface - send SDP with session config
-    const sessionConfig = JSON.stringify({
-      type: "realtime",
-      model: this.model,
-      audio: { output: { voice: "marin" } }
-    });
-    
-    const formData = new FormData();
-    formData.set('sdp', this.peerConnection.localDescription.sdp);
-    formData.set('session', sessionConfig);
-    
+    // Use ephemeral token approach - send raw SDP with proper content type
     const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/sdp'
       },
-      body: formData
+      body: this.peerConnection.localDescription.sdp
     });
 
     if (!answerResponse.ok) {
