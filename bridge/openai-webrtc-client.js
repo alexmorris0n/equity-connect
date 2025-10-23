@@ -119,7 +119,7 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
