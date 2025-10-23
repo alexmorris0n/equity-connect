@@ -83,6 +83,9 @@ class AudioBridge {
     this.promptName = null;
     this.promptSource = null;
     
+    // Broker timezone for dynamic time injection
+    this.brokerTimezone = null;
+    
     // Simple speaking flag (no complex queue)
     this.speaking = false;
     
@@ -263,6 +266,7 @@ class AudioBridge {
           },
           lead_id: null,
           broker_id: null,
+          broker_timezone: null,
           context: 'inbound'
         };
       }
@@ -370,6 +374,7 @@ class AudioBridge {
         qualifiedFlag,
         lead_id: result.lead_id,
         broker_id: result.broker_id,
+        broker_timezone: result.broker?.timezone || 'America/Los_Angeles',
         leadStatus: result.status || '',
         context: this.callContext.context || 'inbound'
       };
@@ -387,6 +392,7 @@ class AudioBridge {
         qualifiedFlag: false,
         lead_id: null,
         broker_id: null,
+        broker_timezone: 'America/Los_Angeles',
         leadStatus: '',
         context: this.callContext.context || 'inbound'
       };
@@ -485,6 +491,55 @@ class AudioBridge {
   }
 
   /**
+   * Get current time formatted in broker's local timezone (ISO 8601)
+   * Returns format: "2025-10-22T20:42:00-07:00"
+   */
+  getCurrentTimeForBroker() {
+    const timezone = this.brokerTimezone || 'America/Los_Angeles'; // Default to Pacific
+    
+    try {
+      const now = new Date();
+      
+      // Format date/time in broker's timezone
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      
+      const parts = formatter.formatToParts(now);
+      const year = parts.find(p => p.type === 'year').value;
+      const month = parts.find(p => p.type === 'month').value;
+      const day = parts.find(p => p.type === 'day').value;
+      const hour = parts.find(p => p.type === 'hour').value;
+      const minute = parts.find(p => p.type === 'minute').value;
+      const second = parts.find(p => p.type === 'second').value;
+      
+      // Calculate timezone offset in ISO 8601 format (-07:00)
+      const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+      const tzDate = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+      const offsetMinutes = (tzDate - utcDate) / 60000; // Difference in minutes
+      const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+      const offsetMins = Math.abs(offsetMinutes) % 60;
+      const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+      const offsetString = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMins).padStart(2, '0')}`;
+      
+      // ISO 8601 format: 2025-10-22T20:42:00-07:00
+      return `${year}-${month}-${day}T${hour}:${minute}:${second}${offsetString}`;
+      
+    } catch (err) {
+      console.warn(`⚠️ Failed to format time for timezone ${timezone}:`, err.message);
+      // Fallback to UTC ISO format
+      return new Date().toISOString();
+    }
+  }
+
+  /**
    * Configure OpenAI Realtime session (SINGLE SOURCE OF TRUTH)
    */
   async configureSession() {
@@ -520,6 +575,12 @@ class AudioBridge {
         }
         if (promptBuildResult.broker_id) {
           this.callContext.broker_id = promptBuildResult.broker_id;
+        }
+        
+        // Store broker timezone for dynamic time injection
+        if (promptBuildResult.broker_timezone) {
+          this.brokerTimezone = promptBuildResult.broker_timezone;
+          console.log(`🕐 Broker timezone set: ${this.brokerTimezone}`);
         }
 
         promptCallContext = {
@@ -593,12 +654,19 @@ class AudioBridge {
       preview: instructions.substring(0, 150).replace(/\n/g, ' ')
     });
     
+    // Prepend current time in broker's timezone
+    const currentTime = this.getCurrentTimeForBroker();
+    const timeInstruction = `Current time is ${currentTime}. Use this as 'now' for scheduling and time-related discussions.\n\n`;
+    const finalInstructions = timeInstruction + instructions;
+    
+    console.log(`🕐 Current time injected: ${currentTime} (timezone: ${this.brokerTimezone || 'America/Los_Angeles'})`);
+    
     const sessionConfig = {
       type: 'session.update',
       session: {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'shimmer',  // Shimmer = most natural, warm female voice
-        instructions: instructions,
+        instructions: finalInstructions,
         // DO NOT set input_audio_format or output_audio_format for SIP/WebRTC
         // Per OpenAI Staff (juberti): "don't set format, it's not needed when using WebRTC/SIP"
         // Setting these causes audio bugs with SignalWire gateway
