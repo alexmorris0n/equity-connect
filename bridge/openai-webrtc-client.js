@@ -110,6 +110,7 @@ class OpenAIWebRTCClient {
       console.error('❌ Data channel error:', error);
     };
 
+    // Add audio transceiver for bidirectional audio
     this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
 
     console.log('📤 Creating SDP offer...');
@@ -119,7 +120,10 @@ class OpenAIWebRTCClient {
     await this.waitForICEGathering();
 
     console.log('📤 Sending SDP offer to OpenAI...');
-    const answerResponse = await fetch(`https://api.openai.com/v1/realtime?model=${this.model}`, {
+    console.log('🔍 SDP offer length:', this.peerConnection.localDescription.sdp.length);
+    console.log('🔍 SDP offer preview:', this.peerConnection.localDescription.sdp.substring(0, 200) + '...');
+    
+    const answerResponse = await fetch(`https://api.openai.com/v1/realtime/calls`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
@@ -169,6 +173,13 @@ class OpenAIWebRTCClient {
           }
         };
         this.peerConnection.addEventListener('icegatheringstatechange', checkState);
+        
+        // Add timeout to prevent hanging
+        setTimeout(() => {
+          console.log('⚠️ ICE gathering timeout, proceeding anyway');
+          this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
+          resolve();
+        }, 5000);
       }
     });
   }
