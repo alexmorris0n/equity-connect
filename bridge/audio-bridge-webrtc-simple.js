@@ -7,7 +7,14 @@
 const { OpenAIWebRTCClient } = require('./openai-webrtc-client');
 const { toolDefinitions, executeTool } = require('./tools');
 const { getPromptForCall, injectVariables } = require('./prompt-manager');
-const { Readable, Writable } = require('stream');
+const {
+  decodeMulaw,
+  encodeMulaw,
+  upsampleTo16k,
+  downsampleTo8k,
+  int16ToBuffer,
+  bufferToInt16,
+} = require('./audio-utils');
 
 const ENABLE_DEBUG_LOGGING = process.env.ENABLE_DEBUG_LOGGING === 'true';
 
@@ -131,19 +138,45 @@ class AudioBridgeWebRTC {
    */
   handleOpenAIAudioTrack(track, stream) {
     console.log('🔊 Setting up audio forwarding from OpenAI to SignalWire...');
-    
-    // For Node.js, we need to use wrtc's audio handling
-    // The track will emit audio data that we forward to SignalWire
-    
-    // NOTE: Full audio handling requires additional libraries
-    // For production, you'd use something like:
-    // - @kmamal/sdl for audio processing
-    // - or pipe through ffmpeg
-    
-    console.log('⚠️  Audio track received - implement full audio pipeline in production');
-    
-    // TODO: Convert WebRTC audio (PCM16) to SignalWire format (mulaw)
-    // This is a placeholder showing where audio conversion should happen
+
+    track.onmute = () => this.logger.info('🔇 OpenAI audio track muted');
+    track.onunmute = () => this.logger.info('🔊 OpenAI audio track unmuted');
+    track.onended = () => this.logger.info('🔚 OpenAI audio track ended');
+
+    const reader = stream.getReader ? stream.getReader() : null;
+    if (!reader) {
+      this.logger.warn('⚠️ WebRTC stream does not expose getReader; audio forwarding disabled');
+      return;
+    }
+
+    const pump = async () => {
+      try {
+        const { value, done } = await reader.read();
+        if (done) {
+          this.logger.info('ℹ️ Finished reading audio from OpenAI stream');
+          return;
+        }
+
+        if (value?.byteLength && this.signalwireWs?.readyState === 1) {
+          const pcm16 = new Int16Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+          const pcm8 = downsampleTo8k(pcm16);
+          const mulaw = encodeMulaw(pcm8);
+          const payload = mulaw.toString('base64');
+
+          this.signalwireWs.send(JSON.stringify({
+            event: 'media',
+            streamSid: this.streamSid,
+            media: { payload },
+          }));
+        }
+
+        pump();
+      } catch (error) {
+        console.error('❌ Error forwarding OpenAI audio to SignalWire:', error);
+      }
+    };
+
+    pump();
   }
 
   /**
@@ -158,14 +191,20 @@ class AudioBridgeWebRTC {
           this.streamSid = msg.start.streamSid;
           console.log('📞 Stream started:', this.streamSid);
         } else if (msg.event === 'media' && msg.media?.payload) {
-          // Forward audio from SignalWire to OpenAI via WebRTC
-          // SignalWire sends mulaw audio, OpenAI expects PCM16
-          // TODO: Convert mulaw -> PCM16 before sending
-          
-          // For now, send the base64 audio directly
-          // Production needs proper transcoding
-          if (this.isConnected) {
-            this.openaiClient.sendAudio(msg.media.payload);
+          if (!this.isConnected) {
+            return;
+          }
+
+          try {
+            const mulawBuffer = Buffer.from(msg.media.payload, 'base64');
+            const pcm8 = decodeMulaw(mulawBuffer);
+            const pcm16 = upsampleTo16k(pcm8);
+            const pcmBuffer = int16ToBuffer(pcm16);
+            const base64PCM = pcmBuffer.toString('base64');
+
+            this.openaiClient.sendAudio(base64PCM);
+          } catch (error) {
+            console.error('❌ Failed to convert mulaw to PCM16:', error);
           }
         } else if (msg.event === 'stop') {
           console.log('📞 Call ended, closing bridge');
