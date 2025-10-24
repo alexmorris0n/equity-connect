@@ -137,12 +137,12 @@ app.get('/public/inbound-xml', async (request, reply) => {
   
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Start>
-    <Stream url="${wsUrl}/audiostream" track="inbound">
+  <Connect>
+    <Stream url="${wsUrl}/audiostream" track="both_tracks">
       <Parameter name="from" value="${From || ''}" />
       <Parameter name="to" value="${To || ''}" />
     </Stream>
-  </Start>
+  </Connect>
 </Response>`;
 
   app.log.info('📞 Served inbound LaML XML');
@@ -163,10 +163,10 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const safeCallId = call_id || '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Start>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="inbound">
+  <Connect>
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="both_tracks">
     </Stream>
-  </Start>
+  </Connect>
 </Response>`;
   
   return reply.type('text/xml').send(xml);
@@ -185,10 +185,10 @@ app.post('/public/outbound-xml', async (request, reply) => {
   const safeCallId = call_id || '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Start>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="inbound">
+  <Connect>
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="both_tracks">
     </Stream>
-  </Start>
+  </Connect>
 </Response>`;
   
   return reply.type('text/xml').send(xml);
