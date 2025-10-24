@@ -5,18 +5,37 @@ const { RTCAudioSource } = nonstandard;
 // Patch D: Wait for ICE gathering to complete (or end-of-candidates)
 function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
   return new Promise((resolve) => {
+    if (!pc) {
+      console.error('❌ Peer connection is null during ICE gathering');
+      return resolve('null');
+    }
+    
     if (pc.iceGatheringState === 'complete') return resolve('complete');
 
     let done = false;
     const finish = (label) => {
       if (done) return;
       done = true;
-      pc.removeEventListener('icegatheringstatechange', onState);
-      pc.removeEventListener('icecandidate', onCand);
-      resolve(label || pc.iceGatheringState);
+      if (pc) {
+        pc.removeEventListener('icegatheringstatechange', onState);
+        pc.removeEventListener('icecandidate', onCand);
+      }
+      resolve(label || (pc ? pc.iceGatheringState : 'null'));
     };
-    const onState = () => (pc.iceGatheringState === 'complete') && finish('complete');
-    const onCand = (e) => { if (!e.candidate) finish('end-of-candidates'); };
+    const onState = () => {
+      if (!pc) {
+        console.error('❌ Peer connection became null during ICE gathering');
+        return finish('null');
+      }
+      if (pc.iceGatheringState === 'complete') finish('complete');
+    };
+    const onCand = (e) => { 
+      if (!pc) {
+        console.error('❌ Peer connection became null during ICE candidate');
+        return finish('null');
+      }
+      if (!e.candidate) finish('end-of-candidates'); 
+    };
 
     pc.addEventListener('icegatheringstatechange', onState);
     pc.addEventListener('icecandidate', onCand);
@@ -192,45 +211,40 @@ class OpenAIWebRTCClient {
     }
   }
 
-  async connectWebRTC() {
+  async connectWebRTC({ signal } = {}) {
     console.log('🔌 Establishing WebRTC connection (unified interface)...');
     
-    const iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ];
+    // ----- lifecycle guards -----
+    if (signal?.aborted) throw new Error('aborted');
+    signal?.addEventListener('abort', () => { try { this.closeSafely?.(); } catch {} });
 
+    // ----- PC setup -----
     this.peerConnection = new RTCPeerConnection({
-      iceServers: iceServers,
-      bundlePolicy: 'max-bundle'
+      bundlePolicy: 'max-bundle',
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ],
     });
 
     console.log('📡 RTCPeerConnection created');
 
-    this.peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        console.log('🧊 ICE candidate:', event.candidate.type);
-      } else {
-        console.log('🧊 ICE candidate gathering complete');
-      }
-    };
+        this.peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            console.log('🧊 ICE candidate:', event.candidate.type);
+          } else {
+            console.log('🧊 ICE candidate gathering complete');
+          }
+        };
+        
+        this.peerConnection.onicecandidateerror = (e) => {
+          console.error('❌ ICE candidate error', e);
+        };
 
-    this.peerConnection.oniceconnectionstatechange = () => {
-      if (!this.peerConnection) return;
-      const iceState = this.peerConnection.iceConnectionState;
-      console.log('🧊 ICE connection state changed:', iceState);
-      
-      if (iceState === 'connected') {
-        console.log('✅ ICE connection established');
-      } else if (iceState === 'failed') {
-        console.error('❌ ICE connection failed');
-      } else if (iceState === 'disconnected') {
-        console.warn('⚠️ ICE connection disconnected');
-      } else if (iceState === 'checking') {
-        console.log('🔄 ICE connection checking...');
-      } else if (iceState === 'completed') {
-        console.log('✅ ICE connection completed');
-      }
-    };
+    this.peerConnection.oniceconnectionstatechange = () =>
+      console.log('🧊 pc.iceConnectionState =', this.peerConnection?.iceConnectionState);
+    this.peerConnection.onicegatheringstatechange = () =>
+      console.log('🧊 pc.iceGatheringState =', this.peerConnection?.iceGatheringState);
 
     this.peerConnection.ontrack = (event) => {
       // Only handle audio tracks
@@ -242,51 +256,33 @@ class OpenAIWebRTCClient {
       }
     };
 
+    // Helpful logs
     this.peerConnection.onconnectionstatechange = () => {
-      if (!this.peerConnection) return;                 // ← guard
-      const state = this.peerConnection.connectionState;
-      const iceState = this.peerConnection.iceConnectionState;
-      const gatheringState = this.peerConnection.iceGatheringState;
-      
-      console.log('🔌 Connection state:', state);
-      console.log('🧊 ICE connection state:', iceState);
-      console.log('🧊 ICE gathering state:', gatheringState);
-      
-      if (state === 'connected') {
-        console.log('✅ WebRTC connected!');
-        this.onConnected && this.onConnected();
-      } else if (state === 'failed') {
-        console.error('❌ WebRTC connection failed');
-        console.error('🔍 Final ICE connection state:', iceState);
-        console.error('🔍 Final ICE gathering state:', gatheringState);
-        this.onError && this.onError(new Error('WebRTC connection failed'));
-      } else if (state === 'disconnected') {
-        console.warn('⚠️ WebRTC disconnected');
-      } else if (state === 'connecting') {
-        console.log('🔄 WebRTC connecting...');
-      } else if (state === 'new') {
-        console.log('🆕 WebRTC connection new');
+      const st = this.peerConnection?.connectionState;
+      console.log('🔗 pc.connectionState =', st);
+      if (st === 'connected' && !this.isConnected) {
+        console.log('✅ WebRTC connection established (optimistic stream start)');
+        this.isConnected = true;
+        this.onConnected?.();           // flush your prebuffer here
       }
     };
 
-    // Set up data channel for events (BEFORE createOffer)
-    // CRITICAL: Use negotiated: true, id: 0 for OpenAI compatibility
+    // ----- Data channel (pre-negotiated) before offer -----
+    // This ensures an m=application webrtc-datachannel in the OFFER automatically.
     this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
-      ordered: true,
       negotiated: true,
-      id: 0
+      id: 0,
+      ordered: true,
     });
 
     this.dataChannel.onopen = () => {
-      console.log('✅ Data channel opened (oai-events)');
-      console.log('📡 Data channel ready state:', this.dataChannel.readyState);
-      if (this.onDataChannelOpen) this.onDataChannelOpen();
+      console.log('📡 Data channel open (oai-events)');
+      // You can also mark isConnected here if you prefer waiting for DC:
+      // if (!this.isConnected) { this.isConnected = true; this.onConnected?.(); }
+      this.onDataChannelOpen?.();
     };
-
-    this.dataChannel.onclose = () => {
-      console.log('⚠️ Data channel closed');
-      console.log('📡 Data channel ready state:', this.dataChannel.readyState);
-    };
+    this.dataChannel.onclose = () => console.log('📡 Data channel closed');
+    this.dataChannel.onerror = (e) => console.error('📡 Data channel error', e);
 
     this.dataChannel.onmessage = (event) => {
       try {
@@ -307,6 +303,9 @@ class OpenAIWebRTCClient {
     // Log data channel state immediately after creation
     console.log('📡 Data channel created, ready state:', this.dataChannel.readyState);
 
+    // ----- Ensure audio m-line exists -----
+    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+    
     // Create audio source and track for sending audio to OpenAI
     this.audioSource = new RTCAudioSource();
     this.audioTrack = this.audioSource.createTrack();
@@ -315,74 +314,144 @@ class OpenAIWebRTCClient {
     this.peerConnection.addTrack(this.audioTrack);
     console.log('🎤 Added audio track to WebRTC connection');
 
-    // 1) Create offer with explicit audio configuration
-    console.log('📤 Creating SDP offer...');
-    const offerStartTime = Date.now();
-    const offer = await this.peerConnection.createOffer({ 
-      offerToReceiveAudio: true, 
-      offerToReceiveVideo: false 
-    });
-    console.log('📤 SDP offer created in', Date.now() - offerStartTime, 'ms');
-    console.log('📤 SDP offer type:', offer.type);
-    console.log('📤 SDP offer length:', offer.sdp.length);
+    // ----- Build OFFER with Opus preferred BEFORE setLocalDescription -----
+    const preferOpus = (sdp) => {
+      const lines = sdp.split('\n');
+      const mIdx = lines.findIndex(l => l.startsWith('m=audio'));
+      if (mIdx === -1) return sdp;
+      const opus = lines.find(l => /^a=rtpmap:\d+\s+opus\/48000/i.test(l));
+      if (!opus) return sdp;
+      const pt = opus.match(/^a=rtpmap:(\d+)/i)?.[1];
+      if (!pt) return sdp;
+      const parts = lines[mIdx].trim().split(' ');
+      const head = parts.slice(0, 3);
+      const payloads = parts.slice(3).filter(p => p !== pt);
+      lines[mIdx] = [...head, pt, ...payloads].join(' ');
+      return lines.join('\n');
+    };
+
+    console.log('📤 Creating SDP offer…');
+    let offer = await this.peerConnection.createOffer();
+    offer = { type: 'offer', sdp: preferOpus(offer.sdp) };
+    console.log('📤 SDP offer created');
     
     await this.peerConnection.setLocalDescription(offer);
-    console.log('📤 Local description set');
 
-    // 1.5) Munge SDP to Opus-only for better compatibility
-    let sdp = this.peerConnection.localDescription.sdp;
-    
-    // Keep only opus (payload 111); strip others from the m=audio line
-    sdp = sdp.replace(
-      /(m=audio \d+ UDP\/TLS\/RTP\/SAVPF) .*\r\n/,
-      (_, head) => `${head} 111\r\n`
-    );
-
-    // Remove fmtp/rtpmap lines for removed codecs
-    sdp = sdp
-      .split('\r\n')
-      .filter(line => !/^a=(rtpmap|fmtp):(?!(111)\b)/.test(line))
-      .join('\r\n');
-
-    // Patch E: Remove ALL "a=ice-options:*" lines anywhere in the SDP
-    sdp = sdp.replace(/^a=ice-options:.*\r?\n/gm, '');
-    
-    // Sanity check for remaining trickle lines
-    if (/\na=ice-options:/m.test(sdp)) {
-      console.warn('⚠️ SDP still contains ice-options after munging');
+    // ----- Complete ICE (non-trickle) with small timeout -----
+    if (this.peerConnection.iceGatheringState !== 'complete') {
+      await new Promise((resolve) => {
+        const to = setTimeout(resolve, 2500);
+        const onchg = () => {
+          if (this.peerConnection?.iceGatheringState === 'complete') {
+            this.peerConnection.removeEventListener('icegatheringstatechange', onchg);
+            clearTimeout(to);
+            resolve();
+          }
+        };
+        this.peerConnection.addEventListener('icegatheringstatechange', onchg);
+      });
     }
 
-    // Patch F: Make Opus explicitly mono (minimal parameters)
-    sdp = sdp.replace(
-      /a=fmtp:111 minptime=10;useinbandfec=1/g,
-      'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0'
-    );
+    const offerSdp = this.peerConnection.localDescription.sdp;
+    console.log('📤 Sending SDP offer (len=%d)…', offerSdp?.length ?? -1);
+
+    // ----- POST offer to OpenAI (your existing HTTP function) -----
+    const answerSdp = await this.postOfferToOpenAI(offerSdp); // implement/keep your version
+    if (!answerSdp) throw new Error('Empty SDP answer from OpenAI');
+
+    console.log('📥 Received SDP answer (len=%d)', answerSdp.length);
+
+    // ----- Set ANSWER -----
+    await this.peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+  }
+
+  async postOfferToOpenAI(offerSdp) {
+    // Create ephemeral session first
+    const sessionResponse = await this.createEphemeralSession();
+    const clientSecret = sessionResponse.client_secret.value;
     
-    // Add ptime for better compatibility
-    if (!sdp.includes('a=ptime:')) {
-      sdp = sdp.replace(/(a=fmtp:111[^\r\n]*)/, '$1\r\na=ptime:20');
+    console.log('🔑 Ephemeral session created');
+    
+    // POST SDP to OpenAI
+    const base = 'https://api.openai.com/v1/realtime/calls';
+    const FormData = require('form-data');
+    const fd = new FormData();
+    fd.append('sdp', offerSdp);
+    
+    const sessionConfig = {
+      type: 'realtime',
+      model: this.model,
+      audio: { output: { voice: 'marin' } }
+    };
+    fd.append('session', JSON.stringify(sessionConfig));
+
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${clientSecret}`,
+        ...fd.getHeaders()
+      },
+      body: fd
+    });
+
+    if (!res.ok) {
+      const bodyText = await res.text();
+      throw new Error(`Realtime calls failed ${res.status}: ${bodyText}`);
+    }
+    
+    return await res.text();
+  }
+
+  closeSafely() {
+    try { this.dataChannel?.close(); } catch {}
+    try {
+      this.peerConnection?.getSenders()?.forEach(s => { try { s.track?.stop(); } catch {} });
+    } catch {}
+    try { this.peerConnection?.close(); } catch {}
+    this.dataChannel = null;
+    this.peerConnection = null;
+    this.isConnected = false;
+  }
+
+  sendAudio(base64Audio) {
+    if (!this.audioSource || !this.audioTrack) {
+      console.log('⚠️ Audio source not ready');
+      return;
     }
 
-    await this.peerConnection.setLocalDescription({ type: 'offer', sdp });
-    console.log('🎵 SDP munged to Opus-only for better compatibility');
+    try {
+      // 16-bit PCM mono @16kHz
+      const buf = Buffer.from(base64Audio, 'base64');
+      const in16 = new Int16Array(buf.buffer, buf.byteOffset, buf.length / 2);
 
-    // Patch D: Wait for ICE gathering to complete (or end-of-candidates)
-    const gatherState = await waitForIceGatheringComplete(this.peerConnection, 5000);
-    console.log(`🔍 ICE gathering final state: ${gatherState}`);
+      // prepend any remainder from last call
+      let samples;
+      if (this._pcmRemainder.length) {
+        samples = new Int16Array(this._pcmRemainder.length + in16.length);
+        samples.set(this._pcmRemainder, 0);
+    
+    console.log('🔍 Connection state after ICE gathering:', this.peerConnection.connectionState);
+    console.log('🔍 ICE connection state after gathering:', this.peerConnection.iceConnectionState);
 
-    const localSdp = this.peerConnection.localDescription?.sdp || '';
-    if (!localSdp || !/m=audio/.test(localSdp)) {
+    // CRITICAL: Guard against null localDescription
+    if (!this.peerConnection || !this.peerConnection.localDescription) {
+      throw new Error('Peer connection not ready: localDescription is null');
+    }
+    
+    console.log('🔍 Peer connection state before SDP access:', this.peerConnection.connectionState);
+    console.log('🔍 ICE connection state:', this.peerConnection.iceConnectionState);
+    console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
+    
+    const sdpToPost = this.peerConnection.localDescription.sdp;
+    if (!sdpToPost || !/m=audio/.test(sdpToPost)) {
       throw new Error('Local SDP missing or has no audio m-line');
     }
 
     // Preflight validation to prevent mystery 400s
-    if (!/m=audio /.test(localSdp)) throw new Error('Local SDP missing audio m= line');
-    if (/a=ice-options:/.test(localSdp)) console.warn('⚠️ ice-options line still present');
-    if (!/a=rtpmap:111 opus\/48000\/2/.test(localSdp)) console.warn('⚠️ opus rtpmap missing');
-    if (!/a=fmtp:111/.test(localSdp)) console.warn('⚠️ opus fmtp missing');
-
-    // Final SDP preparation for maximum compatibility
-    let sdpToPost = localSdp;
+    if (!/m=audio /.test(sdpToPost)) throw new Error('Local SDP missing audio m= line');
+    if (/a=ice-options:/.test(sdpToPost)) console.warn('⚠️ ice-options line still present');
+    if (!/a=rtpmap:111 opus\/48000\/2/.test(sdpToPost)) console.warn('⚠️ opus rtpmap missing');
+    if (!/a=fmtp:111/.test(sdpToPost)) console.warn('⚠️ opus fmtp missing');
     
     // 1. Insert end-of-candidates INSIDE the audio section (not at the end)
     sdpToPost = insertEndOfCandidatesInAudio(sdpToPost);
@@ -394,7 +463,21 @@ class OpenAIWebRTCClient {
       sdpToPost += '\r\n';
     }
     
-    // 3. Add CBR=0 for mid-call bitrate adaptation (some stacks like it)
+    // 3. CRITICAL: Guarantee the datachannel m=application section exists
+    if (!/m=application.*webrtc-datachannel/.test(sdpToPost)) {
+      console.log('⚠️ No datachannel in SDP — injecting manually');
+      const injectBlock = `
+m=application 9 UDP/DTLS/SCTP webrtc-datachannel
+c=IN IP4 0.0.0.0
+a=setup:actpass
+a=mid:data
+a=sctp-port:5000
+a=max-message-size:262144
+`;
+      sdpToPost += injectBlock;
+    }
+    
+    // 4. Add CBR=0 for mid-call bitrate adaptation (some stacks like it)
     sdpToPost = sdpToPost.replace(/a=fmtp:111 [^\r\n]*/g,
       'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000;cbr=0');
 
