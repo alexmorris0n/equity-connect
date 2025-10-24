@@ -200,26 +200,19 @@ class OpenAIWebRTCClient {
       this.isClosing = false;
 
     // ----- PC setup -----
-    // Generate TURN credentials for Cloudflare relay
-    const iceServers = await this.generateTurnCredentials();
-
+    // DigitalOcean allows direct WebRTC connections - no TURN needed
     this.peerConnection = new RTCPeerConnection({
       bundlePolicy: 'max-bundle',
-      iceServers: iceServers,
-      iceTransportPolicy: 'relay' // Force through TURN relay
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
     });
 
     console.log('📡 RTCPeerConnection created');
 
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        // ✅ DEFENSIVE: Reject UDP relay candidates
-        const candidate = event.candidate.candidate || '';
-        if (/ relay /i.test(candidate) && / udp /i.test(candidate)) {
-          console.warn('🚫 Dropping relay-UDP candidate:', candidate);
-          return; // do not add it
-        }
-        
         console.log('🧊 ICE candidate:', event.candidate.type, event.candidate.protocol, event.candidate.address);
         
         // Log specific network details for debugging
@@ -228,9 +221,6 @@ class OpenAIWebRTCClient {
         } else if (event.candidate.type === 'relay') {
           const transport = event.candidate.protocol === 'tcp' ? 'TCP' : 'UDP';
           console.log(`🔄 TURN server response received - relay IP: ${event.candidate.address} (${transport})`);
-          if (event.candidate.protocol === 'tcp') {
-            console.log('✅ TCP TURN relay active - should prevent UDP blocking issues');
-          }
         } else if (event.candidate.type === 'host') {
           console.log('🏠 Local host candidate - IP:', event.candidate.address);
         }
