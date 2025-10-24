@@ -209,6 +209,26 @@ class OpenAIWebRTCClient {
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         console.log('🧊 ICE candidate:', event.candidate.type);
+      } else {
+        console.log('🧊 ICE candidate gathering complete');
+      }
+    };
+
+    this.peerConnection.oniceconnectionstatechange = () => {
+      if (!this.peerConnection) return;
+      const iceState = this.peerConnection.iceConnectionState;
+      console.log('🧊 ICE connection state changed:', iceState);
+      
+      if (iceState === 'connected') {
+        console.log('✅ ICE connection established');
+      } else if (iceState === 'failed') {
+        console.error('❌ ICE connection failed');
+      } else if (iceState === 'disconnected') {
+        console.warn('⚠️ ICE connection disconnected');
+      } else if (iceState === 'checking') {
+        console.log('🔄 ICE connection checking...');
+      } else if (iceState === 'completed') {
+        console.log('✅ ICE connection completed');
       }
     };
 
@@ -225,15 +245,27 @@ class OpenAIWebRTCClient {
     this.peerConnection.onconnectionstatechange = () => {
       if (!this.peerConnection) return;                 // ← guard
       const state = this.peerConnection.connectionState;
+      const iceState = this.peerConnection.iceConnectionState;
+      const gatheringState = this.peerConnection.iceGatheringState;
+      
       console.log('🔌 Connection state:', state);
+      console.log('🧊 ICE connection state:', iceState);
+      console.log('🧊 ICE gathering state:', gatheringState);
+      
       if (state === 'connected') {
         console.log('✅ WebRTC connected!');
         this.onConnected && this.onConnected();
       } else if (state === 'failed') {
         console.error('❌ WebRTC connection failed');
+        console.error('🔍 Final ICE connection state:', iceState);
+        console.error('🔍 Final ICE gathering state:', gatheringState);
         this.onError && this.onError(new Error('WebRTC connection failed'));
       } else if (state === 'disconnected') {
         console.warn('⚠️ WebRTC disconnected');
+      } else if (state === 'connecting') {
+        console.log('🔄 WebRTC connecting...');
+      } else if (state === 'new') {
+        console.log('🆕 WebRTC connection new');
       }
     };
 
@@ -247,17 +279,20 @@ class OpenAIWebRTCClient {
 
     this.dataChannel.onopen = () => {
       console.log('✅ Data channel opened (oai-events)');
+      console.log('📡 Data channel ready state:', this.dataChannel.readyState);
       if (this.onDataChannelOpen) this.onDataChannelOpen();
     };
 
     this.dataChannel.onclose = () => {
       console.log('⚠️ Data channel closed');
+      console.log('📡 Data channel ready state:', this.dataChannel.readyState);
     };
 
     this.dataChannel.onmessage = (event) => {
       try {
         const dataStr = typeof event.data === 'string' ? event.data : event.data.toString();
         const message = JSON.parse(dataStr);
+        console.log('📨 Data channel message received:', message.type || 'unknown');
         if (this.onMessage) this.onMessage(message);
       } catch (err) {
         console.error('❌ Failed to parse data channel message:', err);
@@ -266,7 +301,11 @@ class OpenAIWebRTCClient {
 
     this.dataChannel.onerror = (error) => {
       console.error('❌ Data channel error:', error);
+      console.log('📡 Data channel ready state:', this.dataChannel.readyState);
     };
+
+    // Log data channel state immediately after creation
+    console.log('📡 Data channel created, ready state:', this.dataChannel.readyState);
 
     // Create audio source and track for sending audio to OpenAI
     this.audioSource = new RTCAudioSource();
@@ -278,11 +317,17 @@ class OpenAIWebRTCClient {
 
     // 1) Create offer with explicit audio configuration
     console.log('📤 Creating SDP offer...');
+    const offerStartTime = Date.now();
     const offer = await this.peerConnection.createOffer({ 
       offerToReceiveAudio: true, 
       offerToReceiveVideo: false 
     });
+    console.log('📤 SDP offer created in', Date.now() - offerStartTime, 'ms');
+    console.log('📤 SDP offer type:', offer.type);
+    console.log('📤 SDP offer length:', offer.sdp.length);
+    
     await this.peerConnection.setLocalDescription(offer);
+    console.log('📤 Local description set');
 
     // 1.5) Munge SDP to Opus-only for better compatibility
     let sdp = this.peerConnection.localDescription.sdp;
@@ -363,13 +408,19 @@ class OpenAIWebRTCClient {
     if (/^"/.test(sdpToPost) || sdpToPost.includes('\\n')) console.warn('⚠️ SDP looks JSON-escaped');
 
     // 5. CRITICAL: Validate and inject data channel section if missing
-    if (!/m=application.*webrtc-datachannel/.test(sdpToPost)) {
+    console.log('🔍 Validating SDP for data channel section...');
+    const hasDataChannel = /m=application.*webrtc-datachannel/.test(sdpToPost);
+    console.log('🔍 Data channel section present:', hasDataChannel);
+    
+    if (!hasDataChannel) {
       console.log('⚠️ No datachannel in SDP — injecting manually.');
       
       // Extract ICE credentials from existing SDP
       const iceUfrag = sdpToPost.match(/a=ice-ufrag:([^\r\n]+)/)?.[1] || 'uFrag';
       const icePwd = sdpToPost.match(/a=ice-pwd:([^\r\n]+)/)?.[1] || 'pw';
       const fingerprint = sdpToPost.match(/a=fingerprint:sha-256 ([^\r\n]+)/)?.[1] || 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99';
+      
+      console.log('🔍 Extracted ICE credentials - ufrag:', iceUfrag, 'pwd:', icePwd ? 'present' : 'missing');
       
       // Inject data channel section
       const dataChannelSection = `
@@ -454,22 +505,32 @@ a=max-message-size:262144`;
     };
 
     console.log('🔄 Trying SDP exchange with unified interface...');
+    const sdpExchangeStartTime = Date.now();
     const answerSdp = await postSdpOnce();
-    console.log('✅ SDP exchange successful with unified interface');
+    const sdpExchangeTime = Date.now() - sdpExchangeStartTime;
+    console.log('✅ SDP exchange successful with unified interface in', sdpExchangeTime, 'ms');
 
     // 4) Set remote description
     console.log('✅ Received SDP answer from OpenAI, length:', answerSdp.length);
+    console.log('🔍 Answer SDP preview:', answerSdp.substring(0, 100) + '...');
     
+    const remoteDescStartTime = Date.now();
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription({
         type: 'answer',
         sdp: answerSdp
       })
     );
+    const remoteDescTime = Date.now() - remoteDescStartTime;
+    console.log('✅ Remote description set in', remoteDescTime, 'ms');
 
     // Data channel is already created before the offer
 
     console.log('✅ WebRTC connection established - waiting for connection state...');
+    console.log('🔍 Current connection state:', this.peerConnection.connectionState);
+    console.log('🔍 Current ICE connection state:', this.peerConnection.iceConnectionState);
+    console.log('🔍 Current ICE gathering state:', this.peerConnection.iceGatheringState);
+    console.log('🔍 Data channel ready state:', this.dataChannel.readyState);
   }
 
   sendAudio(base64Audio) {
