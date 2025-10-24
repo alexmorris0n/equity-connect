@@ -98,10 +98,10 @@ class OpenAIWebRTCClient {
     const cfStunUrl = process.env.CF_STUN_URL;
     
     if (!turnTokenId || !apiToken) {
-      console.warn('⚠️ Cloudflare TURN credentials not configured, using static TCP URLs');
+      console.warn('⚠️ Cloudflare TURN credentials not configured, using static TCP/TLS URLs');
       return [
-        { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
-        { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
+        { urls: 'turns:turn.cloudflare.com:443' },
+        { urls: 'turn:turn.cloudflare.com:443?transport=tcp' }
       ];
     }
     
@@ -125,43 +125,53 @@ class OpenAIWebRTCClient {
       
       // ✅ DEBUG: Log what URLs we're getting from Cloudflare
       console.log('🔍 Raw Cloudflare TURN URLs:', JSON.stringify(data.iceServers, null, 2));
+
+      // ✅ Normalize ALL urls to TCP/TLS and strip UDP variants
+      const toTcpOnly = (u) => {
+        // Convert turns/turn to 443 and force TCP where applicable
+        if (typeof u !== 'string') return u;
+        // Prefer TURNS on 443
+        if (u.startsWith('turn:'))  u = u.replace(/^turn:/, 'turns:');
+        // Normalize port to 443
+        u = u.replace(/:(3478|5349)(\b|$)/, ':443');
+        // Ensure ?transport=tcp present for non-TLS turn endpoints (defensive)
+        if (u.startsWith('turn:') && !/transport=tcp/.test(u)) u += (u.includes('?') ? '&' : '?') + 'transport=tcp';
+        return u;
+      };
+
+      const tcpIceServers = data.iceServers
+        .map((server) => {
+          if (!server.urls) return server;
+          if (Array.isArray(server.urls)) {
+            const urls = server.urls
+              .map(toTcpOnly)
+              // Drop any lingering UDP candidates (defensive)
+              .filter((u) => !/transport=udp/i.test(u));
+            return { ...server, urls };
+          } else if (typeof server.urls === 'string') {
+            const urls = toTcpOnly(server.urls);
+            if (/transport=udp/i.test(urls)) return null;
+            return { ...server, urls };
+          }
+          return server;
+        })
+        .filter(Boolean);
+
+      // Also return a tiny static fallback, TCP/TLS only
+      const finalServers = tcpIceServers.length ? tcpIceServers : [
+        { urls: 'turns:turn.cloudflare.com:443' },
+        { urls: 'turn:turn.cloudflare.com:443?transport=tcp' }
+      ];
       
-      // ✅ FORCE TCP TRANSPORT for all TURN servers
-      const tcpIceServers = data.iceServers.map(server => {
-        if (server.urls && typeof server.urls === 'string' && server.urls.includes('turn:')) {
-          // Force TCP transport for TURN servers
-          const tcpUrl = server.urls.includes('?transport=tcp') 
-            ? server.urls 
-            : server.urls + '?transport=tcp';
-          console.log('🔄 Forcing TURN to TCP:', tcpUrl);
-          return { ...server, urls: tcpUrl };
-        }
-        return server;
-      });
-      
-      console.log('🔍 Final ICE servers (TCP forced):', JSON.stringify(tcpIceServers, null, 2));
-      
-      // ✅ AGGRESSIVE FALLBACK: If we still have UDP URLs, use static TCP
-      const hasUdpUrls = tcpIceServers.some(server => 
-        server.urls && typeof server.urls === 'string' && 
-        server.urls.includes('turn:') && !server.urls.includes('?transport=tcp')
-      );
-      
-      if (hasUdpUrls) {
-        console.warn('⚠️ Still getting UDP URLs from Cloudflare API - using static TCP fallback');
-        return [
-          { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
-          { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
-        ];
-      }
-      
-      return tcpIceServers;
+      console.log('🔍 Final ICE servers (TCP/TLS only):', JSON.stringify(finalServers, null, 2));
+      return finalServers;
     } catch (err) {
       console.error('❌ Failed to generate TURN credentials:', err.message);
-      console.warn('⚠️ Falling back to static Cloudflare TCP URLs');
+      console.warn('⚠️ Falling back to static Cloudflare TCP/TLS URLs');
+      // ⚠️ Fallback: TCP/TLS only (no STUN/UDP)
       return [
-        { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
-        { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
+        { urls: 'turns:turn.cloudflare.com:443' },
+        { urls: 'turn:turn.cloudflare.com:443?transport=tcp' }
       ];
     }
   }
