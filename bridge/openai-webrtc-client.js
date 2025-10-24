@@ -88,73 +88,7 @@ class OpenAIWebRTCClient {
     }
   }
 
-  /**
-   * Generate Cloudflare TURN credentials
-   */
-  async generateTurnCredentials() {
-    const turnTokenId = process.env.CLOUDFLARE_TURN_TOKEN_ID;
-    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-    const cfTurnUrl = process.env.CF_TURN_URL;
-    const cfStunUrl = process.env.CF_STUN_URL;
-    
-    if (!turnTokenId || !apiToken) {
-      console.warn('⚠️ Cloudflare TURN credentials not configured, using static TCP/TLS TURN-only URLs');
-      return [
-        { urls: ['turns:turn.cloudflare.com:443'] },
-        { urls: ['turn:turn.cloudflare.com:443?transport=tcp'] }
-      ];
-    }
-    
-    try {
-      console.log('🔄 Generating Cloudflare TURN credentials...');
-      const response = await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + turnTokenId + '/credentials/generate-ice-servers', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ ttl: 3600 }) // 1 hour TTL
-      });
-      
-      if (!response.ok) {
-        throw new Error(`TURN credentials failed: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ Cloudflare TURN credentials generated');
-      
-      // ✅ DEBUG: Log what URLs we're getting from Cloudflare
-      console.log('🔍 Raw Cloudflare TURN URLs:', JSON.stringify(data.iceServers, null, 2));
-
-      // ✅ STRICT TCP/TLS-ONLY TURN SERVERS
-      // Extract credentials from Cloudflare response
-      const username = data.iceServers.find(s => s.username)?.username || data.username;
-      const credential = data.iceServers.find(s => s.credential)?.credential || data.credential;
-
-      // Build a strict TCP/TLS-only set. No STUN. No 80. No UDP.
-      const tcpOnlyUrls = [
-        'turns:turn.cloudflare.com:443',                  // TLS over TCP
-        'turn:turn.cloudflare.com:443?transport=tcp'      // Plain TCP
-      ];
-
-      const tcpIceServers = tcpOnlyUrls.map(u => ({
-        urls: [u],
-        ...(username ? { username } : {}),
-        ...(credential ? { credential } : {})
-      }));
-
-      console.log('🔍 Final ICE servers (STRICT TCP/TLS):', JSON.stringify(tcpIceServers, null, 2));
-      return tcpIceServers;
-    } catch (err) {
-      console.error('❌ Failed to generate TURN credentials:', err.message);
-      console.warn('⚠️ Falling back to static Cloudflare TCP/TLS URLs (TURN-only)');
-      // ⚠️ Fallback: TCP/TLS TURN only (no STUN/UDP)
-      return [
-        { urls: ['turns:turn.cloudflare.com:443'] },
-        { urls: ['turn:turn.cloudflare.com:443?transport=tcp'] }
-      ];
-    }
-  }
+  // DigitalOcean allows direct WebRTC connections - no TURN needed
 
   async connectWebRTC({ signal } = {}) {
     // ✅ Prevent duplicate connections
@@ -242,7 +176,7 @@ class OpenAIWebRTCClient {
         console.warn('⚠️ ICE connection disconnected - attempting recovery...');
       } else if (state === 'failed') {
         console.error('❌ ICE connection failed - network connectivity issue');
-        console.error('❌ ICE connection failed — likely proxy/firewall blocking TCP 443 to turn.cloudflare.com');
+        console.error('❌ ICE connection failed - check network connectivity');
         console.error('❌ Consider using TURN relay mode');
       } else if (state === 'connected') {
         console.log('✅ ICE connection restored');
@@ -277,7 +211,7 @@ class OpenAIWebRTCClient {
       if (st === 'failed') {
         console.error('❌ WebRTC connection failed - check network connectivity');
         console.error('❌ This is likely a firewall or NAT issue');
-        console.error('❌ ICE connection failed — likely proxy/firewall blocking TCP 443 to turn.cloudflare.com');
+        console.error('❌ ICE connection failed - check network connectivity');
       } else if (st === 'connected' && !this.isConnected) {
         console.log('✅ WebRTC connection established (optimistic stream start)');
         this.isConnected = true;
@@ -297,14 +231,9 @@ class OpenAIWebRTCClient {
           console.warn('⚠️ Consider implementing connection recovery');
         }
         
-        // ✅ TURN Keepalive: Send periodic stats to maintain TCP relay
+        // Connection health monitoring (no TURN keepalive needed on DigitalOcean)
         if (connState === 'connected' && iceState === 'connected') {
-          try {
-            this.peerConnection.getStats();
-            console.log('🔄 TURN keepalive sent');
-          } catch (err) {
-            // Silent fail for keepalive
-          }
+          // DigitalOcean allows direct connections - no TURN keepalive needed
         }
       }
     }, 5000); // Check every 5 seconds (more frequent for keepalive)
