@@ -2,70 +2,6 @@ const fetch = require('node-fetch');
 const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc');
 const { RTCAudioSource } = nonstandard;
 
-// Patch D: Wait for ICE gathering to complete (or end-of-candidates)
-function waitForIceGatheringComplete(pc, timeoutMs = 5000) {
-  return new Promise((resolve) => {
-    if (!pc) {
-      console.error('❌ Peer connection is null during ICE gathering');
-      return resolve('null');
-    }
-    
-    if (pc.iceGatheringState === 'complete') return resolve('complete');
-
-    let done = false;
-    const finish = (label) => {
-      if (done) return;
-      done = true;
-      if (pc) {
-        pc.removeEventListener('icegatheringstatechange', onState);
-        pc.removeEventListener('icecandidate', onCand);
-      }
-      resolve(label || (pc ? pc.iceGatheringState : 'null'));
-    };
-    const onState = () => {
-      if (!pc) {
-        console.error('❌ Peer connection became null during ICE gathering');
-        return finish('null');
-      }
-      if (pc.iceGatheringState === 'complete') finish('complete');
-    };
-    const onCand = (e) => { 
-      if (!pc) {
-        console.error('❌ Peer connection became null during ICE candidate');
-        return finish('null');
-      }
-      if (!e.candidate) finish('end-of-candidates'); 
-    };
-
-    pc.addEventListener('icegatheringstatechange', onState);
-    pc.addEventListener('icecandidate', onCand);
-    setTimeout(() => finish('timeout'), timeoutMs);
-  });
-}
-
-// Fix 1: Put a=end-of-candidates inside the audio m-section
-function insertEndOfCandidatesInAudio(sdp) {
-  // Find the audio m-section [m=audio ... up to next m= or end]
-  return sdp.replace(/(m=audio[\s\S]*?)(\r?\n)(?=m=|$)/, (full, audioBlock, tailNewline) => {
-    // If audio block already has end-of-candidates, keep as is
-    if (/\r?\na=end-of-candidates(?:\r?\n|$)/m.test(audioBlock)) return full;
-    // Append end-of-candidates at the end of the audio block
-    const fixed = audioBlock.replace(/\s*$/, '') + '\r\na=end-of-candidates';
-    return fixed + tailNewline;
-  });
-}
-
-// Fix 2: Normalize CRLF and guarantee final CRLF
-function normalizeSdpCrLf(sdp) {
-  // Convert to CRLF
-  let out = sdp.replace(/\r?\n/g, '\r\n');
-  // Collapse accidental double blank lines that can appear during munging
-  out = out.replace(/(\r\n){3,}/g, '\r\n\r\n');
-  // Ensure SDP ends with a single CRLF
-  if (!out.endsWith('\r\n')) out += '\r\n';
-  return out;
-}
-
 class OpenAIWebRTCClient {
   constructor(apiKey, model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime') {
     this.apiKey = apiKey;
@@ -76,6 +12,7 @@ class OpenAIWebRTCClient {
     this.sessionConfig = null;
     this.audioSource = null;
     this.audioTrack = null;
+    this.isConnected = false;
     
     this.onMessage = null;
     this.onAudioTrack = null;
@@ -88,7 +25,7 @@ class OpenAIWebRTCClient {
 
   async createEphemeralSession(sessionConfig) {
     try {
-    console.log('📞 Creating OpenAI ephemeral session...');
+      console.log('📞 Creating OpenAI ephemeral session...');
       this.sessionCreatedAt = Date.now(); // Track when session was created
     
       const url = 'https://api.openai.com/v1/realtime/client_secrets';
@@ -200,7 +137,7 @@ class OpenAIWebRTCClient {
       if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
       console.log('🔍 Session bound model:', this.model);
     
-    return {
+      return {
         clientSecret: secret,
         sessionId: sessionId,
         expiresAt: expiresAt
@@ -229,17 +166,17 @@ class OpenAIWebRTCClient {
 
     console.log('📡 RTCPeerConnection created');
 
-        this.peerConnection.onicecandidate = (event) => {
-          if (event.candidate) {
-            console.log('🧊 ICE candidate:', event.candidate.type);
-          } else {
-            console.log('🧊 ICE candidate gathering complete');
-          }
-        };
-        
-        this.peerConnection.onicecandidateerror = (e) => {
-          console.error('❌ ICE candidate error', e);
-        };
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('🧊 ICE candidate:', event.candidate.type);
+      } else {
+        console.log('🧊 ICE candidate gathering complete');
+      }
+    };
+    
+    this.peerConnection.onicecandidateerror = (e) => {
+      console.error('❌ ICE candidate error', e);
+    };
 
     this.peerConnection.oniceconnectionstatechange = () =>
       console.log('🧊 pc.iceConnectionState =', this.peerConnection?.iceConnectionState);
@@ -249,9 +186,9 @@ class OpenAIWebRTCClient {
     this.peerConnection.ontrack = (event) => {
       // Only handle audio tracks
       if (event.track.kind === 'audio') {
-      console.log('🎵 Received audio track from OpenAI');
-      if (this.onAudioTrack) {
-        this.onAudioTrack(event.track, event.streams[0]);
+        console.log('🎵 Received audio track from OpenAI');
+        if (this.onAudioTrack) {
+          this.onAudioTrack(event.track, event.streams[0]);
         }
       }
     };
@@ -281,7 +218,10 @@ class OpenAIWebRTCClient {
       // if (!this.isConnected) { this.isConnected = true; this.onConnected?.(); }
       this.onDataChannelOpen?.();
     };
-    this.dataChannel.onclose = () => console.log('📡 Data channel closed');
+    this.dataChannel.onclose = () => {
+      console.log('📡 Data channel closed');
+      try { console.log('📡 Data channel ready state:', this.dataChannel?.readyState); } catch {}
+    };
     this.dataChannel.onerror = (e) => console.error('📡 Data channel error', e);
 
     this.dataChannel.onmessage = (event) => {
@@ -295,22 +235,14 @@ class OpenAIWebRTCClient {
       }
     };
 
-    this.dataChannel.onerror = (error) => {
-      console.error('❌ Data channel error:', error);
-      console.log('📡 Data channel ready state:', this.dataChannel.readyState);
-    };
-
     // Log data channel state immediately after creation
     console.log('📡 Data channel created, ready state:', this.dataChannel.readyState);
 
-    // ----- Ensure audio m-line exists -----
-    this.peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
-    
-    // Create audio source and track for sending audio to OpenAI
+    // ----- Create audio source and track for sending audio to OpenAI -----
     this.audioSource = new RTCAudioSource();
     this.audioTrack = this.audioSource.createTrack();
     
-    // Add the audio track to the peer connection (sendrecv for bidirectional)
+    // Add the audio track to the peer connection (this creates the audio m-line)
     this.peerConnection.addTrack(this.audioTrack);
     console.log('🎤 Added audio track to WebRTC connection');
 
@@ -336,6 +268,11 @@ class OpenAIWebRTCClient {
     console.log('📤 SDP offer created');
     
     await this.peerConnection.setLocalDescription(offer);
+
+    // Guard against null localDescription after teardown
+    if (!this.peerConnection || !this.peerConnection.localDescription) {
+      throw new Error('Peer connection not ready: localDescription is null');
+    }
 
     // ----- Complete ICE (non-trickle) with small timeout -----
     if (this.peerConnection.iceGatheringState !== 'complete') {
@@ -367,8 +304,7 @@ class OpenAIWebRTCClient {
 
   async postOfferToOpenAI(offerSdp) {
     // Create ephemeral session first
-    const sessionResponse = await this.createEphemeralSession();
-    const clientSecret = sessionResponse.client_secret.value;
+    const { clientSecret } = await this.createEphemeralSession();
     
     console.log('🔑 Ephemeral session created');
     
@@ -411,209 +347,6 @@ class OpenAIWebRTCClient {
     this.dataChannel = null;
     this.peerConnection = null;
     this.isConnected = false;
-  }
-
-  sendAudio(base64Audio) {
-    if (!this.audioSource || !this.audioTrack) {
-      console.log('⚠️ Audio source not ready');
-      return;
-    }
-
-    try {
-      // 16-bit PCM mono @16kHz
-      const buf = Buffer.from(base64Audio, 'base64');
-      const in16 = new Int16Array(buf.buffer, buf.byteOffset, buf.length / 2);
-
-      // prepend any remainder from last call
-      let samples;
-      if (this._pcmRemainder.length) {
-        samples = new Int16Array(this._pcmRemainder.length + in16.length);
-        samples.set(this._pcmRemainder, 0);
-    
-    console.log('🔍 Connection state after ICE gathering:', this.peerConnection.connectionState);
-    console.log('🔍 ICE connection state after gathering:', this.peerConnection.iceConnectionState);
-
-    // CRITICAL: Guard against null localDescription
-    if (!this.peerConnection || !this.peerConnection.localDescription) {
-      throw new Error('Peer connection not ready: localDescription is null');
-    }
-    
-    console.log('🔍 Peer connection state before SDP access:', this.peerConnection.connectionState);
-    console.log('🔍 ICE connection state:', this.peerConnection.iceConnectionState);
-    console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
-    
-    const sdpToPost = this.peerConnection.localDescription.sdp;
-    if (!sdpToPost || !/m=audio/.test(sdpToPost)) {
-      throw new Error('Local SDP missing or has no audio m-line');
-    }
-
-    // Preflight validation to prevent mystery 400s
-    if (!/m=audio /.test(sdpToPost)) throw new Error('Local SDP missing audio m= line');
-    if (/a=ice-options:/.test(sdpToPost)) console.warn('⚠️ ice-options line still present');
-    if (!/a=rtpmap:111 opus\/48000\/2/.test(sdpToPost)) console.warn('⚠️ opus rtpmap missing');
-    if (!/a=fmtp:111/.test(sdpToPost)) console.warn('⚠️ opus fmtp missing');
-    
-    // 1. Insert end-of-candidates INSIDE the audio section (not at the end)
-    sdpToPost = insertEndOfCandidatesInAudio(sdpToPost);
-    
-    // 2. Normalize CRLF and guarantee double-CRLF termination
-    sdpToPost = sdpToPost.replace(/\r?\n/g, '\r\n');
-    if (!sdpToPost.endsWith('\r\n\r\n')) {
-      if (!sdpToPost.endsWith('\r\n')) sdpToPost += '\r\n';
-      sdpToPost += '\r\n';
-    }
-    
-    // 3. CRITICAL: Guarantee the datachannel m=application section exists
-    if (!/m=application.*webrtc-datachannel/.test(sdpToPost)) {
-      console.log('⚠️ No datachannel in SDP — injecting manually');
-      const injectBlock = `
-m=application 9 UDP/DTLS/SCTP webrtc-datachannel
-c=IN IP4 0.0.0.0
-a=setup:actpass
-a=mid:data
-a=sctp-port:5000
-a=max-message-size:262144
-`;
-      sdpToPost += injectBlock;
-    }
-    
-    // 4. Add CBR=0 for mid-call bitrate adaptation (some stacks like it)
-    sdpToPost = sdpToPost.replace(/a=fmtp:111 [^\r\n]*/g,
-      'a=fmtp:111 minptime=10;useinbandfec=1;stereo=0;sprop-stereo=0;maxaveragebitrate=20000;cbr=0');
-
-    // 4. Enhanced sanity checks
-    if (!/^v=0\r\n/.test(sdpToPost)) console.warn('⚠️ SDP does not start with v=0');
-    if (/a=ice-options:/m.test(sdpToPost)) console.warn('⚠️ Trickle still present');
-    if (!/m=audio .* 111(?:\r\n|$)/.test(sdpToPost)) console.warn('⚠️ Not Opus-only');
-    if (!/m=application.*webrtc-datachannel/.test(sdpToPost)) console.warn('⚠️ Missing data channel section');
-    if (!sdpToPost.endsWith('\r\n\r\n')) console.warn('⚠️ SDP missing double-CRLF termination');
-    if (sdpToPost.includes('\n') && !sdpToPost.includes('\r\n')) console.warn('⚠️ SDP not normalized to CRLF');
-    if (/^"/.test(sdpToPost) || sdpToPost.includes('\\n')) console.warn('⚠️ SDP looks JSON-escaped');
-
-    // 5. CRITICAL: Validate and inject data channel section if missing
-    console.log('🔍 Validating SDP for data channel section...');
-    const hasDataChannel = /m=application.*webrtc-datachannel/.test(sdpToPost);
-    console.log('🔍 Data channel section present:', hasDataChannel);
-    
-    if (!hasDataChannel) {
-      console.log('⚠️ No datachannel in SDP — injecting manually.');
-      
-      // Extract ICE credentials from existing SDP
-      const iceUfrag = sdpToPost.match(/a=ice-ufrag:([^\r\n]+)/)?.[1] || 'uFrag';
-      const icePwd = sdpToPost.match(/a=ice-pwd:([^\r\n]+)/)?.[1] || 'pw';
-      const fingerprint = sdpToPost.match(/a=fingerprint:sha-256 ([^\r\n]+)/)?.[1] || 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99';
-      
-      console.log('🔍 Extracted ICE credentials - ufrag:', iceUfrag, 'pwd:', icePwd ? 'present' : 'missing');
-      
-      // Inject data channel section
-      const dataChannelSection = `
-m=application 9 UDP/DTLS/SCTP webrtc-datachannel
-c=IN IP4 0.0.0.0
-a=ice-ufrag:${iceUfrag}
-a=ice-pwd:${icePwd}
-a=fingerprint:sha-256 ${fingerprint}
-a=setup:actpass
-a=mid:1
-a=sctp-port:5000
-a=max-message-size:262144`;
-      
-      sdpToPost += dataChannelSection;
-      console.log('✅ Data channel section injected');
-    } else {
-      console.log('✅ Data channel section already present');
-    }
-
-    // 5. Quick verification log (hex tail - should end with 0d0a0d0a)
-    const tail = Buffer.from(sdpToPost.slice(-8), 'utf8');
-    console.log('🔎 SDP tail hex (last 8 chars):', tail.toString('hex'));
-
-    console.log('📤 Sending SDP offer to OpenAI...');
-    console.log('🔍 SDP offer length:', sdpToPost.length);
-    console.log('🔍 SDP offer preview:', sdpToPost.substring(0, 200) + '...');
-    console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
-    console.log('🔍 Model:', this.model);
-    
-    // SDP sanity checks
-    console.log('🔍 SDP type check:', offer.type);
-    console.log('🔍 SDP tail hex (last 12 chars):', Buffer.from(sdpToPost.slice(-12)).toString('hex'));
-    if (!sdpToPost.endsWith('\r\n\r\n')) {
-      console.warn('⚠️ SDP does not end with \\r\\n\\r\\n');
-    }
-    
-    // 3) POST SDP to Realtime (session is now model-bound)
-    const base = 'https://api.openai.com/v1/realtime/calls';
-
-    const postSdpOnce = async () => {
-      const FormData = require('form-data');
-      const fd = new FormData();
-      fd.append('sdp', sdpToPost);
-      
-      // Try minimal session first (common gotcha fix)
-      const sessionConfig = {
-        type: 'realtime',
-        model: this.model,
-        audio: { output: { voice: 'marin' } }
-      };
-      
-      console.log('🔍 Session config:', JSON.stringify(sessionConfig, null, 2));
-      fd.append('session', JSON.stringify(sessionConfig));
-
-      console.log('🔍 URL:', base);
-      console.log('🔍 Auth key prefix:', this.apiKey.substring(0, 6) + '...');
-      console.log('🔍 Model:', this.model);
-      console.log('🔍 Full SDP offer:\n' + sdpToPost);
-
-      const res = await fetch(base, {
-      method: 'POST',
-      headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          ...fd.getHeaders()
-        },
-        body: fd
-      });
-
-      const xrid = res.headers.get('x-request-id');
-      console.log('🔍 Response status:', res.status, 'req:', xrid);
-      
-      if (!res.ok) {
-        const bodyText = await res.text();
-        console.log('🔍 Response body (raw):', bodyText);
-        throw new Error(`Realtime calls failed ${res.status} (req ${xrid})\n${bodyText}`);
-      }
-      
-      const answerSdp = await res.text();
-      console.log('🔍 Answer SDP length:', answerSdp.length);
-      console.log('🔍 Answer SDP preview:', answerSdp.substring(0, 60) + '...');
-      return answerSdp;
-    };
-
-    console.log('🔄 Trying SDP exchange with unified interface...');
-    const sdpExchangeStartTime = Date.now();
-    const answerSdp = await postSdpOnce();
-    const sdpExchangeTime = Date.now() - sdpExchangeStartTime;
-    console.log('✅ SDP exchange successful with unified interface in', sdpExchangeTime, 'ms');
-
-    // 4) Set remote description
-    console.log('✅ Received SDP answer from OpenAI, length:', answerSdp.length);
-    console.log('🔍 Answer SDP preview:', answerSdp.substring(0, 100) + '...');
-    
-    const remoteDescStartTime = Date.now();
-    await this.peerConnection.setRemoteDescription(
-      new RTCSessionDescription({
-        type: 'answer',
-        sdp: answerSdp
-      })
-    );
-    const remoteDescTime = Date.now() - remoteDescStartTime;
-    console.log('✅ Remote description set in', remoteDescTime, 'ms');
-
-    // Data channel is already created before the offer
-
-    console.log('✅ WebRTC connection established - waiting for connection state...');
-    console.log('🔍 Current connection state:', this.peerConnection.connectionState);
-    console.log('🔍 Current ICE connection state:', this.peerConnection.iceConnectionState);
-    console.log('🔍 Current ICE gathering state:', this.peerConnection.iceGatheringState);
-    console.log('🔍 Data channel ready state:', this.dataChannel.readyState);
   }
 
   sendAudio(base64Audio) {
@@ -679,32 +412,6 @@ a=max-message-size:262144`;
     }
   }
 
-  waitForICEGathering() {
-    return new Promise((resolve) => {
-      if (this.peerConnection.iceGatheringState === 'complete') {
-        resolve();
-      } else {
-        const checkState = () => {
-          if (this.peerConnection.iceGatheringState === 'complete') {
-            this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
-            console.log('✅ ICE gathering complete');
-            resolve();
-          }
-        };
-        this.peerConnection.addEventListener('icegatheringstatechange', checkState);
-        
-        // Add timeout to prevent hanging
-        setTimeout(() => {
-          console.log('⚠️ ICE gathering timeout after 5s');
-          console.log('🔍 ICE connection state:', this.peerConnection.iceConnectionState);
-          console.log('🔍 ICE gathering state:', this.peerConnection.iceGatheringState);
-          this.peerConnection.removeEventListener('icegatheringstatechange', checkState);
-          resolve();
-        }, 5000);
-      }
-    });
-  }
-
   sendEvent(event) {
     if (this.dataChannel && this.dataChannel.readyState === 'open') {
       this.dataChannel.send(JSON.stringify(event));
@@ -724,7 +431,7 @@ a=max-message-size:262144`;
     if (this.dataChannel) {
       try {
         if (this.dataChannel.readyState === 'open') {
-      this.dataChannel.close();
+          this.dataChannel.close();
         }
       } catch (error) {
         console.error('⚠️ Error closing data channel:', error);
