@@ -685,64 +685,7 @@ app.register(async function (fastify) {
     }
   });
 
-  // New endpoint for MCP outbound calls
-  fastify.get('/ws', { websocket: true }, async (connection, req) => {
-    // In @fastify/websocket, connection IS the WebSocket
-    const swSocket = connection;
-    const { context, call_id } = req.query;
-    
-    app.log.info({ 
-      context,
-      call_id,
-      hasSocket: !!swSocket,
-      socketType: typeof swSocket,
-      hasOn: typeof swSocket?.on
-    }, '🔌 WebSocket connected from SignalWire');
-    
-    // Verify socket exists and has event methods
-    if (!swSocket || typeof swSocket.on !== 'function') {
-      app.log.error({ 
-        hasSocket: !!swSocket,
-        socketKeys: swSocket ? Object.keys(swSocket).slice(0, 10) : []
-      }, '❌ WebSocket connection invalid');
-      return;
-    }
-    
-    // Get call context from pending calls if this is an outbound call
-    let callContext = {};
-    
-    if (context === 'outbound' && call_id && pendingCalls.has(call_id)) {
-      const storedContext = pendingCalls.get(call_id);
-      callContext = {
-        ...storedContext,
-        context: 'outbound'
-      };
-      
-      app.log.info({ 
-        call_id, 
-        lead_id: callContext.lead_id,
-        broker_id: callContext.broker_id
-      }, '📋 Retrieved outbound call context');
-      
-      // Clean up pending call after retrieval
-      pendingCalls.delete(call_id);
-    } else {
-      app.log.info('📞 Inbound call - will fetch context via tools');
-    }
-    
-    // Create audio bridge with context
-    const bridge = new AudioBridge(swSocket, app.log, callContext);
-    
-    try {
-      await bridge.connect();
-      app.log.info('✅ Audio bridge established');
-    } catch (err) {
-      app.log.error({ err }, '❌ Failed to establish audio bridge');
-      if (swSocket && typeof swSocket.close === 'function') {
-        swSocket.close();
-      }
-    }
-  });
+  // Removed duplicate /ws endpoint - all calls use /audiostream
 });
 
 /**

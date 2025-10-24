@@ -13,6 +13,8 @@ class OpenAIWebRTCClient {
     this.audioSource = null;
     this.audioTrack = null;
     this.isConnected = false;
+    this.isClosing = false;
+    this.isConnecting = false; // ✅ Prevent duplicate connections
     
     this.onMessage = null;
     this.onAudioTrack = null;
@@ -149,11 +151,25 @@ class OpenAIWebRTCClient {
   }
 
   async connectWebRTC({ signal } = {}) {
+    // ✅ Prevent duplicate connections
+    if (this.isConnecting) {
+      console.log('⚠️ Connection already in progress, skipping');
+      return;
+    }
+    if (this.isConnected) {
+      console.log('⚠️ Already connected, skipping');
+      return;
+    }
+    
+    this.isConnecting = true;
     console.log('🔌 Establishing WebRTC connection (unified interface)...');
     
-    // ----- lifecycle guards -----
-    if (signal?.aborted) throw new Error('aborted');
-    signal?.addEventListener('abort', () => { try { this.closeSafely?.(); } catch {} });
+    try {
+      // ----- lifecycle guards -----
+      if (signal?.aborted) throw new Error('aborted');
+      signal?.addEventListener('abort', () => { try { this.closeSafely?.(); } catch {} });
+
+      this.isClosing = false;
 
     // ----- PC setup -----
     this.peerConnection = new RTCPeerConnection({
@@ -276,12 +292,17 @@ class OpenAIWebRTCClient {
 
     // ----- Complete ICE (non-trickle) with small timeout -----
     if (this.peerConnection.iceGatheringState !== 'complete') {
+      console.log('⏳ Waiting for ICE gathering (max 800ms)...');
       await new Promise((resolve) => {
-        const to = setTimeout(resolve, 2500);
+        const to = setTimeout(() => {
+          console.log('⚠️ ICE gathering timeout - proceeding anyway');
+          resolve();
+        }, 800); // ✅ Reduced from 2500ms to 800ms
         const onchg = () => {
           if (this.peerConnection?.iceGatheringState === 'complete') {
             this.peerConnection.removeEventListener('icegatheringstatechange', onchg);
             clearTimeout(to);
+            console.log('✅ ICE gathering completed early');
             resolve();
           }
         };
@@ -299,7 +320,20 @@ class OpenAIWebRTCClient {
     console.log('📥 Received SDP answer (len=%d)', answerSdp.length);
 
     // ----- Set ANSWER -----
+    if (!this.peerConnection || this.isClosing) {
+      console.log('⚠️ Connection closed/closing before answer received - ignoring SDP answer');
+      return;
+    }
     await this.peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    
+    console.log('✅ SDP exchange complete');
+    
+    } catch (error) {
+      // ✅ Always reset connecting flag on error
+      this.isConnecting = false;
+      console.error('❌ WebRTC connection failed:', error);
+      throw error;
+    }
   }
 
   async postOfferToOpenAI(offerSdp) {
@@ -339,6 +373,8 @@ class OpenAIWebRTCClient {
   }
 
   closeSafely() {
+    this.isClosing = true;
+    this.isConnecting = false; // ✅ Reset connecting flag
     try { this.dataChannel?.close(); } catch {}
     try {
       this.peerConnection?.getSenders()?.forEach(s => { try { s.track?.stop(); } catch {} });
@@ -350,9 +386,8 @@ class OpenAIWebRTCClient {
   }
 
   sendAudio(base64Audio) {
-    if (!this.audioSource || !this.audioTrack) {
-      console.log('⚠️ Audio source not ready');
-      return;
+    if (!this.audioSource || !this.audioTrack || this.isClosing) {
+      return; // Silent fail - no need to log every frame
     }
 
     try {
@@ -413,14 +448,17 @@ class OpenAIWebRTCClient {
   }
 
   sendEvent(event) {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+    if (this.dataChannel && this.dataChannel.readyState === 'open' && !this.isClosing) {
       this.dataChannel.send(JSON.stringify(event));
     } else {
-      console.error('❌ Data channel not open');
+      // Silent fail for events during closing
     }
   }
 
   close() {
+    this.isClosing = true;
+    this.isConnecting = false; // ✅ Reset connecting flag
+    
     if (this.audioTrack) {
       this.audioTrack.stop();
       this.audioTrack = null;
