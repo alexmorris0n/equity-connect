@@ -30,7 +30,7 @@ class OpenAIWebRTCClient {
       console.log('📞 Creating OpenAI ephemeral session...');
       this.sessionCreatedAt = Date.now(); // Track when session was created
     
-      const url = 'https://api.openai.com/v1/realtime/client_secrets';
+      const url = 'https://api.openai.com/v1/realtime/sessions';
       const headers = {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
