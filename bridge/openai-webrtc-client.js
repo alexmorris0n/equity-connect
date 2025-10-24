@@ -94,11 +94,14 @@ class OpenAIWebRTCClient {
   async generateTurnCredentials() {
     const turnTokenId = process.env.CLOUDFLARE_TURN_TOKEN_ID;
     const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    const cfTurnUrl = process.env.CF_TURN_URL;
+    const cfStunUrl = process.env.CF_STUN_URL;
     
     if (!turnTokenId || !apiToken) {
-      console.warn('⚠️ Cloudflare TURN credentials not configured, using default STUN only');
+      console.warn('⚠️ Cloudflare TURN credentials not configured, using static URLs');
       return [
-        { urls: 'stun:stun.l.google.com:19302' }
+        { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
+        { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
       ];
     }
     
@@ -122,9 +125,10 @@ class OpenAIWebRTCClient {
       return data.iceServers;
     } catch (err) {
       console.error('❌ Failed to generate TURN credentials:', err.message);
-      console.warn('⚠️ Falling back to STUN only');
+      console.warn('⚠️ Falling back to static Cloudflare URLs');
       return [
-        { urls: 'stun:stun.l.google.com:19302' }
+        { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
+        { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
       ];
     }
   }
