@@ -373,8 +373,8 @@ class OpenAIWebRTCClient {
     const sessionConfig = {
       type: 'realtime',
       model: this.model,
-      voice: 'alloy',
-      turn_detection: { type: 'server_vad' }
+      voice: 'alloy'
+      // turn_detection is sent later via session.update
     };
     fd.append('session', JSON.stringify(sessionConfig));
 
