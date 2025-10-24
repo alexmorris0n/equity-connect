@@ -9,6 +9,54 @@ const { OpenAIWebRTCClient } = require('./openai-webrtc-client'); // ✅ use uni
 const { nonstandard } = require('wrtc');
 const { RTCAudioSink } = nonstandard;
 
+/**
+ * Simple PCM resampler for 48kHz → 16kHz conversion (3:1 downsampling)
+ * Uses linear interpolation for real-time audio processing
+ */
+class SimpleResampler {
+  constructor() {
+    this.buffer = Buffer.alloc(0);
+    this.ratio = 48000 / 16000; // 3.0
+  }
+
+  process(inputBuffer) {
+    // Append new data to buffer
+    this.buffer = Buffer.concat([this.buffer, inputBuffer]);
+    
+    const outputFrames = [];
+    const inputSamples = this.buffer.length / 2; // 16-bit samples = 2 bytes each
+    const outputSamples = Math.floor(inputSamples / this.ratio);
+    
+    // Simple linear interpolation downsampling
+    for (let i = 0; i < outputSamples; i++) {
+      const inputIndex = i * this.ratio;
+      const index1 = Math.floor(inputIndex);
+      const index2 = Math.min(index1 + 1, inputSamples - 1);
+      const fraction = inputIndex - index1;
+      
+      if (index1 * 2 + 1 < this.buffer.length && index2 * 2 + 1 < this.buffer.length) {
+        const sample1 = this.buffer.readInt16LE(index1 * 2);
+        const sample2 = this.buffer.readInt16LE(index2 * 2);
+        const interpolated = Math.round(sample1 + (sample2 - sample1) * fraction);
+        
+        outputFrames.push(interpolated);
+      }
+    }
+    
+    // Remove processed samples from buffer
+    const processedBytes = Math.floor(outputSamples * this.ratio) * 2;
+    this.buffer = this.buffer.slice(processedBytes);
+    
+    // Convert to Buffer
+    const outputBuffer = Buffer.alloc(outputFrames.length * 2);
+    for (let i = 0; i < outputFrames.length; i++) {
+      outputBuffer.writeInt16LE(outputFrames[i], i * 2);
+    }
+    
+    return outputBuffer;
+  }
+}
+
 class WebRTCAudioBridge {
   constructor(swSocket, logger, callContext = {}) {
     this.swSocket = swSocket;
@@ -17,6 +65,7 @@ class WebRTCAudioBridge {
     
     this.client = null; // ✅
     this.remoteSink = null; // For capturing OpenAI audio
+    this.resampler = new SimpleResampler(); // For 48kHz → 16kHz conversion
     
     // OpenAI session state
     this.sessionConfigured = false;
@@ -67,15 +116,23 @@ class WebRTCAudioBridge {
         this.remoteSink.ondata = ({ samples, sampleRate, bitsPerSample, channelCount }) => {
           if (!this.swSocket || this.swSocket.readyState !== WebSocket.OPEN || !this.streamSid) return;
 
-          // Expecting mono 16kHz 16-bit. If not, you can downmix/resample here.
-          if (sampleRate !== 16000) {
-            // (optional) resample to 16k here if needed — but since we configured 16k end-to-end,
-            // this should already be 16k and you can skip this branch.
-            return;
+          console.log(`🔊 OpenAI audio: ${sampleRate}Hz, ${bitsPerSample}bit, ${channelCount}ch`);
+          
+          // Convert samples to Buffer
+          const inputBuffer = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
+          
+          // Resample from OpenAI's sample rate to SignalWire's 16kHz
+          let outputBuffer;
+          if (sampleRate === 16000) {
+            // Already correct sample rate - direct pass-through
+            outputBuffer = inputBuffer;
+          } else {
+            // Resample to 16kHz (typically 48kHz → 16kHz)
+            outputBuffer = this.resampler.process(inputBuffer);
           }
-          // samples is an Int16Array. Turn into base64 for SignalWire.
-          const buf = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
-          const payload = buf.toString('base64');
+          
+          // Convert to base64 for SignalWire
+          const payload = outputBuffer.toString('base64');
 
           // Send back to the caller as a media frame
           try {
@@ -84,6 +141,7 @@ class WebRTCAudioBridge {
               streamSid: this.streamSid,
               media: { payload }
             }));
+            console.log(`📤 Sent ${outputBuffer.length} bytes to SignalWire (${sampleRate}Hz → 16kHz)`);
           } catch (err) {
             console.error('❌ Failed to send audio to SignalWire:', err);
           }
@@ -361,6 +419,7 @@ class WebRTCAudioBridge {
     this.remoteSink = null;
     try { this.client?.closeSafely?.(); } catch {}
     this.client = null;
+    this.resampler = new SimpleResampler(); // Reset resampler buffer
     if (this.swSocket && this.swSocket.readyState === WebSocket.OPEN) { try { this.swSocket.close(); } catch {} }
     this.webrtcReady = false;
     console.log('✅ Cleanup complete');
