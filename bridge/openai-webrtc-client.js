@@ -371,6 +371,7 @@ class OpenAIWebRTCClient {
     fd.append('sdp', offerSdp);
     
     const sessionConfig = {
+      type: 'realtime',
       model: this.model,
       voice: 'alloy',
       modalities: ['audio', 'text']
