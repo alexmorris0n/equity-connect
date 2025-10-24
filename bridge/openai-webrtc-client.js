@@ -101,9 +101,10 @@ class OpenAIWebRTCClient {
 
       // 2) Fallback: top-level model
       const data = await postClientSecret({
-        model: this.model                                // ✅ top-level
+        model: this.model,                               // ✅ top-level
+        voice: 'alloy'                                   // ✅ voice in fallback too
         // optional: expires_in_seconds: 60
-      }, 'model');
+      }, 'model+voice');
       
       // ✅ Accept multiple possible response shapes (defensive parsing)
       const secret =
