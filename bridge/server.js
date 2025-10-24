@@ -18,7 +18,7 @@ const fastifyFormbody = require('@fastify/formbody');
 // Choose bridge implementation based on environment
 const USE_WEBRTC = process.env.USE_WEBRTC === 'true';
 const AudioBridge = USE_WEBRTC 
-  ? require('./audio-bridge-webrtc-simple').AudioBridgeWebRTC
+  ? require('./audio-bridge-webrtc-new')
   : require('./audio-bridge-lean');
 
 console.log(`🔌 Using ${USE_WEBRTC ? 'WebRTC' : 'WebSocket'} bridge`);
