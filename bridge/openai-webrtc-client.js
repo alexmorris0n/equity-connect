@@ -378,6 +378,7 @@ class OpenAIWebRTCClient {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${clientSecret}`,
+        'OpenAI-Beta': 'realtime=v1',  // ✅ REQUIRED for /v1/realtime/calls
         ...fd.getHeaders()
       },
       body: fd
