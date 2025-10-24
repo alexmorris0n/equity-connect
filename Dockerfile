@@ -20,6 +20,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Install node-pre-gyp globally first (needed by wrtc)
+RUN npm install -g node-pre-gyp node-gyp
+
 # Install dependencies (including dev dependencies for build)
 RUN npm install --production=false
 
