@@ -10,7 +10,8 @@ RUN apt-get update && \
       make \
       g++ \
       cmake \
-      git && \
+      git \
+      build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -20,7 +21,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (including dev dependencies for build)
-RUN npm install
+RUN npm install --production=false
 
 # Copy application code
 COPY bridge/ ./bridge/
