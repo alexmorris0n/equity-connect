@@ -1,11 +1,11 @@
 /**
  * WebRTC Audio Bridge - OpenAI Realtime API (WebRTC)
- * Corrected version with proper SDP exchange
+ * Uses unified OpenAIWebRTCClient for GA-compliant connection
  */
 
-const { RTCPeerConnection } = require('wrtc');
 const WebSocket = require('ws');
 const debug = require('debug')('barbara:webrtc');
+const { OpenAIWebRTCClient } = require('./openai-webrtc-client'); // ✅ use unified client
 
 class WebRTCAudioBridge {
   constructor(swSocket, logger, callContext = {}) {
@@ -13,10 +13,7 @@ class WebRTCAudioBridge {
     this.logger = logger;
     this.callContext = callContext;
     
-    // WebRTC components
-    this.pc = null;
-    this.dataChannel = null;
-    this.audioSender = null;
+    this.client = null; // ✅
     
     // OpenAI session state
     this.sessionConfigured = false;
@@ -44,114 +41,26 @@ class WebRTCAudioBridge {
       throw new Error('Missing OPENAI_API_KEY');
     }
 
-    console.log('🚀 Starting WebRTC connection to OpenAI...');
+    console.log('🚀 Starting WebRTC connection to OpenAI (unified)…');
 
     try {
-      // Step 1: Get ephemeral token from OpenAI
-      const model = process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17';
-      
-      const tokenResponse = await fetch('https://api.openai.com/v1/realtime/sessions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'OpenAI-Beta': 'realtime=v1'
-        },
-        body: JSON.stringify({
-          model: model,
-          voice: 'alloy'
-        })
-      });
+      // ✅ Use the new client (already implements /v1/realtime/calls)
+      this.client = new OpenAIWebRTCClient(apiKey, process.env.OPENAI_REALTIME_MODEL);
 
-      if (!tokenResponse.ok) {
-        const error = await tokenResponse.text();
-        throw new Error(`Failed to get ephemeral token: ${error}`);
-      }
-
-      const tokenData = await tokenResponse.json();
-      const ephemeralKey = tokenData.client_secret.value;
-      console.log('✅ Got ephemeral token from OpenAI');
-
-      // Step 2: Create RTCPeerConnection with proper configuration
-      this.pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' }
-        ]
-      });
-      
-      console.log('📡 RTCPeerConnection created');
-
-      // Step 3: Set up data channel for messages
-      this.dataChannel = this.pc.createDataChannel('oai-events', {
-        ordered: true
-      });
-      this.setupDataChannel();
-      console.log('📡 Data channel created');
-
-      // Step 4: Add audio transceiver (bidirectional)
-      this.pc.addTransceiver('audio', {
-        direction: 'sendrecv'
-      });
-      console.log('🎵 Audio transceiver added');
-
-      // Step 5: Handle incoming audio from OpenAI
-      this.pc.ontrack = (event) => {
-        console.log('🎵 Receiving audio track from OpenAI');
-        if (event.track.kind === 'audio') {
-          this.handleOpenAIAudioTrack(event.track, event.streams[0]);
-        }
+      // hook events
+      this.client.onConnected = () => {
+        console.log('✅ WebRTC established'); 
+        this.webrtcReady = true;
+        this.flushAudioBuffer();
+        this.configureSession(); // still send session.update after DC opens
+      };
+      this.client.onMessage = (m) => this.handleOpenAIEvent(m);
+      this.client.onAudioTrack = (track, stream) => {
+        console.log('🎵 OpenAI audio track received (todo: stream back to SignalWire)');
+        // implement server-side playback to SignalWire if needed
       };
 
-      // Step 6: Monitor ICE connection state
-      this.pc.oniceconnectionstatechange = () => {
-        console.log('🧊 ICE connection state:', this.pc.iceConnectionState);
-        if (this.pc.iceConnectionState === 'connected' || 
-            this.pc.iceConnectionState === 'completed') {
-          console.log('✅ WebRTC peer connection established!');
-        } else if (this.pc.iceConnectionState === 'failed' || 
-                   this.pc.iceConnectionState === 'disconnected') {
-          console.error('❌ WebRTC connection failed or disconnected');
-        }
-      };
-
-      // Step 7: Create offer
-      const offer = await this.pc.createOffer();
-      await this.pc.setLocalDescription(offer);
-      console.log('📤 Created and set local SDP offer');
-
-      // Step 8: Send offer to OpenAI and get answer
-      const sdpResponse = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${ephemeralKey}`,
-          'Content-Type': 'application/sdp',
-          'OpenAI-Beta': 'realtime=v1'
-        },
-        body: offer.sdp
-      });
-
-      if (!sdpResponse.ok) {
-        const errorText = await sdpResponse.text();
-        const status = sdpResponse.status;
-        console.error(`❌ SDP exchange failed: ${status} ${sdpResponse.statusText}`);
-        console.error(`Response body: ${errorText}`);
-        throw new Error(`Failed to exchange SDP (${status}): ${errorText}`);
-      }
-
-      const answerSdp = await sdpResponse.text();
-      console.log('📥 Received SDP answer from OpenAI');
-      
-      // Step 9: Set remote description (answer from OpenAI)
-      await this.pc.setRemoteDescription({
-        type: 'answer',
-        sdp: answerSdp
-      });
-      console.log('✅ Set remote SDP answer');
-
-      // WebRTC is now establishing - we'll mark as ready when data channel opens
-      console.log('⏳ Waiting for data channel to open...');
-
-      // Step 10: Set up SignalWire handlers
+      await this.client.connectWebRTC(); // does ephemeral+offer+POST /v1/realtime/calls
       this.setupSignalWireHandlers();
 
     } catch (err) {
@@ -164,79 +73,31 @@ class WebRTCAudioBridge {
   /**
    * Set up data channel for OpenAI events
    */
-  setupDataChannel() {
-    this.dataChannel.onopen = () => {
-      console.log('📡 Data channel opened - connection ready!');
-      this.webrtcReady = true;
-      
-      // Flush any buffered audio
-      this.flushAudioBuffer();
-      
-      // Configure session
-      this.configureSession();
-    };
-
-    this.dataChannel.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        this.handleOpenAIEvent(message);
-      } catch (err) {
-        console.error('❌ Error parsing data channel message:', err);
-        this.logger.error({ err, data: event.data }, 'Data channel message parse error');
-      }
-    };
-
-    this.dataChannel.onerror = (err) => {
-      console.error('❌ Data channel error:', err);
-      this.logger.error({ err }, 'Data channel error');
-    };
-
-    this.dataChannel.onclose = () => {
-      console.log('📡 Data channel closed');
-      this.cleanup();
-    };
-  }
+  setupDataChannel() { /* handled inside OpenAIWebRTCClient */ }
 
   /**
    * Configure OpenAI session with Barbara's instructions
    */
-  async configureSession() {
+  async configureSession() { // unchanged API, but send via client
     if (this.sessionConfigured) return;
-
     console.log('⚙️ Configuring OpenAI session...');
-
-    // Get instructions from callContext or use default
-    const instructions = this.callContext.instructions || 
+    const instructions = this.callContext.instructions ||
       'You are Barbara, a friendly assistant helping with reverse mortgage inquiries. Be warm and conversational.';
-
-    const sessionConfig = {
+    this.client?.sendEvent({
       type: 'session.update',
       session: {
-        modalities: ['audio', 'text'],
+        modalities: ['audio','text'],
         voice: 'alloy',
-        instructions: instructions,
+        instructions,
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
-        input_audio_transcription: {
-          model: 'whisper-1'
-        },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500
-        }
+        input_audio_transcription: { model: 'whisper-1' },
+        turn_detection: { type:'server_vad', threshold:0.5, prefix_padding_ms:300, silence_duration_ms:500 }
       }
-    };
-
-    this.dataChannel.send(JSON.stringify(sessionConfig));
+    });
     this.sessionConfigured = true;
     console.log('✅ OpenAI session configuration sent');
-
-    // Start conversation after brief delay
-    setTimeout(() => {
-      this.startConversation();
-    }, 1000);
+    setTimeout(() => this.startConversation(), 1000);
   }
 
   /**
@@ -252,7 +113,7 @@ class WebRTCAudioBridge {
     const callerPhone = this.callContext.from || 'unknown';
     
     // Send call_connected trigger
-    this.dataChannel.send(JSON.stringify({
+    this.client?.sendEvent({
       type: 'conversation.item.create',
       item: {
         type: 'message',
@@ -262,15 +123,15 @@ class WebRTCAudioBridge {
           text: `call_connected from ${callerPhone}`
         }]
       }
-    }));
+    });
 
     // Request response
-    this.dataChannel.send(JSON.stringify({
+    this.client?.sendEvent({
       type: 'response.create',
       response: {
         modalities: ['audio', 'text']
       }
-    }));
+    });
 
     this.greetingSent = true;
     console.log('✅ Conversation started');
@@ -411,35 +272,17 @@ class WebRTCAudioBridge {
    * Handle incoming audio from SignalWire
    */
   handleSignalWireAudio(media) {
-    if (!this.webrtcReady || !this.dataChannel || this.dataChannel.readyState !== 'open') {
-      // Buffer audio until WebRTC is ready
+    if (!this.webrtcReady || !this.client || !this.client.isConnected) {
       this.audioBuffer.push(media);
       if (this.audioBuffer.length % 50 === 1) {
         console.log(`[DEBUG] 📦 Buffering audio frame (${this.audioBuffer.length}) - WebRTC not ready`);
       }
       return;
     }
-
-    // Convert base64 audio to buffer
-    const audioData = Buffer.from(media.payload, 'base64');
-    
-    // Send via data channel (input_audio_buffer.append)
-    try {
-      this.dataChannel.send(JSON.stringify({
-        type: 'input_audio_buffer.append',
-        audio: audioData.toString('base64')
-      }));
-
-      // Commit buffer periodically (every 200ms)
-      const now = Date.now();
-      if (now - this.lastCommit > 200) {
-        this.dataChannel.send(JSON.stringify({
-          type: 'input_audio_buffer.commit'
-        }));
-        this.lastCommit = now;
-        debug('🎤 Audio buffer committed');
-      }
-    } catch (err) {
+    // ✅ New path: directly push PCM16@16k frames to the client
+    // SignalWire already sends L16@16000h after server.xml change (see Step 2)
+    try { this.client.sendAudio(media.payload); } // base64 PCM16LE
+    catch (err) {
       console.error('❌ Error sending audio to OpenAI:', err);
       this.logger.error({ err }, 'Error sending audio to OpenAI');
     }
@@ -481,34 +324,9 @@ class WebRTCAudioBridge {
    */
   cleanup() {
     console.log('🧹 Cleaning up WebRTC bridge');
-    
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      try {
-        this.dataChannel.close();
-      } catch (err) {
-        debug('Error closing data channel:', err);
-      }
-      this.dataChannel = null;
-    }
-    
-    if (this.pc && this.pc.connectionState !== 'closed') {
-      try {
-        this.pc.close();
-      } catch (err) {
-        debug('Error closing peer connection:', err);
-      }
-      this.pc = null;
-    }
-    
-    if (this.swSocket && this.swSocket.readyState === WebSocket.OPEN) {
-      try {
-        this.swSocket.close();
-      } catch (err) {
-        debug('Error closing SignalWire socket:', err);
-      }
-      this.swSocket = null;
-    }
-
+    try { this.client?.closeSafely?.(); } catch {}
+    this.client = null;
+    if (this.swSocket && this.swSocket.readyState === WebSocket.OPEN) { try { this.swSocket.close(); } catch {} }
     this.webrtcReady = false;
     console.log('✅ Cleanup complete');
   }
