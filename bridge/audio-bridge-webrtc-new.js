@@ -6,6 +6,8 @@
 const WebSocket = require('ws');
 const debug = require('debug')('barbara:webrtc');
 const { OpenAIWebRTCClient } = require('./openai-webrtc-client'); // ✅ use unified client
+const { nonstandard } = require('wrtc');
+const { RTCAudioSink } = nonstandard;
 
 class WebRTCAudioBridge {
   constructor(swSocket, logger, callContext = {}) {
@@ -14,6 +16,7 @@ class WebRTCAudioBridge {
     this.callContext = callContext;
     
     this.client = null; // ✅
+    this.remoteSink = null; // For capturing OpenAI audio
     
     // OpenAI session state
     this.sessionConfigured = false;
@@ -56,8 +59,35 @@ class WebRTCAudioBridge {
       };
       this.client.onMessage = (m) => this.handleOpenAIEvent(m);
       this.client.onAudioTrack = (track, stream) => {
-        console.log('🎵 OpenAI audio track received (todo: stream back to SignalWire)');
-        // implement server-side playback to SignalWire if needed
+        console.log('🎵 OpenAI audio track received (starting playback to SignalWire)');
+        // Create a sink to read raw PCM frames from the remote track
+        this.remoteSink = new RTCAudioSink(track);
+
+        // SignalWire <Stream codec="L16@16000h"> expects 16-bit PCM @ 16kHz, base64
+        this.remoteSink.ondata = ({ samples, sampleRate, bitsPerSample, channelCount }) => {
+          if (!this.swSocket || this.swSocket.readyState !== WebSocket.OPEN || !this.streamSid) return;
+
+          // Expecting mono 16kHz 16-bit. If not, you can downmix/resample here.
+          if (sampleRate !== 16000) {
+            // (optional) resample to 16k here if needed — but since we configured 16k end-to-end,
+            // this should already be 16k and you can skip this branch.
+            return;
+          }
+          // samples is an Int16Array. Turn into base64 for SignalWire.
+          const buf = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
+          const payload = buf.toString('base64');
+
+          // Send back to the caller as a media frame
+          try {
+            this.swSocket.send(JSON.stringify({
+              event: 'media',
+              streamSid: this.streamSid,
+              media: { payload }
+            }));
+          } catch (err) {
+            console.error('❌ Failed to send audio to SignalWire:', err);
+          }
+        };
       };
 
       await this.client.connectWebRTC(); // does ephemeral+offer+POST /v1/realtime/calls
@@ -244,6 +274,9 @@ class WebRTCAudioBridge {
       case 'start':
         console.log('📞 Stream started:', msg.start.streamSid);
         this.callSid = msg.start.streamSid;
+        this.streamSid = msg.start.streamSid || msg.start.stream_sid || msg.streamSid;
+        this.swCodec = (msg.start.mediaFormat?.codec || msg.start.media_format?.codec || 'L16@16000h');
+        console.log('🔊 SignalWire streamSid:', this.streamSid, 'codec:', this.swCodec);
         
         // Get caller phone from custom parameters
         if (msg.start.customParameters?.From) {
@@ -324,6 +357,8 @@ class WebRTCAudioBridge {
    */
   cleanup() {
     console.log('🧹 Cleaning up WebRTC bridge');
+    try { this.remoteSink?.stop?.(); } catch {}
+    this.remoteSink = null;
     try { this.client?.closeSafely?.(); } catch {}
     this.client = null;
     if (this.swSocket && this.swSocket.readyState === WebSocket.OPEN) { try { this.swSocket.close(); } catch {} }
