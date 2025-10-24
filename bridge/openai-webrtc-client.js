@@ -238,13 +238,20 @@ class OpenAIWebRTCClient {
     };
 
     // Set up data channel for events (BEFORE createOffer)
+    // CRITICAL: Use negotiated: true, id: 0 for OpenAI compatibility
     this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
-      ordered: true
+      ordered: true,
+      negotiated: true,
+      id: 0
     });
 
     this.dataChannel.onopen = () => {
-      console.log('📡 Data channel opened');
+      console.log('✅ Data channel opened (oai-events)');
       if (this.onDataChannelOpen) this.onDataChannelOpen();
+    };
+
+    this.dataChannel.onclose = () => {
+      console.log('⚠️ Data channel closed');
     };
 
     this.dataChannel.onmessage = (event) => {
@@ -354,6 +361,33 @@ class OpenAIWebRTCClient {
     if (!sdpToPost.endsWith('\r\n\r\n')) console.warn('⚠️ SDP missing double-CRLF termination');
     if (sdpToPost.includes('\n') && !sdpToPost.includes('\r\n')) console.warn('⚠️ SDP not normalized to CRLF');
     if (/^"/.test(sdpToPost) || sdpToPost.includes('\\n')) console.warn('⚠️ SDP looks JSON-escaped');
+
+    // 5. CRITICAL: Validate and inject data channel section if missing
+    if (!/m=application.*webrtc-datachannel/.test(sdpToPost)) {
+      console.log('⚠️ No datachannel in SDP — injecting manually.');
+      
+      // Extract ICE credentials from existing SDP
+      const iceUfrag = sdpToPost.match(/a=ice-ufrag:([^\r\n]+)/)?.[1] || 'uFrag';
+      const icePwd = sdpToPost.match(/a=ice-pwd:([^\r\n]+)/)?.[1] || 'pw';
+      const fingerprint = sdpToPost.match(/a=fingerprint:sha-256 ([^\r\n]+)/)?.[1] || 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99';
+      
+      // Inject data channel section
+      const dataChannelSection = `
+m=application 9 UDP/DTLS/SCTP webrtc-datachannel
+c=IN IP4 0.0.0.0
+a=ice-ufrag:${iceUfrag}
+a=ice-pwd:${icePwd}
+a=fingerprint:sha-256 ${fingerprint}
+a=setup:actpass
+a=mid:1
+a=sctp-port:5000
+a=max-message-size:262144`;
+      
+      sdpToPost += dataChannelSection;
+      console.log('✅ Data channel section injected');
+    } else {
+      console.log('✅ Data channel section already present');
+    }
 
     // 5. Quick verification log (hex tail - should end with 0d0a0d0a)
     const tail = Buffer.from(sdpToPost.slice(-8), 'utf8');
