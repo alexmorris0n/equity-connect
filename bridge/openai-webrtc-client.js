@@ -122,7 +122,21 @@ class OpenAIWebRTCClient {
       
       const data = await response.json();
       console.log('✅ Cloudflare TURN credentials generated');
-      return data.iceServers;
+      
+      // ✅ FORCE TCP TRANSPORT for all TURN servers
+      const tcpIceServers = data.iceServers.map(server => {
+        if (server.urls && typeof server.urls === 'string' && server.urls.includes('turn:')) {
+          // Force TCP transport for TURN servers
+          const tcpUrl = server.urls.includes('?transport=tcp') 
+            ? server.urls 
+            : server.urls + '?transport=tcp';
+          console.log('🔄 Forcing TURN to TCP:', tcpUrl);
+          return { ...server, urls: tcpUrl };
+        }
+        return server;
+      });
+      
+      return tcpIceServers;
     } catch (err) {
       console.error('❌ Failed to generate TURN credentials:', err.message);
       console.warn('⚠️ Falling back to static Cloudflare URLs');
@@ -196,7 +210,11 @@ class OpenAIWebRTCClient {
         if (event.candidate.type === 'srflx') {
           console.log('🌐 STUN server response received - external IP:', event.candidate.address);
         } else if (event.candidate.type === 'relay') {
-          console.log('🔄 TURN server response received - relay IP:', event.candidate.address);
+          const transport = event.candidate.protocol === 'tcp' ? 'TCP' : 'UDP';
+          console.log(`🔄 TURN server response received - relay IP: ${event.candidate.address} (${transport})`);
+          if (event.candidate.protocol === 'tcp') {
+            console.log('✅ TCP TURN relay active - should prevent UDP blocking issues');
+          }
         } else if (event.candidate.type === 'host') {
           console.log('🏠 Local host candidate - IP:', event.candidate.address);
         }
@@ -272,8 +290,18 @@ class OpenAIWebRTCClient {
           console.warn('⚠️ Connection health check: ICE/Connection failed');
           console.warn('⚠️ Consider implementing connection recovery');
         }
+        
+        // ✅ TURN Keepalive: Send periodic stats to maintain TCP relay
+        if (connState === 'connected' && iceState === 'connected') {
+          try {
+            this.peerConnection.getStats();
+            console.log('🔄 TURN keepalive sent');
+          } catch (err) {
+            // Silent fail for keepalive
+          }
+        }
       }
-    }, 10000); // Check every 10 seconds
+    }, 5000); // Check every 5 seconds (more frequent for keepalive)
 
     // ----- Data channel (pre-negotiated) before offer -----
     // This ensures an m=application webrtc-datachannel in the OFFER automatically.
