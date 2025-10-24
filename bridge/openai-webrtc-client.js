@@ -3,7 +3,7 @@ const { RTCPeerConnection, RTCSessionDescription, nonstandard } = require('wrtc'
 const { RTCAudioSource } = nonstandard;
 
 class OpenAIWebRTCClient {
-  constructor(apiKey, model = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime') {
+  constructor(apiKey, model = process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17') {
     this.apiKey = apiKey;
     this.model = model;
     this.baseUrl = 'https://api.openai.com';
@@ -371,12 +371,14 @@ class OpenAIWebRTCClient {
     fd.append('sdp', offerSdp);
     
     const sessionConfig = {
-      type: 'realtime',
       model: this.model,
-      audio: { output: { voice: 'marin' } }
+      voice: 'alloy',
+      modalities: ['audio', 'text']
     };
     fd.append('session', JSON.stringify(sessionConfig));
 
+    console.log('📤 Posting session config:', JSON.stringify(sessionConfig));
+    
     const res = await fetch(base, {
       method: 'POST',
       headers: {
@@ -388,8 +390,11 @@ class OpenAIWebRTCClient {
 
     if (!res.ok) {
       const bodyText = await res.text();
+      console.error('❌ OpenAI rejected session config:', bodyText);
       throw new Error(`Realtime calls failed ${res.status}: ${bodyText}`);
     }
+    
+    console.log('📥 OpenAI accepted session config');
     
     return await res.text();
   }
