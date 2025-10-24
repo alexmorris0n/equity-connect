@@ -140,10 +140,30 @@ class OpenAIWebRTCClient {
       console.error('❌ ICE candidate error', e);
     };
 
-    this.peerConnection.oniceconnectionstatechange = () =>
-      console.log('🧊 pc.iceConnectionState =', this.peerConnection?.iceConnectionState);
-    this.peerConnection.onicegatheringstatechange = () =>
-      console.log('🧊 pc.iceGatheringState =', this.peerConnection?.iceGatheringState);
+    this.peerConnection.oniceconnectionstatechange = () => {
+      const state = this.peerConnection?.iceConnectionState;
+      console.log('🧊 pc.iceConnectionState =', state);
+      
+      // Add detailed ICE state monitoring
+      if (state === 'disconnected') {
+        console.warn('⚠️ ICE connection disconnected - attempting recovery...');
+      } else if (state === 'failed') {
+        console.error('❌ ICE connection failed - network connectivity issue');
+        console.error('❌ Check firewall rules for UDP 3478-49152');
+        console.error('❌ Consider using TURN relay mode');
+      } else if (state === 'connected') {
+        console.log('✅ ICE connection restored');
+      }
+    };
+    
+    this.peerConnection.onicegatheringstatechange = () => {
+      const state = this.peerConnection?.iceGatheringState;
+      console.log('🧊 pc.iceGatheringState =', state);
+      
+      if (state === 'complete') {
+        console.log('✅ ICE candidate gathering complete');
+      }
+    };
 
     this.peerConnection.ontrack = (event) => {
       // Only handle audio tracks
@@ -159,13 +179,32 @@ class OpenAIWebRTCClient {
     this.peerConnection.onconnectionstatechange = () => {
       const st = this.peerConnection?.connectionState;
       console.log('🔗 pc.connectionState =', st);
-      if (st === 'connected' && !this.isConnected) {
+      
+      // Monitor connection health
+      if (st === 'failed') {
+        console.error('❌ WebRTC connection failed - check network connectivity');
+        console.error('❌ This is likely a firewall or NAT issue');
+        console.error('❌ Check firewall rules for UDP 3478-49152');
+      } else if (st === 'connected' && !this.isConnected) {
         console.log('✅ WebRTC connection established (optimistic stream start)');
         this.isConnected = true;
         clearTimeout(connectionTimeout); // ✅ Clear timeout on success
         this.onConnected?.();           // flush your prebuffer here
       }
     };
+    
+    // Add connection monitoring heartbeat
+    this.connectionMonitor = setInterval(() => {
+      if (this.peerConnection) {
+        const iceState = this.peerConnection.iceConnectionState;
+        const connState = this.peerConnection.connectionState;
+        
+        if (iceState === 'failed' || connState === 'failed') {
+          console.warn('⚠️ Connection health check: ICE/Connection failed');
+          console.warn('⚠️ Consider implementing connection recovery');
+        }
+      }
+    }, 10000); // Check every 10 seconds
 
     // ----- Data channel (pre-negotiated) before offer -----
     // This ensures an m=application webrtc-datachannel in the OFFER automatically.
@@ -335,6 +374,13 @@ class OpenAIWebRTCClient {
   closeSafely() {
     this.isClosing = true;
     this.isConnecting = false; // ✅ Reset connecting flag
+    
+    // Clear connection monitoring
+    if (this.connectionMonitor) {
+      clearInterval(this.connectionMonitor);
+      this.connectionMonitor = null;
+    }
+    
     try { this.dataChannel?.close(); } catch {}
     try {
       this.peerConnection?.getSenders()?.forEach(s => { try { s.track?.stop(); } catch {} });

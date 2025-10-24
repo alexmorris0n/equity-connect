@@ -126,9 +126,11 @@ class WebRTCAudioBridge {
           if (sampleRate === 16000) {
             // Already correct sample rate - direct pass-through
             outputBuffer = inputBuffer;
+            console.log(`✅ Direct pass-through: ${sampleRate}Hz → 16kHz`);
           } else {
             // Resample to 16kHz (typically 48kHz → 16kHz)
             outputBuffer = this.resampler.process(inputBuffer);
+            console.log(`🔄 Resampling audio from ${sampleRate}Hz → 16kHz`);
           }
           
           // Convert to base64 for SignalWire
