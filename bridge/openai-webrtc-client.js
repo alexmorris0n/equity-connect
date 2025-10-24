@@ -88,6 +88,47 @@ class OpenAIWebRTCClient {
     }
   }
 
+  /**
+   * Generate Cloudflare TURN credentials
+   */
+  async generateTurnCredentials() {
+    const turnTokenId = process.env.CLOUDFLARE_TURN_TOKEN_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    
+    if (!turnTokenId || !apiToken) {
+      console.warn('⚠️ Cloudflare TURN credentials not configured, using default STUN only');
+      return [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ];
+    }
+    
+    try {
+      console.log('🔄 Generating Cloudflare TURN credentials...');
+      const response = await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/' + turnTokenId + '/credentials/generate-ice-servers', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ttl: 3600 }) // 1 hour TTL
+      });
+      
+      if (!response.ok) {
+        throw new Error(`TURN credentials failed: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Cloudflare TURN credentials generated');
+      return data.iceServers;
+    } catch (err) {
+      console.error('❌ Failed to generate TURN credentials:', err.message);
+      console.warn('⚠️ Falling back to STUN only');
+      return [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ];
+    }
+  }
+
   async connectWebRTC({ signal } = {}) {
     // ✅ Prevent duplicate connections
     if (this.isConnecting) {
@@ -132,12 +173,13 @@ class OpenAIWebRTCClient {
       this.isClosing = false;
 
     // ----- PC setup -----
+    // Generate TURN credentials for Cloudflare relay
+    const iceServers = await this.generateTurnCredentials();
+    
     this.peerConnection = new RTCPeerConnection({
       bundlePolicy: 'max-bundle',
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ],
+      iceServers: iceServers,
+      iceTransportPolicy: 'relay' // Force through TURN relay
     });
 
     console.log('📡 RTCPeerConnection created');
