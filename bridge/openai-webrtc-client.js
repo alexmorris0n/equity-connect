@@ -51,8 +51,8 @@ class OpenAIWebRTCClient {
       // 1) Preferred: minimal session wrapper (type + model only)
       try {
         const data = await postClientSecret({
-          session: { type: 'realtime', model: this.model }   // ✅ minimal, no voice/modalities here
-        }, 'session.model');
+          session: { type: 'realtime', model: this.model, voice: 'alloy' }   // ✅ voice goes here now
+        }, 'session.model+voice');
         
         // ✅ Accept multiple possible response shapes (defensive parsing)
         const secret =
@@ -370,15 +370,8 @@ class OpenAIWebRTCClient {
     const fd = new FormData();
     fd.append('sdp', offerSdp);
     
-    const sessionConfig = {
-      type: 'realtime',
-      model: this.model,
-      voice: 'alloy'
-      // turn_detection is sent later via session.update
-    };
-    fd.append('session', JSON.stringify(sessionConfig));
-
-    console.log('📤 Posting session config:', JSON.stringify(sessionConfig));
+    // ✅ NEW GA API: Send only raw SDP, no session config wrapper
+    console.log('📤 Posting raw SDP (no session config)');
     
     const res = await fetch(base, {
       method: 'POST',
