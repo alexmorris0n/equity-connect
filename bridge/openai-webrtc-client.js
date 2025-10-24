@@ -102,6 +102,20 @@ class OpenAIWebRTCClient {
     this.isConnecting = true;
     console.log('🔌 Establishing WebRTC connection (unified interface)...');
     
+    // Test basic OpenAI connectivity
+    try {
+      const testResponse = await fetch('https://api.openai.com/v1/models', {
+        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+      });
+      if (testResponse.ok) {
+        console.log('✅ OpenAI API connectivity confirmed');
+      } else {
+        console.warn('⚠️ OpenAI API connectivity issue:', testResponse.status);
+      }
+    } catch (err) {
+      console.error('❌ OpenAI API connectivity failed:', err.message);
+    }
+    
     // ✅ Add connection timeout to prevent 20+ minute delays
     const connectionTimeout = setTimeout(() => {
       if (this.isConnecting && !this.isConnected) {
@@ -130,7 +144,16 @@ class OpenAIWebRTCClient {
 
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log('🧊 ICE candidate:', event.candidate.type);
+        console.log('🧊 ICE candidate:', event.candidate.type, event.candidate.protocol, event.candidate.address);
+        
+        // Log specific network details for debugging
+        if (event.candidate.type === 'srflx') {
+          console.log('🌐 STUN server response received - external IP:', event.candidate.address);
+        } else if (event.candidate.type === 'relay') {
+          console.log('🔄 TURN server response received - relay IP:', event.candidate.address);
+        } else if (event.candidate.type === 'host') {
+          console.log('🏠 Local host candidate - IP:', event.candidate.address);
+        }
       } else {
         console.log('🧊 ICE candidate gathering complete');
       }
