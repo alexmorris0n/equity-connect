@@ -98,7 +98,7 @@ class OpenAIWebRTCClient {
     const cfStunUrl = process.env.CF_STUN_URL;
     
     if (!turnTokenId || !apiToken) {
-      console.warn('⚠️ Cloudflare TURN credentials not configured, using static URLs');
+      console.warn('⚠️ Cloudflare TURN credentials not configured, using static TCP URLs');
       return [
         { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
         { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
@@ -123,6 +123,9 @@ class OpenAIWebRTCClient {
       const data = await response.json();
       console.log('✅ Cloudflare TURN credentials generated');
       
+      // ✅ DEBUG: Log what URLs we're getting from Cloudflare
+      console.log('🔍 Raw Cloudflare TURN URLs:', JSON.stringify(data.iceServers, null, 2));
+      
       // ✅ FORCE TCP TRANSPORT for all TURN servers
       const tcpIceServers = data.iceServers.map(server => {
         if (server.urls && typeof server.urls === 'string' && server.urls.includes('turn:')) {
@@ -136,10 +139,26 @@ class OpenAIWebRTCClient {
         return server;
       });
       
+      console.log('🔍 Final ICE servers (TCP forced):', JSON.stringify(tcpIceServers, null, 2));
+      
+      // ✅ AGGRESSIVE FALLBACK: If we still have UDP URLs, use static TCP
+      const hasUdpUrls = tcpIceServers.some(server => 
+        server.urls && typeof server.urls === 'string' && 
+        server.urls.includes('turn:') && !server.urls.includes('?transport=tcp')
+      );
+      
+      if (hasUdpUrls) {
+        console.warn('⚠️ Still getting UDP URLs from Cloudflare API - using static TCP fallback');
+        return [
+          { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
+          { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
+        ];
+      }
+      
       return tcpIceServers;
     } catch (err) {
       console.error('❌ Failed to generate TURN credentials:', err.message);
-      console.warn('⚠️ Falling back to static Cloudflare URLs');
+      console.warn('⚠️ Falling back to static Cloudflare TCP URLs');
       return [
         { urls: cfStunUrl || 'stun:stun.l.google.com:19302' },
         { urls: cfTurnUrl || 'turn:turn.cloudflare.com:443?transport=tcp' }
