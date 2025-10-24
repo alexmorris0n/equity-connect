@@ -38,6 +38,10 @@ class AudioBridgeWebRTC {
     this._oaiToSw8kRemainder = new Int16Array(0);
     this._sentFrames = 0;
     
+    // Audio buffering for early SignalWire frames (timing sync fix)
+    this._swAudioBuffer = [];
+    this._maxBufferSize = 50; // ~1 second of 20ms frames (50 * 20ms = 1000ms)
+    
     // Media starvation detection (SignalWire idle timeout is ~10s)
     this.mediaStarvationTimer = null;
     
@@ -116,6 +120,9 @@ class AudioBridgeWebRTC {
     this.openaiClient.onConnected = () => {
       console.log('✅ OpenAI WebRTC connected - audio streaming active');
       this.isConnected = true;
+      
+      // Process any buffered audio frames from SignalWire
+      this.processBufferedAudio();
     };
 
     // Data channel messages (events from OpenAI)
@@ -158,6 +165,39 @@ class AudioBridgeWebRTC {
       console.error('❌ WebRTC error:', error);
       this.handleError(error);
     };
+  }
+
+  /**
+   * Process buffered audio frames from SignalWire
+   */
+  processBufferedAudio() {
+    if (this._swAudioBuffer.length === 0) {
+      console.log('📦 No buffered audio to process');
+      return;
+    }
+
+    console.log(`📦 Processing ${this._swAudioBuffer.length} buffered audio frames...`);
+    
+    // Process all buffered frames
+    while (this._swAudioBuffer.length > 0) {
+      const bufferedFrame = this._swAudioBuffer.shift();
+      
+      try {
+        // Convert SignalWire μ-law (8kHz) to PCM16 (16kHz) for OpenAI
+        const mulawBuffer = Buffer.from(bufferedFrame.payload, 'base64');
+        const pcm8 = decodeMulaw(mulawBuffer);
+        const pcm16 = upsampleTo16k(pcm8);
+        const pcmBuffer = int16ToBuffer(pcm16);
+        const base64PCM = pcmBuffer.toString('base64');
+
+        // Send audio to OpenAI via WebRTC audio track
+        this.openaiClient.sendAudio(base64PCM);
+      } catch (error) {
+        console.error('❌ Failed to process buffered audio frame:', error);
+      }
+    }
+    
+    console.log('✅ Buffered audio processing complete');
   }
 
   /**
@@ -360,10 +400,22 @@ class AudioBridgeWebRTC {
             console.warn('⚠️ Last media at:', new Date().toISOString());
           }, 12000);
           
-          // Wait for WebRTC connection and data channel to be ready
+          // Buffer early audio frames instead of dropping them (timing sync fix)
           if (!this.isConnected || !this.openaiClient?.audioSource) {
-            if (ENABLE_DEBUG_LOGGING) {
-              debug('⚠️ Dropping audio frame - WebRTC not ready');
+            // Buffer the audio frame for later processing
+            if (this._swAudioBuffer.length < this._maxBufferSize) {
+              this._swAudioBuffer.push({
+                payload: msg.media.payload,
+                timestamp: msg.media.timestamp,
+                chunk: msg.media.chunk
+              });
+              if (ENABLE_DEBUG_LOGGING) {
+                debug(`📦 Buffering audio frame (${this._swAudioBuffer.length}/${this._maxBufferSize}) - WebRTC not ready`);
+              }
+            } else {
+              if (ENABLE_DEBUG_LOGGING) {
+                debug('⚠️ Buffer full, dropping audio frame - WebRTC not ready');
+              }
             }
             return;
           }
@@ -578,6 +630,9 @@ class AudioBridgeWebRTC {
       clearTimeout(this.mediaStarvationTimer);
       this.mediaStarvationTimer = null;
     }
+    
+    // Clear audio buffer
+    this._swAudioBuffer = [];
     
     if (this.openaiClient) {
       try {
