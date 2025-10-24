@@ -27,7 +27,7 @@ class OpenAIWebRTCClient {
 
   async createEphemeralSession(sessionConfig) {
     try {
-      console.log('📞 Creating OpenAI ephemeral session...');
+    console.log('📞 Creating OpenAI ephemeral session...');
       this.sessionCreatedAt = Date.now();
     
       const url = 'https://api.openai.com/v1/realtime/sessions';
@@ -40,12 +40,12 @@ class OpenAIWebRTCClient {
       const res = await fetch(url, {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify({
-          model: this.model,
+      body: JSON.stringify({
+        model: this.model,
           voice: 'alloy'
-        })
-      });
-      
+      })
+    });
+
       const text = await res.text();
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${text}`);
@@ -76,8 +76,8 @@ class OpenAIWebRTCClient {
       if (expiresAt) console.log('⏰ Expires at:', new Date(expiresAt).toISOString());
       console.log('🔍 Model:', this.model);
       console.log('🎤 Voice: alloy');
-      
-      return {
+    
+    return {
         clientSecret: secret,
         sessionId: sessionId,
         expiresAt: expiresAt
@@ -98,10 +98,10 @@ class OpenAIWebRTCClient {
     const cfStunUrl = process.env.CF_STUN_URL;
     
     if (!turnTokenId || !apiToken) {
-      console.warn('⚠️ Cloudflare TURN credentials not configured, using static TCP/TLS URLs');
+      console.warn('⚠️ Cloudflare TURN credentials not configured, using static TCP/TLS TURN-only URLs');
       return [
-        { urls: 'turns:turn.cloudflare.com:443' },
-        { urls: 'turn:turn.cloudflare.com:443?transport=tcp' }
+        { urls: ['turns:turn.cloudflare.com:443'] },
+        { urls: ['turn:turn.cloudflare.com:443?transport=tcp'] }
       ];
     }
     
@@ -126,52 +126,32 @@ class OpenAIWebRTCClient {
       // ✅ DEBUG: Log what URLs we're getting from Cloudflare
       console.log('🔍 Raw Cloudflare TURN URLs:', JSON.stringify(data.iceServers, null, 2));
 
-      // ✅ Normalize ALL urls to TCP/TLS and strip UDP variants
-      const toTcpOnly = (u) => {
-        // Convert turns/turn to 443 and force TCP where applicable
-        if (typeof u !== 'string') return u;
-        // Prefer TURNS on 443
-        if (u.startsWith('turn:'))  u = u.replace(/^turn:/, 'turns:');
-        // Normalize port to 443
-        u = u.replace(/:(3478|5349)(\b|$)/, ':443');
-        // Ensure ?transport=tcp present for non-TLS turn endpoints (defensive)
-        if (u.startsWith('turn:') && !/transport=tcp/.test(u)) u += (u.includes('?') ? '&' : '?') + 'transport=tcp';
-        return u;
-      };
+      // ✅ STRICT TCP/TLS-ONLY TURN SERVERS
+      // Extract credentials from Cloudflare response
+      const username = data.iceServers.find(s => s.username)?.username || data.username;
+      const credential = data.iceServers.find(s => s.credential)?.credential || data.credential;
 
-      const tcpIceServers = data.iceServers
-        .map((server) => {
-          if (!server.urls) return server;
-          if (Array.isArray(server.urls)) {
-            const urls = server.urls
-              .map(toTcpOnly)
-              // Drop any lingering UDP candidates (defensive)
-              .filter((u) => !/transport=udp/i.test(u));
-            return { ...server, urls };
-          } else if (typeof server.urls === 'string') {
-            const urls = toTcpOnly(server.urls);
-            if (/transport=udp/i.test(urls)) return null;
-            return { ...server, urls };
-          }
-          return server;
-        })
-        .filter(Boolean);
-
-      // Also return a tiny static fallback, TCP/TLS only
-      const finalServers = tcpIceServers.length ? tcpIceServers : [
-        { urls: 'turns:turn.cloudflare.com:443' },
-        { urls: 'turn:turn.cloudflare.com:443?transport=tcp' }
+      // Build a strict TCP/TLS-only set. No STUN. No 80. No UDP.
+      const tcpOnlyUrls = [
+        'turns:turn.cloudflare.com:443',                  // TLS over TCP
+        'turn:turn.cloudflare.com:443?transport=tcp'      // Plain TCP
       ];
-      
-      console.log('🔍 Final ICE servers (TCP/TLS only):', JSON.stringify(finalServers, null, 2));
-      return finalServers;
+
+      const tcpIceServers = tcpOnlyUrls.map(u => ({
+        urls: [u],
+        ...(username ? { username } : {}),
+        ...(credential ? { credential } : {})
+      }));
+
+      console.log('🔍 Final ICE servers (STRICT TCP/TLS):', JSON.stringify(tcpIceServers, null, 2));
+      return tcpIceServers;
     } catch (err) {
       console.error('❌ Failed to generate TURN credentials:', err.message);
-      console.warn('⚠️ Falling back to static Cloudflare TCP/TLS URLs');
-      // ⚠️ Fallback: TCP/TLS only (no STUN/UDP)
+      console.warn('⚠️ Falling back to static Cloudflare TCP/TLS URLs (TURN-only)');
+      // ⚠️ Fallback: TCP/TLS TURN only (no STUN/UDP)
       return [
-        { urls: 'turns:turn.cloudflare.com:443' },
-        { urls: 'turn:turn.cloudflare.com:443?transport=tcp' }
+        { urls: ['turns:turn.cloudflare.com:443'] },
+        { urls: ['turn:turn.cloudflare.com:443?transport=tcp'] }
       ];
     }
   }
@@ -222,7 +202,7 @@ class OpenAIWebRTCClient {
     // ----- PC setup -----
     // Generate TURN credentials for Cloudflare relay
     const iceServers = await this.generateTurnCredentials();
-    
+
     this.peerConnection = new RTCPeerConnection({
       bundlePolicy: 'max-bundle',
       iceServers: iceServers,
@@ -233,6 +213,13 @@ class OpenAIWebRTCClient {
 
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
+        // ✅ DEFENSIVE: Reject UDP relay candidates
+        const candidate = event.candidate.candidate || '';
+        if (/ relay /i.test(candidate) && / udp /i.test(candidate)) {
+          console.warn('🚫 Dropping relay-UDP candidate:', candidate);
+          return; // do not add it
+        }
+        
         console.log('🧊 ICE candidate:', event.candidate.type, event.candidate.protocol, event.candidate.address);
         
         // Log specific network details for debugging
@@ -265,7 +252,7 @@ class OpenAIWebRTCClient {
         console.warn('⚠️ ICE connection disconnected - attempting recovery...');
       } else if (state === 'failed') {
         console.error('❌ ICE connection failed - network connectivity issue');
-        console.error('❌ Check firewall rules for UDP 3478-49152');
+        console.error('❌ ICE connection failed — likely proxy/firewall blocking TCP 443 to turn.cloudflare.com');
         console.error('❌ Consider using TURN relay mode');
       } else if (state === 'connected') {
         console.log('✅ ICE connection restored');
@@ -284,9 +271,9 @@ class OpenAIWebRTCClient {
     this.peerConnection.ontrack = (event) => {
       // Only handle audio tracks
       if (event.track.kind === 'audio') {
-        console.log('🎵 Received audio track from OpenAI');
-        if (this.onAudioTrack) {
-          this.onAudioTrack(event.track, event.streams[0]);
+      console.log('🎵 Received audio track from OpenAI');
+      if (this.onAudioTrack) {
+        this.onAudioTrack(event.track, event.streams[0]);
         }
       }
     };
@@ -300,7 +287,7 @@ class OpenAIWebRTCClient {
       if (st === 'failed') {
         console.error('❌ WebRTC connection failed - check network connectivity');
         console.error('❌ This is likely a firewall or NAT issue');
-        console.error('❌ Check firewall rules for UDP 3478-49152');
+        console.error('❌ ICE connection failed — likely proxy/firewall blocking TCP 443 to turn.cloudflare.com');
       } else if (st === 'connected' && !this.isConnected) {
         console.log('✅ WebRTC connection established (optimistic stream start)');
         this.isConnected = true;
@@ -601,7 +588,7 @@ class OpenAIWebRTCClient {
     if (this.dataChannel) {
       try {
         if (this.dataChannel.readyState === 'open') {
-          this.dataChannel.close();
+      this.dataChannel.close();
         }
       } catch (error) {
         console.error('⚠️ Error closing data channel:', error);
@@ -611,7 +598,7 @@ class OpenAIWebRTCClient {
     if (this.peerConnection) {
       try {
         this.peerConnection.onconnectionstatechange = null; // ← detach
-        this.peerConnection.close();
+      this.peerConnection.close();
       } catch (error) {
         console.error('⚠️ Error closing peer connection:', error);
       }
