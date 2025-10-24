@@ -138,7 +138,8 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream" track="both_tracks">
+    <Stream url="${wsUrl}/audiostream" codec="L16@24000h">
+      <Parameter name="track" value="both_tracks" />
       <Parameter name="from" value="${From || ''}" />
       <Parameter name="to" value="${To || ''}" />
     </Stream>
@@ -164,7 +165,8 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="both_tracks">
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@24000h">
+      <Parameter name="track" value="both_tracks" />
     </Stream>
   </Connect>
 </Response>`;
@@ -186,7 +188,8 @@ app.post('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="both_tracks">
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@24000h">
+      <Parameter name="track" value="both_tracks" />
     </Stream>
   </Connect>
 </Response>`;
@@ -601,6 +604,12 @@ app.register(async function (fastify) {
     // In @fastify/websocket, connection IS the WebSocket
     const swSocket = connection;
     const { callId, call_id, context, From, To } = req.query;
+    
+    console.log('🔌 SignalWire WebSocket connection attempt:', {
+      hasConnection: !!swSocket,
+      query: { callId, call_id, context, From, To },
+      headers: req.headers
+    });
     
     // Support both callId (legacy n8n) and call_id (MCP)
     const actualCallId = call_id || callId;
