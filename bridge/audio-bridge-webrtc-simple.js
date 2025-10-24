@@ -51,6 +51,9 @@ class AudioBridgeWebRTC {
     this.speakingTimeout = null;
     
     this.logger.info(`🎙️ WebRTC Audio Bridge created for call: ${callContext.CallSid || 'unknown'}`);
+    
+    // CRITICAL: Attach SignalWire message handler immediately to catch 'start' event
+    this.setupSignalWireForwarding();
   }
 
   /**
@@ -96,8 +99,7 @@ class AudioBridgeWebRTC {
 
       console.log('✅ WebRTC bridge connected!');
 
-      // Step 6: Set up SignalWire audio forwarding
-      this.setupSignalWireForwarding();
+      // SignalWire forwarding already set up in constructor
 
     } catch (error) {
       console.error('❌ Failed to connect WebRTC bridge:', error);

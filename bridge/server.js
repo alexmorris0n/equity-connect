@@ -137,15 +137,12 @@ app.get('/public/inbound-xml', async (request, reply) => {
   
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="${wsUrl}/audiostream" codec="L16@24000h" direction="inbound">
-      <Parameter name="track" value="both_tracks" />
-      <Parameter name="silenceDetection" value="false" />
-      <Parameter name="context" value="inbound" />
-      ${From ? `<Parameter name="from" value="${From}" />` : ''}
-      ${To ? `<Parameter name="to" value="${To}" />` : ''}
+  <Start>
+    <Stream url="${wsUrl}/audiostream" track="inbound">
+      <Parameter name="from" value="${From || ''}" />
+      <Parameter name="to" value="${To || ''}" />
     </Stream>
-  </Connect>
+  </Start>
 </Response>`;
 
   app.log.info('📞 Served inbound LaML XML');
@@ -166,12 +163,10 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const safeCallId = call_id || '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@24000h" direction="inbound">
-      <Parameter name="track" value="both_tracks" />
-      <Parameter name="silenceDetection" value="false" />
+  <Start>
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="inbound">
     </Stream>
-  </Connect>
+  </Start>
 </Response>`;
   
   return reply.type('text/xml').send(xml);
@@ -190,12 +185,10 @@ app.post('/public/outbound-xml', async (request, reply) => {
   const safeCallId = call_id || '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@24000h" direction="inbound">
-      <Parameter name="track" value="both_tracks" />
-      <Parameter name="silenceDetection" value="false" />
+  <Start>
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" track="inbound">
     </Stream>
-  </Connect>
+  </Start>
 </Response>`;
   
   return reply.type('text/xml').send(xml);
