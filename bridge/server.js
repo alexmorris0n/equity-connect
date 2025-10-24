@@ -603,7 +603,7 @@ app.register(async function (fastify) {
   fastify.get('/audiostream', { websocket: true }, async (connection, req) => {
     // In @fastify/websocket, connection IS the WebSocket
     const swSocket = connection;
-    const { callId, call_id, context, From, To } = req.query;
+    const { callId, call_id, context, From, To } = req.query || {};
     
     console.log('🔌 SignalWire WebSocket connection attempt:', {
       hasConnection: !!swSocket,
