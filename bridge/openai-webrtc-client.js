@@ -374,7 +374,8 @@ class OpenAIWebRTCClient {
       type: 'realtime',
       model: this.model,
       voice: 'alloy',
-      modalities: ['audio', 'text']
+      modalities: ['audio', 'text'],
+      turn_detection: { type: 'server_vad' }
     };
     fd.append('session', JSON.stringify(sessionConfig));
 
