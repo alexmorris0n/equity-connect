@@ -1,0 +1,79 @@
+# Fly.io configuration for Barbara Bridge
+app = "barbara-bridge"
+primary_region = "sjc"  # San Jose, CA - good for US West Coast
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+# UDP ports for audio streaming
+[[services]]
+  protocol = "udp"
+  internal_port = 10000
+
+  [[services.ports]]
+    port = 10000
+    handlers = ["udp"]
+
+[[services]]
+  protocol = "udp" 
+  internal_port = 20000
+
+  [[services.ports]]
+    port = 20000
+    handlers = ["udp"]
+
+# STUN/TURN ports
+[[services]]
+  protocol = "udp"
+  internal_port = 3478
+
+  [[services.ports]]
+    port = 3478
+    handlers = ["udp"]
+
+[[services]]
+  protocol = "udp"
+  internal_port = 5349
+
+  [[services.ports]]
+    port = 5349
+    handlers = ["udp"]
+
+# Additional WebRTC ports
+[[services]]
+  protocol = "udp"
+  internal_port = 49152
+
+  [[services.ports]]
+    port = 49152
+    handlers = ["udp"]
+
+[[services]]
+  protocol = "udp"
+  internal_port = 65535
+
+  [[services.ports]]
+    port = 65535
+    handlers = ["udp"]
+
+[deploy]
+  release_command = "echo 'Barbara Bridge deployed successfully'"

@@ -1,0 +1,48 @@
+# Dockerfile for Barbara Bridge on Fly.io
+FROM node:18-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY bridge/package*.json ./bridge/
+
+# Install dependencies
+RUN npm install --production
+
+# Copy application code
+COPY bridge/ ./bridge/
+COPY config/ ./config/
+COPY database/ ./database/
+COPY prompts/ ./prompts/
+COPY scripts/ ./scripts/
+COPY supabase/ ./supabase/
+COPY templates/ ./templates/
+COPY workflows/ ./workflows/
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S barbara -u 1001
+
+# Change ownership
+RUN chown -R barbara:nodejs /app
+USER barbara
+
+# Expose ports
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Start the application
+CMD ["node", "bridge/server.js"]
