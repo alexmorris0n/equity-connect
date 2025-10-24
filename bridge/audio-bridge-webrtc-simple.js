@@ -98,7 +98,6 @@ class AudioBridgeWebRTC {
       this.setupEventHandlers();
 
       // Step 4: Establish WebRTC connection (unified interface)
-      console.log('🔌 Establishing WebRTC connection (unified interface)...');
       await this.openaiClient.connectWebRTC();
 
       console.log('✅ WebRTC bridge connected!');

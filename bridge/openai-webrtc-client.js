@@ -164,6 +164,14 @@ class OpenAIWebRTCClient {
     this.isConnecting = true;
     console.log('🔌 Establishing WebRTC connection (unified interface)...');
     
+    // ✅ Add connection timeout to prevent 20+ minute delays
+    const connectionTimeout = setTimeout(() => {
+      if (this.isConnecting && !this.isConnected) {
+        console.log('⚠️ WebRTC connection timeout (10s) - forcing close');
+        this.closeSafely();
+      }
+    }, 10000); // 10 second timeout
+    
     try {
       // ----- lifecycle guards -----
       if (signal?.aborted) throw new Error('aborted');
@@ -216,6 +224,7 @@ class OpenAIWebRTCClient {
       if (st === 'connected' && !this.isConnected) {
         console.log('✅ WebRTC connection established (optimistic stream start)');
         this.isConnected = true;
+        clearTimeout(connectionTimeout); // ✅ Clear timeout on success
         this.onConnected?.();           // flush your prebuffer here
       }
     };
@@ -324,15 +333,28 @@ class OpenAIWebRTCClient {
       console.log('⚠️ Connection closed/closing before answer received - ignoring SDP answer');
       return;
     }
-    await this.peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    
+    try {
+      await this.peerConnection.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+    } catch (error) {
+      if (this.isClosing) {
+        console.log('⚠️ Connection closing during setRemoteDescription - ignoring error');
+        return;
+      }
+      throw error;
+    }
     
     console.log('✅ SDP exchange complete');
     
     } catch (error) {
       // ✅ Always reset connecting flag on error
       this.isConnecting = false;
+      clearTimeout(connectionTimeout);
       console.error('❌ WebRTC connection failed:', error);
       throw error;
+    } finally {
+      // ✅ Clear timeout on completion (success or failure)
+      clearTimeout(connectionTimeout);
     }
   }
 
