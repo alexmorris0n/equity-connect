@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** October 22, 2025  
+**Last Updated:** October 25, 2025  
 **Status:** Production Ready  
-**Current Phase:** Calendar Integration Complete - Barbara Books Real Appointments + Advanced Commitment Building
-**Latest Updates:** Appointment booking fix (Nylas grant ID), token limit removal (no more mid-sentence cutoffs), tool timeout extensions, PromptLayer timestamp fix, VAD recovery disabled, performance tracking added
+**Current Phase:** Barbara V3 Deployment - TypeScript Rewrite + MFA + Git-Based Deployment
+**Latest Updates:** Barbara V3 launched with 13 tools (11 business + 2 demo), SignalWire MFA integration, TypeScript + Zod validation, OpenAI Agents SDK, GitHub Actions auto-deployment, Fly.io dual-machine HA setup
 
 ---
 
@@ -20,6 +20,42 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 - **Data Sources:** PropertyRadar API (property data + contact enrichment)
 - **Outreach:** Instantly.ai (email), OpenAI Realtime + SignalWire (voice)
 - **Integration:** MCP servers (Supabase, Instantly, Barbara, SwarmTrace); Direct Supabase client for voice bridge
+
+---
+
+## 🏗️ Deployment Architecture (Monorepo)
+
+```
+equity-connect/ (Git Monorepo)
+├── .github/workflows/
+│   └── deploy-barbara.yml        → Auto-deploy Barbara V3 on push
+├── barbara-v3/                   → Fly.io (2 machines, HA)
+│   ├── src/tools/business/       → 11 production tools
+│   └── src/services/             → Supabase, Nylas, Vertex AI, MFA
+├── portal/                       → Vue.js admin (Vercel/Netlify)
+│   └── src/components/           → BarbaraConfig, LiveCallMonitor, etc.
+├── barbara-mcp/                  → Docker/Local (extended integrations)
+├── propertyradar-mcp/            → Docker/Local (property lookups)
+├── swarmtrace-mcp/               → Docker/Local (analytics)
+├── bridge/                       → Bridge V1 (legacy fallback)
+├── database/                     → Shared Supabase schema
+├── prompts/                      → Shared prompt templates
+├── workflows/                    → N8N workflow definitions
+└── config/                       → API configurations
+```
+
+**Why Monorepo:**
+- ✅ Portal needs to reference Barbara's tool definitions
+- ✅ MCPs share prompt templates and database schema
+- ✅ Single source of truth for all configurations
+- ✅ Path-based GitHub Actions = only deploy what changed
+- ✅ All Barbara versions (v1, v2, v3) kept for reference
+
+**Deployment Triggers:**
+- `barbara-v3/**` changes → Deploy to Fly.io
+- `portal/**` changes → Deploy to Vercel
+- `workflows/**` changes → Update n8n workflows
+- `database/**` changes → Run Supabase migrations
 
 ---
 
@@ -202,7 +238,60 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
   - `KNOWLEDGE_BASE_TIMEOUT_FIX.md` - KB search optimization (Oct 22)
   - `bridge/README.md` - Technical details
 
-**6. Nylas Calendar Integration** ⭐ PRODUCTION OCT 20-22
+**6. Barbara V3 - Production Voice AI** ⭐ NEW (OCT 25, 2025) - **BRIDGE V1 UPGRADED**
+- **Architecture:** SignalWire cXML + OpenAI Realtime API + OpenAI Agents SDK
+- **Deployment:** Fly.io (2 machines for HA) + GitHub Actions (git-based deploys)
+- **Repository:** `barbara-v3/` - Standalone service with TypeScript + modern tooling
+- **Based On:** SignalWire's official `cXML-realtime-agent-stream` reference implementation
+- **Key Improvements from Bridge V1:**
+  - ✅ **TypeScript + ESM** - Type safety, modern imports
+  - ✅ **Zod validation** - Schema validation for all tool parameters
+  - ✅ **OpenAI Agents SDK** - Official `@openai/agents` package (no custom WebRTC)
+  - ✅ **SignalWire MFA** - Native SMS verification for appointments (NEW!)
+  - ✅ **Structured logging** - Configurable log levels (debug/info/error)
+  - ✅ **Git-based deployment** - Push to main = auto-deploy (no Docker cache issues)
+  - ✅ **No PromptLayer** - Removed analytics layer (simplified stack)
+- **Business Tools (11 total):**
+  1. `get_lead_context` - Query lead by phone with last call context
+  2. `check_consent_dnc` - Verify calling permissions
+  3. `update_lead_info` - Update lead data, auto-calculate equity
+  4. `find_broker_by_territory` - Assign broker by ZIP/city
+  5. `check_broker_availability` - Nylas calendar real-time check
+  6. `book_appointment` - Create Nylas event + billing + interaction log
+  7. `assign_tracking_number` - Link SignalWire number for call tracking
+  8. `send_appointment_confirmation` - Send 6-digit MFA code (NEW!)
+  9. `verify_appointment_confirmation` - Verify MFA code (NEW!)
+  10. `save_interaction` - Log call with rich metadata
+  11. `search_knowledge` - Vector search via Google Vertex AI
+- **Demo Tools:**
+  - `get_time` - Current time in Eastern
+  - `get_weather` - US weather via weather.gov
+- **Audio Stack:**
+  - SignalWire → WebSocket (g711_ulaw @ 8kHz)
+  - Barbara → WebRTC (pcm16 @ 24kHz) → OpenAI
+  - Bidirectional streaming with format conversion
+- **Services:**
+  - Supabase client (leads, brokers, interactions, billing)
+  - Nylas API wrapper (calendar availability, event creation)
+  - Vertex AI (text-embedding-005 for knowledge search)
+  - SignalWire MFA (send/verify SMS codes)
+- **Deployment Workflow:**
+  - GitHub Actions triggered on `barbara-v3/**` changes
+  - Auto-deploy to Fly.io with `--no-cache` (prevents stale builds)
+  - Path-based workflow (only Barbara changes trigger Barbara deploy)
+- **Integration Points:**
+  - **Portal:** `portal/src/components/BarbaraConfig.vue` - Configure prompts
+  - **MCPs:** Uses shared `barbara-mcp/` for extended tool integrations
+  - **Database:** Shared `database/` schema and migrations
+  - **N8N:** Triggers calls via bridge API (same as V1)
+- **Status:** ✅ **PRODUCTION - Live on Fly.io with 2 machines**
+- **Endpoints:**
+  - Health: `https://barbara-v3-voice.fly.dev/health`
+  - Webhook: `https://barbara-v3-voice.fly.dev/webhook`
+  - Stream: `wss://barbara-v3-voice.fly.dev/stream`
+- **Migration Path:** V1 bridge can remain as fallback; V3 is drop-in replacement
+
+**7. Nylas Calendar Integration** ⭐ PRODUCTION OCT 20-22
 - **Provider:** Nylas v3 API - Production-grade calendar platform
 - **Features:**
   - Real-time broker availability checking via Free/Busy API
