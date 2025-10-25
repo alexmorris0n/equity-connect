@@ -27,15 +27,10 @@ export async function streamingRoute(
   const realtimeAgent = new RealtimeAgent(agentConfig);
 
   fastify.get('/media-stream', { websocket: true }, async (connection: WebSocket, request: any) => {
-    // Parse query parameters from WebSocket URL
-    const params = request.query || {};
-    const direction = params.direction || 'inbound';  // 'inbound' or 'outbound'
-    const from = params.from || '';
-    const to = params.to || '';
-    const leadId = params.lead_id || '';
-    const brokerId = params.broker_id || '';
+    // For now, default to inbound (we'll add direction detection later)
+    const direction = 'inbound';
     
-    logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED} (${direction.toUpperCase()}: ${from} → ${to})`);
+    logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
 
     // Handle disconnection
     connection.on('close', () => {
@@ -57,7 +52,7 @@ export async function streamingRoute(
       // Create agent with dynamic instructions based on call direction
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
-        instructions: getInstructionsForCallType(direction, { leadId, brokerId, from, to })
+        instructions: getInstructionsForCallType(direction, {})
       });
 
       // Create session with SignalWire transport

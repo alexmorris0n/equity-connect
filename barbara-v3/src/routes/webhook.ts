@@ -10,29 +10,10 @@ import { AGENT_CONFIG } from '../config.js';
 export async function webhookRoute(fastify: FastifyInstance) {
   // Inbound calls (caller dials Barbara's SignalWire number)
   fastify.all('/incoming-call', async (request: FastifyRequest, reply: FastifyReply) => {
-    // SignalWire sends data in query params for GET, body for POST
-    const queryParams: any = request.query || {};
-    const bodyParams: any = request.body || {};
-    const params = { ...queryParams, ...bodyParams };
-    
-    const { From, To, CallSid, Called } = params;
-    
-    // Log the incoming call
-    console.log(`📞 INBOUND call from ${From} to ${To || Called} (CallSid: ${CallSid})`);
-    
-    // Construct WebSocket URL with context
+    // Construct WebSocket URL from request headers
     const host = request.headers.host || 'localhost';
     const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-    
-    // Build query parameters for WebSocket (encode values)
-    const wsParams = new URLSearchParams({
-      direction: 'inbound',
-      from: From || '',
-      to: To || Called || '',
-      callsid: CallSid || ''
-    });
-    
-    const websocketUrl = `${protocol}://${host}/media-stream?${wsParams.toString()}`;
+    const websocketUrl = `${protocol}://${host}/media-stream`;
 
     // Get codec attribute based on configured audio format
     const codec = AGENT_CONFIG.audioFormat === AUDIO_FORMAT.PCM16
@@ -40,16 +21,15 @@ export async function webhookRoute(fastify: FastifyInstance) {
       : SIGNALWIRE_CODECS.G711_ULAW;
     const codecAttribute = codec ? ` codec="${codec}"` : '';
 
-    console.log(`📡 Stream URL: ${websocketUrl}`);
-    console.log(`🔊 Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
+    console.log(`📞 Incoming call - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
-    // Generate cXML response (no <Say> - Barbara will answer naturally)
+    // Generate cXML response
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <Stream url="${websocketUrl}"${codecAttribute} />
-  </Connect>
-</Response>`;
+    <Response>
+      <Connect>
+        <Stream url="${websocketUrl}"${codecAttribute} />
+      </Connect>
+    </Response>`;
 
     reply.type('text/xml').send(cXMLResponse);
   });
@@ -91,13 +71,13 @@ export async function webhookRoute(fastify: FastifyInstance) {
     console.log(`📡 Stream URL: ${websocketUrl}`);
     console.log(`🔊 Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
-    // Generate cXML response (no <Say> - wait for caller to answer)
+    // Generate cXML response
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <Stream url="${websocketUrl}"${codecAttribute} />
-  </Connect>
-</Response>`;
+    <Response>
+      <Connect>
+        <Stream url="${websocketUrl}"${codecAttribute} />
+      </Connect>
+    </Response>`;
 
     reply.type('text/xml').send(cXMLResponse);
   });
