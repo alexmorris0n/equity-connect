@@ -6,8 +6,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (use npm install since package-lock.json is gitignored)
+RUN npm install --production=false
 
 # Bust cache for source code
 ARG CACHEBUST=1
