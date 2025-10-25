@@ -24,6 +24,7 @@ jobs:
         run: |
           cd barbara-v3
           flyctl deploy \
+            --app barbara-v3-voice \
             --remote-only \
             --no-cache \
             --strategy immediate \
