@@ -17,6 +17,7 @@ import { logger } from '../utils/logger.js';
 import { CONNECTION_MESSAGES, ERROR_MESSAGES, EVENT_TYPES } from '../constants.js';
 import type { StreamingOptions } from '../types/index.js';
 import { AGENT_CONFIG, SERVER_CONFIG } from '../config.js';
+import { getInstructionsForCallType } from '../services/prompts.js';
 
 export async function streamingRoute(
   fastify: FastifyInstance,
@@ -25,8 +26,16 @@ export async function streamingRoute(
   const { agentConfig, openaiApiKey, model } = options;
   const realtimeAgent = new RealtimeAgent(agentConfig);
 
-  fastify.get('/media-stream', { websocket: true }, async (connection: WebSocket) => {
-    logger.info(CONNECTION_MESSAGES.CLIENT_CONNECTED);
+  fastify.get('/media-stream', { websocket: true }, async (connection: WebSocket, request: any) => {
+    // Parse query parameters from WebSocket URL
+    const params = request.query || {};
+    const direction = params.direction || 'inbound';  // 'inbound' or 'outbound'
+    const from = params.from || '';
+    const to = params.to || '';
+    const leadId = params.lead_id || '';
+    const brokerId = params.broker_id || '';
+    
+    logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED} (${direction.toUpperCase()}: ${from} → ${to})`);
 
     // Handle disconnection
     connection.on('close', () => {
@@ -45,8 +54,14 @@ export async function streamingRoute(
         audioFormat: AGENT_CONFIG.audioFormat
       });
 
+      // Create agent with dynamic instructions based on call direction
+      const sessionAgent = new RealtimeAgent({
+        ...agentConfig,
+        instructions: getInstructionsForCallType(direction, { leadId, brokerId, from, to })
+      });
+
       // Create session with SignalWire transport
-      const session = new RealtimeSession(realtimeAgent, {
+      const session = new RealtimeSession(sessionAgent, {
         transport: signalWireTransportLayer,
         model: model as OpenAIRealtimeModels
       });
