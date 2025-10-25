@@ -10,13 +10,29 @@ import { AGENT_CONFIG } from '../config.js';
 export async function webhookRoute(fastify: FastifyInstance) {
   // Inbound calls (caller dials Barbara's SignalWire number)
   fastify.all('/incoming-call', async (request: FastifyRequest, reply: FastifyReply) => {
-    const params: any = request.query || request.body || {};
-    const { From, To, CallSid } = params;
+    // SignalWire sends data in query params for GET, body for POST
+    const queryParams: any = request.query || {};
+    const bodyParams: any = request.body || {};
+    const params = { ...queryParams, ...bodyParams };
+    
+    const { From, To, CallSid, Called } = params;
+    
+    // Log the incoming call
+    console.log(`📞 INBOUND call from ${From} to ${To || Called} (CallSid: ${CallSid})`);
     
     // Construct WebSocket URL with context
     const host = request.headers.host || 'localhost';
     const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-    const websocketUrl = `${protocol}://${host}/media-stream?direction=inbound&from=${From || ''}&to=${To || ''}&callsid=${CallSid || ''}`;
+    
+    // Build query parameters for WebSocket (encode values)
+    const wsParams = new URLSearchParams({
+      direction: 'inbound',
+      from: From || '',
+      to: To || Called || '',
+      callsid: CallSid || ''
+    });
+    
+    const websocketUrl = `${protocol}://${host}/media-stream?${wsParams.toString()}`;
 
     // Get codec attribute based on configured audio format
     const codec = AGENT_CONFIG.audioFormat === AUDIO_FORMAT.PCM16
@@ -24,28 +40,47 @@ export async function webhookRoute(fastify: FastifyInstance) {
       : SIGNALWIRE_CODECS.G711_ULAW;
     const codecAttribute = codec ? ` codec="${codec}"` : '';
 
-    console.log(`📞 INBOUND call from ${From} - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
+    console.log(`📡 Stream URL: ${websocketUrl}`);
+    console.log(`🔊 Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
     // Generate cXML response (no <Say> - Barbara will answer naturally)
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Connect>
-        <Stream url="${websocketUrl}"${codecAttribute} />
-      </Connect>
-    </Response>`;
+<Response>
+  <Connect>
+    <Stream url="${websocketUrl}"${codecAttribute} />
+  </Connect>
+</Response>`;
 
     reply.type('text/xml').send(cXMLResponse);
   });
   
   // Outbound calls (Barbara calls a lead)
   fastify.all('/outbound-call', async (request: FastifyRequest, reply: FastifyReply) => {
-    const params: any = request.query || request.body || {};
+    // SignalWire sends data in query params for GET, body for POST
+    const queryParams: any = request.query || {};
+    const bodyParams: any = request.body || {};
+    const params = { ...queryParams, ...bodyParams };
+    
     const { From, To, CallSid, call_id, lead_id, broker_id } = params;
+    
+    // Log the outbound call
+    console.log(`📞 OUTBOUND call from ${From} to ${To} (CallSid: ${CallSid || call_id})`);
     
     // Construct WebSocket URL with context
     const host = request.headers.host || 'localhost';
     const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-    const websocketUrl = `${protocol}://${host}/media-stream?direction=outbound&from=${From || ''}&to=${To || ''}&callsid=${CallSid || call_id || ''}&lead_id=${lead_id || ''}&broker_id=${broker_id || ''}`;
+    
+    // Build query parameters for WebSocket (encode values)
+    const wsParams = new URLSearchParams({
+      direction: 'outbound',
+      from: From || '',
+      to: To || '',
+      callsid: CallSid || call_id || '',
+      lead_id: lead_id || '',
+      broker_id: broker_id || ''
+    });
+    
+    const websocketUrl = `${protocol}://${host}/media-stream?${wsParams.toString()}`;
 
     // Get codec attribute
     const codec = AGENT_CONFIG.audioFormat === AUDIO_FORMAT.PCM16
@@ -53,15 +88,16 @@ export async function webhookRoute(fastify: FastifyInstance) {
       : SIGNALWIRE_CODECS.G711_ULAW;
     const codecAttribute = codec ? ` codec="${codec}"` : '';
 
-    console.log(`📞 OUTBOUND call to ${To} - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
+    console.log(`📡 Stream URL: ${websocketUrl}`);
+    console.log(`🔊 Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
     // Generate cXML response (no <Say> - wait for caller to answer)
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Connect>
-        <Stream url="${websocketUrl}"${codecAttribute} />
-      </Connect>
-    </Response>`;
+<Response>
+  <Connect>
+    <Stream url="${websocketUrl}"${codecAttribute} />
+  </Connect>
+</Response>`;
 
     reply.type('text/xml').send(cXMLResponse);
   });
