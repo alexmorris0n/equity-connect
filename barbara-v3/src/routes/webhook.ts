@@ -34,7 +34,7 @@ export async function webhookRoute(fastify: FastifyInstance) {
     // Generate cXML response with caller ID in customParameters
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Pause length="2"/>
+      <Play loop="0">https://api.twilio.com/cowbell.mp3</Play>
       <Connect>
         <Stream url="${websocketUrl}"${codecAttribute}>
           <Parameter name="From" value="${From || ''}" />
