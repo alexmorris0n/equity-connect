@@ -66,16 +66,26 @@ export async function streamingRoute(
       
       // Listen to transport events
       session.transport.on('*', (event: TransportEvent) => {
-        // Capture SignalWire stream start metadata
-        if (event.type === 'twilio_message' && (event as any).message?.event === 'start') {
-          const startData = (event as any).message?.start;
-          if (startData?.customParameters) {
-            callerPhone = startData.customParameters.From || '';
-            logger.info(`📞 Caller ID captured: ${callerPhone}`);
+        // DEBUG: Log ALL twilio_message events to see what SignalWire sends
+        if (event.type === 'twilio_message') {
+          const msg = (event as any).message;
+          logger.debug(`🔍 SignalWire message:`, JSON.stringify(msg, null, 2));
+          
+          // Capture SignalWire stream start metadata
+          if (msg?.event === 'start') {
+            logger.info(`📞 Stream start event received:`, msg.start);
             
-            // Inject caller phone into session context
+            // Try both customParameters and direct properties
+            const startData = msg.start;
+            callerPhone = startData?.customParameters?.From 
+                       || startData?.callSid?.from 
+                       || startData?.from 
+                       || '';
+            
             if (callerPhone) {
-              // Add system message with caller phone
+              logger.info(`📞 Caller ID captured: ${callerPhone}`);
+              
+              // Inject caller phone into session context
               const systemMessage: RealtimeClientMessage = {
                 type: 'conversation.item.create',
                 item: {
@@ -90,6 +100,8 @@ export async function streamingRoute(
               
               signalWireTransportLayer.sendEvent(systemMessage);
               logger.info(`✅ Injected caller ID into conversation: ${callerPhone}`);
+            } else {
+              logger.warn(`⚠️  No caller ID found in start event!`);
             }
           }
         }
