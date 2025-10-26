@@ -27,10 +27,15 @@ export async function streamingRoute(
   const realtimeAgent = new RealtimeAgent(agentConfig);
 
   fastify.get('/media-stream', { websocket: true }, async (connection: WebSocket, request: any) => {
-    // For now, default to inbound (we'll add direction detection later)
-    const direction = 'inbound';
+    // Extract call context from query parameters (passed from webhook)
+    const { direction = 'inbound', from = '', to = '', callsid = '', lead_id = '', broker_id = '' } = request.query || {};
     
+    // Log the call details
     logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
+    logger.info(`📞 Call direction: ${direction}, From: ${from}, To: ${to}, CallSid: ${callsid}`);
+    
+    // Store caller phone for injection into conversation
+    const callerPhone = direction === 'inbound' ? from : to;
 
     // Handle disconnection
     connection.on('close', () => {
@@ -61,50 +66,8 @@ export async function streamingRoute(
         model: model as OpenAIRealtimeModels
       });
 
-      // Capture caller ID from SignalWire start event
-      let callerPhone = '';
-      
       // Listen to transport events
       session.transport.on('*', (event: TransportEvent) => {
-        // ONLY log start events to avoid log spam
-        if (event.type === 'twilio_message') {
-          const msg = (event as any).message;
-          
-          // Capture SignalWire stream start metadata ONLY
-          if (msg?.event === 'start') {
-            logger.info(`📞 Stream start event received:`, JSON.stringify(msg, null, 2));
-            
-            // Try both customParameters and direct properties
-            const startData = msg.start;
-            callerPhone = startData?.customParameters?.From 
-                       || startData?.callSid?.from 
-                       || startData?.from 
-                       || '';
-            
-            if (callerPhone) {
-              logger.info(`📞 Caller ID captured: ${callerPhone}`);
-              
-              // Inject caller phone into session context
-              const systemMessage: RealtimeClientMessage = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'message',
-                  role: 'system',
-                  content: [{
-                    type: 'input_text',
-                    text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this phone number.`
-                  }]
-                }
-              } as any;
-              
-              signalWireTransportLayer.sendEvent(systemMessage);
-              logger.info(`✅ Injected caller ID into conversation: ${callerPhone}`);
-            } else {
-              logger.warn(`⚠️  No caller ID found in start event!`);
-            }
-          }
-        }
-        
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
             logger.event('🤖', 'AI response completed', event);
@@ -143,10 +106,7 @@ export async function streamingRoute(
 
       logger.info('✅ OpenAI Realtime API connected');
 
-      // Wait a moment for start event to be captured
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Inject caller ID if we captured it
+      // Inject caller ID into conversation context
       if (callerPhone) {
         logger.info(`💉 Injecting caller ID into conversation: ${callerPhone}`);
         
@@ -163,9 +123,9 @@ export async function streamingRoute(
         } as any;
         
         signalWireTransportLayer.sendEvent(systemMessage);
-        logger.info(`✅ Caller ID injected: ${callerPhone}`);
+        logger.info(`✅ Caller ID injected successfully`);
       } else {
-        logger.warn(`⚠️  No caller ID captured - Barbara will need to ask`);
+        logger.warn(`⚠️  No caller ID available - Barbara will need to ask`);
       }
       
       // Trigger initial AI greeting
