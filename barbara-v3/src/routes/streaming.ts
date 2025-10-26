@@ -70,7 +70,24 @@ export async function streamingRoute(
       session.transport.on('*', (event: TransportEvent) => {
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
-            logger.event('🤖', 'AI response completed', event);
+            // Extract Barbara's transcript from response.done
+            const response = (event as any).response;
+            const output = response?.output || [];
+            
+            // Find the audio message with transcript
+            const audioMessage = output.find((item: any) => 
+              item.type === 'message' && 
+              item.role === 'assistant' && 
+              item.content?.some((c: any) => c.type === 'audio' && c.transcript)
+            );
+            
+            if (audioMessage) {
+              const audioContent = audioMessage.content.find((c: any) => c.type === 'audio');
+              const transcript = audioContent?.transcript || '';
+              logger.info(`💬 Barbara: "${transcript}"`);
+            }
+            
+            logger.event('🤖', 'AI response completed');
             break;
 
           case EVENT_TYPES.TRANSCRIPTION_COMPLETED:
