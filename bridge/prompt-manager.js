@@ -1,62 +1,44 @@
 /**
  * Smart Prompt Manager for Barbara
  * 
- * Pulls prompts from PromptLayer based on call context:
+ * Uses local Production Prompts folder based on call context:
  * - Inbound vs Outbound
  * - Lead in DB vs not in DB
  * - Qualified vs unqualified
  * 
- * Falls back to local file if PromptLayer is unavailable
+ * Loads from prompts/Production Prompts/ folder
  */
 
 const fs = require('fs');
 const path = require('path');
-const { initPromptLayer } = require('./promptlayer-integration');
 
 // In-memory cache for prompts (5 minute TTL)
 const promptCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Disk cache directory for PromptLayer templates
-const CACHE_DIR = path.join(__dirname, '.promptlayer-cache');
-
-// Ensure cache directory exists
-try {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-} catch (err) {
-  console.warn('⚠️ Could not create PromptLayer cache directory:', err.message);
-}
+// Production prompts directory
+const PROMPTS_DIR = path.join(__dirname, '..', 'prompts', 'Production Prompts');
 
 /**
- * Save PromptLayer template to disk cache
+ * Load prompt from local Production Prompts folder
  */
-function saveToDiskCache(promptName, promptText) {
+function loadLocalPrompt(promptName) {
   try {
-    const cachePath = path.join(CACHE_DIR, `${promptName}.txt`);
-    fs.writeFileSync(cachePath, promptText, 'utf8');
-    console.log(`🍰 Cached PromptLayer template to disk: ${promptName}`);
-  } catch (err) {
-    console.warn(`⚠️ Failed to cache template ${promptName}:`, err.message);
-  }
-}
-
-/**
- * Load PromptLayer template from disk cache
- */
-function loadFromDiskCache(promptName) {
-  try {
-    const cachePath = path.join(CACHE_DIR, `${promptName}.txt`);
-    if (fs.existsSync(cachePath)) {
-      const cached = fs.readFileSync(cachePath, 'utf8');
-      console.log(`🍰 Loaded cached PromptLayer template: ${promptName} (${cached.length} chars)`);
-      return cached;
+    const promptPath = path.join(PROMPTS_DIR, `${promptName}.md`);
+    
+    if (!fs.existsSync(promptPath)) {
+      console.warn(`⚠️ Prompt file not found: ${promptPath}`);
+      return null;
     }
+    
+    const promptText = fs.readFileSync(promptPath, 'utf8');
+    console.log(`📋 Loaded local prompt: ${promptName} (${promptText.length} chars)`);
+    return promptText;
+    
   } catch (err) {
-    console.warn(`⚠️ Failed to load cached template ${promptName}:`, err.message);
+    console.error(`❌ Failed to load prompt '${promptName}':`, err.message);
+    return null;
   }
-  return null;
 }
 
 /**
@@ -98,9 +80,9 @@ function determinePromptName(callContext) {
 }
 
 /**
- * Get prompt from cache or PromptLayer
+ * Get prompt from cache or local file
  */
-async function getPromptFromPromptLayer(promptName, variables = {}) {
+async function getPromptFromLocal(promptName, variables = {}) {
   // Check cache first
   const cached = promptCache.get(promptName);
   if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
@@ -108,169 +90,22 @@ async function getPromptFromPromptLayer(promptName, variables = {}) {
     return injectVariables(cached.prompt, variables);
   }
   
-  try {
-    const promptLayer = initPromptLayer();
-    
-    if (!promptLayer.enabled) {
-      console.log('⚠️ PromptLayer disabled, using local fallback');
-      return null;
-    }
-    
-    // Try fetching prompt template from PromptLayer
-    // Pass input_variables to avoid validation warnings
-    const templateOptions = {
-      input_variables: variables  // Pass variables to prevent PromptLayer warnings
-    };
-    
-    // First attempt: no label (gets latest version)
-    let result = null;
-    try {
-      console.log(`🍰 Fetching prompt from PromptLayer: ${promptName} (latest version)`);
-      console.log(`   Variables passed: ${Object.keys(variables).length} keys`);
-      result = await promptLayer.client.templates.get(promptName, templateOptions);
-    } catch (firstAttemptError) {
-      // If that fails, try with "prod" label
-      try {
-        console.log(`🔍 First attempt failed, trying with label: "prod"`);
-        result = await promptLayer.client.templates.get(promptName, {
-          ...templateOptions,
-          label: 'prod'
-        });
-      } catch (secondAttemptError) {
-        console.warn(`⚠️ Prompt '${promptName}' not found in PromptLayer`);
-        console.warn(`   Error (no label): ${firstAttemptError.message}`);
-        console.warn(`   Error (prod label): ${secondAttemptError.message}`);
-        return null;
-      }
-    }
-    
-    if (!result || !result.prompt_template) {
-      console.warn(`⚠️ Prompt '${promptName}' returned empty from PromptLayer`);
-      console.log('   Full response:', JSON.stringify(result).substring(0, 500));
-      return null;
-    }
-    
-    // DEBUG: Log the full response structure
-    console.log(`🔍 DEBUG - Full PromptLayer response for ${promptName}:`, {
-      keys: Object.keys(result),
-      prompt_template_type: typeof result.prompt_template,
-      prompt_template_keys: typeof result.prompt_template === 'object' ? Object.keys(result.prompt_template) : 'N/A',
-      prompt_template_value: typeof result.prompt_template === 'string' ? result.prompt_template.substring(0, 100) : result.prompt_template
-    });
-    
-    // Extract prompt text from template
-    let promptText = '';
-    
-    // PromptLayer templates can be in different formats
-    // Format 1: content array with text blocks (current PromptLayer format)
-    if (result.prompt_template?.content && Array.isArray(result.prompt_template.content)) {
-      promptText = result.prompt_template.content
-        .filter(c => c.type === 'text')
-        .map(c => c.text)
-        .join('\n');
-    }
-    // Format 2: Direct string
-    else if (typeof result.prompt_template === 'string') {
-      promptText = result.prompt_template;
-    }
-    // Format 3: Chat format - extract ONLY system message for Realtime API
-    else if (result.prompt_template?.messages && Array.isArray(result.prompt_template.messages)) {
-      console.log(`🔍 DEBUG - Extracting from messages array (${result.prompt_template.messages.length} messages)`);
-      
-      // For Realtime API, we only want the system message
-      // User messages with {{user_question}} are for chat completion API, not realtime
-      const systemMessages = result.prompt_template.messages.filter(m => m.role === 'system');
-      
-      if (systemMessages.length === 0) {
-        console.warn('⚠️ No system message found in PromptLayer template - falling back to concatenating all messages');
-        // Fallback: concatenate all messages
-        promptText = result.prompt_template.messages
-          .map((m, i) => {
-            let content = '';
-            
-            if (typeof m.content === 'string') {
-              content = m.content;
-            } else if (Array.isArray(m.content)) {
-              content = m.content
-                .filter(c => c.type === 'text' || typeof c === 'string')
-                .map(c => typeof c === 'string' ? c : c.text)
-                .join('\n');
-            } else if (typeof m.content === 'object' && m.content) {
-              content = m.content.text || JSON.stringify(m.content);
-            }
-            
-            console.log(`   Message ${i} (role: ${m.role}): ${content.substring(0, 50)}...`);
-            return content;
-          })
-          .join('\n\n');
-      } else {
-        // Extract only system messages
-        promptText = systemMessages
-          .map((m, i) => {
-            let content = '';
-            
-            if (typeof m.content === 'string') {
-              content = m.content;
-            } else if (Array.isArray(m.content)) {
-              content = m.content
-                .filter(c => c.type === 'text' || typeof c === 'string')
-                .map(c => typeof c === 'string' ? c : c.text)
-                .join('\n');
-            } else if (typeof m.content === 'object' && m.content) {
-              content = m.content.text || JSON.stringify(m.content);
-            }
-            
-            console.log(`   System Message ${i}: ${content.substring(0, 50)}...`);
-            return content;
-          })
-          .join('\n\n');
-        
-        console.log(`✅ Extracted ${systemMessages.length} system message(s), ignoring ${result.prompt_template.messages.length - systemMessages.length} user/assistant messages`);
-      }
-    }
-    // Format 4: Plain prompt field
-    else if (result.prompt_template?.prompt) {
-      promptText = result.prompt_template.prompt;
-    }
-    // Format 5: system_prompt field
-    else if (result.prompt_template?.system_prompt) {
-      promptText = result.prompt_template.system_prompt;
-    }
-    // Format 6: template field
-    else if (result.prompt_template?.template) {
-      promptText = result.prompt_template.template;
-    }
-    // Format 7: content field
-    else if (result.prompt_template?.content && typeof result.prompt_template.content === 'string') {
-      promptText = result.prompt_template.content;
-    }
-    
-    if (!promptText) {
-      console.warn(`⚠️ Could not extract prompt text from '${promptName}'`);
-      console.warn(`   Available keys in prompt_template:`, Object.keys(result.prompt_template || {}));
-      console.warn(`   Full structure:`, JSON.stringify(result.prompt_template).substring(0, 200));
-      return null;
-    }
-    
-    // Cache in memory
-    promptCache.set(promptName, {
-      prompt: promptText,
-      timestamp: Date.now()
-    });
-    
-    // Inject variables BEFORE returning (fixes PromptLayer validation)
-    const injectedPrompt = injectVariables(promptText, variables);
-    
-    // Cache to disk for fallback
-    saveToDiskCache(promptName, injectedPrompt);
-    
-    console.log(`🍰 Fetched prompt from PromptLayer: ${promptName} (${injectedPrompt.length} chars)`);
-    return injectedPrompt;
-    
-  } catch (error) {
-    console.error(`❌ Failed to fetch prompt '${promptName}' from PromptLayer:`, error.message);
+  // Load from local file
+  const promptText = loadLocalPrompt(promptName);
+  if (!promptText) {
     return null;
   }
+  
+  // Cache in memory
+  promptCache.set(promptName, {
+    prompt: promptText,
+    timestamp: Date.now()
+  });
+  
+  // Inject variables and return
+  const injectedPrompt = injectVariables(promptText, variables);
+  console.log(`📋 Loaded local prompt: ${promptName} (${injectedPrompt.length} chars)`);
+  return injectedPrompt;
 }
 
 /**
@@ -293,24 +128,15 @@ async function getPromptForCall(callContext, customInstructions = null, variable
   const promptName = determinePromptName(callContext);
   console.log(`📋 Selected prompt variant: ${promptName}`);
   
-  // Try to get from PromptLayer with variables injected
-  let promptFromPL = await getPromptFromPromptLayer(promptName, variables);
+  // Try to get from local files
+  let promptFromLocal = await getPromptFromLocal(promptName, variables);
   
-  if (promptFromPL) {
-    return promptFromPL;
+  if (promptFromLocal) {
+    return promptFromLocal;
   }
   
-  // PromptLayer failed - try disk cache
-  console.warn(`⚠️ PromptLayer unavailable for '${promptName}', trying disk cache...`);
-  const cachedPrompt = loadFromDiskCache(promptName);
-  
-  if (cachedPrompt) {
-    console.log(`🍰 Using cached PromptLayer template: ${promptName}`);
-    return cachedPrompt;
-  }
-  
-  // No cache - use minimal emergency prompt
-  console.error(`❌ No cached template for '${promptName}' - using minimal emergency prompt`);
+  // No local prompt found - use minimal emergency prompt
+  console.error(`❌ No local prompt found for '${promptName}' - using minimal emergency prompt`);
   return "You are Barbara, a warm and professional scheduling assistant for reverse mortgage consultations. Keep responses brief and friendly. Ask questions to understand their needs and help schedule a consultation.";
 }
 
@@ -409,7 +235,7 @@ function clearCache() {
 }
 
 /**
- * Pre-warm the cache by fetching all prompt variants
+ * Pre-warm the cache by loading all prompt variants
  */
 async function prewarmCache() {
   const variants = [
@@ -422,44 +248,39 @@ async function prewarmCache() {
   console.log('🔥 Pre-warming prompt cache...');
   
   for (const variant of variants) {
-    await getPromptFromPromptLayer(variant);
+    await getPromptFromLocal(variant);
   }
   
   console.log('✅ Prompt cache pre-warmed');
 }
 
 /**
- * Diagnostic: List all available prompts from PromptLayer
+ * Diagnostic: List all available prompts from local folder
  */
 async function listAllPrompts() {
   try {
-    const promptLayer = initPromptLayer();
+    console.log('🔍 Listing all available prompts from local folder...');
     
-    if (!promptLayer.enabled) {
-      console.log('⚠️ PromptLayer disabled (no API key)');
+    if (!fs.existsSync(PROMPTS_DIR)) {
+      console.log('⚠️ Production Prompts directory not found');
       return [];
     }
     
-    console.log('🔍 Fetching all available prompts from PromptLayer...');
-    const allPrompts = await promptLayer.client.templates.all();
+    const files = fs.readdirSync(PROMPTS_DIR);
+    const promptFiles = files.filter(file => file.endsWith('.md'));
     
-    if (!allPrompts || allPrompts.length === 0) {
-      console.log('⚠️ No prompts found in PromptLayer');
+    if (promptFiles.length === 0) {
+      console.log('⚠️ No .md prompt files found in Production Prompts directory');
       return [];
     }
     
-    console.log(`✅ Found ${allPrompts.length} prompts:`);
-    allPrompts.forEach((prompt, index) => {
-      console.log(`   ${index + 1}. ${prompt.name || prompt.id}`);
-      if (prompt.release_labels) {
-        console.log(`      Labels: ${prompt.release_labels.join(', ')}`);
-      }
-      if (prompt.version) {
-        console.log(`      Version: ${prompt.version}`);
-      }
+    console.log(`✅ Found ${promptFiles.length} prompt files:`);
+    promptFiles.forEach((file, index) => {
+      const promptName = file.replace('.md', '');
+      console.log(`   ${index + 1}. ${promptName}`);
     });
     
-    return allPrompts;
+    return promptFiles.map(file => ({ name: file.replace('.md', '') }));
     
   } catch (error) {
     console.error('❌ Failed to list prompts:', error.message);

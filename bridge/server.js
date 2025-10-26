@@ -138,8 +138,10 @@ app.get('/public/inbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream" codec="L16@16000h">
-      <Parameter name="track" value="both_tracks" />
+    <Stream url="${wsUrl}/audiostream" 
+            bidir="true"
+            realtime="true"
+            name="barbara-stream">
       <Parameter name="from" value="${From || ''}" />
       <Parameter name="to" value="${To || ''}" />
     </Stream>
@@ -165,8 +167,10 @@ app.get('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@16000h">
-      <Parameter name="track" value="both_tracks" />
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" 
+            bidir="true"
+            realtime="true"
+            name="barbara-stream">
     </Stream>
   </Connect>
 </Response>`;
@@ -188,8 +192,9 @@ app.post('/public/outbound-xml', async (request, reply) => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
-    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" codec="L16@16000h">
-      <Parameter name="track" value="both_tracks" />
+    <Stream url="${wsUrl}/audiostream?context=outbound&amp;call_id=${safeCallId}" 
+            bidir="true"
+            realtime="true">
     </Stream>
   </Connect>
 </Response>`;

@@ -24,6 +24,41 @@ const { getPromptForCall, injectVariables, determinePromptName } = require('./pr
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Simple linear resampler for 24kHz → 16kHz (or any rate conversion)
+ * Uses linear interpolation for acceptable quality without external deps
+ * Chunks output for better streaming performance
+ */
+function resample(buffer, fromRate, toRate, chunkSize = 3200) { // 200ms at 16kHz
+  if (fromRate === toRate) return buffer;
+  
+  const ratio = fromRate / toRate;
+  const outputLength = Math.floor(buffer.length / ratio / 2) * 2; // Keep 16-bit alignment
+  const output = Buffer.alloc(outputLength);
+  
+  for (let i = 0; i < outputLength; i += 2) {
+    const srcIndex = (i / 2) * ratio;
+    const srcIndexInt = Math.floor(srcIndex);
+    const frac = srcIndex - srcIndexInt;
+    
+    // Read 16-bit PCM samples
+    const sample1 = srcIndexInt * 2 < buffer.length ? buffer.readInt16LE(srcIndexInt * 2) : 0;
+    const sample2 = (srcIndexInt + 1) * 2 < buffer.length ? buffer.readInt16LE((srcIndexInt + 1) * 2) : sample1;
+    
+    // Linear interpolation
+    const interpolated = Math.round(sample1 * (1 - frac) + sample2 * frac);
+    output.writeInt16LE(interpolated, i);
+  }
+  
+  // Chunk the output for streaming
+  const chunks = [];
+  for (let i = 0; i < output.length; i += chunkSize) {
+    chunks.push(output.slice(i, i + chunkSize));
+  }
+  
+  return chunks;
+}
+
 // Debug logging control
 const ENABLE_DEBUG_LOGGING = process.env.ENABLE_DEBUG_LOGGING === 'true';
 
@@ -79,7 +114,7 @@ class AudioBridge {
     // Transcript tracking for database storage
     this.conversationTranscript = [];
     
-    // Track which prompt was used for PromptLayer logging
+    // Track which prompt was used for logging
     this.promptName = null;
     this.promptSource = null;
     
@@ -114,7 +149,7 @@ class AudioBridge {
       throw new Error('Missing OPENAI_API_KEY');
     }
 
-    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-realtime-2025-08-28';
+    const realtimeModel = process.env.REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17';
     
     this.openaiSocket = new WebSocket(
       `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(realtimeModel)}`,
@@ -696,9 +731,9 @@ class AudioBridge {
       variables = { callContext: 'inbound' };
     }
 
-    // Step 2: Try to get prompt from PromptLayer
+    // Step 2: Get prompt from local Production Prompts folder
     try {
-      console.log('🍰 Fetching prompt from PromptLayer with context:', promptCallContext);
+      console.log('📋 Loading prompt from Production Prompts with context:', promptCallContext);
       
       const promptTemplate = await getPromptForCall(
         promptCallContext,
@@ -707,34 +742,25 @@ class AudioBridge {
       );
 
       if (!promptTemplate || promptTemplate.length === 0) {
-        throw new Error('PromptLayer returned empty prompt');
+        throw new Error('Local prompt returned empty');
       }
 
       instructions = promptTemplate;  // Already injected inside getPromptForCall
-      promptSource = 'promptlayer';
+      promptSource = 'local_production';
       this.promptName = determinePromptName(promptCallContext);
       this.promptSource = promptSource;
       
-      console.log(`🍰 Successfully built prompt from PromptLayer (${instructions.length} chars)`);
+      console.log(`📋 Successfully loaded local prompt (${instructions.length} chars)`);
       
-    } catch (promptLayerError) {
-      console.error('❌ PromptLayer fetch failed:', promptLayerError.message);
-      console.warn('⚠️ Falling back to local prompt file');
+    } catch (localPromptError) {
+      console.error('❌ Local prompt fetch failed:', localPromptError.message);
+      console.warn('⚠️ Falling back to emergency prompt');
       
-      try {
-        const cachedPrompt = await getPromptForCall(promptCallContext, null, variables);
-        instructions = cachedPrompt;  // Already injected inside getPromptForCall
-        promptSource = 'cached_promptlayer';
-        this.promptName = determinePromptName(promptCallContext);
-        this.promptSource = promptSource;
-        console.log(`🍰 Using cached PromptLayer template (${instructions.length} chars)`);
-      } catch (fallbackError) {
-        instructions = "You are Barbara, a warm scheduling assistant. Keep responses short and friendly.";
-        promptSource = 'minimal_emergency';
-        this.promptName = 'minimal-emergency-prompt';
-        this.promptSource = promptSource;
-        console.warn('⚠️ Using emergency minimal prompt');
-      }
+      instructions = "You are Barbara, a warm scheduling assistant. Keep responses short and friendly.";
+      promptSource = 'minimal_emergency';
+      this.promptName = 'minimal-emergency-prompt';
+      this.promptSource = promptSource;
+      console.warn('⚠️ Using emergency minimal prompt');
     }
 
     console.log('📋 Final prompt details:', {
@@ -756,7 +782,7 @@ class AudioBridge {
         modalities: ['audio', 'text'],
         voice: process.env.REALTIME_VOICE || 'shimmer',  // Shimmer = most natural, warm female voice
         instructions: finalInstructions,
-        // Revert to PCM16 - G.711 caused choppy audio
+        // Match SignalWire's L16@16000h format
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
@@ -768,7 +794,7 @@ class AudioBridge {
           type: 'server_vad',
           threshold: 0.35,  // Relaxed threshold - less aggressive interruption
           prefix_padding_ms: 500,  // More context before speech starts
-          silence_duration_ms: 2000  // 2 seconds - balanced timing for seniors with audio delay
+          silence_duration_ms: 1800  // 1.8 seconds - 200ms faster response
         },
         tools: toolDefinitions,
         tool_choice: 'auto'
@@ -1069,6 +1095,7 @@ class AudioBridge {
   /**
    * Send media (audio) to SignalWire
    * FIX #4: No artificial throttle (removed 50ms gaps)
+   * Resample from OpenAI's 24kHz to SignalWire's 16kHz
    */
   async sendMediaToSignalWire(audioData) {
     if (this.swSocket.readyState !== WebSocket.OPEN) {
@@ -1077,17 +1104,13 @@ class AudioBridge {
     }
     
     const audioBuffer = Buffer.from(audioData, 'base64');
-    const maxChunkSize = 3840; // 80ms @ 24kHz PCM16 - smoother audio delivery
     
-    if (audioBuffer.length > maxChunkSize) {
-      debug(`📦 Splitting large chunk (${audioBuffer.length} bytes)`);
-      
-      for (let offset = 0; offset < audioBuffer.length; offset += maxChunkSize) {
-        const chunk = audioBuffer.slice(offset, offset + maxChunkSize);
-        await this.sendSingleChunk(chunk.toString('base64'));
-      }
-    } else {
-      await this.sendSingleChunk(audioData);
+    // Resample from OpenAI's 24kHz to SignalWire's 16kHz
+    const resampledChunks = resample(audioBuffer, 24000, 16000);
+    
+    // Send each resampled chunk
+    for (const chunk of resampledChunks) {
+      await this.sendSingleChunk(chunk.toString('base64'));
     }
   }
   
@@ -1123,8 +1146,8 @@ class AudioBridge {
       return;
     }
     
-    // Generate 50ms of silence @ 24kHz PCM16
-    const sampleRate = 24000;
+    // Generate 50ms of silence @ 16kHz PCM16 (matches SignalWire format)
+    const sampleRate = 16000;
     const durationMs = 50;
     const numSamples = Math.floor((sampleRate * durationMs) / 1000);
     const silenceBuffer = Buffer.alloc(numSamples * 2); // 16-bit = 2 bytes per sample, all zeros = silence
@@ -1220,7 +1243,7 @@ class AudioBridge {
         args = {};
       }
       
-      // Inject prompt version for PromptLayer logging
+      // Inject prompt version for logging
       if (name === 'save_interaction' && args.metadata) {
         args.metadata.prompt_version = this.promptName || 'unknown';
         args.metadata.prompt_source = this.promptSource || 'unknown';
@@ -1341,7 +1364,7 @@ class AudioBridge {
           metadata: metadata
         });
         
-        console.log('✅ Interaction saved to PromptLayer');
+        console.log('✅ Interaction saved to database');
         
       } catch (err) {
         console.error('❌ Failed to save interaction:', err.message);

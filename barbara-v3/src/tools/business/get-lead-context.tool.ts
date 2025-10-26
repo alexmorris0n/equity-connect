@@ -24,15 +24,19 @@ export const getLeadContextTool = realtimeTool({
     try {
       logger.info(`🔍 Looking up lead by phone: ${phone}`);
       
-      // Get search patterns for phone number
+      // Get search patterns for phone number (10-digit, formatted, E.164)
       const patterns = phoneSearchPatterns(phone);
-      const searchPattern = `%${patterns[0]}%`;
+      
+      // Build OR query to match any format
+      const orConditions = patterns
+        .map(pattern => `primary_phone.ilike.%${pattern}%`)
+        .join(',');
       
       // Query lead by phone - match various formats
       const { data: leads, error: leadError } = await sb
         .from('leads')
         .select('*, brokers!assigned_broker_id(*)')
-        .or(`primary_phone.ilike.${searchPattern}`)
+        .or(orConditions)
         .limit(1);
       
       if (leadError) {

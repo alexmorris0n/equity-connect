@@ -88,6 +88,22 @@ class OpenAIWebRTCClient {
     }
   }
 
+
+  // Wait for ICE gathering to complete (no trickle)
+  async waitIceComplete(pc, timeoutMs = 3000) {
+    return new Promise(res => {
+      if (pc.iceGatheringState === 'complete') return res();
+      
+      const t = setTimeout(res, timeoutMs);
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') { 
+          clearTimeout(t); 
+          res(); 
+        }
+      };
+    });
+  }
+
   // DigitalOcean allows direct WebRTC connections - no TURN needed
 
   async connectWebRTC({ signal } = {}) {
@@ -134,12 +150,23 @@ class OpenAIWebRTCClient {
       this.isClosing = false;
 
     // ----- PC setup -----
-    // DigitalOcean allows direct WebRTC connections - no TURN needed
+    // DigitalOcean App Platform blocks UDP - need TURN servers
     this.peerConnection = new RTCPeerConnection({
       bundlePolicy: 'max-bundle',
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        // Add TURN servers for DigitalOcean App Platform
+        { 
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        { 
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
       ]
     });
 
@@ -241,8 +268,6 @@ class OpenAIWebRTCClient {
     // ----- Data channel (pre-negotiated) before offer -----
     // This ensures an m=application webrtc-datachannel in the OFFER automatically.
     this.dataChannel = this.peerConnection.createDataChannel('oai-events', {
-      negotiated: true,
-      id: 0,
       ordered: true,
     });
 
@@ -296,6 +321,9 @@ class OpenAIWebRTCClient {
       return lines.join('\n');
     };
 
+    // Data channel creation is already handled earlier in the connection setup
+    // No need for application transceiver - data channel m-line comes from createDataChannel()
+    
     console.log('📤 Creating SDP offer…');
     let offer = await this.peerConnection.createOffer();
     offer = { type: 'offer', sdp: preferOpus(offer.sdp) };
@@ -308,24 +336,11 @@ class OpenAIWebRTCClient {
       throw new Error('Peer connection not ready: localDescription is null');
     }
 
-    // ----- Complete ICE (non-trickle) with small timeout -----
+    // ----- Complete ICE (non-trickle) with proper timeout -----
     if (this.peerConnection.iceGatheringState !== 'complete') {
-      console.log('⏳ Waiting for ICE gathering (max 800ms)...');
-      await new Promise((resolve) => {
-        const to = setTimeout(() => {
-          console.log('⚠️ ICE gathering timeout - proceeding anyway');
-          resolve();
-        }, 800); // ✅ Reduced from 2500ms to 800ms
-        const onchg = () => {
-          if (this.peerConnection?.iceGatheringState === 'complete') {
-            this.peerConnection.removeEventListener('icegatheringstatechange', onchg);
-            clearTimeout(to);
-            console.log('✅ ICE gathering completed early');
-            resolve();
-          }
-        };
-        this.peerConnection.addEventListener('icegatheringstatechange', onchg);
-      });
+      console.log('⏳ Waiting for ICE gathering to complete...');
+      await this.waitIceComplete(this.peerConnection, 3000);
+      console.log('✅ ICE gathering completed');
     }
 
     const offerSdp = this.peerConnection.localDescription.sdp;
@@ -373,32 +388,72 @@ class OpenAIWebRTCClient {
     
     console.log('🔑 Ephemeral session created');
     
-    // POST SDP to OpenAI
+    // POST SDP offer directly to OpenAI WebRTC endpoint
     const base = 'https://api.openai.com/v1/realtime/calls';
-    const FormData = require('form-data');
-    const fd = new FormData();
-    fd.append('sdp', offerSdp);
     
-    // ✅ NEW GA API: Send only raw SDP, no session config wrapper
-    console.log('📤 Posting raw SDP (no session config)');
+    console.log('📤 Posting SDP offer to OpenAI...');
     
+    // Ensure SDP ends with double CRLF (many SDP endpoints expect it)
+    const sdpBody = offerSdp.endsWith('\r\n\r\n') ? offerSdp : offerSdp + '\r\n\r\n';
+    
+    // Validate SDP has required sections
+    if (!/m=audio/.test(sdpBody)) {
+      throw new Error('SDP missing audio m-line');
+    }
+    
+    // Debug: Check for data channel in SDP
+    const hasDataChannel = /\nm=application \d+ UDP\/DTLS\/SCTP webrtc-datachannel/.test(sdpBody);
+    console.log('📤 SDP length:', sdpBody.length, 'tail:', JSON.stringify(sdpBody.slice(-4)));
+    console.log('📤 SDP has data channel:', hasDataChannel);
+    
+    if (!hasDataChannel) {
+      console.log('📤 SDP content preview (first 20 lines):');
+      const lines = sdpBody.split('\n').slice(0, 20);
+      lines.forEach((line, i) => console.log(`📤 Line ${i + 1}:`, line));
+      throw new Error('SDP missing datachannel m-line');
+    }
+    
+    // Send raw SDP as application/sdp (required by OpenAI WebRTC API)
+    // Use API key for server-side authentication
     const res = await fetch(base, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${clientSecret}`,
-        'OpenAI-Beta': 'realtime=v1',  // ✅ REQUIRED for /v1/realtime/calls
-        ...fd.getHeaders()
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/sdp',
+        'Accept': 'application/sdp'
       },
-      body: fd
+      body: sdpBody
     });
 
     if (!res.ok) {
       const bodyText = await res.text();
-      console.error('❌ OpenAI rejected session config:', bodyText);
-      throw new Error(`Realtime calls failed ${res.status}: ${bodyText}`);
+      console.error('❌ OpenAI rejected SDP with client secret:', bodyText);
+      
+      // Try fallback with API key + model parameter
+      console.log('🔄 Trying fallback with API key...');
+      const fallbackUrl = `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(this.model)}`;
+      
+      const fallbackRes = await fetch(fallbackUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/sdp',
+          'Accept': 'application/sdp'
+        },
+        body: sdpBody
+      });
+      
+      if (!fallbackRes.ok) {
+        const fallbackText = await fallbackRes.text();
+        console.error('❌ OpenAI rejected SDP with API key:', fallbackText);
+        throw new Error(`Realtime calls failed ${fallbackRes.status}: ${fallbackText}`);
+      }
+      
+      console.log('📥 OpenAI accepted SDP via API key fallback');
+      return await fallbackRes.text();
     }
     
-    console.log('📥 OpenAI accepted session config');
+    console.log('📥 OpenAI accepted SDP');
     
     return await res.text();
   }
@@ -429,11 +484,11 @@ class OpenAIWebRTCClient {
     }
 
     try {
-      // 16-bit PCM mono @16kHz
+      // Now expects 24kHz PCM16 audio from base64
       const buf = Buffer.from(base64Audio, 'base64');
       const in16 = new Int16Array(buf.buffer, buf.byteOffset, buf.length / 2);
 
-      // prepend any remainder from last call
+      // Prepend any remainder from last call
       let samples;
       if (this._pcmRemainder.length) {
         samples = new Int16Array(this._pcmRemainder.length + in16.length);
@@ -444,38 +499,33 @@ class OpenAIWebRTCClient {
         samples = in16;
       }
 
-      const FRAME = 160; // 10ms @16kHz
+      // Process at 24kHz: 240 samples = 10ms frame (per OpenAI docs)
+      const FRAME = 240; // 10ms @24kHz
       const fullFrames = Math.floor(samples.length / FRAME);
 
       for (let i = 0; i < fullFrames; i++) {
-        // 1) Take a clean copy so the view is exactly 160 samples (320 bytes)
         const start = i * FRAME;
         const end = start + FRAME;
-        const frameI16 = samples.slice(start, end); // copies 160 Int16s
-
-        // 2) Convert to a Buffer whose byteLength is exactly 320
+        const frameI16 = samples.slice(start, end);
         const frameBuf = Buffer.from(frameI16.buffer, frameI16.byteOffset, frameI16.byteLength);
 
-        // 3) Derive numberOfFrames from what we're actually sending
-        const n = frameI16.length; // should be 160
-
-        // Optional sanity guard (logs once if something goes off)
+        // Sanity check
+        const n = frameI16.length;
         if (frameBuf.byteLength !== n * 2) {
           console.warn(`⚠️ Frame size mismatch: bytes=${frameBuf.byteLength}, samples=${n}`);
           continue;
         }
 
         this.audioSource.onData({
-          // Pass a Buffer; wrtc is strict about .byteLength
           samples: frameBuf,
-          sampleRate: 16000,
+          sampleRate: 24000,  // 24kHz per OpenAI docs
           bitsPerSample: 16,
           channelCount: 1,
           numberOfFrames: n
         });
       }
 
-      // store any tail for next call
+      // Store any tail for next call
       const used = fullFrames * FRAME;
       if (samples.length > used) {
         this._pcmRemainder = samples.subarray(used).slice();

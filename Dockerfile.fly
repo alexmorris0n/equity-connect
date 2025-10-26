@@ -1,13 +1,16 @@
 # Dockerfile for Barbara Bridge on Fly.io
 FROM node:18-alpine
 
-# Install system dependencies
+# Install system dependencies for WebRTC
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
     git \
-    curl
+    curl \
+    libc6-compat \
+    linux-headers \
+    build-base
 
 # Set working directory
 WORKDIR /app
@@ -16,18 +19,21 @@ WORKDIR /app
 COPY package*.json ./
 COPY bridge/package*.json ./bridge/
 
-# Install dependencies
+# Set environment variables for WebRTC build
+ENV PYTHON=/usr/bin/python3
+ENV npm_config_python=/usr/bin/python3
+ENV npm_config_build_from_source=true
+
+# Install global dependencies for WebRTC
+RUN npm install -g node-pre-gyp
+
+# Install dependencies (including wrtc)
 RUN npm install --production
 
 # Copy application code
 COPY bridge/ ./bridge/
-COPY config/ ./config/
-COPY database/ ./database/
 COPY prompts/ ./prompts/
-COPY scripts/ ./scripts/
 COPY supabase/ ./supabase/
-COPY templates/ ./templates/
-COPY workflows/ ./workflows/
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs
@@ -38,11 +44,11 @@ RUN chown -R barbara:nodejs /app
 USER barbara
 
 # Expose ports
-EXPOSE 3000
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 
-# Start the application
+# Start the application with lean audio bridge
 CMD ["node", "bridge/server.js"]

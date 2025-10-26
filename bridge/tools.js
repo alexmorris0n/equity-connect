@@ -1278,6 +1278,17 @@ async function searchKnowledge({ question }) {
     // Performance tracking
     console.log('🔍 Starting knowledge search:', question);
     
+    // Check if Google credentials are available
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+      console.warn('⚠️ Google credentials not available - using fallback response');
+      return {
+        answer: "I'd be happy to connect you with one of our specialists who can answer that question in detail. They have all the latest information about reverse mortgages and can provide you with accurate, personalized guidance.",
+        confidence: 0.5,
+        sources: [],
+        fallback: true
+      };
+    }
+    
     // Get embedding for the question from Vertex AI
     const fetch = require('node-fetch');
     const embeddingStartTime = Date.now();
