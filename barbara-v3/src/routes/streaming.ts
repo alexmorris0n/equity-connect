@@ -44,6 +44,28 @@ export async function streamingRoute(
     });
 
     try {
+      // Listen directly to raw WebSocket for SignalWire's 'start' event (before transport layer processes it)
+      connection.addEventListener('message', (event: any) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === 'start') {
+            logger.info(`📡 SignalWire 'start' event received (RAW)`);
+            
+            // Extract caller phone from customParameters
+            const customParams = data.start?.customParameters || {};
+            callerPhone = customParams.From || customParams.from || null;
+            
+            if (callerPhone) {
+              logger.info(`📞 Captured caller ID from SignalWire: ${callerPhone}`);
+            } else {
+              logger.warn(`⚠️  No caller ID in start event - customParameters:`, customParams);
+            }
+          }
+        } catch (err) {
+          // Ignore parse errors (binary audio data)
+        }
+      });
+      
       // Create SignalWire transport layer
       const signalWireTransportLayer = new SignalWireCompatibilityTransportLayer({
         signalWireWebSocket: connection,
@@ -62,53 +84,38 @@ export async function streamingRoute(
         model: model as OpenAIRealtimeModels
       });
 
-      // Listen to transport events to capture SignalWire's 'start' event
+      // Listen to transport events to inject caller ID when available
       session.transport.on('*', (event: TransportEvent) => {
-        // Capture caller ID from SignalWire's start event (ONLY log start, not media)
-        if (event.type === 'twilio_message') {
-          const twilioEvent = (event as any).twilioEvent;
+        // If we have caller ID and haven't injected yet, inject it now
+        if (callerPhone && event.type === 'session.updated') {
+          logger.info(`💉 Injecting caller ID into conversation: ${callerPhone}`);
           
-          // Only process 'start' events - ignore 'media' events (they flood logs)
-          if (twilioEvent?.event === 'start') {
-            logger.info(`📡 SignalWire 'start' event received`);
-            
-            // Extract caller phone from customParameters
-            const customParams = twilioEvent.start?.customParameters || {};
-            callerPhone = customParams.From || customParams.from || null;
-            
-            if (callerPhone) {
-              logger.info(`📞 Captured caller ID from SignalWire: ${callerPhone}`);
-              
-              // Inject caller ID into conversation context immediately
-              const systemMessage: RealtimeClientMessage = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'message',
-                  role: 'system',
-                  content: [{
-                    type: 'input_text',
-                    text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this exact phone number.`
-                  }]
-                }
-              } as any;
-              
-              signalWireTransportLayer.sendEvent(systemMessage);
-              logger.info(`✅ Caller ID injected into conversation`);
-              
-              // NOW trigger the initial AI greeting AFTER caller ID is injected
-              try {
-                const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
-                signalWireTransportLayer.sendEvent(responseEvent);
-                logger.info('👋 Triggered initial AI greeting with caller context');
-              } catch (error) {
-                logger.debug('AI greeting trigger failed (non-fatal)');
-              }
-            } else {
-              logger.warn(`⚠️  No caller ID in start event`);
+          const systemMessage: RealtimeClientMessage = {
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'system',
+              content: [{
+                type: 'input_text',
+                text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this exact phone number.`
+              }]
             }
+          } as any;
+          
+          signalWireTransportLayer.sendEvent(systemMessage);
+          logger.info(`✅ Caller ID injected successfully`);
+          
+          // NOW trigger the initial AI greeting AFTER caller ID is injected
+          try {
+            const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
+            signalWireTransportLayer.sendEvent(responseEvent);
+            logger.info('👋 Triggered initial AI greeting with caller context');
+          } catch (error) {
+            logger.debug('AI greeting trigger failed (non-fatal)');
           }
-          // Don't log media events - they're too noisy
-          return;
+          
+          // Clear callerPhone so we don't inject twice
+          callerPhone = null;
         }
         
         switch (event.type) {
