@@ -31,6 +31,42 @@ export async function streamingRoute(
     const direction = 'inbound';
     
     logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
+    
+    // Capture caller ID from the FIRST SignalWire message (before transport processes it)
+    let callerPhone = '';
+    let startEventCaptured = false;
+    
+    // Listen to RAW WebSocket messages BEFORE transport layer
+    connection.on('message', (data: any) => {
+      if (startEventCaptured) return; // Only process once
+      
+      try {
+        const message = JSON.parse(data.toString());
+        
+        // Look for start event
+        if (message.event === 'start') {
+          logger.info(`📞 RAW start event:`, JSON.stringify(message, null, 2));
+          
+          // Try to extract caller ID from various possible locations
+          callerPhone = message.start?.customParameters?.From
+                     || message.customParameters?.From
+                     || message.start?.callSid?.from
+                     || message.start?.from
+                     || message.from
+                     || '';
+          
+          if (callerPhone) {
+            logger.info(`✅ Caller ID extracted from start event: ${callerPhone}`);
+          } else {
+            logger.warn(`⚠️  Start event found but no caller ID!`, message);
+          }
+          
+          startEventCaptured = true;
+        }
+      } catch (e) {
+        // Ignore parse errors (binary audio data)
+      }
+    });
 
     // Handle disconnection
     connection.on('close', () => {
@@ -144,8 +180,30 @@ export async function streamingRoute(
 
       logger.info('✅ OpenAI Realtime API connected');
 
-      // TODO: Inject caller ID into conversation context
-      // For now, Barbara will need to ask or we'll add metadata injection
+      // Wait a moment for start event to be captured
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Inject caller ID if we captured it
+      if (callerPhone) {
+        logger.info(`💉 Injecting caller ID into conversation: ${callerPhone}`);
+        
+        const systemMessage: RealtimeClientMessage = {
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'system',
+            content: [{
+              type: 'input_text',
+              text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this exact phone number.`
+            }]
+          }
+        } as any;
+        
+        signalWireTransportLayer.sendEvent(systemMessage);
+        logger.info(`✅ Caller ID injected: ${callerPhone}`);
+      } else {
+        logger.warn(`⚠️  No caller ID captured - Barbara will need to ask`);
+      }
       
       // Trigger initial AI greeting
       try {
