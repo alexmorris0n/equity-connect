@@ -30,8 +30,11 @@ export async function streamingRoute(
     // Log WebSocket connection
     logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
     
-    // Will capture caller ID from SignalWire's 'start' event
+    // Will capture caller ID and call direction from SignalWire's 'start' event
     let callerPhone: string | null = null;
+    let callDirection: string = 'inbound'; // default to inbound
+    let leadId: string | null = null;
+    let brokerId: string | null = null;
 
     // Handle disconnection
     connection.on('close', () => {
@@ -51,14 +54,25 @@ export async function streamingRoute(
           if (data.event === 'start') {
             logger.info(`📡 SignalWire 'start' event received (RAW)`);
             
-            // Extract caller phone from customParameters
+            // Extract call context from customParameters
             const customParams = data.start?.customParameters || {};
             callerPhone = customParams.From || customParams.from || null;
+            callDirection = customParams.direction || 'inbound';
+            leadId = customParams.lead_id || null;
+            brokerId = customParams.broker_id || null;
             
+            logger.info(`📞 Call direction: ${callDirection}`);
             if (callerPhone) {
               logger.info(`📞 Captured caller ID from SignalWire: ${callerPhone}`);
             } else {
               logger.warn(`⚠️  No caller ID in start event - customParameters:`, customParams);
+            }
+            
+            if (leadId) {
+              logger.info(`👤 Lead ID: ${leadId}`);
+            }
+            if (brokerId) {
+              logger.info(`🏢 Broker ID: ${brokerId}`);
             }
           }
         } catch (err) {
@@ -72,7 +86,7 @@ export async function streamingRoute(
         audioFormat: AGENT_CONFIG.audioFormat
       });
 
-      // Create agent with default inbound instructions (will update if we detect outbound)
+      // Create agent with default inbound instructions (will update when we detect direction from 'start' event)
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
         instructions: getInstructionsForCallType('inbound', {})
@@ -84,12 +98,32 @@ export async function streamingRoute(
         model: model as OpenAIRealtimeModels
       });
 
-      // Listen to transport events to inject caller ID when available
+      // Listen to transport events to inject caller ID and update prompt when available
       session.transport.on('*', (event: TransportEvent) => {
-        // If we have caller ID and haven't injected yet, inject it now
+        // If we have caller ID and haven't injected yet, inject it now and update prompt based on direction
         if (callerPhone && event.type === 'session.updated') {
-          logger.info(`💉 Injecting caller ID into conversation: ${callerPhone}`);
+          logger.info(`💉 Injecting caller ID and call context into conversation`);
           
+          // Update agent instructions based on call direction
+          const updatedInstructions = getInstructionsForCallType(callDirection, {
+            leadId: leadId || undefined,
+            brokerId: brokerId || undefined,
+            from: callerPhone,
+            to: callDirection === 'outbound' ? callerPhone : undefined
+          });
+          
+          // Send session update with correct prompt
+          const sessionUpdateMessage: RealtimeClientMessage = {
+            type: 'session.update',
+            session: {
+              instructions: updatedInstructions
+            }
+          } as any;
+          
+          signalWireTransportLayer.sendEvent(sessionUpdateMessage);
+          logger.info(`📝 Updated prompt for ${callDirection} call`);
+          
+          // Inject caller context as system message
           const systemMessage: RealtimeClientMessage = {
             type: 'conversation.item.create',
             item: {
@@ -103,13 +137,13 @@ export async function streamingRoute(
           } as any;
           
           signalWireTransportLayer.sendEvent(systemMessage);
-          logger.info(`✅ Caller ID injected successfully`);
+          logger.info(`✅ Caller ID and context injected successfully`);
           
-          // NOW trigger the initial AI greeting AFTER caller ID is injected
+          // NOW trigger the initial AI greeting AFTER context is injected
           try {
             const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
             signalWireTransportLayer.sendEvent(responseEvent);
-            logger.info('👋 Triggered initial AI greeting with caller context');
+            logger.info(`👋 Triggered initial AI greeting for ${callDirection} call`);
           } catch (error) {
             logger.debug('AI greeting trigger failed (non-fatal)');
           }

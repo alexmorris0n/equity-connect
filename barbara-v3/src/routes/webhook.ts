@@ -60,21 +60,10 @@ export async function webhookRoute(fastify: FastifyInstance) {
     // Log the outbound call
     console.log(`📞 OUTBOUND call from ${From} to ${To} (CallSid: ${CallSid || call_id})`);
     
-    // Construct WebSocket URL with context
+    // Construct clean WebSocket URL (no query params - SignalWire rejects them)
     const host = request.headers.host || 'localhost';
     const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
-    
-    // Build query parameters for WebSocket (encode values)
-    const wsParams = new URLSearchParams({
-      direction: 'outbound',
-      from: From || '',
-      to: To || '',
-      callsid: CallSid || call_id || '',
-      lead_id: lead_id || '',
-      broker_id: broker_id || ''
-    });
-    
-    const websocketUrl = `${protocol}://${host}/media-stream?${wsParams.toString()}`;
+    const websocketUrl = `${protocol}://${host}/media-stream`;
 
     // Get codec attribute
     const codec = AGENT_CONFIG.audioFormat === AUDIO_FORMAT.PCM16
@@ -82,14 +71,21 @@ export async function webhookRoute(fastify: FastifyInstance) {
       : SIGNALWIRE_CODECS.G711_ULAW;
     const codecAttribute = codec ? ` codec="${codec}"` : '';
 
-    console.log(`📡 Stream URL: ${websocketUrl}`);
-    console.log(`🔊 Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
+    console.log(`📞 Outbound call - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
-    // Generate cXML response
+    // Generate cXML response with call context in customParameters
+    // Pass direction, lead_id, broker_id via Parameter tags
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
-        <Stream url="${websocketUrl}"${codecAttribute} />
+        <Stream url="${websocketUrl}"${codecAttribute}>
+          <Parameter name="direction" value="outbound" />
+          <Parameter name="From" value="${From || ''}" />
+          <Parameter name="To" value="${To || ''}" />
+          <Parameter name="CallSid" value="${CallSid || call_id || ''}" />
+          <Parameter name="lead_id" value="${lead_id || ''}" />
+          <Parameter name="broker_id" value="${broker_id || ''}" />
+        </Stream>
       </Connect>
     </Response>`;
 
