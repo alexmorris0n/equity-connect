@@ -61,8 +61,39 @@ export async function streamingRoute(
         model: model as OpenAIRealtimeModels
       });
 
+      // Capture caller ID from SignalWire start event
+      let callerPhone = '';
+      
       // Listen to transport events
       session.transport.on('*', (event: TransportEvent) => {
+        // Capture SignalWire stream start metadata
+        if (event.type === 'twilio_message' && (event as any).message?.event === 'start') {
+          const startData = (event as any).message?.start;
+          if (startData?.customParameters) {
+            callerPhone = startData.customParameters.From || '';
+            logger.info(`📞 Caller ID captured: ${callerPhone}`);
+            
+            // Inject caller phone into session context
+            if (callerPhone) {
+              // Add system message with caller phone
+              const systemMessage: RealtimeClientMessage = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'message',
+                  role: 'system',
+                  content: [{
+                    type: 'input_text',
+                    text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this phone number.`
+                  }]
+                }
+              } as any;
+              
+              signalWireTransportLayer.sendEvent(systemMessage);
+              logger.info(`✅ Injected caller ID into conversation: ${callerPhone}`);
+            }
+          }
+        }
+        
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
             logger.event('🤖', 'AI response completed', event);
@@ -101,6 +132,9 @@ export async function streamingRoute(
 
       logger.info('✅ OpenAI Realtime API connected');
 
+      // TODO: Inject caller ID into conversation context
+      // For now, Barbara will need to ask or we'll add metadata injection
+      
       // Trigger initial AI greeting
       try {
         const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
