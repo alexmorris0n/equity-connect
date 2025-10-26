@@ -12,7 +12,7 @@ export const AUDIO_FORMAT = {
 // SignalWire codec mappings
 export const SIGNALWIRE_CODECS = {
   PCM16: 'L16@24000h',   // 24kHz PCM16
-  G711_ULAW: undefined   // Default codec (G.711 μ-law)
+  G711_ULAW: undefined   // Default codec (G.711 μ-law) - no codec attribute needed
 } as const;
 
 // Event types
