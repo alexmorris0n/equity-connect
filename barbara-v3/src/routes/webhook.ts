@@ -32,9 +32,10 @@ export async function webhookRoute(fastify: FastifyInstance) {
     console.log(`📞 Incoming call - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
     // Generate cXML response with caller ID in customParameters
+    // The 4-second pause allows time for caller ID capture and natural ringback
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-      <Play loop="0">https://api.twilio.com/cowbell.mp3</Play>
+      <Pause length="4"/>
       <Connect>
         <Stream url="${websocketUrl}"${codecAttribute}>
           <Parameter name="From" value="${From || ''}" />
