@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** October 25, 2025  
+**Last Updated:** October 26, 2025  
 **Status:** Production Ready  
-**Current Phase:** Barbara V3 Deployment - TypeScript Rewrite + MFA + Git-Based Deployment
-**Latest Updates:** Barbara V3 launched with 13 tools (11 business + 2 demo), SignalWire MFA integration, TypeScript + Zod validation, OpenAI Agents SDK, GitHub Actions auto-deployment, Fly.io dual-machine HA setup
+**Current Phase:** Barbara V3 Production - Full Inbound/Outbound Calling + Vue Dashboard Planning
+**Latest Updates:** Barbara V3 fully operational with inbound/outbound calls, caller ID detection, lead lookup, appointment booking with email confirmations, Git-based auto-deployment, `shimmer` voice, clean logging. Vue dashboard planned to replace PromptLayer for prompt management.
 
 ---
 
@@ -238,19 +238,22 @@ equity-connect/ (Git Monorepo)
   - `KNOWLEDGE_BASE_TIMEOUT_FIX.md` - KB search optimization (Oct 22)
   - `bridge/README.md` - Technical details
 
-**6. Barbara V3 - Production Voice AI** ⭐ NEW (OCT 25, 2025) - **BRIDGE V1 UPGRADED**
+**6. Barbara V3 - Production Voice AI** ⭐ **FULLY OPERATIONAL** (OCT 25-26, 2025)
 - **Architecture:** SignalWire cXML + OpenAI Realtime API + OpenAI Agents SDK
-- **Deployment:** Fly.io (2 machines for HA) + GitHub Actions (git-based deploys)
-- **Repository:** `barbara-v3/` - Standalone service with TypeScript + modern tooling
-- **Based On:** SignalWire's official `cXML-realtime-agent-stream` reference implementation
+- **Deployment:** Fly.io (2 machines for HA) + GitHub Actions (git-based auto-deploys)
+- **Repository:** `barbara-v3/` - Standalone TypeScript service
+- **Based On:** SignalWire's official `cXML-realtime-agent-stream` + `digital_employees` reference
 - **Key Improvements from Bridge V1:**
   - ✅ **TypeScript + ESM** - Type safety, modern imports
   - ✅ **Zod validation** - Schema validation for all tool parameters
-  - ✅ **OpenAI Agents SDK** - Official `@openai/agents` package (no custom WebRTC)
-  - ✅ **SignalWire MFA** - Native SMS verification for appointments (NEW!)
-  - ✅ **Structured logging** - Configurable log levels (debug/info/error)
-  - ✅ **Git-based deployment** - Push to main = auto-deploy (no Docker cache issues)
-  - ✅ **No PromptLayer** - Removed analytics layer (simplified stack)
+  - ✅ **OpenAI Agents SDK** - Official `@openai/agents` package (simpler than custom bridge)
+  - ✅ **Git-based deployment** - Push to main = auto-deploy via GitHub Actions
+  - ✅ **Clean logging** - `LOG_LEVEL=info` (no debug spam), readable call flows
+  - ✅ **Caller ID injection** - SignalWire `<Parameter>` tags → Barbara's context
+  - ✅ **Dynamic prompts** - Inbound vs outbound conversation flows
+  - ✅ **Voice options** - Currently `shimmer` for clear, natural speaking pace
+  - ❌ **No PromptLayer** - Being replaced by Vue.js dashboard for prompt management
+  - ❌ **No MFA** - Removed from initial launch (regulatory approval needed for SMS)
 - **Business Tools (11 total):**
   1. `get_lead_context` - Query lead by phone with last call context
   2. `check_consent_dnc` - Verify calling permissions
@@ -259,37 +262,56 @@ equity-connect/ (Git Monorepo)
   5. `check_broker_availability` - Nylas calendar real-time check
   6. `book_appointment` - Create Nylas event + billing + interaction log
   7. `assign_tracking_number` - Link SignalWire number for call tracking
-  8. `send_appointment_confirmation` - Send 6-digit MFA code (NEW!)
-  9. `verify_appointment_confirmation` - Verify MFA code (NEW!)
-  10. `save_interaction` - Log call with rich metadata
-  11. `search_knowledge` - Vector search via Google Vertex AI
+  8. `save_interaction` - Log call with rich metadata
+  9. `search_knowledge` - Vector search via Google Vertex AI
+  10-11. *(Reserved for SMS confirmation tools when regulatory approval obtained)*
 - **Demo Tools:**
   - `get_time` - Current time in Eastern
   - `get_weather` - US weather via weather.gov
+- **Call Types:**
+  - ✅ **Inbound calls** - Lead calls Barbara → Answers, looks up lead, personalized conversation
+  - ✅ **Outbound calls** - n8n → barbara-mcp → Barbara calls lead → Warm introduction
+  - 4-second pause for natural ringback (caller's phone rings during connection)
 - **Audio Stack:**
-  - SignalWire → WebSocket (g711_ulaw @ 8kHz)
-  - Barbara → WebRTC (pcm16 @ 24kHz) → OpenAI
-  - Bidirectional streaming with format conversion
+  - SignalWire → WebSocket (g711_ulaw @ 8kHz, default codec)
+  - Barbara → OpenAI (pcm16 @ 24kHz) → Real-time voice
+  - SignalWire compatibility layer handles format conversion
+- **Call Flow:**
+  - SignalWire `start` event → Extract From/To/CallSid/direction/lead_id/broker_id
+  - Barbara injects lead phone into context via system message
+  - Calls `get_lead_context` immediately with correct phone number
+  - Uses lead data (name, property, broker) to personalize conversation
+  - Books appointments, sends email confirmations
+- **Phone Number Logic:**
+  - **Inbound:** Lead calls FROM their phone → Barbara looks up FROM number
+  - **Outbound:** Barbara calls TO lead's phone → Barbara looks up TO number
+  - Captured via SignalWire `<Parameter>` tags (clean WebSocket URLs, no query strings)
 - **Services:**
   - Supabase client (leads, brokers, interactions, billing)
   - Nylas API wrapper (calendar availability, event creation)
   - Vertex AI (text-embedding-005 for knowledge search)
-  - SignalWire MFA (send/verify SMS codes)
-- **Deployment Workflow:**
-  - GitHub Actions triggered on `barbara-v3/**` changes
-  - Auto-deploy to Fly.io with `--no-cache` (prevents stale builds)
-  - Path-based workflow (only Barbara changes trigger Barbara deploy)
-- **Integration Points:**
-  - **Portal:** `portal/src/components/BarbaraConfig.vue` - Configure prompts
-  - **MCPs:** Uses shared `barbara-mcp/` for extended tool integrations
-  - **Database:** Shared `database/` schema and migrations
-  - **N8N:** Triggers calls via bridge API (same as V1)
-- **Status:** ✅ **PRODUCTION - Live on Fly.io with 2 machines**
+  - SignalWire REST API (outbound call placement)
+- **Deployment:**
+  - GitHub Actions auto-deploy on `barbara-v3/**` changes
+  - Fly.io with `--no-cache` (prevents stale Docker builds)
+  - Environment secrets via `flyctl secrets set` (instant updates, ~5s restart)
+- **Status:** ✅ **FULLY OPERATIONAL**
+  - ✅ Inbound calls tested - caller ID, lead lookup, appointment booking working
+  - ✅ Outbound calls tested - correct phone lookup, dynamic prompt selection
+  - ✅ Voice tuning - `shimmer` voice for clear, natural pace (seniors-friendly)
+  - ✅ Clean logs - Changed from `debug` to `info` level
 - **Endpoints:**
   - Health: `https://barbara-v3-voice.fly.dev/health`
-  - Webhook: `https://barbara-v3-voice.fly.dev/webhook`
-  - Stream: `wss://barbara-v3-voice.fly.dev/stream`
-- **Migration Path:** V1 bridge can remain as fallback; V3 is drop-in replacement
+  - Inbound webhook: `https://barbara-v3-voice.fly.dev/incoming-call`
+  - Outbound webhook: `https://barbara-v3-voice.fly.dev/outbound-call`
+  - API (for n8n): `https://barbara-v3-voice.fly.dev/api/trigger-call`
+  - Stream: `wss://barbara-v3-voice.fly.dev/media-stream`
+- **Next Steps:**
+  - [ ] Build Vue.js dashboard for prompt management (replace PromptLayer)
+  - [ ] Add SMS confirmation tools (after regulatory approval)
+  - [ ] Add graceful error handling & fallbacks
+  - [ ] A/B test different prompts via database-driven config
+  - [ ] Enable voice selection via dashboard (alloy/shimmer/echo/coral/sage)
 
 **7. Nylas Calendar Integration** ⭐ PRODUCTION OCT 20-22
 - **Provider:** Nylas v3 API - Production-grade calendar platform
@@ -458,16 +480,42 @@ equity-connect/ (Git Monorepo)
 
 ### 🔄 IN PROGRESS
 
+**12. Vue.js Admin Dashboard** ⭐ IN PROGRESS (OCT 26, 2025)
+- **Purpose:** Replace PromptLayer with custom prompt management + call analytics
+- **Architecture:** Vue 3 + Vite + Supabase + shadcn-vue styling
+- **Deployment:** Vercel (auto-deploy on `portal/**` changes)
+- **Core Features:**
+  - **Prompt Editor** - Edit inbound/outbound prompts with live preview
+  - **Voice Selector** - Change voice (alloy/shimmer/echo/coral/sage) without code push
+  - **Call Analytics** - View transcripts, success rates, tool usage
+  - **Tool Manager** - Enable/disable tools per campaign
+  - **Live Call Monitor** - Real-time sentiment, interest, buying signals
+- **Database Schema:**
+  - `prompt_templates` - Versioned prompts per broker/campaign
+  - `prompt_versions` - History/rollback support
+  - `prompt_metrics` - Performance tracking per prompt
+- **Real-time Config (No Code Push):**
+  - Prompts loaded from database per call
+  - Voice selection from campaign settings
+  - Tool availability toggled via UI
+- **Future Features:**
+  - A/B testing framework
+  - SMS confirmations/reminders (after regulatory approval)
+  - Performance analytics per prompt
+  - Template variables (`{{lead_name}}`, `{{broker_company}}`)
+- **Status:** Planning phase - schema design + feature prioritization
+- **Priority:** High - needed for rapid prompt iteration without Git deploys
+
 **Next Steps:**
-- [ ] Test Barbara end-to-end with real lead (outbound call)
-- [ ] Verify calendar booking works from n8n workflow
-- [ ] Test advanced commitment building flow
-- [ ] Monitor PromptLayer for call quality insights
-- [ ] Deploy Live Call Dashboard to portal
-- [ ] Upgrade Nylas to production account (for OAuth flow)
-- [ ] Create n8n workflow for email reply → Barbara call
-- [ ] Create n8n workflow for microsite instant call
-- [ ] Document Barbara's prompt iteration process with PromptLayer
+- [x] Test Barbara V3 inbound calls - caller ID, lead lookup, appointment booking
+- [x] Test Barbara V3 outbound calls - correct phone lookup, dynamic prompts
+- [x] Voice tuning - switched to `shimmer` for clearer speaking pace
+- [x] Clean logging - reduced debug spam
+- [ ] Build Vue.js dashboard for prompt management
+- [ ] Add SMS confirmation tools (waiting for regulatory approval)
+- [ ] Implement graceful error handling & fallbacks
+- [ ] A/B test different prompts via database
+- [ ] Monitor PromptLayer metrics (until Vue dashboard replaces it)
 
 **9. Cold Email Campaign System** (Sunday/Monday)
 - **Multi-Angle Campaign Rotation:** 3 archetypes with automatic retry for non-responders
