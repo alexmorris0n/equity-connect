@@ -74,7 +74,7 @@ export const SUPABASE_CONFIG = {
 
 export const AGENT_CONFIG = {
   name: 'Barbara',
-  voice: 'alloy' as const,
+  voice: 'shimmer' as const,  // Faster, more energetic female voice
   model: (process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview') as OpenAIRealtimeModels,
   audioFormat: (process.env.AUDIO_FORMAT || AUDIO_FORMAT.G711_ULAW) as AudioFormat,
   
