@@ -94,6 +94,15 @@ export async function streamingRoute(
               
               signalWireTransportLayer.sendEvent(systemMessage);
               logger.info(`✅ Caller ID injected into conversation`);
+              
+              // NOW trigger the initial AI greeting AFTER caller ID is injected
+              try {
+                const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
+                signalWireTransportLayer.sendEvent(responseEvent);
+                logger.info('👋 Triggered initial AI greeting with caller context');
+              } catch (error) {
+                logger.debug('AI greeting trigger failed (non-fatal)');
+              }
             } else {
               logger.warn(`⚠️  No caller ID in start event`);
             }
@@ -157,16 +166,7 @@ export async function streamingRoute(
 
       logger.info('✅ OpenAI Realtime API connected');
       
-      // Note: Caller ID will be injected when SignalWire sends the 'start' event
-      
-      // Trigger initial AI greeting
-      try {
-        const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
-        signalWireTransportLayer.sendEvent(responseEvent);
-        logger.info('👋 Triggered initial AI greeting');
-      } catch (error) {
-        logger.debug('AI greeting trigger failed (non-fatal)');
-      }
+      // Note: Initial greeting will be triggered when SignalWire sends 'start' event with caller ID
 
     } catch (error) {
       logger.error(ERROR_MESSAGES.TRANSPORT_INIT_FAILED, error);

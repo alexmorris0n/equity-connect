@@ -23,9 +23,10 @@ export async function webhookRoute(fastify: FastifyInstance) {
 
     console.log(`📞 Incoming call - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
-    // Generate cXML response
+    // Generate cXML response with ringing sound before connecting
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
+      <Play loop="2">ring_us</Play>
       <Connect>
         <Stream url="${websocketUrl}"${codecAttribute} />
       </Connect>
