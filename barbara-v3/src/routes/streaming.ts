@@ -30,8 +30,9 @@ export async function streamingRoute(
     // Log WebSocket connection
     logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
     
-    // Will capture caller ID and call direction from SignalWire's 'start' event
-    let callerPhone: string | null = null;
+    // Will capture call context from SignalWire's 'start' event
+    let fromPhone: string | null = null;  // Who is calling FROM
+    let toPhone: string | null = null;    // Who is being called TO
     let callDirection: string = 'inbound'; // default to inbound
     let leadId: string | null = null;
     let brokerId: string | null = null;
@@ -56,17 +57,14 @@ export async function streamingRoute(
             
             // Extract call context from customParameters
             const customParams = data.start?.customParameters || {};
-            callerPhone = customParams.From || customParams.from || null;
+            fromPhone = customParams.From || customParams.from || null;
+            toPhone = customParams.To || customParams.to || null;
             callDirection = customParams.direction || 'inbound';
             leadId = customParams.lead_id || null;
             brokerId = customParams.broker_id || null;
             
             logger.info(`📞 Call direction: ${callDirection}`);
-            if (callerPhone) {
-              logger.info(`📞 Captured caller ID from SignalWire: ${callerPhone}`);
-            } else {
-              logger.warn(`⚠️  No caller ID in start event - customParameters:`, customParams);
-            }
+            logger.info(`📞 From: ${fromPhone}, To: ${toPhone}`);
             
             if (leadId) {
               logger.info(`👤 Lead ID: ${leadId}`);
@@ -98,32 +96,30 @@ export async function streamingRoute(
         model: model as OpenAIRealtimeModels
       });
 
-      // Listen to transport events to inject caller ID and update prompt when available
+      // Listen to transport events to inject call context when available
       session.transport.on('*', (event: TransportEvent) => {
-        // If we have caller ID and haven't injected yet, inject it now and update prompt based on direction
-        if (callerPhone && event.type === 'session.updated') {
-          logger.info(`💉 Injecting caller ID and call context into conversation`);
+        // If we have phone numbers and haven't injected yet, inject context now
+        if (fromPhone && toPhone && event.type === 'session.updated') {
+          logger.info(`💉 Injecting call context into conversation`);
+          
+          // Determine which phone number is the lead based on call direction
+          // Inbound: lead is calling us (FROM)
+          // Outbound: we are calling the lead (TO)
+          const leadPhone = callDirection === 'outbound' ? toPhone : fromPhone;
+          
+          logger.info(`📞 Lead phone number for lookup: ${leadPhone}`);
           
           // Update agent instructions based on call direction
           const updatedInstructions = getInstructionsForCallType(callDirection, {
             leadId: leadId || undefined,
             brokerId: brokerId || undefined,
-            from: callerPhone,
-            to: callDirection === 'outbound' ? callerPhone : undefined
+            from: fromPhone,
+            to: toPhone
           });
           
-          // Send session update with correct prompt
-          const sessionUpdateMessage: RealtimeClientMessage = {
-            type: 'session.update',
-            session: {
-              instructions: updatedInstructions
-            }
-          } as any;
-          
-          signalWireTransportLayer.sendEvent(sessionUpdateMessage);
           logger.info(`📝 Updated prompt for ${callDirection} call`);
           
-          // Inject caller context as system message
+          // Inject lead phone context as system message
           const systemMessage: RealtimeClientMessage = {
             type: 'conversation.item.create',
             item: {
@@ -131,13 +127,13 @@ export async function streamingRoute(
               role: 'system',
               content: [{
                 type: 'input_text',
-                text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this exact phone number.`
+                text: `[SYSTEM] The lead's phone number is: ${leadPhone}. When using get_lead_context tool, pass this exact phone number.`
               }]
             }
           } as any;
           
           signalWireTransportLayer.sendEvent(systemMessage);
-          logger.info(`✅ Caller ID and context injected successfully`);
+          logger.info(`✅ Lead context injected successfully`);
           
           // NOW trigger the initial AI greeting AFTER context is injected
           try {
@@ -148,8 +144,9 @@ export async function streamingRoute(
             logger.debug('AI greeting trigger failed (non-fatal)');
           }
           
-          // Clear callerPhone so we don't inject twice
-          callerPhone = null;
+          // Clear phones so we don't inject twice
+          fromPhone = null;
+          toPhone = null;
         }
         
         switch (event.type) {
