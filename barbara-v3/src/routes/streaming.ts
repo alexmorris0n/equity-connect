@@ -64,10 +64,14 @@ export async function streamingRoute(
 
       // Listen to transport events to capture SignalWire's 'start' event
       session.transport.on('*', (event: TransportEvent) => {
-        // Capture caller ID from SignalWire's start event
+        // Capture caller ID from SignalWire's start event (ONLY log start, not media)
         if (event.type === 'twilio_message') {
           const twilioEvent = (event as any).twilioEvent;
+          
+          // Only process 'start' events - ignore 'media' events (they flood logs)
           if (twilioEvent?.event === 'start') {
+            logger.info(`📡 SignalWire 'start' event received`);
+            
             // Extract caller phone from customParameters
             const customParams = twilioEvent.start?.customParameters || {};
             callerPhone = customParams.From || customParams.from || null;
@@ -90,8 +94,12 @@ export async function streamingRoute(
               
               signalWireTransportLayer.sendEvent(systemMessage);
               logger.info(`✅ Caller ID injected into conversation`);
+            } else {
+              logger.warn(`⚠️  No caller ID in start event`);
             }
           }
+          // Don't log media events - they're too noisy
+          return;
         }
         
         switch (event.type) {
