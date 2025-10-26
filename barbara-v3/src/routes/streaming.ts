@@ -31,42 +31,6 @@ export async function streamingRoute(
     const direction = 'inbound';
     
     logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
-    
-    // Capture caller ID from the FIRST SignalWire message (before transport processes it)
-    let callerPhone = '';
-    let startEventCaptured = false;
-    
-    // Listen to RAW WebSocket messages BEFORE transport layer
-    connection.on('message', (data: any) => {
-      if (startEventCaptured) return; // Only process once
-      
-      try {
-        const message = JSON.parse(data.toString());
-        
-        // Look for start event
-        if (message.event === 'start') {
-          logger.info(`📞 RAW start event:`, JSON.stringify(message, null, 2));
-          
-          // Try to extract caller ID from various possible locations
-          callerPhone = message.start?.customParameters?.From
-                     || message.customParameters?.From
-                     || message.start?.callSid?.from
-                     || message.start?.from
-                     || message.from
-                     || '';
-          
-          if (callerPhone) {
-            logger.info(`✅ Caller ID extracted from start event: ${callerPhone}`);
-          } else {
-            logger.warn(`⚠️  Start event found but no caller ID!`, message);
-          }
-          
-          startEventCaptured = true;
-        }
-      } catch (e) {
-        // Ignore parse errors (binary audio data)
-      }
-    });
 
     // Handle disconnection
     connection.on('close', () => {
@@ -102,14 +66,13 @@ export async function streamingRoute(
       
       // Listen to transport events
       session.transport.on('*', (event: TransportEvent) => {
-        // DEBUG: Log ALL twilio_message events to see what SignalWire sends
+        // ONLY log start events to avoid log spam
         if (event.type === 'twilio_message') {
           const msg = (event as any).message;
-          logger.debug(`🔍 SignalWire message:`, JSON.stringify(msg, null, 2));
           
-          // Capture SignalWire stream start metadata
+          // Capture SignalWire stream start metadata ONLY
           if (msg?.event === 'start') {
-            logger.info(`📞 Stream start event received:`, msg.start);
+            logger.info(`📞 Stream start event received:`, JSON.stringify(msg, null, 2));
             
             // Try both customParameters and direct properties
             const startData = msg.start;
