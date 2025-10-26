@@ -11,7 +11,9 @@ export async function webhookRoute(fastify: FastifyInstance) {
   // Inbound calls (caller dials Barbara's SignalWire number)
   fastify.all('/incoming-call', async (request: FastifyRequest, reply: FastifyReply) => {
     // Extract caller information from SignalWire webhook
-    const params: any = { ...request.query, ...request.body };
+    const queryParams = request.query || {};
+    const bodyParams = request.body || {};
+    const params: any = { ...queryParams, ...bodyParams };
     const { From, To, CallSid } = params;
     
     console.log(`📞 Incoming call from ${From} to ${To} (CallSid: ${CallSid})`);
