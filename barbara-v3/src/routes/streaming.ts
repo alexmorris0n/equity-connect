@@ -27,15 +27,11 @@ export async function streamingRoute(
   const realtimeAgent = new RealtimeAgent(agentConfig);
 
   fastify.get('/media-stream', { websocket: true }, async (connection: WebSocket, request: any) => {
-    // Extract call context from query parameters (passed from webhook)
-    const { direction = 'inbound', from = '', to = '', callsid = '', lead_id = '', broker_id = '' } = request.query || {};
-    
-    // Log the call details
+    // Log WebSocket connection
     logger.info(`${CONNECTION_MESSAGES.CLIENT_CONNECTED}`);
-    logger.info(`📞 Call direction: ${direction}, From: ${from}, To: ${to}, CallSid: ${callsid}`);
     
-    // Store caller phone for injection into conversation
-    const callerPhone = direction === 'inbound' ? from : to;
+    // Will capture caller ID from SignalWire's 'start' event
+    let callerPhone: string | null = null;
 
     // Handle disconnection
     connection.on('close', () => {
@@ -54,10 +50,10 @@ export async function streamingRoute(
         audioFormat: AGENT_CONFIG.audioFormat
       });
 
-      // Create agent with dynamic instructions based on call direction
+      // Create agent with default inbound instructions (will update if we detect outbound)
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
-        instructions: getInstructionsForCallType(direction, {})
+        instructions: getInstructionsForCallType('inbound', {})
       });
 
       // Create session with SignalWire transport
@@ -66,8 +62,38 @@ export async function streamingRoute(
         model: model as OpenAIRealtimeModels
       });
 
-      // Listen to transport events
+      // Listen to transport events to capture SignalWire's 'start' event
       session.transport.on('*', (event: TransportEvent) => {
+        // Capture caller ID from SignalWire's start event
+        if (event.type === 'twilio_message') {
+          const twilioEvent = (event as any).twilioEvent;
+          if (twilioEvent?.event === 'start') {
+            // Extract caller phone from customParameters
+            const customParams = twilioEvent.start?.customParameters || {};
+            callerPhone = customParams.From || customParams.from || null;
+            
+            if (callerPhone) {
+              logger.info(`📞 Captured caller ID from SignalWire: ${callerPhone}`);
+              
+              // Inject caller ID into conversation context immediately
+              const systemMessage: RealtimeClientMessage = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'message',
+                  role: 'system',
+                  content: [{
+                    type: 'input_text',
+                    text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this exact phone number.`
+                  }]
+                }
+              } as any;
+              
+              signalWireTransportLayer.sendEvent(systemMessage);
+              logger.info(`✅ Caller ID injected into conversation`);
+            }
+          }
+        }
+        
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
             // Extract Barbara's transcript from response.done
@@ -122,28 +148,8 @@ export async function streamingRoute(
       });
 
       logger.info('✅ OpenAI Realtime API connected');
-
-      // Inject caller ID into conversation context
-      if (callerPhone) {
-        logger.info(`💉 Injecting caller ID into conversation: ${callerPhone}`);
-        
-        const systemMessage: RealtimeClientMessage = {
-          type: 'conversation.item.create',
-          item: {
-            type: 'message',
-            role: 'system',
-            content: [{
-              type: 'input_text',
-              text: `[SYSTEM] The caller's phone number is: ${callerPhone}. When using get_lead_context tool, pass this exact phone number.`
-            }]
-          }
-        } as any;
-        
-        signalWireTransportLayer.sendEvent(systemMessage);
-        logger.info(`✅ Caller ID injected successfully`);
-      } else {
-        logger.warn(`⚠️  No caller ID available - Barbara will need to ask`);
-      }
+      
+      // Note: Caller ID will be injected when SignalWire sends the 'start' event
       
       // Trigger initial AI greeting
       try {
