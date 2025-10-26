@@ -10,6 +10,12 @@ import { AGENT_CONFIG } from '../config.js';
 export async function webhookRoute(fastify: FastifyInstance) {
   // Inbound calls (caller dials Barbara's SignalWire number)
   fastify.all('/incoming-call', async (request: FastifyRequest, reply: FastifyReply) => {
+    // Extract caller information from SignalWire webhook
+    const params: any = { ...request.query, ...request.body };
+    const { From, To, CallSid } = params;
+    
+    console.log(`📞 Incoming call from ${From} to ${To} (CallSid: ${CallSid})`);
+    
     // Construct WebSocket URL from request headers (no query params - SignalWire rejects them)
     const host = request.headers.host || 'localhost';
     const protocol = request.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws';
@@ -23,12 +29,16 @@ export async function webhookRoute(fastify: FastifyInstance) {
 
     console.log(`📞 Incoming call - Audio: ${AGENT_CONFIG.audioFormat}, Codec: ${codec || 'default'}`);
 
-    // Generate cXML response with a brief pause to allow caller ID capture
+    // Generate cXML response with caller ID in customParameters
     const cXMLResponse = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Pause length="2"/>
       <Connect>
-        <Stream url="${websocketUrl}"${codecAttribute} />
+        <Stream url="${websocketUrl}"${codecAttribute}>
+          <Parameter name="From" value="${From || ''}" />
+          <Parameter name="To" value="${To || ''}" />
+          <Parameter name="CallSid" value="${CallSid || ''}" />
+        </Stream>
       </Connect>
     </Response>`;
 
