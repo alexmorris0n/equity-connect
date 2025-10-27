@@ -77,11 +77,11 @@
             </template>
             Save
           </n-button>
-          <n-button size="small" round type="info" :disabled="loading || !currentVersion?.id || !currentVersion?.is_draft" @click="openDeployModal">
+          <n-button size="small" round type="info" :disabled="loading || !currentVersion?.id || currentVersion?.is_active" @click="openDeployModal">
             <template #icon>
               <n-icon><RocketOutline /></n-icon>
             </template>
-            Deploy
+            {{ isOlderVersion ? 'Rollback' : 'Deploy' }}
           </n-button>
         </div>
 
@@ -152,6 +152,52 @@
               </n-grid>
             </div>
             <n-empty v-else description="No performance data yet." class="empty-state" />
+          </n-tab-pane>
+
+          <n-tab-pane name="voice" tab="Voice">
+            <div class="tab-content">
+              <div class="voice-section">
+                <h3>Voice & Call Type Settings</h3>
+                <p class="text-muted">Configure the voice and call type for this prompt:</p>
+                
+                <div style="margin-top: 1.5rem;">
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Call Type:</label>
+                  <n-select
+                    v-model:value="selectedCallType"
+                    :options="callTypeOptions"
+                    size="large"
+                    placeholder="Select call type"
+                    @update:value="handleCallTypeChange"
+                  />
+                  <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    This prompt will be used for this specific call scenario. Only one active prompt per call type.
+                  </p>
+                </div>
+                
+                <div style="margin-top: 1.5rem;">
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Voice:</label>
+                  <n-select
+                    v-model:value="selectedVoice"
+                    :options="voiceOptions"
+                    size="large"
+                    placeholder="Select a voice"
+                    @update:value="handleVoiceChange"
+                  />
+                </div>
+
+                <div v-if="selectedVoice || selectedCallType" style="margin-top: 1rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
+                  <p v-if="selectedCallType" style="margin: 0; font-size: 0.9rem; color: #6b7280;">
+                    <strong>Call Type:</strong> {{ selectedCallType }}
+                  </p>
+                  <p v-if="selectedVoice" style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #6b7280;">
+                    <strong>Voice:</strong> {{ selectedVoice }}
+                  </p>
+                  <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    These settings will be used when this prompt is deployed and used in calls.
+                  </p>
+                </div>
+              </div>
+            </div>
           </n-tab-pane>
 
           <n-tab-pane name="variables" tab="Variables">
@@ -441,7 +487,8 @@ import {
   NDropdown,
   NModal,
   NScrollbar,
-  NInput
+  NInput,
+  NSelect
 } from 'naive-ui'
 import {
   RefreshOutline,
@@ -470,6 +517,34 @@ const newPromptCategory = ref('voice-assistant')
 const activeVersion = ref(null)
 const diffSections = ref([])
 const deployChangeSummary = ref('')
+const selectedVoice = ref('alloy')
+const selectedCallType = ref(null)
+
+const voiceOptions = [
+  { label: 'Alloy', value: 'alloy' },
+  { label: 'Echo', value: 'echo' },
+  { label: 'Shimmer', value: 'shimmer' },
+  { label: 'Ash', value: 'ash' },
+  { label: 'Ballad', value: 'ballad' },
+  { label: 'Coral', value: 'coral' },
+  { label: 'Sage', value: 'sage' },
+  { label: 'Verse', value: 'verse' },
+  { label: 'Cedar', value: 'cedar' },
+  { label: 'Marin', value: 'marin' }
+]
+
+const callTypeOptions = [
+  { label: '📞 Inbound - Qualified (Returning Lead)', value: 'inbound-qualified' },
+  { label: '📞 Inbound - Unqualified (New Lead)', value: 'inbound-unqualified' },
+  { label: '📱 Outbound - Warm (Follow-up)', value: 'outbound-warm' },
+  { label: '📱 Outbound - Cold (First Touch)', value: 'outbound-cold' },
+  { label: '🔄 Transfer/Handoff', value: 'transfer' },
+  { label: '⏰ Scheduled Callback', value: 'callback' },
+  { label: '📅 Broker - Schedule Check', value: 'broker-schedule-check' },
+  { label: '🤝 Broker - Connect for Appointment', value: 'broker-connect-appointment' },
+  { label: '🛟 Emergency Fallback', value: 'fallback' }
+]
+
 const prompts = ref([
   {
     id: 'default-barbara',
@@ -853,6 +928,20 @@ async function selectPrompt(id) {
   
   activePromptId.value = id
   
+  // Load the prompt details to get the voice and call_type
+  const { data: promptData, error: promptError } = await supabase
+    .from('prompts')
+    .select('*')
+    .eq('id', id)
+    .single()
+  
+  if (promptError) {
+    console.error('Failed to load prompt:', promptError)
+  } else if (promptData) {
+    selectedVoice.value = promptData.voice || 'alloy'
+    selectedCallType.value = promptData.call_type || null
+  }
+  
   // Reload versions for the selected prompt
   loading.value = true
   try {
@@ -919,6 +1008,7 @@ async function confirmCreatePrompt() {
       .insert({
         name: newPromptName.value.trim(),
         category: newPromptCategory.value.trim(),
+        voice: 'alloy',
         is_base_prompt: false,
         is_active: true
       })
@@ -1586,6 +1676,50 @@ function insertToolIntoPrompt(tool) {
   markAsChanged()
 }
 
+async function handleVoiceChange(voice) {
+  if (!activePromptId.value) return
+  
+  loading.value = true
+  try {
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({ voice })
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+    
+    window.$message?.success(`Voice updated to ${voice}`)
+  } catch (err) {
+    error.value = err.message
+    window.$message?.error('Failed to update voice')
+    console.error('Failed to update voice:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleCallTypeChange(callType) {
+  if (!activePromptId.value) return
+  
+  loading.value = true
+  try {
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({ call_type: callType })
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+    
+    window.$message?.success(`Call type updated to ${callType}`)
+  } catch (err) {
+    error.value = err.message
+    window.$message?.error('Failed to update call type')
+    console.error('Failed to update call type:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
 function insertToolFromDropdown(toolKey) {
   // Check if "Add All Tools" was clicked
   if (toolKey === 'ADD_ALL_TOOLS') {
@@ -1796,10 +1930,7 @@ function handleBeforeUnload(e) {
   gap: 1rem;
   align-items: start;
   padding-left: 0;
-  height: 100%;
-  max-height: calc(100vh - 140px);
   max-width: 100%;
-  overflow: hidden;
 }
 
 .meta-card {
@@ -1816,7 +1947,6 @@ function handleBeforeUnload(e) {
   overflow-y: auto;
   overflow-x: hidden;
   height: fit-content;
-  max-height: 100%;
   min-width: 0;
 }
 
@@ -2167,6 +2297,21 @@ function handleBeforeUnload(e) {
 
 .metrics-wrapper {
   padding-top: 1rem;
+}
+
+.tab-content {
+  padding: 1rem 0;
+}
+
+.voice-section {
+  max-width: 600px;
+}
+
+.voice-section h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .variables-content {

@@ -298,8 +298,20 @@ async function handleSignOut() {
 }
 
 .nav-menu :deep(.n-menu-item-content--selected) {
-  background: rgba(99, 102, 241, 0.14);
+  background: rgba(99, 102, 241, 0.14) !important;
   color: #3730a3;
+}
+
+.nav-menu :deep(.n-menu-item-content--selected .n-menu-item-content__icon) {
+  background: transparent !important;
+}
+
+.nav-menu :deep(.n-menu-item--selected) {
+  background: transparent !important;
+}
+
+.nav-menu :deep(.n-menu-item--selected::before) {
+  display: none !important;
 }
 
 .user-summary {
