@@ -172,22 +172,8 @@
           <n-tab-pane name="settings" tab="Settings">
             <div class="tab-content">
               <div class="settings-section">
-                <h3>Basic Settings</h3>
-                <p class="text-muted">Configure voice and call type for this prompt:</p>
-                
-                <div style="margin-top: 1.5rem;">
-                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Call Type:</label>
-                  <n-select
-                    v-model:value="selectedCallType"
-                    :options="callTypeOptions"
-                    size="large"
-                    placeholder="Select call type"
-                    @update:value="handleCallTypeChange"
-                  />
-                  <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
-                    This prompt will be used for this specific call scenario. Only one active prompt per call type.
-                  </p>
-                </div>
+                <h3>Voice Settings</h3>
+                <p class="text-muted">Configure the AI voice and behavior for this prompt:</p>
                 
                 <div style="margin-top: 1.5rem;">
                   <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Voice:</label>
@@ -213,18 +199,18 @@
                 </n-button>
 
                 <!-- Advanced Settings Section -->
-                <div v-if="showAdvancedSettings" style="margin-top: 1.5rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-                  <n-alert type="warning" style="margin-bottom: 1.5rem;">
+                <div v-if="showAdvancedSettings" style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb; font-size: 0.9rem;">
+                  <n-alert type="warning" style="margin-bottom: 1rem; font-size: 0.85rem;">
                     <template #icon>
-                      <n-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M85.57 446.25h340.86a32 32 0 0028.17-47.17L284.18 82.58c-12.09-22.44-44.27-22.44-56.36 0L57.4 399.08a32 32 0 0028.17 47.17z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M250.26 195.39l5.74 122 5.73-121.95a5.74 5.74 0 00-5.79-6h0a5.74 5.74 0 00-5.68 5.95z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M256 397.25a20 20 0 1120-20 20 20 0 01-20 20z"/></svg></n-icon>
+                      <n-icon size="16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M85.57 446.25h340.86a32 32 0 0028.17-47.17L284.18 82.58c-12.09-22.44-44.27-22.44-56.36 0L57.4 399.08a32 32 0 0028.17 47.17z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M250.26 195.39l5.74 122 5.73-121.95a5.74 5.74 0 00-5.79-6h0a5.74 5.74 0 00-5.68 5.95z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M256 397.25a20 20 0 1120-20 20 20 0 01-20 20z"/></svg></n-icon>
                     </template>
-                    <strong>Advanced Settings</strong> - Changing these can affect call quality and responsiveness. Only adjust if you understand Voice Activity Detection parameters.
+                    <strong>Advanced Settings</strong> - Changing these can affect call quality. Only adjust if you understand VAD parameters.
                   </n-alert>
 
-                  <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; font-weight: 600;">Voice Activity Detection (VAD)</h4>
+                  <h4 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; font-weight: 600;">Voice Activity Detection (VAD)</h4>
 
-                  <div style="margin-bottom: 1.5rem;">
-                    <label style="display: block; margin-bottom: 0.75rem; font-weight: 500;">
+                  <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.85rem;">
                       VAD Threshold: {{ vadThreshold.toFixed(2) }}
                     </label>
                     <n-slider
@@ -237,39 +223,42 @@
                         0.5: 'Default',
                         0.8: 'Patient'
                       }"
+                      size="small"
                       @update:value="handleVadThresholdChange"
                     />
-                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
                       Lower = more sensitive to speech (may trigger on noise). Higher = waits for clearer speech.
                     </p>
                   </div>
 
-                  <div style="margin-bottom: 1.5rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Prefix Padding (ms):</label>
+                  <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Prefix Padding (ms):</label>
                     <n-input-number
                       v-model:value="vadPrefixPaddingMs"
                       :min="100"
                       :max="1000"
                       :step="50"
+                      size="small"
                       style="width: 100%;"
                       @update:value="handleVadPrefixPaddingChange"
                     />
-                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
                       Audio captured BEFORE speech starts. 300-400ms recommended.
                     </p>
                   </div>
 
-                  <div style="margin-bottom: 1.5rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Silence Duration (ms):</label>
+                  <div style="margin-bottom: 1rem;">
+                    <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Silence Duration (ms):</label>
                     <n-input-number
                       v-model:value="vadSilenceDurationMs"
                       :min="200"
                       :max="2000"
                       :step="100"
+                      size="small"
                       style="width: 100%;"
                       @update:value="handleVadSilenceDurationChange"
                     />
-                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
                       How long to wait before considering speech finished. 500ms = balanced, 700ms+ = patient (good for seniors).
                     </p>
                   </div>
@@ -277,24 +266,22 @@
                   <n-button
                     @click="resetVadToDefaults"
                     secondary
-                    style="margin-top: 1rem;"
+                    size="small"
+                    style="margin-top: 0.5rem;"
                   >
                     <template #icon>
-                      <n-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M320 146s24.36-12-64-12a160 160 0 10160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 58l80 80-80 80"/></svg></n-icon>
+                      <n-icon size="14"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M320 146s24.36-12-64-12a160 160 0 10160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 58l80 80-80 80"/></svg></n-icon>
                     </template>
                     Reset to Defaults
                   </n-button>
                 </div>
 
-                <div v-if="selectedVoice || selectedCallType" style="margin-top: 1.5rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
-                  <p v-if="selectedCallType" style="margin: 0; font-size: 0.9rem; color: #6b7280;">
-                    <strong>Call Type:</strong> {{ selectedCallType }}
-                  </p>
-                  <p v-if="selectedVoice" style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #6b7280;">
-                    <strong>Voice:</strong> {{ selectedVoice }}
+                <div v-if="selectedVoice" style="margin-top: 1.5rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
+                  <p style="margin: 0; font-size: 0.9rem; color: #6b7280;">
+                    <strong>Current Voice:</strong> {{ selectedVoice }}
                   </p>
                   <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
-                    These settings will be used when this prompt is deployed and used in calls.
+                    This voice will be used when this prompt is deployed and used in calls.
                   </p>
                 </div>
               </div>
@@ -929,7 +916,6 @@ const activeVersion = ref(null)
 const diffSections = ref([])
 const deployChangeSummary = ref('')
 const selectedVoice = ref('alloy')
-const selectedCallType = ref(null)
 const currentPromptMetadata = ref({ name: '', purpose: '', goal: '', call_type: '' })
 
 // VAD settings
@@ -977,18 +963,6 @@ const voiceOptions = [
   { label: 'Verse', value: 'verse' },
   { label: 'Cedar', value: 'cedar' },
   { label: 'Marin', value: 'marin' }
-]
-
-const callTypeOptions = [
-  { label: 'Inbound - Qualified (Returning Lead)', value: 'inbound-qualified' },
-  { label: 'Inbound - Unqualified (New Lead)', value: 'inbound-unqualified' },
-  { label: 'Outbound - Warm (Follow-up)', value: 'outbound-warm' },
-  { label: 'Outbound - Cold (First Touch)', value: 'outbound-cold' },
-  { label: 'Transfer/Handoff', value: 'transfer' },
-  { label: 'Scheduled Callback', value: 'callback' },
-  { label: 'Broker - Schedule Check', value: 'broker-schedule-check' },
-  { label: 'Broker - Connect for Appointment', value: 'broker-connect-appointment' },
-  { label: 'Emergency Fallback', value: 'fallback' }
 ]
 
 const prompts = ref([])
@@ -1388,7 +1362,6 @@ async function selectPrompt(id) {
     console.error('Failed to load prompt:', promptError)
   } else if (promptData) {
     selectedVoice.value = promptData.voice || 'alloy'
-    selectedCallType.value = promptData.call_type || null
     vadThreshold.value = promptData.vad_threshold || 0.5
     vadPrefixPaddingMs.value = promptData.vad_prefix_padding_ms || 300
     vadSilenceDurationMs.value = promptData.vad_silence_duration_ms || 500
@@ -2712,28 +2685,7 @@ async function handleVoiceChange(voice) {
   }
 }
 
-async function handleCallTypeChange(callType) {
-  if (!activePromptId.value) return
-  
-  loading.value = true
-  try {
-    const { error: updateError } = await supabase
-      .from('prompts')
-      .update({ call_type: callType })
-      .eq('id', activePromptId.value)
-    
-    if (updateError) throw updateError
-    
-    window.$message?.success(`Call type updated to ${callType}`)
-  } catch (err) {
-    error.value = err.message
-    window.$message?.error('Failed to update call type')
-    console.error('Failed to update call type:', err)
-  } finally {
-    loading.value = false
-  }
-}
-
+// VAD Settings Handlers
 async function handleVadThresholdChange(value) {
   if (!activePromptId.value) return
   
