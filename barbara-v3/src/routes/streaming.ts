@@ -113,10 +113,10 @@ export async function streamingRoute(
       });
 
       // Create agent with default inbound instructions (will update when we detect direction from 'start' event)
-      const defaultInstructions = await getInstructionsForCallType('inbound', {});
+      const defaultPromptMetadata = await getInstructionsForCallType('inbound', {});
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
-        instructions: defaultInstructions
+        instructions: defaultPromptMetadata.prompt
       });
 
       // Create session with SignalWire transport
@@ -295,6 +295,17 @@ export async function streamingRoute(
           
           signalWireTransportLayer.sendEvent(systemMessage);
           logger.info(`✅ Lead context injected successfully`);
+          
+          // Update agent instructions with the loaded prompt
+          const updateInstructionsMessage: RealtimeClientMessage = {
+            type: 'session.update',
+            session: {
+              instructions: promptMetadata.prompt
+            }
+          } as any;
+          
+          signalWireTransportLayer.sendEvent(updateInstructionsMessage);
+          logger.info(`✅ Agent instructions updated with prompt`);
           
           // NOW trigger the initial AI greeting AFTER context is injected
           try {
