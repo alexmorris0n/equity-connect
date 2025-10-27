@@ -226,9 +226,12 @@ export async function streamingRoute(
         
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
-            // Barbara's transcript will come from conversation.item.input_audio_transcription.completed
+            // Barbara's transcript will come from response.audio_transcript.done
             // This event just marks response completion
             logger.event('🤖', 'AI response completed');
+            
+            // DEBUG: Log the full response.done event to see structure
+            logger.info('🔍 RESPONSE_DONE event structure:', JSON.stringify(event, null, 2));
             break;
 
           case EVENT_TYPES.TRANSCRIPTION_COMPLETED:
@@ -250,6 +253,11 @@ export async function streamingRoute(
             break;
 
           default:
+            // DEBUG: Log ALL event types to see what we're getting
+            if (event.type && !event.type.includes('audio.delta') && !event.type.includes('speech_started')) {
+              logger.info(`📨 Event type: ${event.type}`);
+            }
+            
             // Only log raw transport events in debug mode
             if (SERVER_CONFIG.logLevel === 'debug') {
               logger.debug('Transport event:', event);
