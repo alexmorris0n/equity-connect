@@ -238,7 +238,7 @@ equity-connect/ (Git Monorepo)
   - `KNOWLEDGE_BASE_TIMEOUT_FIX.md` - KB search optimization (Oct 22)
   - `bridge/README.md` - Technical details
 
-**6. Barbara V3 - Production Voice AI** ⭐ **FULLY OPERATIONAL + CALL EVALUATION** (OCT 25-27, 2025)
+**6. Barbara V3 - Production Voice AI** ⭐ **FULLY OPERATIONAL + CALL EVALUATION + DYNAMIC VOICE/VAD** (OCT 25-27, 2025)
 - **Architecture:** SignalWire cXML + OpenAI Realtime API + OpenAI Agents SDK
 - **Deployment:** Fly.io (2 machines for HA) + GitHub Actions (git-based auto-deploys)
 - **Repository:** `barbara-v3/` - Standalone TypeScript service
@@ -254,7 +254,11 @@ equity-connect/ (Git Monorepo)
   - ✅ **Full transcript capture** - Both user and Barbara sides of conversation
   - ✅ **Automated call evaluation** - GPT-5-mini scores every call on 6 metrics
   - ✅ **Prompt version tracking** - Links evaluations to specific prompt versions for A/B testing
-  - ✅ **Voice options** - Currently `shimmer` for clear, natural speaking pace
+  - ✅ **Dynamic Voice & VAD settings** - Per-prompt configuration from database
+    - Voice: 10 OpenAI Realtime options (shimmer default)
+    - VAD Threshold: 0.3-0.8 (0.5 default)
+    - Prefix Padding: 100-1000ms (300ms default)
+    - Silence Duration: 200-2000ms (500ms default)
 - **Business Tools (11 total):**
   1. `get_lead_context` - Query lead by phone with last call context
   2. `check_consent_dnc` - Verify calling permissions
@@ -301,10 +305,10 @@ equity-connect/ (Git Monorepo)
   - GitHub Actions auto-deploy on `barbara-v3/**` changes
   - Fly.io with `--no-cache` (prevents stale Docker builds)
   - Environment secrets via `flyctl secrets set` (instant updates, ~5s restart)
-- **Status:** ✅ **FULLY OPERATIONAL WITH CALL EVALUATION**
+- **Status:** ✅ **FULLY OPERATIONAL WITH CALL EVALUATION + DYNAMIC VOICE/VAD**
   - ✅ Inbound calls tested - caller ID, lead lookup, appointment booking working
   - ✅ Outbound calls tested - correct phone lookup, dynamic prompt selection
-  - ✅ Voice tuning - `shimmer` voice for clear, natural pace (seniors-friendly)
+  - ✅ Voice & VAD tuning - Per-prompt database configuration
   - ✅ Clean logs - Changed from `debug` to `info` level
   - ✅ Dynamic prompt loading - Fetches from Supabase with version tracking
   - ✅ Full transcript capture - Both user and Barbara sides recorded
@@ -316,11 +320,12 @@ equity-connect/ (Git Monorepo)
   - API (for n8n): `https://barbara-v3-voice.fly.dev/api/trigger-call`
   - Stream: `wss://barbara-v3-voice.fly.dev/media-stream`
 - **Next Steps:**
+  - [ ] Test voice changes in production (different voices for different call types)
+  - [ ] Fine-tune VAD settings based on call quality feedback
   - [ ] Build dashboard to visualize call evaluation trends
   - [ ] A/B test different prompts via database-driven config
   - [ ] Add SMS confirmation tools (after regulatory approval)
   - [ ] Compare prompt versions to optimize performance
-  - [ ] Enable voice selection via dashboard (alloy/shimmer/echo/coral/sage)
 
 **7. Nylas Calendar Integration** ⭐ **PRODUCTION & TESTED** (OCT 20-26, 2025)
 - **Provider:** Nylas v3 API - Production-grade calendar platform
@@ -611,8 +616,7 @@ equity-connect/ (Git Monorepo)
   9. Safety & Escalation
 - ✅ **Line Break Preservation** - HTML rendering with `<br>` tags, auto-resize on Enter
 - ✅ **Version Control** - Deploy/rollback system with change summaries
-- ✅ **Voice Selection** - 10 OpenAI Realtime voices per prompt (alloy, echo, shimmer, ash, ballad, coral, sage, verse, cedar, marin)
-- ✅ **Call Type Assignment** - Each prompt maps to specific call scenario
+- ✅ **Voice & VAD Settings per Prompt** - 10 OpenAI Realtime voices + VAD tuning (threshold, padding, silence duration)
 - ✅ **Variable System** - 22 available variables with inline insertion
   - Click variable bolt icon to insert {{variable}} syntax
   - 6 Lead variables (name, email, phone, age)
@@ -626,21 +630,24 @@ equity-connect/ (Git Monorepo)
 - ✅ **Metadata Context** - Purpose & Goal fields provide AI context without affecting OpenAI payload
 
 **Database Schema (LIVE):**
-- ✅ `prompts` table - 9 fixed prompts with call_type, voice, purpose, goal, is_active
+- ✅ `prompts` table - 9 fixed prompts with call_type, voice, vad_threshold, vad_prefix_padding_ms, vad_silence_duration_ms, purpose, goal, is_active
 - ✅ `prompt_versions` table - Version control with JSONB content, change summaries
 - ✅ `prompt_deployments` table - Deployment history tracking
 - ✅ `call_evaluations` table - Automated evaluation scores and analysis
 - ✅ Unique constraint: Only one active prompt per call_type
 - ✅ Metadata columns (purpose, goal) for AI context
+- ✅ Voice & VAD columns with CHECK constraints for valid ranges
 - ✅ Production prompts populated with content from `prompts/Production Prompts/`
 - ✅ Migration 026: Added purpose/goal metadata for all 9 call types
+- ✅ Migration 027: Added voice and VAD settings columns with defaults
 
 **Barbara V3 Integration (LIVE):**
 - ✅ **Dynamic Prompt Loader** (`barbara-v3/src/services/prompts.ts`)
   - Fetches prompts from database by call_type
   - Assembles 9 JSONB sections into single prompt string
-  - Returns voice selection and version metadata
+  - Returns voice, VAD settings, and version metadata
   - 5-minute in-memory caching for performance
+  - Applies voice & VAD settings via session.update message
 - ✅ **Transcript Capture** (`barbara-v3/src/services/transcript-store.ts`)
   - Stores conversation transcript + prompt metadata in memory
   - Retrieved by save_interaction for database storage
@@ -648,11 +655,11 @@ equity-connect/ (Git Monorepo)
   - Triggered automatically after every call
   - Links evaluation to prompt version used
   - Enables performance comparison across versions
-- ✅ **Live in Production** - Barbara V3 loads all prompts from Supabase
+- ✅ **Live in Production** - Barbara V3 loads all prompts from Supabase with dynamic voice & VAD per call type
 
 **UI Improvements (OCT 27):**
 - ✅ Version numbers more prominent (larger, bolder, darker)
-- ✅ Settings tab (voice + call type configuration)
+- ✅ Settings tab with Voice & VAD configuration (call type removed - fixed per prompt)
 - ✅ Horizontal scrolling for prompt/version cards
 - ✅ Call type badges with Naive UI icons (purple text, no background)
 - ✅ Cleaner card layout (removed category display)
@@ -660,6 +667,7 @@ equity-connect/ (Git Monorepo)
 - ✅ AI sparkle icons (gold/orange) for visual hierarchy
 - ✅ Button reordering: Variable bolt before AI sparkle
 - ✅ Styled AI Audit button (purple background, gold sparkle icon)
+- ✅ Compact VAD controls (~25% smaller for better UI density)
 
 **Production Content:**
 - ✅ All 9 prompts populated with production-ready content
@@ -675,10 +683,19 @@ equity-connect/ (Git Monorepo)
 - ✅ Metadata system (purpose, goal) for AI context
 - ✅ Realtime API best practices documentation
 - ✅ Smart prompt loading (left-to-right by call type)
-- ✅ Enhanced UX (button reordering, icon styling, AI Audit button)
+- ✅ Enhanced UX (button reordering, icon styling, AI Audit button, compact VAD controls)
 - ✅ Variable inline insertion with bolt icon
 - ✅ Integrated with Barbara V3 via dynamic prompt loader
 - ✅ Call evaluation system tracks performance per prompt version
+- ✅ **Dynamic Voice & VAD settings per prompt** - **NEW OCT 27**
+  - Voice selection: 10 OpenAI Realtime voices (alloy, echo, shimmer, ash, ballad, coral, sage, verse, cedar, marin)
+  - VAD Threshold: 0.3-0.8 (controls speech sensitivity)
+  - VAD Prefix Padding: 100-1000ms (audio captured BEFORE speech)
+  - VAD Silence Duration: 200-2000ms (silence before turn ends)
+  - Auto-save on change (no manual save button needed)
+  - Settings applied per prompt (not per version - tuning knobs)
+  - Advanced settings section (collapsible with warning)
+  - Reset to defaults button (shimmer, 0.5, 300ms, 500ms)
 - ✅ All changes committed and deployed to production
 
 **Next Steps:**
