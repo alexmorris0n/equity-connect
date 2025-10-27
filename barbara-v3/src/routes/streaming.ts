@@ -206,8 +206,7 @@ export async function streamingRoute(
         logger.warn(`⚠️ No 'start' event received within 2s, defaulting to inbound`);
       }
 
-      // NOW load the correct prompt based on call direction
-      logger.info(`📝 Loading prompt for ${callDirection} call`);
+      // Load the correct prompt based on call direction
       const promptMetadata = await getInstructionsForCallType(callDirection, {
         leadId: leadId || undefined,
         brokerId: brokerId || undefined,
