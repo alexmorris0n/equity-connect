@@ -4183,7 +4183,7 @@ function handleBeforeUnload(e) {
 }
 
 .empty-icon-wrapper {
-  margin-bottom: 16px;
+  margin-bottom: 32px;
 }
 
 .empty-content {
