@@ -10,18 +10,20 @@
           <n-icon size="24"><AddCircleOutline /></n-icon>
         </button>
       </header>
-      <div class="meta-list">
-        <button
-          v-for="prompt in prompts"
-          :key="prompt.id"
-          class="meta-item"
-          :class="{ active: prompt.id === activePromptId }"
-          type="button"
-          @click="selectPrompt(prompt.id)"
-        >
-          <span class="meta-item-title">{{ prompt.name }}</span>
-          <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
-        </button>
+      <div class="meta-list-wrapper">
+        <div class="meta-list">
+          <button
+            v-for="prompt in prompts"
+            :key="prompt.id"
+            class="meta-item"
+            :class="{ active: prompt.id === activePromptId }"
+            type="button"
+            @click="selectPrompt(prompt.id)"
+          >
+            <span class="meta-item-title">{{ prompt.name }}</span>
+            <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -32,29 +34,31 @@
           <span class="meta-title">Versions</span>
         </div>
       </header>
-      <div class="meta-list">
-        <button
-          v-for="version in versions"
-          :key="version.id"
-          class="meta-item version"
-          :class="{ active: currentVersion?.id === version.id }"
-          type="button"
-          @click="loadVersion(version.id)"
-        >
-          <div class="version-row">
-            <span class="meta-item-title">v{{ version.version_number }}</span>
-            <span class="meta-date">{{ formatDate(version.created_at) }}</span>
-            <span class="meta-status" v-if="version.is_active">Active</span>
-            <span class="meta-status draft" v-else-if="version.is_draft">Draft</span>
-          </div>
-          <span
-            class="meta-item-sub"
-            v-if="version.change_summary"
-            :title="version.change_summary"
+      <div class="meta-list-wrapper">
+        <div class="meta-list">
+          <button
+            v-for="version in versions"
+            :key="version.id"
+            class="meta-item version"
+            :class="{ active: currentVersion?.id === version.id }"
+            type="button"
+            @click="loadVersion(version.id)"
           >
-            {{ version.change_summary }}
-          </span>
-        </button>
+            <div class="version-row">
+              <span class="meta-item-title">v{{ version.version_number }}</span>
+              <span class="meta-date">{{ formatDate(version.created_at) }}</span>
+              <span class="meta-status" v-if="version.is_active">Active</span>
+              <span class="meta-status draft" v-else-if="version.is_draft">Draft</span>
+            </div>
+            <span
+              class="meta-item-sub"
+              v-if="version.change_summary"
+              :title="version.change_summary"
+            >
+              {{ version.change_summary }}
+            </span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -1788,7 +1792,7 @@ function handleBeforeUnload(e) {
 <style scoped>
 .prompt-workspace {
   display: grid;
-  grid-template-columns: 220px 220px minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 1fr) minmax(250px, 0.8fr) minmax(0, 2fr);
   gap: 1rem;
   align-items: start;
   padding-left: 0;
@@ -1809,6 +1813,8 @@ function handleBeforeUnload(e) {
   gap: 0.45rem;
   align-items: flex-start;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
   height: fit-content;
   max-height: 100%;
   min-width: 0;
@@ -1919,6 +1925,29 @@ function handleBeforeUnload(e) {
   display: none;
 }
 
+.meta-list-wrapper {
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+}
+
+.meta-list-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+
+.meta-list-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.meta-list-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+
+.meta-list-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
 .meta-list {
   display: flex;
   flex-direction: row;
@@ -1926,29 +1955,11 @@ function handleBeforeUnload(e) {
   gap: 0.45rem;
   padding: 0.35rem 0;
   width: max-content;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.meta-list::-webkit-scrollbar {
-  height: 6px;
-}
-
-.meta-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.meta-list::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
-  border-radius: 3px;
-}
-
-.meta-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.5);
 }
 
 .meta-item,
 .meta-item.version {
+  flex-shrink: 0;
   border: 1px solid rgba(148, 163, 184, 0.4);
   border-radius: 12px;
   padding: 0.45rem 1.1rem;
