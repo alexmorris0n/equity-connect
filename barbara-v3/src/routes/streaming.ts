@@ -18,7 +18,7 @@ import { CONNECTION_MESSAGES, ERROR_MESSAGES, EVENT_TYPES } from '../constants.j
 import type { StreamingOptions } from '../types/index.js';
 import { AGENT_CONFIG, SERVER_CONFIG } from '../config.js';
 import { getInstructionsForCallType } from '../services/prompts.js';
-import { setCurrentSessionId, setTranscript, clearTranscript, setPromptMetadata } from '../services/transcript-store.js';
+import { setCurrentSessionId, setTranscript, clearTranscript, setPromptMetadata, getCurrentPromptMetadata } from '../services/transcript-store.js';
 
 export async function streamingRoute(
   fastify: FastifyInstance,
