@@ -2,8 +2,8 @@
 
 **Last Updated:** October 27, 2025  
 **Status:** Production Ready  
-**Current Phase:** Barbara V3 Production + Prompt Management Portal Complete
-**Latest Updates:** 🎉 **MILESTONE ACHIEVED** - Complete prompt management portal deployed! Vue.js admin with 9 fixed prompts, version control, voice selection, structured editor with line breaks, 22 variables, and Supabase integration. Bridge adapter ready for database-driven prompts. Barbara V3 fully operational with inbound/outbound calls.
+**Current Phase:** Barbara V3 Production + Advanced Prompt Management Portal Complete
+**Latest Updates:** 🎉 **MAJOR MILESTONE** - AI-powered prompt management portal with GPT-5 comprehensive audit feature! Complete system includes: 9 fixed prompts with version control, AI section-level improvements (GPT-5-mini), full prompt evaluation with guided questions (GPT-5), one-click apply for recommendations, voice selection, structured 9-section editor with line breaks, 22 variables with inline insertion, real-time OpenAI best practices validation, and Supabase integration. Bridge adapter ready for database-driven prompts with variable injection and caching.
 
 ---
 
@@ -485,11 +485,11 @@ equity-connect/ (Git Monorepo)
 
 ### 🔄 IN PROGRESS
 
-**12. Vue.js Prompt Management Portal** ⭐ **COMPLETE** (OCT 27, 2025)
-- **Purpose:** Replace PromptLayer with custom prompt management + call analytics
-- **Architecture:** Vue 3 + Vite + Supabase + Naive UI styling
+**12. Vue.js Prompt Management Portal** ⭐ **COMPLETE WITH AI FEATURES** (OCT 27, 2025)
+- **Purpose:** AI-powered prompt engineering platform with GPT-5 evaluation + management + call analytics
+- **Architecture:** Vue 3 + Vite + Supabase + Naive UI + OpenAI API (GPT-5 + GPT-5-mini)
 - **Deployment:** Vercel (auto-deploy on `portal/**` changes)
-- **Status:** ✅ **PRODUCTION READY - Full prompt management system operational**
+- **Status:** ✅ **PRODUCTION READY - Advanced AI-assisted prompt management operational**
 
 **Core Features (LIVE):**
 - ✅ **9 Fixed Prompts** - One for each call type (no create/delete, version control only)
@@ -497,6 +497,25 @@ equity-connect/ (Git Monorepo)
   - 2 Broker-facing: broker-schedule-check, broker-connect-appointment
   - 2 Special handling: transfer, callback
   - 1 System: fallback
+- ✅ **AI Section Improver** (GPT-5-mini) - **NEW OCT 27**
+  - Click sparkle icon on any section for AI-powered improvements
+  - Quick suggestion prompts for common refinements
+  - Context-aware improvements based on prompt purpose and goal
+  - Side-by-side diff view (original vs AI-improved)
+  - One-click accept to apply changes
+  - Follows OpenAI Realtime API best practices automatically
+  - Fast response time (~10-15 seconds)
+- ✅ **Comprehensive AI Audit** (GPT-5) - **NEW OCT 27**
+  - Full prompt evaluation across all 9 sections
+  - Guided 6-question intake (problem, target profile, conversion goal, known issues, tone, edge cases)
+  - Overall quality score (0-100) with visual rating
+  - Detailed feedback: Strengths, Weaknesses, Critical Issues
+  - Actionable recommendations with priority levels (Critical/High/Medium/Low)
+  - Each recommendation includes: Issue description, Why it matters, Suggested content
+  - One-click apply for individual recommendations
+  - Evaluates: Realtime API compliance, consistency, alignment, variable usage, completeness
+  - Comprehensive report modal with beautiful UI
+  - Uses GPT-5 for thorough analysis (~30-45 seconds)
 - ✅ **Structured Editor** - 9 JSONB sections per prompt:
   1. Role & Objective
   2. Personality & Tone
@@ -511,7 +530,8 @@ equity-connect/ (Git Monorepo)
 - ✅ **Version Control** - Deploy/rollback system with change summaries
 - ✅ **Voice Selection** - 10 OpenAI Realtime voices per prompt (alloy, echo, shimmer, ash, ballad, coral, sage, verse, cedar, marin)
 - ✅ **Call Type Assignment** - Each prompt maps to specific call scenario
-- ✅ **Variable System** - 22 available variables with click-to-copy
+- ✅ **Variable System** - 22 available variables with inline insertion
+  - Click variable bolt icon to insert {{variable}} syntax
   - 6 Lead variables (name, email, phone, age)
   - 11 Property variables (address, city, state, equity calculations with Words versions)
   - 5 Broker variables (name, company, phone)
@@ -519,13 +539,17 @@ equity-connect/ (Git Monorepo)
 - ✅ **Guide Tab** - Best practices and examples for each section
 - ✅ **Performance Tab** - Placeholder for future analytics
 - ✅ **Immediate UI Updates** - Deploy button refreshes status without navigation
+- ✅ **Smart Prompt Loading** - Left-to-right order by call type priority
+- ✅ **Metadata Context** - Purpose & Goal fields provide AI context without affecting OpenAI payload
 
 **Database Schema (LIVE):**
-- ✅ `prompts` table - 9 fixed prompts with call_type, voice, is_active
+- ✅ `prompts` table - 9 fixed prompts with call_type, voice, purpose, goal, is_active
 - ✅ `prompt_versions` table - Version control with JSONB content, change summaries
 - ✅ `prompt_deployments` table - Deployment history tracking
 - ✅ Unique constraint: Only one active prompt per call_type
+- ✅ Metadata columns (purpose, goal) for AI context - **NEW OCT 27**
 - ✅ Production prompts populated with content from `prompts/Production Prompts/`
+- ✅ Migration 026: Added purpose/goal metadata for all 9 call types
 
 **Bridge Integration (READY):**
 - ✅ **Supabase Prompt Manager** (`bridge/prompt-manager-supabase.js`)
@@ -544,6 +568,18 @@ equity-connect/ (Git Monorepo)
 - ✅ **Formatting Guide** (`docs/PROMPT_FORMATTING_GUIDE.md`)
   - How to use line breaks, bullets, numbered lists
   - Best practices for GPT readability
+- ✅ **Realtime API Reference** (`docs/REALTIME_API_PROMPTING_REFERENCE.md`) - **NEW OCT 27**
+  - Comprehensive OpenAI Realtime API best practices
+  - Voice-optimized prompt guidelines
+  - Ultra-brief response patterns (<200 chars)
+  - Interrupt-friendly design principles
+  - Tool latency fillers and micro-utterances
+  - Used by AI Improve and AI Audit features
+- ✅ **AI Improve Setup** (`portal/AI_IMPROVE_SETUP.md`) - **NEW OCT 27**
+  - Environment variable configuration (VITE_OPENAI_API_KEY)
+  - Model selection guide (GPT-5-mini for speed, GPT-5 for quality)
+  - API parameter documentation
+  - Troubleshooting guide
 
 **Real-time Config (No Code Push):**
 - ✅ Prompts loaded from database per call
@@ -556,9 +592,12 @@ equity-connect/ (Git Monorepo)
 - ✅ Version numbers more prominent (larger, bolder, darker)
 - ✅ Settings tab (voice + call type configuration)
 - ✅ Horizontal scrolling for prompt/version cards
-- ✅ Call type badges with Naive UI icons
+- ✅ Call type badges with Naive UI icons (purple text, no background)
 - ✅ Cleaner card layout (removed category display)
 - ✅ Deploy button updates UI immediately
+- ✅ AI sparkle icons (gold/orange) for visual hierarchy
+- ✅ Button reordering: Variable bolt before AI sparkle
+- ✅ Styled AI Audit button (purple background, gold sparkle icon)
 
 **Production Content:**
 - ✅ All 9 prompts populated with production-ready content
@@ -566,6 +605,17 @@ equity-connect/ (Git Monorepo)
 - ✅ Adapted to 9-section structure for better organization
 - ✅ Variables verified against bridge's enrichedVariables
 - ✅ Migration 025: Fixed variable references
+
+**Key Accomplishments (OCT 27):**
+- ✅ AI Section Improver with GPT-5-mini (10-15 second responses)
+- ✅ Comprehensive AI Audit with GPT-5 (6-question guided evaluation)
+- ✅ One-click apply for all AI recommendations
+- ✅ Metadata system (purpose, goal) for AI context
+- ✅ Realtime API best practices documentation
+- ✅ Smart prompt loading (left-to-right by call type)
+- ✅ Enhanced UX (button reordering, icon styling, AI Audit button)
+- ✅ Variable inline insertion with bolt icon
+- ✅ All changes committed and pushed to production
 
 **Next Steps:**
 - [ ] Deploy portal to Vercel
@@ -575,6 +625,7 @@ equity-connect/ (Git Monorepo)
 - [ ] Add performance metrics dashboard per prompt
 - [ ] Implement A/B testing framework (deploy v1 vs v2)
 - [ ] Add SMS confirmation tools (waiting for regulatory approval)
+- [ ] Integrate AI audit results into version performance tracking
 
 **9. Cold Email Campaign System** (Sunday/Monday)
 - **Multi-Angle Campaign Rotation:** 3 archetypes with automatic retry for non-responders
