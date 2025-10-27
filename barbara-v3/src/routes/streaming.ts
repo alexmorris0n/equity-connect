@@ -304,10 +304,9 @@ export async function streamingRoute(
             break;
 
           default:
-            // Only log in debug mode
-            if (SERVER_CONFIG.logLevel === 'debug') {
-              logger.debug(`Transport event: ${event.type}`);
-            }
+            // All other events are silently handled or ignored
+            // We already log what matters: user transcripts, Barbara responses, errors
+            break;
         }
       });
 
