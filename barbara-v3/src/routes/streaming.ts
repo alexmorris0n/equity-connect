@@ -112,7 +112,17 @@ export async function streamingRoute(
       // Create session with SignalWire transport
       const session = new RealtimeSession(sessionAgent, {
         transport: signalWireTransportLayer,
-        model: model as OpenAIRealtimeModels
+        model: model as OpenAIRealtimeModels,
+        // Enable input audio transcription to capture both user and assistant transcripts
+        turnDetection: {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500
+        },
+        inputAudioTranscription: {
+          model: 'whisper-1'
+        }
       });
       
       // Store conversation transcript reference in session for tool access
@@ -120,6 +130,24 @@ export async function streamingRoute(
 
       // Listen to transport events to inject call context when available
       session.transport.on('*', (event: TransportEvent) => {
+        // Handle input audio transcription events (for user transcripts)
+        if (event.type === 'conversation.item.input_audio_transcription.completed') {
+          const transcriptText = (event as any).transcript || (event as any).item?.content?.[0]?.text;
+          if (transcriptText) {
+            conversationTranscript.push({
+              role: 'user',
+              content: transcriptText,
+              timestamp: new Date().toISOString()
+            });
+            logger.info(`💬 User (audio transcription): "${transcriptText}"`);
+          }
+        }
+        
+        // Handle transcription failures
+        if (event.type === 'conversation.item.input_audio_transcription.failed') {
+          logger.error('❌ Audio transcription failed:', event);
+        }
+        
         // If we have phone numbers and haven't injected yet, inject context now
         if (fromPhone && toPhone && event.type === 'session.updated') {
           logger.info(`💉 Injecting call context into conversation`);
