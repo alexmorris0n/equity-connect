@@ -62,9 +62,27 @@ export async function streamingRoute(
     // Register transcript with store for tool access
     setTranscript(sessionId, conversationTranscript);
 
+    // Track if save_interaction was already called
+    let interactionSaved = false;
+
     // Handle disconnection
-    connection.on('close', () => {
+    connection.on('close', async () => {
       logger.info(CONNECTION_MESSAGES.CLIENT_DISCONNECTED);
+      
+      // If Barbara didn't call save_interaction before disconnect, log warning
+      if (!interactionSaved && conversationTranscript.length > 0) {
+        logger.warn(`⚠️ Call ended without save_interaction tool being called`);
+        logger.warn(`📊 Transcript has ${conversationTranscript.length} messages but was not evaluated`);
+        logger.warn(`💡 Tip: Ensure Barbara calls save_interaction before saying goodbye`);
+        
+        // Log first/last few messages for debugging
+        if (conversationTranscript.length > 0) {
+          logger.info(`First message: ${conversationTranscript[0]?.role}: "${conversationTranscript[0]?.content?.substring(0, 100)}"`);
+          const last = conversationTranscript[conversationTranscript.length - 1];
+          logger.info(`Last message: ${last?.role}: "${last?.content?.substring(0, 100)}"`);
+        }
+      }
+      
       // Cleanup transcript from store
       clearTranscript(sessionId);
       logger.info(`🧹 Cleaned up transcript for session: ${sessionId}`);
@@ -334,6 +352,12 @@ export async function streamingRoute(
       // Listen to session events for tool calls
       session.on('agent_tool_start', (context, agent, tool, details) => {
         logger.event('🔧', 'Tool call started', details);
+        
+        // Track if save_interaction is called
+        if (details?.name === 'save_interaction') {
+          interactionSaved = true;
+          logger.info('✅ save_interaction called - evaluation will be triggered by tool');
+        }
       });
 
       session.on('agent_tool_end', (context, agent, tool, result, details) => {
