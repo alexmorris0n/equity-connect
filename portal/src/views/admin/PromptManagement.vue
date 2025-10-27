@@ -1524,6 +1524,11 @@ const aiSuggestions = computed(() => {
   return suggestions.slice(0, 5) // Limit to top 5 suggestions
 })
 
+// Computed property to get active prompt object
+const activePrompt = computed(() => {
+  return prompts.value.find(p => p.id === activePromptId.value) || null
+})
+
 // Helper functions
 const getScoreClass = (score) => {
   if (score >= 8) return 'score-good'
@@ -1674,11 +1679,6 @@ const isOlderVersion = computed(() => {
   if (!currentVersion.value || !versions.value.length) return false
   const latestVersion = versions.value[0] // versions sorted desc by version_number
   return currentVersion.value.version_number < latestVersion.version_number
-})
-
-// Computed property to get active prompt object
-const activePrompt = computed(() => {
-  return prompts.value.find(p => p.id === activePromptId.value) || null
 })
 
 // Watch for section expansions to trigger textarea resize
