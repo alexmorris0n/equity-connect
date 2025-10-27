@@ -6,9 +6,6 @@
           <n-icon size="20" class="meta-icon"><FolderOutline /></n-icon>
           <span class="meta-title">Prompts</span>
         </div>
-        <button class="meta-action" type="button" @click="createNewPrompt" :disabled="loading">
-          <n-icon size="24"><AddCircleOutline /></n-icon>
-        </button>
       </header>
       <div class="meta-list-wrapper">
         <div class="meta-list">
@@ -22,6 +19,12 @@
           >
             <span class="meta-item-title">{{ prompt.name }}</span>
             <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
+            <span v-if="prompt.call_type" class="meta-badge" :title="getCallTypeLabel(prompt.call_type)">
+              <n-icon size="12" style="vertical-align: middle; margin-right: 2px;">
+                <component :is="getCallTypeIcon(prompt.call_type)" />
+              </n-icon>
+              {{ getCallTypeShort(prompt.call_type) }}
+            </span>
           </button>
         </div>
       </div>
@@ -502,7 +505,14 @@ import {
   FlashOutline,
   EyeOutline,
   BuildOutline,
-  ConstructOutline
+  ConstructOutline,
+  CallOutline,
+  PhonePortraitOutline,
+  SwapHorizontalOutline,
+  TimeOutline,
+  CalendarOutline,
+  PeopleOutline,
+  ShieldCheckmarkOutline
 } from '@vicons/ionicons5'
 
 const loading = ref(false)
@@ -534,25 +544,19 @@ const voiceOptions = [
 ]
 
 const callTypeOptions = [
-  { label: '📞 Inbound - Qualified (Returning Lead)', value: 'inbound-qualified' },
-  { label: '📞 Inbound - Unqualified (New Lead)', value: 'inbound-unqualified' },
-  { label: '📱 Outbound - Warm (Follow-up)', value: 'outbound-warm' },
-  { label: '📱 Outbound - Cold (First Touch)', value: 'outbound-cold' },
-  { label: '🔄 Transfer/Handoff', value: 'transfer' },
-  { label: '⏰ Scheduled Callback', value: 'callback' },
-  { label: '📅 Broker - Schedule Check', value: 'broker-schedule-check' },
-  { label: '🤝 Broker - Connect for Appointment', value: 'broker-connect-appointment' },
-  { label: '🛟 Emergency Fallback', value: 'fallback' }
+  { label: 'Inbound - Qualified (Returning Lead)', value: 'inbound-qualified' },
+  { label: 'Inbound - Unqualified (New Lead)', value: 'inbound-unqualified' },
+  { label: 'Outbound - Warm (Follow-up)', value: 'outbound-warm' },
+  { label: 'Outbound - Cold (First Touch)', value: 'outbound-cold' },
+  { label: 'Transfer/Handoff', value: 'transfer' },
+  { label: 'Scheduled Callback', value: 'callback' },
+  { label: 'Broker - Schedule Check', value: 'broker-schedule-check' },
+  { label: 'Broker - Connect for Appointment', value: 'broker-connect-appointment' },
+  { label: 'Emergency Fallback', value: 'fallback' }
 ]
 
-const prompts = ref([
-  {
-    id: 'default-barbara',
-    name: 'Barbara - Main',
-    category: 'Voice Assistant'
-  }
-])
-const activePromptId = ref('default-barbara')
+const prompts = ref([])
+const activePromptId = ref(null)
 const currentVersion = ref(null)
 const performanceData = ref(null)
 const hasChanges = ref(false)
@@ -1576,6 +1580,51 @@ function formatDate(dateString) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function getCallTypeIcon(callType) {
+  const iconMap = {
+    'inbound-qualified': CallOutline,
+    'inbound-unqualified': CallOutline,
+    'outbound-warm': PhonePortraitOutline,
+    'outbound-cold': PhonePortraitOutline,
+    'transfer': SwapHorizontalOutline,
+    'callback': TimeOutline,
+    'broker-schedule-check': CalendarOutline,
+    'broker-connect-appointment': PeopleOutline,
+    'fallback': ShieldCheckmarkOutline
+  }
+  return iconMap[callType] || CallOutline
+}
+
+function getCallTypeShort(callType) {
+  const shortMap = {
+    'inbound-qualified': 'In-Qual',
+    'inbound-unqualified': 'In-New',
+    'outbound-warm': 'Out-Warm',
+    'outbound-cold': 'Out-Cold',
+    'transfer': 'Transfer',
+    'callback': 'Callback',
+    'broker-schedule-check': 'Broker-Sched',
+    'broker-connect-appointment': 'Broker-Appt',
+    'fallback': 'Fallback'
+  }
+  return shortMap[callType] || callType
+}
+
+function getCallTypeLabel(callType) {
+  const labelMap = {
+    'inbound-qualified': 'Inbound - Qualified (Returning Lead)',
+    'inbound-unqualified': 'Inbound - Unqualified (New Lead)',
+    'outbound-warm': 'Outbound - Warm (Follow-up)',
+    'outbound-cold': 'Outbound - Cold (First Touch)',
+    'transfer': 'Transfer/Handoff',
+    'callback': 'Scheduled Callback',
+    'broker-schedule-check': 'Broker - Schedule Check',
+    'broker-connect-appointment': 'Broker - Connect for Appointment',
+    'fallback': 'Emergency Fallback'
+  }
+  return labelMap[callType] || callType
+}
+
 function formatVariable(variable) {
   return `{{${variable}}}`
 }
@@ -1896,7 +1945,34 @@ function updateScrollStates() {
   })
 }
 
-onMounted(() => {
+async function loadPrompts() {
+  loading.value = true
+  try {
+    const { data, error: fetchError } = await supabase
+      .from('prompts')
+      .select('*')
+      .order('call_type')
+    
+    if (fetchError) throw fetchError
+    
+    prompts.value = data || []
+    
+    // Auto-select first prompt if available
+    if (prompts.value.length > 0 && !activePromptId.value) {
+      await selectPrompt(prompts.value[0].id)
+    }
+    
+    console.log('✅ Loaded prompts:', prompts.value.length)
+  } catch (err) {
+    error.value = err.message
+    console.error('Failed to load prompts:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadPrompts()
   loadVersions()
   window.addEventListener('resize', handleWindowResize)
   
@@ -2146,6 +2222,21 @@ function handleBeforeUnload(e) {
   text-overflow: ellipsis;
   width: 100%;
   line-height: 1.2;
+}
+
+.meta-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  margin-top: 4px;
+  font-size: 0.55rem;
+  font-weight: 500;
+  background: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .meta-item:not(.version) .meta-item-sub {
