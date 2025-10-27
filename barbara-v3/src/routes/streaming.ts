@@ -120,6 +120,12 @@ export async function streamingRoute(
 
       // Listen to transport events to inject call context when available
       session.transport.on('*', (event: TransportEvent) => {
+        // Filter out noisy media events to prevent log flooding
+        const eventData = event as any;
+        if (eventData.message?.type === 'twilio_message' && eventData.message?.event === 'media') {
+          return; // Skip logging raw audio chunks
+        }
+        
         // Handle input audio transcription events (for user transcripts)
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
           const transcriptText = (event as any).transcript || (event as any).item?.content?.[0]?.text;
