@@ -114,12 +114,6 @@ export async function streamingRoute(
         transport: signalWireTransportLayer,
         model: model as OpenAIRealtimeModels,
         // Enable input audio transcription to capture both user and assistant transcripts
-        turnDetection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500
-        },
         inputAudioTranscription: {
           model: 'whisper-1'
         }
