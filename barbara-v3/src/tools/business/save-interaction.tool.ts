@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { tool as realtimeTool } from '@openai/agents/realtime';
 import { getSupabaseClient } from '../../services/supabase.js';
 import { logger } from '../../utils/logger.js';
+import { getCurrentTranscript } from '../../services/transcript-store.js';
 
 /**
  * Save call interaction details
@@ -31,6 +32,10 @@ export const saveInteractionTool = realtimeTool({
     try {
       logger.info(`💾 Saving interaction for lead: ${lead_id}`);
       
+      // Get conversation transcript from store
+      const conversationTranscript = getCurrentTranscript();
+      logger.info(`📝 Retrieved transcript with ${conversationTranscript?.length || 0} messages`);
+      
       // Check if lead should be marked as qualified
       const qualifiesByMetadata = metadata?.qualified === true
         || metadata?.met_qualification_requirements === true
@@ -54,8 +59,8 @@ export const saveInteractionTool = realtimeTool({
         ai_agent: 'barbara',
         version: '3.0',
         
-        // Include conversation transcript if provided
-        conversation_transcript: metadata?.conversation_transcript || null,
+        // Include conversation transcript from store (or fallback to metadata if provided)
+        conversation_transcript: conversationTranscript || metadata?.conversation_transcript || null,
         
         // Lead qualification data
         money_purpose: metadata?.money_purpose || null,

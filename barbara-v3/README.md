@@ -55,7 +55,7 @@ Supabase, Nylas, Vertex AI, SignalWire MFA
 9. `verify_appointment_confirmation` - Verify MFA code (NEW!)
 
 ### **Data & Knowledge:**
-10. `save_interaction` - Log call details
+10. `save_interaction` - Log call details with full conversation transcript
 11. `search_knowledge` - Vector search via Vertex AI
 
 ### **Demo Tools:**
@@ -171,6 +171,7 @@ npm run dev
 
 ## **Version History**
 
+- **v3.0.2** (Oct 27, 2025) - Added full conversation transcript capture for call evaluation
 - **v3.0.1** (Oct 25, 2025) - Added 11 business tools + MFA + Git-based deployment
 - **v3.0.0** (Oct 25, 2025) - Initial release (cXML + OpenAI Agents SDK)
 
