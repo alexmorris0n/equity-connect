@@ -3399,10 +3399,12 @@ function handleBeforeUnload(e) {
 .prompt-workspace {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) minmax(250px, 0.8fr) minmax(0, 2fr);
+  grid-template-rows: 1fr;
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
   padding-left: 0;
   max-width: 100%;
+  min-height: 600px;
 }
 
 .meta-card {
@@ -3419,7 +3421,20 @@ function handleBeforeUnload(e) {
   overflow-y: auto;
   overflow-x: hidden;
   height: fit-content;
+  max-height: 400px;
   min-width: 0;
+  container-type: inline-size;
+}
+
+/* When card is wide, enable horizontal scroll and fill vertical space */
+@container (min-width: 400px) {
+  .meta-card {
+    overflow-y: hidden;
+    overflow-x: auto;
+    max-height: none;
+    height: 100%;
+    min-height: 500px;
+  }
 }
 
 .meta-header {
@@ -3552,11 +3567,19 @@ function handleBeforeUnload(e) {
 
 .meta-list {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: stretch;
   gap: 0.45rem;
   padding: 0.35rem 0;
-  width: max-content;
+  width: 100%;
+}
+
+/* When the meta-card is wide, stack items horizontally */
+@container (min-width: 400px) {
+  .meta-list {
+    flex-direction: row;
+    width: max-content;
+  }
 }
 
 .meta-item,
@@ -3580,6 +3603,15 @@ function handleBeforeUnload(e) {
   scroll-snap-align: start;
   box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.22);
   overflow: hidden;
+}
+
+/* When in vertical layout (narrow), make items full width */
+@container (max-width: 399px) {
+  .meta-item,
+  .meta-item.version {
+    width: 100%;
+    min-width: 100%;
+  }
 }
 
 .meta-item.active {
