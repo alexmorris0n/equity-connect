@@ -3397,11 +3397,9 @@ function handleBeforeUnload(e) {
 
 <style scoped>
 .prompt-workspace {
-  display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(250px, 0.8fr) minmax(0, 2fr);
-  grid-template-rows: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  align-items: stretch;
   padding-left: 0;
   max-width: 100%;
   min-height: 600px;
@@ -3426,14 +3424,32 @@ function handleBeforeUnload(e) {
   container-type: inline-size;
 }
 
-/* When card is wide, enable horizontal scroll and fill vertical space */
+/* When card is wide, enable vertical scroll and fill vertical space */
 @container (min-width: 400px) {
   .meta-card {
-    overflow-y: hidden;
-    overflow-x: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     max-height: none;
     height: 100%;
     min-height: 500px;
+  }
+  
+  /* Purple scrollbar */
+  .meta-card::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .meta-card::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .meta-card::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.3);
+    border-radius: 3px;
+  }
+  
+  .meta-card::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.5);
   }
 }
 
@@ -3567,19 +3583,11 @@ function handleBeforeUnload(e) {
 
 .meta-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: stretch;
   gap: 0.45rem;
   padding: 0.35rem 0;
-  width: 100%;
-}
-
-/* When the meta-card is wide, stack items horizontally */
-@container (min-width: 400px) {
-  .meta-list {
-    flex-direction: row;
-    width: max-content;
-  }
+  width: max-content;
 }
 
 .meta-item,
@@ -3605,14 +3613,6 @@ function handleBeforeUnload(e) {
   overflow: hidden;
 }
 
-/* When in vertical layout (narrow), make items full width */
-@container (max-width: 399px) {
-  .meta-item,
-  .meta-item.version {
-    width: 100%;
-    min-width: 100%;
-  }
-}
 
 .meta-item.active {
   border-color: rgba(99, 102, 241, 0.65);
