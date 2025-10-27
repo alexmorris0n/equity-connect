@@ -240,6 +240,18 @@ tbody tr:hover {
 .mb-lg { margin-bottom: var(--space-lg); }
 .mb-xl { margin-bottom: var(--space-xl); }
 
+/* Legacy spacing aliases for backward compatibility */
+:root {
+  --spacing-xs: var(--space-xs);
+  --spacing-sm: var(--space-sm);
+  --spacing-md: var(--space-md);
+  --spacing-lg: var(--space-lg);
+  --spacing-xl: var(--space-xl);
+  --bg-secondary: var(--surface-muted);
+  --bg-tertiary: var(--surface-alt);
+  --success: var(--color-success-500);
+}
+
 .flex { display: flex; }
 .flex-col { flex-direction: column; }
 .items-center { align-items: center; }
