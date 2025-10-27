@@ -10,39 +10,17 @@
           <n-icon size="24"><AddCircleOutline /></n-icon>
         </button>
       </header>
-      <div class="meta-list-container">
-        <button 
-          class="scroll-arrow scroll-arrow-left" 
-          @click="scrollPrompts(-1)"
-          :disabled="!canScrollPromptsLeft"
+      <div class="meta-list">
+        <button
+          v-for="prompt in prompts"
+          :key="prompt.id"
+          class="meta-item"
+          :class="{ active: prompt.id === activePromptId }"
+          type="button"
+          @click="selectPrompt(prompt.id)"
         >
-          <n-icon size="18"><ChevronBackOutline /></n-icon>
-        </button>
-        <div
-          ref="promptsTrack"
-          class="meta-list-track"
-          @scroll="handlePromptsScroll"
-        >
-          <div class="meta-list">
-            <button
-              v-for="prompt in prompts"
-              :key="prompt.id"
-              class="meta-item"
-              :class="{ active: prompt.id === activePromptId }"
-              type="button"
-              @click="selectPrompt(prompt.id)"
-            >
-              <span class="meta-item-title">{{ prompt.name }}</span>
-              <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
-            </button>
-          </div>
-        </div>
-        <button 
-          class="scroll-arrow scroll-arrow-right" 
-          @click="scrollPrompts(1)"
-          :disabled="!canScrollPromptsRight"
-        >
-          <n-icon size="18"><ChevronForwardOutline /></n-icon>
+          <span class="meta-item-title">{{ prompt.name }}</span>
+          <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
         </button>
       </div>
     </section>
@@ -54,50 +32,28 @@
           <span class="meta-title">Versions</span>
         </div>
       </header>
-      <div class="meta-list-container">
-        <button 
-          class="scroll-arrow scroll-arrow-left" 
-          @click="scrollVersions(-1)"
-          :disabled="!canScrollVersionsLeft"
+      <div class="meta-list">
+        <button
+          v-for="version in versions"
+          :key="version.id"
+          class="meta-item version"
+          :class="{ active: currentVersion?.id === version.id }"
+          type="button"
+          @click="loadVersion(version.id)"
         >
-          <n-icon size="18"><ChevronBackOutline /></n-icon>
-        </button>
-        <div
-          ref="versionsTrack"
-          class="meta-list-track"
-          @scroll="handleVersionsScroll"
-        >
-          <div class="meta-list">
-            <button
-              v-for="version in versions"
-              :key="version.id"
-              class="meta-item version"
-              :class="{ active: currentVersion?.id === version.id }"
-              type="button"
-              @click="loadVersion(version.id)"
-            >
-              <div class="version-row">
-                <span class="meta-item-title">v{{ version.version_number }}</span>
-                <span class="meta-date">{{ formatDate(version.created_at) }}</span>
-                <span class="meta-status" v-if="version.is_active">Active</span>
-                <span class="meta-status draft" v-else-if="version.is_draft">Draft</span>
-              </div>
-              <span
-                class="meta-item-sub"
-                v-if="version.change_summary"
-                :title="version.change_summary"
-              >
-                {{ version.change_summary }}
-              </span>
-            </button>
+          <div class="version-row">
+            <span class="meta-item-title">v{{ version.version_number }}</span>
+            <span class="meta-date">{{ formatDate(version.created_at) }}</span>
+            <span class="meta-status" v-if="version.is_active">Active</span>
+            <span class="meta-status draft" v-else-if="version.is_draft">Draft</span>
           </div>
-        </div>
-        <button 
-          class="scroll-arrow scroll-arrow-right" 
-          @click="scrollVersions(1)"
-          :disabled="!canScrollVersionsRight"
-        >
-          <n-icon size="18"><ChevronForwardOutline /></n-icon>
+          <span
+            class="meta-item-sub"
+            v-if="version.change_summary"
+            :title="version.change_summary"
+          >
+            {{ version.change_summary }}
+          </span>
         </button>
       </div>
     </section>
@@ -484,8 +440,6 @@ import {
   NInput
 } from 'naive-ui'
 import {
-  ChevronForwardOutline,
-  ChevronBackOutline,
   RefreshOutline,
   AddCircleOutline,
   SaveOutline,
@@ -1972,6 +1926,25 @@ function handleBeforeUnload(e) {
   gap: 0.45rem;
   padding: 0.35rem 0;
   width: max-content;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.meta-list::-webkit-scrollbar {
+  height: 6px;
+}
+
+.meta-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.meta-list::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+
+.meta-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
 }
 
 .meta-item,
