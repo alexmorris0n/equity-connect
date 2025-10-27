@@ -300,7 +300,14 @@ export async function streamingRoute(
           const updateInstructionsMessage: RealtimeClientMessage = {
             type: 'session.update',
             session: {
-              instructions: promptMetadata.prompt
+              instructions: promptMetadata.prompt,
+              voice: promptMetadata.voice || 'shimmer',
+              turn_detection: {
+                type: 'server_vad',
+                threshold: promptMetadata.vad_threshold || 0.5,
+                prefix_padding_ms: promptMetadata.vad_prefix_padding_ms || 300,
+                silence_duration_ms: promptMetadata.vad_silence_duration_ms || 500
+              }
             }
           } as any;
           

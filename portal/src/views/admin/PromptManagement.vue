@@ -172,8 +172,8 @@
           <n-tab-pane name="settings" tab="Settings">
             <div class="tab-content">
               <div class="settings-section">
-                <h3>Voice & Call Type Settings</h3>
-                <p class="text-muted">Configure the voice and call type for this prompt:</p>
+                <h3>Basic Settings</h3>
+                <p class="text-muted">Configure voice and call type for this prompt:</p>
                 
                 <div style="margin-top: 1.5rem;">
                   <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Call Type:</label>
@@ -198,9 +198,95 @@
                     placeholder="Select a voice"
                     @update:value="handleVoiceChange"
                   />
+                  <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    AI voice for this prompt (default: shimmer)
+                  </p>
                 </div>
 
-                <div v-if="selectedVoice || selectedCallType" style="margin-top: 1rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
+                <!-- Advanced Settings Toggle -->
+                <n-button
+                  @click="showAdvancedSettings = !showAdvancedSettings"
+                  secondary
+                  style="margin-top: 1.5rem;"
+                >
+                  {{ showAdvancedSettings ? 'Hide' : 'Show' }} Advanced Settings
+                </n-button>
+
+                <!-- Advanced Settings Section -->
+                <div v-if="showAdvancedSettings" style="margin-top: 1.5rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                  <n-alert type="warning" style="margin-bottom: 1.5rem;">
+                    <template #icon>
+                      <n-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M85.57 446.25h340.86a32 32 0 0028.17-47.17L284.18 82.58c-12.09-22.44-44.27-22.44-56.36 0L57.4 399.08a32 32 0 0028.17 47.17z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M250.26 195.39l5.74 122 5.73-121.95a5.74 5.74 0 00-5.79-6h0a5.74 5.74 0 00-5.68 5.95z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M256 397.25a20 20 0 1120-20 20 20 0 01-20 20z"/></svg></n-icon>
+                    </template>
+                    <strong>Advanced Settings</strong> - Changing these can affect call quality and responsiveness. Only adjust if you understand Voice Activity Detection parameters.
+                  </n-alert>
+
+                  <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; font-weight: 600;">Voice Activity Detection (VAD)</h4>
+
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.75rem; font-weight: 500;">
+                      VAD Threshold: {{ vadThreshold.toFixed(2) }}
+                    </label>
+                    <n-slider
+                      v-model:value="vadThreshold"
+                      :step="0.05"
+                      :min="0.3"
+                      :max="0.8"
+                      :marks="{
+                        0.3: 'Sensitive',
+                        0.5: 'Default',
+                        0.8: 'Patient'
+                      }"
+                      @update:value="handleVadThresholdChange"
+                    />
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      Lower = more sensitive to speech (may trigger on noise). Higher = waits for clearer speech.
+                    </p>
+                  </div>
+
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Prefix Padding (ms):</label>
+                    <n-input-number
+                      v-model:value="vadPrefixPaddingMs"
+                      :min="100"
+                      :max="1000"
+                      :step="50"
+                      style="width: 100%;"
+                      @update:value="handleVadPrefixPaddingChange"
+                    />
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      Audio captured BEFORE speech starts. 300-400ms recommended.
+                    </p>
+                  </div>
+
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Silence Duration (ms):</label>
+                    <n-input-number
+                      v-model:value="vadSilenceDurationMs"
+                      :min="200"
+                      :max="2000"
+                      :step="100"
+                      style="width: 100%;"
+                      @update:value="handleVadSilenceDurationChange"
+                    />
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      How long to wait before considering speech finished. 500ms = balanced, 700ms+ = patient (good for seniors).
+                    </p>
+                  </div>
+
+                  <n-button
+                    @click="resetVadToDefaults"
+                    secondary
+                    style="margin-top: 1rem;"
+                  >
+                    <template #icon>
+                      <n-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M320 146s24.36-12-64-12a160 160 0 10160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 58l80 80-80 80"/></svg></n-icon>
+                    </template>
+                    Reset to Defaults
+                  </n-button>
+                </div>
+
+                <div v-if="selectedVoice || selectedCallType" style="margin-top: 1.5rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
                   <p v-if="selectedCallType" style="margin: 0; font-size: 0.9rem; color: #6b7280;">
                     <strong>Call Type:</strong> {{ selectedCallType }}
                   </p>
@@ -843,6 +929,12 @@ const selectedVoice = ref('alloy')
 const selectedCallType = ref(null)
 const currentPromptMetadata = ref({ name: '', purpose: '', goal: '', call_type: '' })
 
+// VAD settings
+const vadThreshold = ref(0.5)
+const vadPrefixPaddingMs = ref(300)
+const vadSilenceDurationMs = ref(500)
+const showAdvancedSettings = ref(false)
+
 // AI Improve feature
 const showAIImproveModal = ref(false)
 const aiImprovingSection = ref(null)
@@ -1294,6 +1386,9 @@ async function selectPrompt(id) {
   } else if (promptData) {
     selectedVoice.value = promptData.voice || 'alloy'
     selectedCallType.value = promptData.call_type || null
+    vadThreshold.value = promptData.vad_threshold || 0.5
+    vadPrefixPaddingMs.value = promptData.vad_prefix_padding_ms || 300
+    vadSilenceDurationMs.value = promptData.vad_silence_duration_ms || 500
     currentPromptMetadata.value = {
       name: promptData.name,
       purpose: promptData.purpose || '',
@@ -1739,12 +1834,14 @@ async function saveChanges() {
       
       if (insertError) throw insertError
       
+      // Clear hasChanges BEFORE reloading to avoid triggering the unsaved changes popup
+      hasChanges.value = false
+      
       // Reload versions and switch to the new draft
       await loadVersions()
       if (newVersion) {
         await loadVersion(newVersion.id)
       }
-      hasChanges.value = false
     } else {
       // If already a draft, just update it
       const { error: updateError } = await supabase
@@ -1807,6 +1904,17 @@ function openPreviewModal() {
 
 async function openDeployModal() {
   if (!currentVersion.value) return
+  
+  // Check for unsaved changes before opening deploy modal
+  if (hasChanges.value) {
+    const confirmed = window.confirm('You have unsaved changes. Do you want to save before deploying?')
+    if (confirmed) {
+      await saveChanges()
+    } else {
+      // User chose not to save, discard changes
+      hasChanges.value = false
+    }
+  }
   
   // Fetch the currently active version for comparison
   try {
@@ -2620,6 +2728,82 @@ async function handleCallTypeChange(callType) {
     console.error('Failed to update call type:', err)
   } finally {
     loading.value = false
+  }
+}
+
+async function handleVadThresholdChange(value) {
+  if (!activePromptId.value) return
+  
+  try {
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({ vad_threshold: value })
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+  } catch (err) {
+    console.error('Failed to update VAD threshold:', err)
+    window.$message?.error('Failed to save VAD threshold')
+  }
+}
+
+async function handleVadPrefixPaddingChange(value) {
+  if (!activePromptId.value) return
+  
+  try {
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({ vad_prefix_padding_ms: value })
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+  } catch (err) {
+    console.error('Failed to update VAD prefix padding:', err)
+    window.$message?.error('Failed to save VAD prefix padding')
+  }
+}
+
+async function handleVadSilenceDurationChange(value) {
+  if (!activePromptId.value) return
+  
+  try {
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({ vad_silence_duration_ms: value })
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+  } catch (err) {
+    console.error('Failed to update VAD silence duration:', err)
+    window.$message?.error('Failed to save VAD silence duration')
+  }
+}
+
+async function resetVadToDefaults() {
+  if (!activePromptId.value) return
+  
+  // Reset local values
+  vadThreshold.value = 0.5
+  vadPrefixPaddingMs.value = 300
+  vadSilenceDurationMs.value = 500
+  
+  // Save to database
+  try {
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({
+        vad_threshold: 0.5,
+        vad_prefix_padding_ms: 300,
+        vad_silence_duration_ms: 500
+      })
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+    
+    window.$message?.success('VAD settings reset to defaults')
+  } catch (err) {
+    console.error('Failed to reset VAD settings:', err)
+    window.$message?.error('Failed to reset VAD settings')
   }
 }
 

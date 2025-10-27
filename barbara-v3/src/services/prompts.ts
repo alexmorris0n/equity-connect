@@ -25,6 +25,10 @@ export interface PromptMetadata {
   version_number?: number;
   prompt_version_id?: string;
   source: 'supabase' | 'hardcoded';
+  voice?: string;
+  vad_threshold?: number;
+  vad_prefix_padding_ms?: number;
+  vad_silence_duration_ms?: number;
 }
 
 /**
@@ -108,6 +112,9 @@ async function loadPromptFromSupabase(callType: string): Promise<PromptMetadata 
       name,
       call_type,
       voice,
+      vad_threshold,
+      vad_prefix_padding_ms,
+      vad_silence_duration_ms,
       prompt_versions!inner(
         id,
         content,
@@ -139,7 +146,11 @@ async function loadPromptFromSupabase(callType: string): Promise<PromptMetadata 
     call_type: callType,
     version_number: version.version_number,
     prompt_version_id: version.id,
-    source: 'supabase'
+    source: 'supabase',
+    voice: data.voice || 'shimmer',
+    vad_threshold: data.vad_threshold || 0.5,
+    vad_prefix_padding_ms: data.vad_prefix_padding_ms || 300,
+    vad_silence_duration_ms: data.vad_silence_duration_ms || 500
   };
   
   // Update cache
