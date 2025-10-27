@@ -69,17 +69,79 @@ export async function streamingRoute(
     connection.on('close', async () => {
       logger.info(CONNECTION_MESSAGES.CLIENT_DISCONNECTED);
       
-      // If Barbara didn't call save_interaction before disconnect, log warning
+      // If Barbara didn't call save_interaction before disconnect, save it now
       if (!interactionSaved && conversationTranscript.length > 0) {
-        logger.warn(`⚠️ Call ended without save_interaction tool being called`);
-        logger.warn(`📊 Transcript has ${conversationTranscript.length} messages but was not evaluated`);
-        logger.warn(`💡 Tip: Ensure Barbara calls save_interaction before saying goodbye`);
+        logger.warn(`⚠️ Call ended without save_interaction - user likely hung up abruptly`);
+        logger.info(`📊 Auto-saving interaction and triggering evaluation for ${conversationTranscript.length} messages`);
         
-        // Log first/last few messages for debugging
-        if (conversationTranscript.length > 0) {
-          logger.info(`First message: ${conversationTranscript[0]?.role}: "${conversationTranscript[0]?.content?.substring(0, 100)}"`);
-          const last = conversationTranscript[conversationTranscript.length - 1];
-          logger.info(`Last message: ${last?.role}: "${last?.content?.substring(0, 100)}"`);
+        // Import required services
+        const { getSupabaseClient } = await import('../services/supabase.js');
+        const { evaluateCall } = await import('../services/call-evaluation.service.js');
+        const promptMeta = getCurrentPromptMetadata();
+        
+        try {
+          const sb = getSupabaseClient();
+          
+          // Determine call duration (rough estimate from transcript timestamps)
+          const firstMessage = conversationTranscript[0];
+          const lastMessage = conversationTranscript[conversationTranscript.length - 1];
+          let durationSeconds = null;
+          if (firstMessage?.timestamp && lastMessage?.timestamp) {
+            const start = new Date(firstMessage.timestamp).getTime();
+            const end = new Date(lastMessage.timestamp).getTime();
+            durationSeconds = Math.round((end - start) / 1000);
+          }
+          
+          // Build interaction metadata
+          const interactionMetadata = {
+            ai_agent: 'barbara',
+            version: '3.0',
+            conversation_transcript: conversationTranscript,
+            prompt_version_id: promptMeta?.prompt_version_id || null,
+            prompt_version_number: promptMeta?.prompt_version_number || null,
+            prompt_call_type: promptMeta?.prompt_call_type || null,
+            prompt_source: promptMeta?.prompt_source || 'unknown',
+            auto_saved: true, // Flag to indicate this was auto-saved on disconnect
+            disconnect_reason: 'user_hangup_before_save_interaction',
+            saved_at: new Date().toISOString()
+          };
+          
+          // Save interaction to Supabase
+          const { data, error } = await sb
+            .from('interactions')
+            .insert({
+              lead_id: leadId || null,
+              broker_id: brokerId || null,
+              type: 'ai_call',
+              direction: callDirection || 'inbound',
+              content: `Auto-saved: Call ended abruptly after ${conversationTranscript.length} messages (${durationSeconds}s)`,
+              duration_seconds: durationSeconds,
+              outcome: 'negative', // Assume negative if they hung up early
+              metadata: interactionMetadata,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          
+          if (error) {
+            logger.error('Failed to auto-save interaction on disconnect:', error);
+          } else {
+            logger.info(`✅ Auto-saved interaction: ${data.id}`);
+            
+            // Trigger evaluation in background
+            const promptVersion = promptMeta?.prompt_version_id 
+              ? `${promptMeta.prompt_call_type}-v${promptMeta.prompt_version_number}` 
+              : 'hardcoded';
+            
+            evaluateCall(data.id, conversationTranscript, promptVersion)
+              .catch(evalError => {
+                logger.error('Failed to evaluate auto-saved call:', evalError);
+              });
+            
+            logger.info(`📊 Triggered evaluation for abrupt disconnect (interaction: ${data.id})`);
+          }
+        } catch (error) {
+          logger.error('Error in disconnect auto-save handler:', error);
         }
       }
       
@@ -353,8 +415,9 @@ export async function streamingRoute(
       session.on('agent_tool_start', (context, agent, tool, details) => {
         logger.event('🔧', 'Tool call started', details);
         
-        // Track if save_interaction is called
-        if (details?.name === 'save_interaction') {
+        // Track if save_interaction is called (check tool name from details or tool object)
+        const toolName = (details as any)?.name || (details as any)?.toolCall?.name || tool?.name;
+        if (toolName === 'save_interaction') {
           interactionSaved = true;
           logger.info('✅ save_interaction called - evaluation will be triggered by tool');
         }
