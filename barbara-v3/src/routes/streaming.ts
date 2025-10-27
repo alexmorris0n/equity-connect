@@ -110,9 +110,10 @@ export async function streamingRoute(
       });
 
       // Create agent with default inbound instructions (will update when we detect direction from 'start' event)
+      const defaultInstructions = await getInstructionsForCallType('inbound', {});
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
-        instructions: getInstructionsForCallType('inbound', {})
+        instructions: defaultInstructions
       });
 
       // Create session with SignalWire transport
@@ -125,7 +126,7 @@ export async function streamingRoute(
       (session as any).conversationTranscript = conversationTranscript;
 
       // Listen to transport events to inject call context when available
-      session.transport.on('*', (event: TransportEvent) => {
+      session.transport.on('*', async (event: TransportEvent) => {
         // Filter out noisy media events to prevent log flooding
         const eventData = event as any;
         if (eventData.message?.type === 'twilio_message' && eventData.message?.event === 'media') {
@@ -254,7 +255,7 @@ export async function streamingRoute(
           logger.info(`📞 Lead phone number for lookup: ${leadPhone}`);
           
           // Update agent instructions based on call direction
-          const updatedInstructions = getInstructionsForCallType(callDirection, {
+          const updatedInstructions = await getInstructionsForCallType(callDirection, {
             leadId: leadId || undefined,
             brokerId: brokerId || undefined,
             from: fromPhone,

@@ -1,15 +1,29 @@
 /**
  * Prompt Service
- * Load and format production prompts based on call type
+ * Load and format production prompts from Supabase based on call type
  */
 
 import { logger } from '../utils/logger.js';
+import { getSupabaseClient } from './supabase.js';
+
+// In-memory prompt cache
+interface PromptCache {
+  prompts: Map<string, string>;
+  lastFetched: number;
+}
+
+const promptCache: PromptCache = {
+  prompts: new Map(),
+  lastFetched: 0
+};
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get instructions for call type
- * Uses production prompts for different scenarios
+ * Loads from Supabase prompts table with in-memory caching
  */
-export function getInstructionsForCallType(
+export async function getInstructionsForCallType(
   direction: string,
   context: {
     leadId?: string;
@@ -17,17 +31,146 @@ export function getInstructionsForCallType(
     from?: string;
     to?: string;
   }
-): string {
+): Promise<string> {
   logger.info(`📝 Loading prompt for ${direction} call`);
   
-  // For now, use inbound qualified prompt as default
-  // TODO: Load from production prompt files dynamically
+  // Determine call_type based on direction
+  // For now, simple mapping - can be enhanced with context analysis
+  const callType = determineCallType(direction, context);
   
+  // Try to load from Supabase (with cache)
+  try {
+    const prompt = await loadPromptFromSupabase(callType);
+    if (prompt) {
+      logger.info(`✅ Loaded prompt from Supabase: ${callType}`);
+      return prompt;
+    }
+  } catch (error) {
+    logger.error(`❌ Error loading prompt from Supabase:`, error);
+  }
+  
+  // Fallback to hardcoded prompts
+  logger.warn(`⚠️  Falling back to hardcoded prompt for ${direction}`);
   if (direction === 'inbound') {
     return INBOUND_QUALIFIED_PROMPT;
   } else {
     return OUTBOUND_WARM_PROMPT;
   }
+}
+
+/**
+ * Determine call_type from direction and context
+ */
+function determineCallType(direction: string, context: any): string {
+  // Simple mapping for now
+  // TODO: Enhance with lead qualification status, broker context, etc.
+  if (direction === 'inbound') {
+    return 'inbound-unqualified'; // Use the most common inbound prompt
+  } else if (direction === 'outbound') {
+    return 'outbound-warm'; // Default to warm for outbound
+  }
+  
+  return 'inbound-unqualified'; // Safe default
+}
+
+/**
+ * Load prompt from Supabase with caching
+ */
+async function loadPromptFromSupabase(callType: string): Promise<string | null> {
+  const now = Date.now();
+  
+  // Check cache first
+  if (promptCache.prompts.has(callType) && (now - promptCache.lastFetched) < CACHE_TTL_MS) {
+    logger.debug(`📦 Using cached prompt for ${callType}`);
+    return promptCache.prompts.get(callType) || null;
+  }
+  
+  // Fetch from Supabase
+  logger.debug(`🔍 Fetching prompt from Supabase for ${callType}`);
+  
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('prompts')
+    .select(`
+      name,
+      call_type,
+      voice,
+      prompt_versions!inner(
+        content,
+        is_active,
+        version_number
+      )
+    `)
+    .eq('call_type', callType)
+    .eq('is_active', true)
+    .eq('prompt_versions.is_active', true)
+    .single();
+  
+  if (error || !data) {
+    logger.error(`❌ Failed to load prompt for ${callType}:`, error);
+    return null;
+  }
+  
+  // Format the prompt from JSONB content structure
+  const version = (data.prompt_versions as any)?.[0] || data.prompt_versions;
+  if (!version || !version.content) {
+    logger.error(`❌ No active version found for ${callType}`);
+    return null;
+  }
+  
+  const formattedPrompt = formatPromptContent(version.content);
+  
+  // Update cache
+  promptCache.prompts.set(callType, formattedPrompt);
+  promptCache.lastFetched = now;
+  
+  return formattedPrompt;
+}
+
+/**
+ * Format JSONB prompt content into a single string
+ * Content structure: role, tools, safety, context, personality, instructions, etc.
+ */
+function formatPromptContent(content: any): string {
+  const sections: string[] = [];
+  
+  if (content.role) {
+    sections.push(`ROLE:\n${content.role}`);
+  }
+  
+  if (content.personality) {
+    sections.push(`\nPERSONALITY & STYLE:\n${content.personality}`);
+  }
+  
+  if (content.context) {
+    sections.push(`\nCONTEXT:\n${content.context}`);
+  }
+  
+  if (content.instructions) {
+    sections.push(`\nCRITICAL INSTRUCTIONS:\n${content.instructions}`);
+  }
+  
+  if (content.conversation_flow) {
+    sections.push(`\nCONVERSATION FLOW:\n${content.conversation_flow}`);
+  }
+  
+  if (content.tools) {
+    sections.push(`\nTOOL USAGE:\n${content.tools}`);
+  }
+  
+  if (content.safety) {
+    sections.push(`\nSAFETY & ESCALATION:\n${content.safety}`);
+  }
+  
+  if (content.output_format) {
+    sections.push(`\nOUTPUT FORMAT:\n${content.output_format}`);
+  }
+  
+  if (content.pronunciation) {
+    sections.push(`\nPRONUNCIATION GUIDE:\n${content.pronunciation}`);
+  }
+  
+  return sections.join('\n\n').trim();
 }
 
 // ============================================================================
