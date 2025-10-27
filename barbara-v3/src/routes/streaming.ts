@@ -151,7 +151,7 @@ export async function streamingRoute(
         
         // ---- BARBARA (Assistant) transcript events ----
         // Accumulate deltas as they stream in (NO LOGGING - too noisy)
-        if (event.type === 'response.audio_transcript.delta') {
+        if (event.type === 'response.output_audio_transcript.delta') {
           const responseId = (event as any).response_id;
           const delta = (event as any).delta || '';
           if (responseId && delta) {
@@ -160,7 +160,7 @@ export async function streamingRoute(
         }
         
         // Finalize on done (LOG ONLY THE COMPLETE TEXT)
-        if (event.type === 'response.audio_transcript.done') {
+        if (event.type === 'response.output_audio_transcript.done') {
           const responseId = (event as any).response_id;
           if (responseId) {
             const fullText = (botTurnCache.get(responseId) || '').trim();
