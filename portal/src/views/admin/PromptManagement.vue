@@ -884,7 +884,10 @@ import {
   NModal,
   NScrollbar,
   NInput,
-  NSelect
+  NSelect,
+  NSlider,
+  NInputNumber,
+  NAlert
 } from 'naive-ui'
 import {
   RefreshOutline,
