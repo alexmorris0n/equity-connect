@@ -235,7 +235,17 @@ export async function streamingRoute(
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
         instructions: promptMetadata.prompt,
-        voice: promptMetadata.voice || 'shimmer'
+        voice: promptMetadata.voice || 'shimmer',
+        // Enable VAD and transcription from the start
+        turnDetection: {
+          type: 'server_vad',
+          threshold: promptMetadata.vad_threshold || 0.5,
+          prefix_padding_ms: promptMetadata.vad_prefix_padding_ms || 300,
+          silence_duration_ms: promptMetadata.vad_silence_duration_ms || 500
+        },
+        inputAudioTranscription: {
+          model: 'whisper-1'
+        }
       });
 
       // Create session with SignalWire transport
@@ -341,31 +351,6 @@ export async function streamingRoute(
         // Handle transcription failures (important to know)
         if (event.type === 'conversation.item.input_audio_transcription.failed') {
           logger.error('❌ Audio transcription failed:', event);
-        }
-        
-        // Enable input audio transcription after session is connected
-        if (event.type === 'session.created') {
-          // Send session update to enable transcription and VAD with settings from prompt
-          const updateEvent: RealtimeClientMessage = {
-            type: 'session.update',
-            session: {
-              modalities: ['text', 'audio'],
-              instructions: promptMetadata.prompt,
-              voice: promptMetadata.voice || 'shimmer',
-              turn_detection: {
-                type: 'server_vad',
-                threshold: promptMetadata.vad_threshold || 0.5,
-                prefix_padding_ms: promptMetadata.vad_prefix_padding_ms || 300,
-                silence_duration_ms: promptMetadata.vad_silence_duration_ms || 500
-              },
-              input_audio_transcription: {
-                model: 'whisper-1'
-              }
-            }
-          } as any;
-          
-          signalWireTransportLayer.sendEvent(updateEvent);
-          logger.info('✅ Enabled input audio transcription + server VAD');
         }
         
         // If we have phone numbers and haven't injected yet, inject context now
