@@ -85,6 +85,12 @@
             </template>
             {{ isOlderVersion ? 'Rollback' : 'Deploy' }}
           </n-button>
+          <n-button size="small" round :disabled="loading || !currentVersion?.id" @click="openAuditModal" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3);" class="ai-audit-btn">
+            <template #icon>
+              <n-icon style="color: #f59e0b !important;"><SparklesOutline /></n-icon>
+            </template>
+            AI Audit
+          </n-button>
         </div>
 
         <n-tabs type="line" size="small" v-model:value="activeTab">
@@ -124,6 +130,13 @@
                           </template>
                         </n-button>
                       </n-dropdown>
+                      <n-button v-if="expandedSections.includes(section.key)" text circle size="tiny" class="ai-improve-trigger" @click.stop="openAIImprove(section)">
+                        <template #icon>
+                          <n-icon size="16">
+                            <SparklesOutline />
+                          </n-icon>
+                        </template>
+                      </n-button>
                     </div>
                   </template>
 
@@ -428,6 +441,301 @@
       </template>
     </n-modal>
 
+    <!-- AI Improve Modal -->
+    <n-modal v-model:show="showAIImproveModal" preset="card" :style="{ width: '90%', maxWidth: '1200px' }" title="✨ AI Improve Section" :bordered="false">
+      <div v-if="!aiSuggestion" class="ai-improve-request">
+        <div class="ai-context-info">
+          <h4 style="margin: 0 0 0.5rem 0; color: #1f2937;">Improving: {{ aiImprovingSection?.label }}</h4>
+          <p class="text-muted" style="margin: 0; font-size: 0.85rem; line-height: 1.6;">
+            <strong>Prompt:</strong> {{ currentPromptMetadata.name }}<br>
+            <strong>Purpose:</strong> {{ currentPromptMetadata.purpose }}<br>
+            <strong>Goal:</strong> {{ currentPromptMetadata.goal }}
+          </p>
+        </div>
+
+        <div style="margin: 1.5rem 0;">
+          <label style="display: block; margin-bottom: 0.75rem; font-weight: 500;">What would you like to improve?</label>
+          <n-input
+            v-model:value="aiUserRequest"
+            type="textarea"
+            placeholder="Describe what you want to improve... (e.g., 'Make this warmer for elderly callers', 'Add more examples', 'Make it more concise')"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+          />
+        </div>
+
+        <div class="quick-suggestions">
+          <span class="quick-label" style="font-size: 0.85rem; color: #6b7280; font-weight: 500;">Quick suggestions:</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;">
+            <n-tag
+              v-for="suggestion in getQuickSuggestions(aiImprovingSection?.key)"
+              :key="suggestion"
+              size="medium"
+              :bordered="false"
+              style="cursor: pointer; background: rgba(99, 102, 241, 0.08); transition: all 0.2s;"
+              @click="aiUserRequest = suggestion"
+            >
+              {{ suggestion }}
+            </n-tag>
+          </div>
+        </div>
+
+        <div class="current-content-preview" style="margin-top: 1.5rem;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #6b7280;">Current Content:</label>
+          <pre style="background: rgba(248, 250, 255, 0.8); padding: 1rem; border-radius: 8px; font-size: 0.8rem; line-height: 1.5; max-height: 200px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(148, 163, 184, 0.18);">{{ currentVersion?.content[aiImprovingSection?.key] || '(empty)' }}</pre>
+        </div>
+      </div>
+
+      <div v-else class="ai-improve-result">
+        <div class="result-header" style="margin-bottom: 1rem;">
+          <h4 style="margin: 0 0 0.25rem 0; color: #1f2937;">✨ AI Improved Version</h4>
+          <p class="text-muted" style="margin: 0; font-size: 0.85rem;">Review the changes and accept or reject:</p>
+        </div>
+
+        <div class="side-by-side-diff" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="diff-column">
+            <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #6b7280;">Original</h5>
+            <pre style="background: rgba(248, 250, 255, 0.8); padding: 1rem; border-radius: 8px; font-size: 0.8rem; line-height: 1.5; max-height: 400px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(148, 163, 184, 0.18);">{{ currentVersion?.content[aiImprovingSection?.key] || '(empty)' }}</pre>
+          </div>
+          <div class="diff-column">
+            <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #10b981;">AI Improved</h5>
+            <pre style="background: rgba(16, 185, 129, 0.05); padding: 1rem; border-radius: 8px; font-size: 0.8rem; line-height: 1.5; max-height: 400px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(16, 185, 129, 0.3);">{{ aiSuggestion }}</pre>
+          </div>
+        </div>
+
+        <div v-if="aiChanges.length > 0" class="changes-list" style="margin-top: 1rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
+          <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #1f2937;">Changes Made:</h5>
+          <ul style="margin: 0; padding-left: 1.5rem; font-size: 0.85rem; line-height: 1.6;">
+            <li v-for="(change, idx) in aiChanges" :key="idx">{{ change }}</li>
+          </ul>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="modal-footer">
+          <n-button @click="closeAIImprove" :disabled="aiIsLoading">Cancel</n-button>
+          <n-button v-if="!aiSuggestion" type="primary" @click="runAIImprove" :loading="aiIsLoading" :disabled="!aiUserRequest.trim()">
+            <template #icon>
+              <n-icon><SparklesOutline /></n-icon>
+            </template>
+            Improve with AI
+          </n-button>
+          <n-button v-else type="success" @click="acceptAISuggestion">
+            <template #icon>
+              <n-icon><CheckmarkOutline /></n-icon>
+            </template>
+            Accept Changes
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <!-- Audit Questions Modal -->
+    <n-modal 
+      v-model:show="showAuditQuestionsModal" 
+      preset="card" 
+      :style="{ width: '700px' }" 
+      title="📋 Prompt Audit Questions" 
+      :bordered="false"
+      :z-index="9999"
+      :mask-closable="false"
+    >
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <p style="margin: 0; color: #6b7280; font-size: 0.9rem;">
+          Answer these questions to help GPT-5 provide a comprehensive evaluation of your prompt:
+        </p>
+
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+            1. What specific problem are you trying to solve with this prompt version?
+          </label>
+          <n-input
+            v-model:value="auditAnswers.problem"
+            type="textarea"
+            placeholder="e.g., Need to handle objections better, improve qualification flow, reduce call time..."
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+            2. What's the target lead profile?
+          </label>
+          <n-input
+            v-model:value="auditAnswers.targetProfile"
+            type="textarea"
+            placeholder="e.g., 50-70 years old, $150k+ equity, owner-occupied, skeptical of reverse mortgages..."
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+            3. What's the primary conversion goal?
+          </label>
+          <n-input
+            v-model:value="auditAnswers.conversionGoal"
+            type="textarea"
+            placeholder="e.g., Book appointment with broker, qualify lead and schedule callback, gather missing data..."
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+            4. Are there any known issues from previous versions?
+          </label>
+          <n-input
+            v-model:value="auditAnswers.knownIssues"
+            type="textarea"
+            placeholder="e.g., Too wordy, doesn't handle 'not interested' well, confusing equity explanation..."
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+            5. What tone/personality are you aiming for?
+          </label>
+          <n-input
+            v-model:value="auditAnswers.tone"
+            type="textarea"
+            placeholder="e.g., Warm and conversational, professional but friendly, empathetic and patient..."
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </div>
+
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+            6. Any specific objections or edge cases this needs to handle?
+          </label>
+          <n-input
+            v-model:value="auditAnswers.edgeCases"
+            type="textarea"
+            placeholder="e.g., 'I'm not interested in selling my home', 'My spouse handles finances', wrong number scenarios..."
+            :autosize="{ minRows: 2, maxRows: 4 }"
+          />
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="modal-footer">
+          <n-button @click="closeAuditQuestions" :disabled="auditIsLoading">Cancel</n-button>
+          <n-button type="primary" @click="runAudit" :loading="auditIsLoading">
+            <template #icon>
+              <n-icon><CheckmarkDoneOutline /></n-icon>
+            </template>
+            Run Audit (GPT-5)
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <!-- Audit Results Modal -->
+    <n-modal 
+      v-model:show="showAuditResultsModal" 
+      preset="card" 
+      :style="{ width: '900px', maxHeight: '85vh' }" 
+      title="📊 Prompt Audit Results" 
+      :bordered="false"
+      :z-index="9999"
+      :mask-closable="false"
+    >
+      <n-scrollbar style="max-height: calc(85vh - 180px);">
+        <div style="display: flex; flex-direction: column; gap: 2rem;">
+          <!-- Overall Score -->
+          <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 12px;">
+            <h2 style="margin: 0 0 0.5rem 0; font-size: 3rem; font-weight: 700; color: #4f46e5;">
+              {{ auditResults.score }}<span style="font-size: 1.5rem; color: #6b7280;">/100</span>
+            </h2>
+            <p style="margin: 0; color: #6b7280; font-size: 0.9rem;">
+              {{ auditResults.score >= 90 ? '🎉 Excellent!' : auditResults.score >= 75 ? '✅ Good' : auditResults.score >= 60 ? '⚠️ Needs Improvement' : '🚨 Major Issues' }}
+            </p>
+          </div>
+
+          <!-- Strengths -->
+          <div v-if="auditResults.strengths.length > 0">
+            <h3 style="margin: 0 0 1rem 0; color: #10b981; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+              <n-icon size="20"><CheckmarkOutline /></n-icon> Strengths
+            </h3>
+            <ul style="margin: 0; padding-left: 1.5rem; line-height: 1.8; color: #374151;">
+              <li v-for="(strength, idx) in auditResults.strengths" :key="idx">{{ strength }}</li>
+            </ul>
+          </div>
+
+          <!-- Critical Issues -->
+          <div v-if="auditResults.criticalIssues.length > 0" style="padding: 1rem; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #ef4444; border-radius: 8px;">
+            <h3 style="margin: 0 0 1rem 0; color: #ef4444; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+              <n-icon size="20"><CloseOutline /></n-icon> Critical Issues
+            </h3>
+            <ul style="margin: 0; padding-left: 1.5rem; line-height: 1.8; color: #7f1d1d;">
+              <li v-for="(issue, idx) in auditResults.criticalIssues" :key="idx">{{ issue }}</li>
+            </ul>
+          </div>
+
+          <!-- Weaknesses -->
+          <div v-if="auditResults.weaknesses.length > 0">
+            <h3 style="margin: 0 0 1rem 0; color: #f59e0b; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+              <n-icon size="20"><InformationCircleOutline /></n-icon> Weaknesses
+            </h3>
+            <ul style="margin: 0; padding-left: 1.5rem; line-height: 1.8; color: #78350f;">
+              <li v-for="(weakness, idx) in auditResults.weaknesses" :key="idx">{{ weakness }}</li>
+            </ul>
+          </div>
+
+          <!-- Recommendations -->
+          <div v-if="auditResults.recommendations.length > 0">
+            <h3 style="margin: 0 0 1rem 0; color: #6366f1; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+              <n-icon size="20"><SparklesOutline /></n-icon> Recommendations ({{ auditResults.recommendations.length }})
+            </h3>
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+              <div 
+                v-for="(rec, idx) in auditResults.recommendations" 
+                :key="idx"
+                style="padding: 1rem; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; background: rgba(248, 250, 255, 0.5);"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.75rem;">
+                  <div style="flex: 1;">
+                    <span 
+                      :style="{ 
+                        display: 'inline-block',
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        background: rec.priority === 'critical' ? '#fef2f2' : rec.priority === 'high' ? '#fff7ed' : rec.priority === 'medium' ? '#fefce8' : '#f0fdf4',
+                        color: rec.priority === 'critical' ? '#991b1b' : rec.priority === 'high' ? '#9a3412' : rec.priority === 'medium' ? '#854d0e' : '#166534'
+                      }"
+                    >
+                      {{ rec.priority.toUpperCase() }}
+                    </span>
+                    <span style="margin-left: 0.5rem; font-weight: 500; color: #1f2937;">{{ rec.section }}</span>
+                  </div>
+                  <n-button size="small" type="primary" @click="applyAuditRecommendation(rec)">
+                    <template #icon>
+                      <n-icon><CheckmarkDoneOutline /></n-icon>
+                    </template>
+                    Apply
+                  </n-button>
+                </div>
+                <p style="margin: 0 0 0.5rem 0; color: #ef4444; font-size: 0.9rem;"><strong>Issue:</strong> {{ rec.issue }}</p>
+                <p style="margin: 0 0 0.5rem 0; color: #6b7280; font-size: 0.85rem;"><strong>Why:</strong> {{ rec.reasoning }}</p>
+                <div style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(16, 185, 129, 0.05); border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                  <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; font-weight: 600; color: #10b981;">Suggested Change:</p>
+                  <pre style="margin: 0; white-space: pre-wrap; font-size: 0.85rem; line-height: 1.5; color: #1f2937;">{{ rec.suggestion }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+
+      <template #footer>
+        <div class="modal-footer">
+          <n-button @click="closeAuditResults">Close</n-button>
+        </div>
+      </template>
+    </n-modal>
+
     <n-modal 
       v-model:show="showNewPromptModal" 
       preset="card" 
@@ -508,10 +816,15 @@ import {
   CallOutline,
   PhonePortraitOutline,
   SwapHorizontalOutline,
+  SparklesOutline,
+  SendOutline,
+  CheckmarkOutline,
+  CloseOutline,
   TimeOutline,
   CalendarOutline,
   PeopleOutline,
-  ShieldCheckmarkOutline
+  ShieldCheckmarkOutline,
+  CheckmarkDoneOutline
 } from '@vicons/ionicons5'
 
 const loading = ref(false)
@@ -528,6 +841,35 @@ const diffSections = ref([])
 const deployChangeSummary = ref('')
 const selectedVoice = ref('alloy')
 const selectedCallType = ref(null)
+const currentPromptMetadata = ref({ name: '', purpose: '', goal: '', call_type: '' })
+
+// AI Improve feature
+const showAIImproveModal = ref(false)
+const aiImprovingSection = ref(null)
+const aiUserRequest = ref('')
+const aiSuggestion = ref('')
+const aiChanges = ref([])
+const aiIsLoading = ref(false)
+
+// AI Audit feature
+const showAuditQuestionsModal = ref(false)
+const showAuditResultsModal = ref(false)
+const auditIsLoading = ref(false)
+const auditAnswers = ref({
+  problem: '',
+  targetProfile: '',
+  conversionGoal: '',
+  knownIssues: '',
+  tone: '',
+  edgeCases: ''
+})
+const auditResults = ref({
+  score: 0,
+  strengths: [],
+  weaknesses: [],
+  criticalIssues: [],
+  recommendations: []
+})
 
 const voiceOptions = [
   { label: 'Alloy', value: 'alloy' },
@@ -940,7 +1282,7 @@ async function selectPrompt(id) {
   
   activePromptId.value = id
   
-  // Load the prompt details to get the voice and call_type
+  // Load the prompt details to get the voice, call_type, purpose, and goal
   const { data: promptData, error: promptError } = await supabase
     .from('prompts')
     .select('*')
@@ -952,6 +1294,12 @@ async function selectPrompt(id) {
   } else if (promptData) {
     selectedVoice.value = promptData.voice || 'alloy'
     selectedCallType.value = promptData.call_type || null
+    currentPromptMetadata.value = {
+      name: promptData.name,
+      purpose: promptData.purpose || '',
+      goal: promptData.goal || '',
+      call_type: promptData.call_type
+    }
   }
   
   // Reload versions for the selected prompt
@@ -1246,7 +1594,7 @@ async function loadVersions() {
     // Load ALL prompts (not just base prompts)
     const { data: allPrompts, error: promptsError } = await supabase
       .from('prompts')
-      .select('id, name, category, is_base_prompt')
+      .select('id, name, call_type, purpose, goal, is_base_prompt')
       .eq('is_active', true)
       .order('created_at', { ascending: true })
 
@@ -1260,7 +1608,9 @@ async function loadVersions() {
     prompts.value = allPrompts.map(p => ({
       id: p.id,
       name: p.name,
-      category: p.category
+      call_type: p.call_type,
+      purpose: p.purpose,
+      goal: p.goal
     }))
 
     // Use the currently selected prompt, or default to first one
@@ -1316,7 +1666,7 @@ async function loadVersion(versionId) {
     if (fetchError) throw fetchError
 
     currentVersion.value = data
-    await loadPerformance(versionId)
+    // await loadPerformance(versionId) // TODO: Enable when performance table exists
     await nextTick()
     
     // Populate contenteditable divs with loaded content
@@ -1495,6 +1845,465 @@ async function openDeployModal() {
   } catch (err) {
     error.value = err.message
   }
+}
+
+// AI Improve functions
+function openAIImprove(section) {
+  aiImprovingSection.value = section
+  aiUserRequest.value = ''
+  aiSuggestion.value = ''
+  aiChanges.value = []
+  showAIImproveModal.value = true
+}
+
+function closeAIImprove() {
+  showAIImproveModal.value = false
+  aiImprovingSection.value = null
+  aiUserRequest.value = ''
+  aiSuggestion.value = ''
+  aiChanges.value = []
+}
+
+function getSectionGuidelines(sectionKey) {
+  const guidelines = {
+    role: `ROLE & OBJECTIVE GUIDELINES:
+- Define who Barbara is (voice assistant for Equity Connect)
+- State the call scenario (${currentPromptMetadata.value.call_type})
+- Define what success means for THIS specific call type
+- Be specific about the domain (reverse mortgages, appointment booking)
+- Keep to 2-3 sentences maximum
+Example: "You are Barbara, a warm and professional voice assistant for Equity Connect. This is an INBOUND QUALIFIED call—caller is already in our system and likely pre-qualified. Your goal: skip unnecessary re-qualification if records are complete, provide brief equity snapshot, answer questions concisely, and book appointment with the assigned broker."`,
+
+    personality: `PERSONALITY & TONE GUIDELINES (Critical for Realtime API):
+- **Interrupt Handling**: "Stop talking IMMEDIATELY if caller starts speaking; resume naturally after they finish"
+- **Response Length**: "Max 2 sentences per turn, aim for under 200 characters"
+- **Conversational Fillers**: List natural sounds ("mm-hmm", "uh-huh", "got it", gentle breathing)
+- **Number Format**: "Convert all numbers to WORDS (never say digits)"
+- **Tone Quality**: Warm, calm, human—mirror their pace and energy
+- **Confirmations**: "One-breath confirmations instead of long recaps"
+- **Tool Latency**: "While tools run: use gentle filler phrases"
+- **Silence Handling**: "If silence > 2s: soft micro-utterance; if > 5s: gentle re-prompt"
+Example bullet format for clarity.`,
+
+    context: `CONTEXT SECTION GUIDELINES:
+- List ALL available {{variables}} organized by category
+- Lead variables: {{leadFirstName}}, {{leadLastName}}, {{leadEmail}}, {{leadPhone}}, {{leadAge}}
+- Property variables: {{propertyAddress}}, {{propertyCity}}, {{propertyState}}, {{estimatedEquity}}, etc.
+- Broker variables: {{brokerFirstName}}, {{brokerCompany}}, {{brokerPhone}}
+- Include guidance: "If any variable is empty or 'unknown', treat it as missing and gently ask only for what's needed"
+- Group related variables together
+- Explain what each category contains`,
+
+    pronunciation: `PRONUNCIATION GUIDELINES:
+- Phonetic spelling for tricky words
+- Brand names and technical terms
+- Always include: "Equity → 'EH-kwi-tee'"
+- Always include: "NMLS → 'N-M-L-S' (spell out individual letters)"
+- Number rules: "Always convert to words ('sixty-two' not '62')"
+- Broker names: "Use natural pronunciation; if unsure, ask caller to confirm"
+Keep it simple, bullet format.`,
+
+    tools: `TOOLS SECTION GUIDELINES:
+- List each available tool with description
+- Format: "- tool_name: What it does and when to use it"
+- Include timing expectations for tools
+- Add note about fillers: "IMPORTANT: Talk naturally while tools are running. Use conversational fillers: 'just pulling that up', 'one sec', 'loading'"
+- Common tools: get_lead_context, search_knowledge, check_broker_availability, book_appointment, save_interaction
+- Keep descriptions concise but clear about purpose`,
+
+    instructions: `INSTRUCTIONS & RULES GUIDELINES:
+- Use numbered or bulleted list format
+- Start with "CRITICAL RULES:"
+- Include edge cases and error handling
+- Qualification logic (if applicable)
+- Compliance requirements
+- What NOT to do
+- When to transfer/escalate
+Example format:
+"CRITICAL RULES:
+1. **Rule Name**: Explanation
+2. **Another Rule**: Explanation"`,
+
+    conversation_flow: `CONVERSATION FLOW GUIDELINES:
+- Step-by-step dialogue structure
+- Use section headers in ALL CAPS (GREETING & PURPOSE:, QUALIFICATION GATE:, etc.)
+- Use arrows (→) for dialogue examples
+- Include what to say at each step
+- Add transition phrases between sections
+- Show tool usage inline ("→ check_broker_availability (filler: 'One moment...')")
+- Include re-evaluation loops if needed
+- Natural progression from greeting → qualification → booking → closing
+Example:
+"GREETING:
+→ 'Hi {{leadFirstName}}, this is Barbara with Equity Connect. How are you today?'
+→ Brief rapport building"`,
+
+    output_format: `OUTPUT FORMAT GUIDELINES:
+- Specify response format requirements
+- Natural phone conversation
+- Numbers as words
+- Ultra-short turns (under 200 chars)
+- No special formatting in audio
+- Conversational flow with micro-utterances
+Keep this section brief and clear.`,
+
+    safety: `SAFETY & ESCALATION GUIDELINES:
+- List escalation triggers (when to transfer to human)
+- Disqualification protocols with exact scripts
+- Compliance reminders
+- Format with clear sections:
+  "ESCALATION TRIGGERS:
+  - Distressed/angry caller
+  - Legal questions beyond basics
+  
+  DISQUALIFICATION PROTOCOL:
+  - Under 62: '[exact script]'
+  
+  COMPLIANCE:
+  - No loan approval guarantees
+  - Respect DNC/consent"`
+  }
+  
+  return guidelines[sectionKey] || 'Follow OpenAI Realtime API best practices for voice conversations.'
+}
+
+function getQuickSuggestions(sectionKey) {
+  const suggestions = {
+    role: [
+      'Make tone warmer and friendlier',
+      'Add clarity about Barbara\'s purpose',
+      'Optimize for elderly callers',
+      'Make more concise'
+    ],
+    personality: [
+      'Add more conversational fillers',
+      'Improve interruption handling',
+      'Make responses more concise',
+      'Add senior-friendly pacing'
+    ],
+    instructions: [
+      'Add error handling',
+      'Improve qualification logic',
+      'Add compliance guardrails',
+      'Add edge case handling'
+    ],
+    conversation_flow: [
+      'Expand greeting section',
+      'Add smoother transitions',
+      'Improve booking flow',
+      'Add more natural dialogue'
+    ],
+    tools: [
+      'Add tool usage examples',
+      'Explain when to use each tool',
+      'Add error handling for tools',
+      'Add filler phrases while tools run'
+    ],
+    context: [
+      'List all available variables',
+      'Add variable usage examples',
+      'Explain missing variable handling'
+    ],
+    pronunciation: [
+      'Add more phonetic examples',
+      'Include broker name guidance',
+      'Add number pronunciation rules'
+    ],
+    output_format: [
+      'Make more specific',
+      'Add length guidelines',
+      'Add formatting examples'
+    ],
+    safety: [
+      'Add more escalation triggers',
+      'Improve disqualification scripts',
+      'Add compliance reminders'
+    ]
+  }
+  
+  return suggestions[sectionKey] || [
+    'Make clearer',
+    'Make more concise',
+    'Add examples'
+  ]
+}
+
+async function runAIImprove() {
+  if (!aiUserRequest.value.trim() || !aiImprovingSection.value) return
+  
+  // Debug: Check if API key is loaded
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY
+  if (!apiKey) {
+    window.$message?.error('OpenAI API key not found. Make sure VITE_OPENAI_API_KEY is in portal/.env.local and restart dev server.')
+    return
+  }
+  console.log('API Key found:', apiKey.substring(0, 10) + '...') // Debug log (first 10 chars only)
+  
+  aiIsLoading.value = true
+  
+  try {
+    // Build comprehensive system prompt with OpenAI Realtime API best practices
+    const systemPrompt = `You are an expert prompt engineer specializing in OpenAI's Realtime API for voice conversations.
+
+REFERENCE DOCUMENTATION:
+You must follow best practices from:
+- OpenAI Realtime API Guide: https://platform.openai.com/docs/guides/realtime
+- OpenAI Cookbook: https://github.com/openai/openai-cookbook
+- Realtime Examples: https://github.com/openai/openai-realtime-examples
+- Internal Reference: docs/REALTIME_API_PROMPTING_REFERENCE.md
+
+PROMPT YOU'RE IMPROVING:
+- Name: ${currentPromptMetadata.value.name}
+- Call Type: ${currentPromptMetadata.value.call_type}
+- Purpose: ${currentPromptMetadata.value.purpose}
+- Goal: ${currentPromptMetadata.value.goal}
+
+SECTION: ${aiImprovingSection.value.label} (${aiImprovingSection.value.key})
+
+CURRENT CONTENT:
+${currentVersion.value.content[aiImprovingSection.value.key] || '(empty)'}
+
+USER REQUEST: ${aiUserRequest.value}
+
+SECTION-SPECIFIC GUIDELINES:
+${getSectionGuidelines(aiImprovingSection.value.key)}
+
+REQUIREMENTS:
+1. Follow OpenAI Realtime API best practices (ultra-brief <200 chars, interrupt-friendly, numbers as words, tool fillers, micro-utterances)
+2. Match the prompt's purpose (${currentPromptMetadata.value.purpose})
+3. Align with the goal (${currentPromptMetadata.value.goal})
+4. Preserve line breaks and formatting (bullets -, numbers 1., arrows →, ALL CAPS headers)
+5. Use {{variableName}} syntax for template variables
+6. Return ONLY the improved content (no explanations, no code blocks, just the raw text)
+
+Provide the improved content now:`
+
+    // Call OpenAI API with GPT-5 (best for prompt refinement)
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-mini',
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are a prompt-refinement assistant specializing in OpenAI Realtime API voice prompts. Maintain all original formatting, indentation, line breaks, and {{variables}} exactly. Follow Realtime API best practices: ultra-brief responses, interrupt-friendly design, numbers as words, tool latency fillers, micro-utterances.'
+          },
+          { 
+            role: 'user', 
+            content: systemPrompt 
+          }
+        ],
+        max_completion_tokens: 4000 // Enough for longer sections
+      })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('OpenAI API Error:', errorData)
+      throw new Error(`API error: ${response.status} - ${errorData.error?.message || JSON.stringify(errorData)}`)
+    }
+    
+    const data = await response.json()
+    aiSuggestion.value = data.choices[0].message.content
+    
+    // Generate simple change summary (you could make this more sophisticated)
+    aiChanges.value = [
+      `Applied user request: "${aiUserRequest.value}"`,
+      'AI improved the content based on prompt engineering best practices',
+      'Review carefully before accepting'
+    ]
+    
+  } catch (error) {
+    console.error('AI improve error:', error)
+    window.$message?.error('Failed to improve with AI. Please try again.')
+  } finally {
+    aiIsLoading.value = false
+  }
+}
+
+function acceptAISuggestion() {
+  if (!aiSuggestion.value || !aiImprovingSection.value) return
+  
+  // Update the current version content
+  currentVersion.value.content[aiImprovingSection.value.key] = aiSuggestion.value
+  
+  // Update the textarea
+  nextTick(() => {
+    populateContentEditableDivs()
+    markAsChanged()
+  })
+  
+  // Close modal
+  closeAIImprove()
+  
+  window.$message?.success('AI improvements applied! Don\'t forget to save.')
+}
+
+// Audit functions
+function openAuditModal() {
+  // Reset audit state
+  auditAnswers.value = {
+    problem: '',
+    targetProfile: '',
+    conversionGoal: '',
+    knownIssues: '',
+    tone: '',
+    edgeCases: ''
+  }
+  auditResults.value = {
+    score: 0,
+    strengths: [],
+    weaknesses: [],
+    criticalIssues: [],
+    recommendations: []
+  }
+  showAuditQuestionsModal.value = true
+}
+
+function closeAuditQuestions() {
+  showAuditQuestionsModal.value = false
+}
+
+function closeAuditResults() {
+  showAuditResultsModal.value = false
+}
+
+async function runAudit() {
+  if (!currentVersion.value) return
+  
+  auditIsLoading.value = true
+  
+  try {
+    // Debug: Check if API key is loaded
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY
+    if (!apiKey) {
+      window.$message?.error('OpenAI API key not found. Make sure VITE_OPENAI_API_KEY is in portal/.env.local and restart dev server.')
+      return
+    }
+    
+    // Build comprehensive audit prompt
+    const fullPromptContent = Object.entries(currentVersion.value.content)
+      .map(([key, value]) => `### ${key.toUpperCase()}\n${value || '(empty)'}`)
+      .join('\n\n')
+    
+    const auditPrompt = `You are an expert prompt engineer conducting a comprehensive audit of a voice AI prompt for OpenAI's Realtime API.
+
+PROMPT METADATA:
+- Name: ${currentPromptMetadata.value.name}
+- Call Type: ${currentPromptMetadata.value.call_type}
+- Purpose: ${currentPromptMetadata.value.purpose}
+- Goal: ${currentPromptMetadata.value.goal}
+
+CONTEXT FROM USER:
+- Problem to solve: ${auditAnswers.value.problem}
+- Target lead profile: ${auditAnswers.value.targetProfile}
+- Conversion goal: ${auditAnswers.value.conversionGoal}
+- Known issues: ${auditAnswers.value.knownIssues}
+- Desired tone: ${auditAnswers.value.tone}
+- Edge cases to handle: ${auditAnswers.value.edgeCases}
+
+FULL PROMPT CONTENT:
+${fullPromptContent}
+
+EVALUATION CRITERIA:
+1. OpenAI Realtime API Best Practices (ultra-brief responses <200 chars, interrupt-friendly, numbers as words, tool latency fillers, micro-utterances)
+2. Consistency across all sections (tone, terminology, flow)
+3. Alignment with stated purpose and conversion goal
+4. Handling of target profile and edge cases
+5. Variable usage and syntax correctness
+6. Completeness (missing critical elements)
+7. Known issues addressed
+
+REQUIRED OUTPUT FORMAT (MUST BE VALID JSON):
+{
+  "score": <number 0-100>,
+  "strengths": ["strength 1", "strength 2", ...],
+  "weaknesses": ["weakness 1", "weakness 2", ...],
+  "criticalIssues": ["critical issue 1", "critical issue 2", ...],
+  "recommendations": [
+    {
+      "section": "section_key",
+      "priority": "critical|high|medium|low",
+      "issue": "What's wrong",
+      "suggestion": "Improved version of the content",
+      "reasoning": "Why this change matters"
+    }
+  ]
+}
+
+Provide your comprehensive evaluation now as valid JSON:`
+
+    // Call OpenAI API with GPT-5 (best for comprehensive analysis)
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-5',
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are an expert prompt engineer specializing in OpenAI Realtime API voice prompts. You conduct thorough audits and provide actionable recommendations. Always return valid JSON in the exact format requested.'
+          },
+          { 
+            role: 'user', 
+            content: auditPrompt 
+          }
+        ],
+        max_completion_tokens: 8000, // Need more tokens for comprehensive audit
+        response_format: { type: 'json_object' }
+      })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('OpenAI API Error:', errorData)
+      throw new Error(`API error: ${response.status} - ${errorData.error?.message || JSON.stringify(errorData)}`)
+    }
+    
+    const data = await response.json()
+    const auditData = JSON.parse(data.choices[0].message.content)
+    
+    // Store results
+    auditResults.value = {
+      score: auditData.score || 0,
+      strengths: auditData.strengths || [],
+      weaknesses: auditData.weaknesses || [],
+      criticalIssues: auditData.criticalIssues || [],
+      recommendations: auditData.recommendations || []
+    }
+    
+    // Close questions modal and open results modal
+    showAuditQuestionsModal.value = false
+    showAuditResultsModal.value = true
+    
+  } catch (error) {
+    console.error('Audit error:', error)
+    window.$message?.error('Failed to run audit. Please try again.')
+  } finally {
+    auditIsLoading.value = false
+  }
+}
+
+function applyAuditRecommendation(recommendation) {
+  if (!recommendation.section || !recommendation.suggestion) return
+  
+  // Update the current version content with the recommendation
+  currentVersion.value.content[recommendation.section] = recommendation.suggestion
+  
+  // Update the textarea
+  nextTick(() => {
+    populateContentEditableDivs()
+    markAsChanged()
+  })
+  
+  window.$message?.success(`Applied recommendation to ${recommendation.section}. Don't forget to save.`)
 }
 
 async function confirmDeploy() {
@@ -2001,7 +2810,6 @@ async function loadPrompts() {
     const { data, error: fetchError } = await supabase
       .from('prompts')
       .select('*')
-      .order('call_type')
     
     if (fetchError) {
       console.error('❌ Error loading prompts:', fetchError)
@@ -2009,7 +2817,24 @@ async function loadPrompts() {
     }
     
     console.log('📦 Raw prompts data:', data)
-    prompts.value = data || []
+    
+    // Custom sort order for call types (left to right in UI)
+    const callTypeOrder = {
+      'inbound-qualified': 1,
+      'inbound-unqualified': 2,
+      'outbound-warm': 3,
+      'outbound-cold': 4,
+      'transfer': 5,
+      'callback': 6,
+      'broker-schedule-check': 7,
+      'broker-connect-appointment': 8,
+      'fallback': 9
+    }
+    
+    prompts.value = (data || []).sort((a, b) => {
+      return (callTypeOrder[a.call_type] || 99) - (callTypeOrder[b.call_type] || 99)
+    })
+    
     console.log('✅ Loaded prompts:', prompts.value.length, prompts.value)
     
     // Auto-select first prompt if available
@@ -2388,7 +3213,7 @@ function handleBeforeUnload(e) {
 .section-header {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.4rem;
   font-weight: 600;
   color: #1f2937;
   font-size: 0.78rem;
@@ -2410,6 +3235,38 @@ function handleBeforeUnload(e) {
 
 .variable-trigger:hover {
   color: #4f46e5;
+}
+
+.ai-improve-trigger {
+  color: #f59e0b;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.ai-improve-trigger:hover {
+  color: #ea580c;
+  background: transparent;
+  transform: scale(1.2);
+}
+
+.ai-audit-btn :deep(.n-icon) {
+  color: #f59e0b !important;
+}
+
+.ai-context-info {
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(99, 102, 241, 0.05));
+  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.quick-suggestions {
+  margin-top: 1rem;
+}
+
+.quick-suggestions .n-tag:hover {
+  background: rgba(99, 102, 241, 0.15) !important;
+  transform: translateY(-1px);
 }
 
 .notion-textarea {

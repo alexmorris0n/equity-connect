@@ -99,7 +99,8 @@ import {
   DocumentTextOutline,
   PeopleOutline,
   SparklesOutline,
-  PulseOutline
+  PulseOutline,
+  BriefcaseOutline
 } from '@vicons/ionicons5'
 
 const route = useRoute()
@@ -124,13 +125,13 @@ const menuOptions = [
   {
     key: 'brokers',
     label: 'Broker Workspace',
-    icon: () => h(NIcon, { size: 18 }, { default: () => h(PeopleOutline) }),
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(BriefcaseOutline) }),
     to: '/admin/brokers'
   },
   {
     key: 'leads',
     label: 'Lead Library',
-    icon: () => h(NIcon, { size: 18 }, { default: () => h(SparklesOutline) }),
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(PeopleOutline) }),
     to: '/admin/leads'
   },
   {
