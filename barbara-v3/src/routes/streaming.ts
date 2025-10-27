@@ -345,11 +345,14 @@ export async function streamingRoute(
         }
         
         // Enable input audio transcription after session is connected
-        if (event.type === 'session.created' || event.type === 'session.updated') {
+        if (event.type === 'session.created') {
           // Send session update to enable transcription and VAD with settings from prompt
           const updateEvent: RealtimeClientMessage = {
             type: 'session.update',
             session: {
+              modalities: ['text', 'audio'],
+              instructions: promptMetadata.prompt,
+              voice: promptMetadata.voice || 'shimmer',
               turn_detection: {
                 type: 'server_vad',
                 threshold: promptMetadata.vad_threshold || 0.5,
