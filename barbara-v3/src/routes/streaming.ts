@@ -112,11 +112,7 @@ export async function streamingRoute(
       // Create session with SignalWire transport
       const session = new RealtimeSession(sessionAgent, {
         transport: signalWireTransportLayer,
-        model: model as OpenAIRealtimeModels,
-        // Enable input audio transcription to capture both user and assistant transcripts
-        inputAudioTranscription: {
-          model: 'whisper-1'
-        }
+        model: model as OpenAIRealtimeModels
       });
       
       // Store conversation transcript reference in session for tool access
@@ -140,6 +136,22 @@ export async function streamingRoute(
         // Handle transcription failures
         if (event.type === 'conversation.item.input_audio_transcription.failed') {
           logger.error('❌ Audio transcription failed:', event);
+        }
+        
+        // Enable input audio transcription after session is connected
+        if (event.type === 'session.created' || event.type === 'session.updated') {
+          // Send session update to enable transcription
+          const updateEvent: RealtimeClientMessage = {
+            type: 'session.update',
+            session: {
+              input_audio_transcription: {
+                model: 'whisper-1'
+              }
+            }
+          } as any;
+          
+          signalWireTransportLayer.sendEvent(updateEvent);
+          logger.info('✅ Enabled input audio transcription');
         }
         
         // If we have phone numbers and haven't injected yet, inject context now
