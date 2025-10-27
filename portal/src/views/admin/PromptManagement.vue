@@ -205,13 +205,6 @@
             <!-- Empty State -->
             <div v-else class="evaluation-empty-state">
               <n-empty size="large">
-                <template #icon>
-                  <div class="empty-icon-wrapper">
-                    <n-icon size="64" :depth="3" color="#9ca3af">
-                      <BarChartOutline />
-                    </n-icon>
-                  </div>
-                </template>
                 <template #default>
                   <div class="empty-content">
                     <h3>No Evaluation Data Yet</h3>
@@ -4176,10 +4169,10 @@ function handleBeforeUnload(e) {
 /* Empty State Styling */
 .evaluation-empty-state {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-height: 400px;
-  padding: 60px 20px;
+  padding: 80px 20px 60px;
 }
 
 .empty-icon-wrapper {
