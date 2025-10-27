@@ -48,7 +48,13 @@ export async function streamingRoute(
       role: 'user' | 'assistant';
       content: string;
       timestamp: string;
+      itemId?: string;
+      responseId?: string;
     }> = [];
+    
+    // Per-turn accumulator buffers (for delta streaming)
+    const userTurnCache = new Map<string, string>();
+    const botTurnCache = new Map<string, string>();
     
     // Register transcript with store for tool access
     setTranscript(sessionId, conversationTranscript);
@@ -126,29 +132,84 @@ export async function streamingRoute(
           return; // Skip logging raw audio chunks
         }
         
-        // Handle input audio transcription events (for user transcripts)
+        // ---- USER (Caller) transcript events ----
         if (event.type === 'conversation.item.input_audio_transcription.completed') {
-          const transcriptText = (event as any).transcript || (event as any).item?.content?.[0]?.text;
+          const itemId = (event as any).item_id || (event as any).item?.id;
+          const transcriptText = (event as any).transcript || (event as any).item?.content?.[0]?.transcript || '';
+          
           if (transcriptText) {
             conversationTranscript.push({
               role: 'user',
               content: transcriptText,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              itemId
             });
-            logger.info(`💬 User (audio transcription): "${transcriptText}"`);
+            logger.info(`💬 User: "${transcriptText}"`);
           }
         }
         
-        // Handle assistant (Barbara) transcripts
+        // ---- BARBARA (Assistant) transcript events ----
+        // Accumulate deltas as they stream in
+        if (event.type === 'response.audio_transcript.delta') {
+          const responseId = (event as any).response_id;
+          const delta = (event as any).delta || '';
+          if (responseId && delta) {
+            botTurnCache.set(responseId, (botTurnCache.get(responseId) || '') + delta);
+          }
+        }
+        
+        // Finalize on done
         if (event.type === 'response.audio_transcript.done') {
-          const barbaraTranscript = (event as any).transcript || '';
-          if (barbaraTranscript) {
-            conversationTranscript.push({
-              role: 'assistant',
-              content: barbaraTranscript,
-              timestamp: new Date().toISOString()
-            });
-            logger.info(`🤖 Barbara: "${barbaraTranscript}"`);
+          const responseId = (event as any).response_id;
+          if (responseId) {
+            const fullText = (botTurnCache.get(responseId) || '').trim();
+            botTurnCache.delete(responseId);
+            
+            if (fullText) {
+              conversationTranscript.push({
+                role: 'assistant',
+                content: fullText,
+                timestamp: new Date().toISOString(),
+                responseId
+              });
+              logger.info(`🤖 Barbara: "${fullText}"`);
+            }
+          }
+        }
+        
+        // ---- Fallback for non-TTS text-only responses ----
+        if (event.type === 'response.output_text.delta') {
+          const responseId = (event as any).response_id;
+          const delta = (event as any).delta || '';
+          if (responseId && delta) {
+            botTurnCache.set(responseId, (botTurnCache.get(responseId) || '') + delta);
+          }
+        }
+        
+        if (event.type === 'response.output_text.done') {
+          const responseId = (event as any).response_id;
+          if (responseId) {
+            const fullText = (botTurnCache.get(responseId) || '').trim();
+            botTurnCache.delete(responseId);
+            
+            if (fullText) {
+              conversationTranscript.push({
+                role: 'assistant',
+                content: fullText,
+                timestamp: new Date().toISOString(),
+                responseId
+              });
+              logger.info(`🤖 Barbara (text): "${fullText}"`);
+            }
+          }
+        }
+        
+        // ---- Handle interruptions (barge-in) ----
+        if (event.type === 'response.cancelled') {
+          const responseId = (event as any).response_id;
+          if (responseId) {
+            botTurnCache.delete(responseId);
+            logger.info('🚫 Response cancelled (user interrupted)');
           }
         }
         
@@ -159,10 +220,16 @@ export async function streamingRoute(
         
         // Enable input audio transcription after session is connected
         if (event.type === 'session.created' || event.type === 'session.updated') {
-          // Send session update to enable transcription
+          // Send session update to enable transcription and VAD
           const updateEvent: RealtimeClientMessage = {
             type: 'session.update',
             session: {
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.5,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 500
+              },
               input_audio_transcription: {
                 model: 'whisper-1'
               }
@@ -170,7 +237,7 @@ export async function streamingRoute(
           } as any;
           
           signalWireTransportLayer.sendEvent(updateEvent);
-          logger.info('✅ Enabled input audio transcription');
+          logger.info('✅ Enabled input audio transcription + server VAD');
         }
         
         // If we have phone numbers and haven't injected yet, inject context now
