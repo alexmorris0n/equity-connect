@@ -139,6 +139,19 @@ export async function streamingRoute(
           }
         }
         
+        // Handle assistant (Barbara) transcripts
+        if (event.type === 'response.audio_transcript.done') {
+          const barbaraTranscript = (event as any).transcript || '';
+          if (barbaraTranscript) {
+            conversationTranscript.push({
+              role: 'assistant',
+              content: barbaraTranscript,
+              timestamp: new Date().toISOString()
+            });
+            logger.info(`🤖 Barbara: "${barbaraTranscript}"`);
+          }
+        }
+        
         // Handle transcription failures
         if (event.type === 'conversation.item.input_audio_transcription.failed') {
           logger.error('❌ Audio transcription failed:', event);
