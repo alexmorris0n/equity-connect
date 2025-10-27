@@ -1,0 +1,2480 @@
+<template>
+  <div class="prompt-workspace">
+    <section class="meta-card">
+      <header class="meta-header">
+        <div class="meta-title-wrap">
+          <n-icon size="20" class="meta-icon"><FolderOutline /></n-icon>
+          <span class="meta-title">Prompts</span>
+        </div>
+        <button class="meta-action" type="button" @click="createNewPrompt" :disabled="loading">
+          <n-icon size="24"><AddCircleOutline /></n-icon>
+        </button>
+      </header>
+      <div class="meta-list-container">
+        <button 
+          class="scroll-arrow scroll-arrow-left" 
+          @click="scrollPrompts(-1)"
+          :disabled="!canScrollPromptsLeft"
+        >
+          <n-icon size="18"><ChevronBackOutline /></n-icon>
+        </button>
+        <div
+          ref="promptsTrack"
+          class="meta-list-track"
+          @scroll="handlePromptsScroll"
+        >
+          <div class="meta-list">
+            <button
+              v-for="prompt in prompts"
+              :key="prompt.id"
+              class="meta-item"
+              :class="{ active: prompt.id === activePromptId }"
+              type="button"
+              @click="selectPrompt(prompt.id)"
+            >
+              <span class="meta-item-title">{{ prompt.name }}</span>
+              <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
+            </button>
+          </div>
+        </div>
+        <button 
+          class="scroll-arrow scroll-arrow-right" 
+          @click="scrollPrompts(1)"
+          :disabled="!canScrollPromptsRight"
+        >
+          <n-icon size="18"><ChevronForwardOutline /></n-icon>
+        </button>
+      </div>
+    </section>
+
+    <section class="meta-card">
+      <header class="meta-header">
+        <div class="meta-title-wrap">
+          <n-icon size="20" class="meta-icon"><CubeOutline /></n-icon>
+          <span class="meta-title">Versions</span>
+        </div>
+      </header>
+      <div class="meta-list-container">
+        <button 
+          class="scroll-arrow scroll-arrow-left" 
+          @click="scrollVersions(-1)"
+          :disabled="!canScrollVersionsLeft"
+        >
+          <n-icon size="18"><ChevronBackOutline /></n-icon>
+        </button>
+        <div
+          ref="versionsTrack"
+          class="meta-list-track"
+          @scroll="handleVersionsScroll"
+        >
+          <div class="meta-list">
+            <button
+              v-for="version in versions"
+              :key="version.id"
+              class="meta-item version"
+              :class="{ active: currentVersion?.id === version.id }"
+              type="button"
+              @click="loadVersion(version.id)"
+            >
+              <div class="version-row">
+                <span class="meta-item-title">v{{ version.version_number }}</span>
+                <span class="meta-date">{{ formatDate(version.created_at) }}</span>
+                <span class="meta-status" v-if="version.is_active">Active</span>
+                <span class="meta-status draft" v-else-if="version.is_draft">Draft</span>
+              </div>
+              <span
+                class="meta-item-sub"
+                v-if="version.change_summary"
+                :title="version.change_summary"
+              >
+                {{ version.change_summary }}
+              </span>
+            </button>
+          </div>
+        </div>
+        <button 
+          class="scroll-arrow scroll-arrow-right" 
+          @click="scrollVersions(1)"
+          :disabled="!canScrollVersionsRight"
+        >
+          <n-icon size="18"><ChevronForwardOutline /></n-icon>
+        </button>
+      </div>
+    </section>
+
+    <div class="editor-pane">
+      <n-card class="editor-card" :bordered="false">
+        <div class="editor-toolbar compact-toolbar">
+          <n-button size="small" tertiary round :disabled="loading || !currentVersion?.id" @click="openPreviewModal">
+            <template #icon>
+              <n-icon><EyeOutline /></n-icon>
+            </template>
+            Preview
+          </n-button>
+          <n-button size="small" type="primary" round :disabled="loading || !hasChanges" @click="saveChanges">
+            <template #icon>
+              <n-icon><SaveOutline /></n-icon>
+            </template>
+            Save
+          </n-button>
+          <n-button size="small" round type="info" :disabled="loading || !currentVersion?.id || !currentVersion?.is_draft" @click="openDeployModal">
+            <template #icon>
+              <n-icon><RocketOutline /></n-icon>
+            </template>
+            Deploy
+          </n-button>
+        </div>
+
+        <n-tabs type="line" size="small" v-model:value="activeTab">
+          <n-tab-pane name="editor" tab="Editor">
+            <div v-if="currentVersion" class="editor-sections">
+              <n-collapse display-directive="show" accordion v-model:expanded-names="expandedSections">
+                <n-collapse-item
+                  v-for="section in promptSections"
+                  :key="section.key"
+                  :name="section.key"
+                  :title="section.label"
+                  :disabled="loading"
+                >
+                  <template #header>
+                    <div class="section-header">
+                      <span>{{ section.label }}</span>
+                      <span v-if="section.required" class="required">*</span>
+                      <n-tooltip v-if="section.tooltip" :placement="'top-start'">
+                        <template #trigger>
+                          <n-icon size="14" class="info-icon"><InformationCircleOutline /></n-icon>
+                        </template>
+                        {{ section.tooltip }}
+                      </n-tooltip>
+                      <n-dropdown 
+                        v-if="expandedSections.includes(section.key)" 
+                        :options="section.key === 'tools' ? toolsDropdownOptions : variableDropdownOptions" 
+                        @select="(key) => section.key === 'tools' ? insertToolFromDropdown(key) : insertVariableIntoSection(section.key, key)" 
+                        trigger="click" 
+                        placement="bottom-start"
+                      >
+                        <n-button text circle size="tiny" class="variable-trigger" @click.stop>
+                          <template #icon>
+                            <n-icon size="14">
+                              <ConstructOutline v-if="section.key === 'tools'" />
+                              <FlashOutline v-else />
+                            </n-icon>
+                          </template>
+                        </n-button>
+                      </n-dropdown>
+                    </div>
+                  </template>
+
+                  <div
+                    :ref="el => { if (el) textareaRefs[section.key] = el }"
+                    class="notion-textarea"
+                    :data-placeholder="section.placeholder"
+                    contenteditable="true"
+                    @input="handleContentEditableInput($event, section.key)"
+                    @keyup="handleContentEditableInput($event, section.key)"
+                    @blur="handleContentEditableBlur($event, section.key)"
+                    @keydown="handleContentEditableKeydown($event, section.key)"
+                  ></div>
+                </n-collapse-item>
+              </n-collapse>
+            </div>
+            <n-empty v-else description="Select a version or create a new one." class="empty-state" />
+          </n-tab-pane>
+
+          <n-tab-pane name="performance" tab="Performance">
+            <div class="metrics-wrapper" v-if="performanceData">
+              <n-grid :cols="4" :x-gap="12" :y-gap="12">
+                <n-grid-item v-for="metric in performanceMetrics" :key="metric.key">
+                  <n-statistic :label="metric.label" :value="metric.value">
+                    <template #suffix>{{ metric.suffix }}</template>
+                  </n-statistic>
+                </n-grid-item>
+              </n-grid>
+            </div>
+            <n-empty v-else description="No performance data yet." class="empty-state" />
+          </n-tab-pane>
+
+          <n-tab-pane name="variables" tab="Variables">
+            <div class="variables-content">
+              <div class="variables-section">
+                <h3>Detected Variables</h3>
+                <p class="text-muted">Variables found in this prompt version:</p>
+                <div class="variables-wrapper" v-if="extractedVariables.length">
+                  <n-tag v-for="variable in extractedVariables" :key="variable" size="medium" round>
+                    {{ formatVariable(variable) }}
+                  </n-tag>
+                </div>
+                <n-empty v-else description="No template variables detected. Use {{variableName}} syntax." size="small" />
+              </div>
+
+              <div class="variables-section">
+                <h3>Available Variables</h3>
+                <p class="text-muted">Click to copy variable syntax:</p>
+                
+                <div class="variable-category">
+                  <h4>Lead Info</h4>
+                  <div class="variable-grid">
+                    <div v-for="variable in availableVariables.lead" :key="variable.key" class="variable-item" @click="copyVariable(variable.key)">
+                      <span class="variable-name">{{ formatVariable(variable.key) }}</span>
+                      <span class="variable-desc">{{ variable.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="variable-category">
+                  <h4>Property Info</h4>
+                  <div class="variable-grid">
+                    <div v-for="variable in availableVariables.property" :key="variable.key" class="variable-item" @click="copyVariable(variable.key)">
+                      <span class="variable-name">{{ formatVariable(variable.key) }}</span>
+                      <span class="variable-desc">{{ variable.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="variable-category">
+                  <h4>Broker Info</h4>
+                  <div class="variable-grid">
+                    <div v-for="variable in availableVariables.broker" :key="variable.key" class="variable-item" @click="copyVariable(variable.key)">
+                      <span class="variable-name">{{ formatVariable(variable.key) }}</span>
+                      <span class="variable-desc">{{ variable.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </n-tab-pane>
+
+          <n-tab-pane name="tools" tab="Tools">
+            <div class="variables-content">
+              <div class="variables-section">
+                <h3>Available Tools</h3>
+                <p class="text-muted">Click a tool to add it to the Tools section:</p>
+                
+                <div class="variable-category">
+                  <h4>Lead Management</h4>
+                  <div class="variable-grid">
+                    <div v-for="tool in availableTools.lead" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                      <span class="variable-name">{{ tool.name }}</span>
+                      <span class="variable-desc">{{ tool.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="variable-category">
+                  <h4>Knowledge Base</h4>
+                  <div class="variable-grid">
+                    <div v-for="tool in availableTools.knowledge" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                      <span class="variable-name">{{ tool.name }}</span>
+                      <span class="variable-desc">{{ tool.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="variable-category">
+                  <h4>Broker & Territory</h4>
+                  <div class="variable-grid">
+                    <div v-for="tool in availableTools.broker" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                      <span class="variable-name">{{ tool.name }}</span>
+                      <span class="variable-desc">{{ tool.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="variable-category">
+                  <h4>Appointments</h4>
+                  <div class="variable-grid">
+                    <div v-for="tool in availableTools.appointment" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                      <span class="variable-name">{{ tool.name }}</span>
+                      <span class="variable-desc">{{ tool.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="variable-category">
+                  <h4>Call Tracking</h4>
+                  <div class="variable-grid">
+                    <div v-for="tool in availableTools.tracking" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                      <span class="variable-name">{{ tool.name }}</span>
+                      <span class="variable-desc">{{ tool.desc }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </n-tab-pane>
+
+          <n-tab-pane name="guide" tab="Guide">
+            <div class="guide-content">
+              <n-collapse v-model:expanded-names="guideExpandedSections">
+                <n-collapse-item v-for="guide in guideContent" :key="guide.key" :title="guide.title" :name="guide.key">
+                  <div class="guide-section">
+                    <p class="guide-purpose"><strong>Purpose:</strong> {{ guide.purpose }}</p>
+                    
+                    <div v-if="guide.bestPractices" class="guide-subsection">
+                      <h4>Best Practices</h4>
+                      <ul>
+                        <li v-for="(practice, idx) in guide.bestPractices" :key="idx">{{ practice }}</li>
+                      </ul>
+                    </div>
+
+                    <div v-if="guide.example" class="guide-subsection">
+                      <div class="guide-example-header">
+                        <h4>Example</h4>
+                        <n-button size="tiny" @click="insertExample(guide.key)" :disabled="!currentVersion">
+                          <template #icon>
+                            <n-icon><CopyOutline /></n-icon>
+                          </template>
+                          Insert Example
+                        </n-button>
+                      </div>
+                      <pre class="guide-example">{{ guide.example }}</pre>
+                    </div>
+
+                    <div v-if="guide.keyPoints" class="guide-subsection">
+                      <h4>Key Points</h4>
+                      <ul>
+                        <li v-for="(point, idx) in guide.keyPoints" :key="idx">{{ point }}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </n-collapse-item>
+              </n-collapse>
+            </div>
+          </n-tab-pane>
+        </n-tabs>
+      </n-card>
+    </div>
+
+    <n-modal v-model:show="showPreviewModal" preset="card" :style="{ width: '80%', maxWidth: '900px' }" title="Preview Prompt" :bordered="false">
+      <n-scrollbar style="max-height: 70vh;">
+        <div class="preview-content">
+          <div class="preview-section" v-for="section in promptSections" :key="section.key">
+            <h4 class="preview-section-title">{{ section.label }}</h4>
+            <pre class="preview-section-content">{{ currentVersion?.content[section.key] || '(empty)' }}</pre>
+          </div>
+        </div>
+      </n-scrollbar>
+      <template #footer>
+        <div class="modal-footer">
+          <n-button @click="showPreviewModal = false">Close</n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showDeployModal" preset="card" :style="{ width: '85%', maxWidth: '1000px' }" :title="isOlderVersion ? 'Confirm Rollback' : 'Confirm Deployment'" :bordered="false">
+      <n-scrollbar style="max-height: 70vh;">
+        <div class="deploy-preview">
+          <p v-if="isOlderVersion" class="deploy-warning">
+            You are about to rollback to <strong>v{{ currentVersion?.version_number }}</strong>. This will make it the active version.
+          </p>
+          <p v-else class="deploy-info">
+            You are about to deploy <strong>v{{ currentVersion?.version_number }}</strong> to production.
+          </p>
+
+          <div style="margin: 1rem 0;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Change Summary:</label>
+            <n-input
+              v-model:value="deployChangeSummary"
+              type="textarea"
+              placeholder="Describe what changed in this version (e.g., 'Added appointment booking tools', 'Updated personality tone')..."
+              :autosize="{ minRows: 2, maxRows: 4 }"
+            />
+          </div>
+
+          <div v-if="!activeVersion" class="preview-content">
+            <p class="text-muted">No active version to compare. This will be the first deployment.</p>
+            <div class="preview-section" v-for="section in promptSections" :key="section.key">
+              <h4 class="preview-section-title">{{ section.label }}</h4>
+              <pre class="preview-section-content">{{ currentVersion?.content[section.key] || '(empty)' }}</pre>
+            </div>
+          </div>
+
+          <div v-else class="diff-content">
+            <div class="diff-section" v-for="diffSection in diffSections" :key="diffSection.key">
+              <h4 class="preview-section-title">
+                {{ diffSection.label }}
+                <span v-if="diffSection.hasChanges" class="changed-badge">Modified</span>
+              </h4>
+              <div class="diff-text">
+                <span
+                  v-for="(part, index) in diffSection.diff"
+                  :key="index"
+                  :class="{
+                    'diff-added': part.added,
+                    'diff-removed': part.removed,
+                    'diff-unchanged': !part.added && !part.removed
+                  }"
+                >{{ part.value }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+      <template #footer>
+        <div class="modal-footer">
+          <n-button @click="showDeployModal = false">Cancel</n-button>
+          <n-button type="info" @click="confirmDeploy" :loading="loading" :disabled="!deployChangeSummary.trim()">
+            {{ isOlderVersion ? 'Confirm Rollback' : 'Confirm Deploy' }}
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <n-modal 
+      v-model:show="showNewPromptModal" 
+      preset="card" 
+      :style="{ width: '500px' }" 
+      title="Create New Prompt" 
+      :bordered="false"
+      :z-index="9999"
+      :mask-closable="false"
+    >
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Prompt Name:</label>
+          <n-input
+            v-model:value="newPromptName"
+            placeholder="e.g., Barbara - Email Assistant"
+            @keyup.enter="confirmCreatePrompt"
+            autofocus
+          />
+        </div>
+        <div>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Category:</label>
+          <n-input
+            v-model:value="newPromptCategory"
+            placeholder="e.g., voice-assistant, email-assistant"
+            @keyup.enter="confirmCreatePrompt"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="modal-footer">
+          <n-button @click="showNewPromptModal = false">Cancel</n-button>
+          <n-button type="primary" @click="confirmCreatePrompt" :disabled="!newPromptName.trim()" :loading="loading">
+            Create Prompt
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, h } from 'vue'
+import { supabase } from '@/lib/supabase'
+import * as Diff from 'diff'
+import {
+  NCard,
+  NButton,
+  NIcon,
+  NCollapse,
+  NCollapseItem,
+  NTooltip,
+  NTabs,
+  NTabPane,
+  NEmpty,
+  NTag,
+  NGrid,
+  NGridItem,
+  NStatistic,
+  NDropdown,
+  NModal,
+  NScrollbar,
+  NInput
+} from 'naive-ui'
+import {
+  ChevronForwardOutline,
+  ChevronBackOutline,
+  RefreshOutline,
+  AddCircleOutline,
+  SaveOutline,
+  RocketOutline,
+  InformationCircleOutline,
+  FolderOutline,
+  CubeOutline,
+  CopyOutline,
+  FlashOutline,
+  EyeOutline,
+  BuildOutline,
+  ConstructOutline
+} from '@vicons/ionicons5'
+
+const loading = ref(false)
+const error = ref('')
+const activeTab = ref('editor')
+const versions = ref([])
+const showPreviewModal = ref(false)
+const showDeployModal = ref(false)
+const showNewPromptModal = ref(false)
+const newPromptName = ref('')
+const newPromptCategory = ref('voice-assistant')
+const activeVersion = ref(null)
+const diffSections = ref([])
+const deployChangeSummary = ref('')
+const prompts = ref([
+  {
+    id: 'default-barbara',
+    name: 'Barbara - Main',
+    category: 'Voice Assistant'
+  }
+])
+const activePromptId = ref('default-barbara')
+const currentVersion = ref(null)
+const performanceData = ref(null)
+const hasChanges = ref(false)
+
+// Scrollbar refs and state
+const promptsTrack = ref(null)
+const versionsTrack = ref(null)
+const canScrollPromptsLeft = ref(false)
+const canScrollPromptsRight = ref(false)
+const canScrollVersionsLeft = ref(false)
+const canScrollVersionsRight = ref(false)
+
+// Debug: watch hasChanges
+watch(hasChanges, (newVal) => {
+  console.log('🔵 hasChanges changed to:', newVal)
+})
+
+watch(loading, (newVal) => {
+  console.log('🔵 loading changed to:', newVal)
+})
+
+// Watch prompts and versions to update scroll states
+watch(prompts, () => {
+  console.log('📊 Prompts changed, updating scroll states')
+  setTimeout(updateScrollStates, 100)
+}, { deep: true })
+
+watch(versions, () => {
+  console.log('📊 Versions changed, updating scroll states')
+  setTimeout(updateScrollStates, 100)
+}, { deep: true })
+const expandedSections = ref([])
+const guideExpandedSections = ref([])
+const textareaRefs = ref({})
+let textareaMirror = null
+const promptsCollapsed = ref(false)
+const versionsCollapsed = ref(false)
+
+const availableTools = {
+  lead: [
+    { key: 'get_lead_context', name: 'get_lead_context', desc: 'Get lead information by phone number to personalize the conversation. Returns lead details, broker info, and property data.' },
+    { key: 'update_lead_info', name: 'update_lead_info', desc: 'Update lead information collected during the call (last name, address, age, property value, mortgage balance, owner_occupied).' },
+    { key: 'check_consent_dnc', name: 'check_consent_dnc', desc: 'Check if lead has given consent to be contacted and is not on DNC list.' }
+  ],
+  knowledge: [
+    { key: 'search_knowledge', name: 'search_knowledge', desc: 'Search the reverse mortgage knowledge base for accurate information about eligibility, fees, objections, compliance, etc.' }
+  ],
+  broker: [
+    { key: 'find_broker_by_territory', name: 'find_broker_by_territory', desc: 'Find the appropriate broker for a lead based on their city or ZIP code.' },
+    { key: 'check_broker_availability', name: 'check_broker_availability', desc: 'Check broker calendar availability for appointment scheduling. Returns available time slots for the next 7 days.' }
+  ],
+  appointment: [
+    { key: 'book_appointment', name: 'book_appointment', desc: 'Book an appointment with the broker after checking availability. Creates calendar event and auto-sends invite to lead email.' },
+    { key: 'assign_tracking_number', name: 'assign_tracking_number', desc: 'Assign the current SignalWire number to this lead/broker pair for call tracking. Should be called immediately after booking an appointment.' }
+  ],
+  tracking: [
+    { key: 'save_interaction', name: 'save_interaction', desc: 'Save call interaction details at the end of the call. Include transcript summary and outcome.' }
+  ]
+}
+
+const availableVariables = {
+  lead: [
+    { key: 'leadFirstName', desc: 'Lead first name' },
+    { key: 'leadLastName', desc: 'Lead last name' },
+    { key: 'leadEmail', desc: 'Lead email address' },
+    { key: 'leadPhone', desc: 'Lead phone number' }
+  ],
+  property: [
+    { key: 'propertyCity', desc: 'Property city' },
+    { key: 'propertyState', desc: 'Property state' },
+    { key: 'propertyAddress', desc: 'Full property address' },
+    { key: 'propertyValue', desc: 'Estimated property value' }
+  ],
+  broker: [
+    { key: 'brokerFirstName', desc: 'Broker first name' },
+    { key: 'brokerFullName', desc: 'Broker full name' },
+    { key: 'brokerCompany', desc: 'Broker company name' },
+    { key: 'brokerNMLS', desc: 'Broker NMLS number' },
+    { key: 'brokerPhone', desc: 'Broker phone number' }
+  ]
+}
+
+const variableDropdownOptions = computed(() => {
+  const allVars = [
+    ...availableVariables.lead,
+    ...availableVariables.property,
+    ...availableVariables.broker
+  ]
+  
+  return allVars.map(v => ({
+    label: `{{${v.key}}} - ${v.desc}`,
+    key: v.key
+  }))
+})
+
+const toolsDropdownOptions = computed(() => {
+  const allTools = [
+    ...availableTools.lead,
+    ...availableTools.knowledge,
+    ...availableTools.broker,
+    ...availableTools.appointment,
+    ...availableTools.tracking
+  ]
+  
+  return [
+    {
+      label: '✨ Add All Tools',
+      key: 'ADD_ALL_TOOLS'
+    },
+    {
+      type: 'divider',
+      key: 'divider'
+    },
+    ...allTools.map(t => ({
+      label: `${t.name}`,
+      key: t.key,
+      toolData: t
+    }))
+  ]
+})
+
+const promptSections = [
+  { key: 'role', label: 'Role & Objective', required: true, placeholder: 'Define who the agent is and what success means...' },
+  { key: 'personality', label: 'Personality & Tone', required: true, placeholder: 'Voice, style, warmth, brevity (2-3 sentences per turn)...' },
+  { key: 'context', label: 'Context', required: false, placeholder: 'Relevant background, caller data, previous call notes...' },
+  { key: 'pronunciation', label: 'Reference Pronunciations', required: false, placeholder: 'Phonetic guidance for tricky words or names...' },
+  { key: 'tools', label: 'Tools', required: false, placeholder: 'List functions/APIs the agent may call and when to use them...' },
+  { key: 'instructions', label: 'Instructions & Rules', required: true, placeholder: 'Behavior guardrails, dos/donts, escalation triggers...' },
+  { key: 'conversation_flow', label: 'Conversation Flow', required: false, placeholder: 'Outline conversation states, transitions, and exit criteria...' },
+  { key: 'output_format', label: 'Output Format', required: false, placeholder: 'Structured output requirements (JSON schema, message format)...' },
+  { key: 'safety', label: 'Safety & Escalation', required: false, placeholder: 'When to handoff to a human, fallback behavior, compliance notes...' }
+]
+
+const guideContent = [
+  {
+    key: 'role',
+    title: 'Role & Objective',
+    purpose: 'Define who the AI is and what success looks like',
+    bestPractices: [
+      'Keep it to 2-3 bullet points',
+      'Be specific about the domain',
+      'Define the primary goal clearly'
+    ],
+    example: `- You are a friendly, knowledgeable customer service agent for [Company Name]
+- Your goal is to resolve customer issues efficiently while maintaining a warm, professional tone
+- Success means the customer feels heard, their issue is resolved or escalated appropriately`
+  },
+  {
+    key: 'personality',
+    title: 'Personality & Tone',
+    purpose: 'Set voice, brevity, and pacing for natural responses',
+    keyPoints: [
+      'Personality: 1-2 adjectives + role descriptor',
+      'Tone: emotional quality (warm, confident, etc.)',
+      'Length: e.g., "2-3 sentences per turn"',
+      'Pacing: voice-specific guidance',
+      'Language: if multilingual or strict to one language',
+      'Variety: prevent robotic repetition'
+    ],
+    example: `## Personality
+- Friendly, calm, and approachable expert
+
+## Tone
+- Warm, concise, confident, never fawning
+
+## Length
+- 2-3 sentences per turn
+
+## Pacing
+- Deliver your audio response fast, but do not sound rushed
+- Do not modify content, only increase speaking speed
+
+## Language
+- The conversation will be only in English
+- Do not respond in any other language even if the user asks
+
+## Variety
+- Do not repeat the same sentence twice
+- Vary your responses so it doesn't sound robotic`
+  },
+  {
+    key: 'pronunciation',
+    title: 'Reference Pronunciations',
+    purpose: 'Guide specific pronunciations for brand names, technical terms, or proper nouns',
+    bestPractices: [
+      'Use phonetic spelling for tricky words',
+      'Include brand names and technical jargon',
+      'Specify exact pronunciation inline'
+    ],
+    example: `When voicing these words, use the respective pronunciations:
+- Pronounce "SQL" as "sequel"
+- Pronounce "PostgreSQL" as "post-gress"
+- Pronounce "Kyiv" as "KEE-iv"
+- Pronounce "Huawei" as "HWAH-way"`
+  },
+  {
+    key: 'instructions',
+    title: 'Instructions & Rules',
+    purpose: 'Core behavioral rules and constraints',
+    keyPoints: [
+      'Use clear, short bullets that outperform long paragraphs',
+      'Avoid conflicting, ambiguous, or unclear instructions',
+      'Include unclear audio handling rules',
+      'Specify digit/number reading format',
+      'Define speed/pacing control'
+    ],
+    example: `## Unclear Audio
+- Only respond to clear audio or text
+- If the user's audio is unintelligible, ask for clarification:
+  "I'm sorry, I didn't catch that. Could you repeat?"
+
+## Reading Numbers
+- Always read back phone numbers, credit cards, or IDs digit-by-digit with pauses
+- Example: "5-5-1-1-1-9-7-6-5-4-2-3"
+- After reading, ask: "Is that correct?"
+
+## Pacing
+- Deliver responses quickly but naturally
+- Do not modify content—only increase speaking speed
+- Avoid rushed or robotic delivery`
+  },
+  {
+    key: 'conversation_flow',
+    title: 'Conversation Flow',
+    purpose: 'Structure dialogue into clear, goal-driven phases',
+    bestPractices: [
+      'Break interaction into phases with clear goals',
+      'Define exit criteria for each phase',
+      'Include sample phrases for variety',
+      'Prevent stalling, skipping steps, or jumping ahead'
+    ],
+    example: `## 1) Greeting
+Goal: Set tone and invite reason for calling
+How to respond:
+- Identify as [Company Name]
+- Keep opener brief and invite caller's goal
+- Sample phrases: "Thanks for calling [Company]—how can I help today?"
+Exit when: Caller states an initial goal
+
+## 2) Discovery
+Goal: Classify the issue
+How to respond:
+- Ask one targeted question to understand the issue
+- Collect key details (email, phone, address)
+Exit when: Intent and contact info are known
+
+## 3) Resolution
+Goal: Apply fix or escalate
+How to respond:
+- Use appropriate tools
+- Confirm outcome
+Exit when: Issue resolved or escalated`
+  },
+  {
+    key: 'tools',
+    title: 'Tools',
+    purpose: 'Define when/how to invoke functions',
+    keyPoints: [
+      'Tool alignment check – Ensure tools in prompt match available tools',
+      'Preambles – What to say BEFORE calling the tool',
+      'Proactive vs Confirmation – Define per-tool behavior',
+      'When to use / When NOT to use'
+    ],
+    example: `## General Rules
+- When calling a tool, do not ask for user confirmation (be proactive)
+- EXCEPTION: For destructive actions (refunds, cancellations), confirm first
+
+## lookup_account(email_or_phone)
+**When to use:** Verifying identity or viewing account details
+**When NOT to use:** User is clearly anonymous with general questions
+**Preamble sample phrases:**
+- "Let me pull up your account now"
+- "I'm looking up your account using [email/phone]"
+
+## check_outage(address)
+**When to use:** User reports connectivity issues
+**When NOT to use:** Question is billing-only
+**Preamble sample phrases:**
+- "I'll check for any outages at [address] right now"`
+  },
+  {
+    key: 'safety',
+    title: 'Safety & Escalation',
+    purpose: 'Define when to escalate and what to say',
+    keyPoints: [
+      'Escalate immediately for safety risks',
+      'Escalate on explicit user requests',
+      'Escalate for severe dissatisfaction',
+      'Escalate after repeated tool failures',
+      'Escalate for out-of-scope requests'
+    ],
+    example: `When to escalate (no extra troubleshooting):
+- Safety risk (self-harm, threats, harassment)
+- User explicitly asks for a human
+- Severe dissatisfaction (profanity, "extremely frustrated")
+- 2 failed tool attempts on same task
+- Out-of-scope (real-time news, financial/legal/medical advice)
+
+What to say (MANDATORY):
+- "Thanks for your patience—I'm connecting you with a specialist now."
+- Then call: escalate_to_human()
+
+Examples requiring escalation:
+- "This is the third time it didn't work. Just get me a person."
+- "I am extremely frustrated!"`
+  }
+]
+
+const extractedVariables = computed(() => {
+  if (!currentVersion.value?.content) return []
+  const variables = new Set()
+  const regex = /{{(\w+)}}/g
+  promptSections.forEach(section => {
+    const content = currentVersion.value.content[section.key]
+    if (content) {
+      let match
+      while ((match = regex.exec(content)) !== null) {
+        variables.add(match[1])
+      }
+    }
+  })
+  return Array.from(variables).sort()
+})
+
+const performanceMetrics = computed(() => {
+  if (!performanceData.value) return []
+  return [
+    { key: 'calls', label: 'Total Calls', value: performanceData.value.total_calls || 0, suffix: '' },
+    { key: 'duration', label: 'Avg Duration', value: performanceData.value.avg_duration || 0, suffix: 's' },
+    { key: 'conversion', label: 'Conversion Rate', value: performanceData.value.conversion_rate || 0, suffix: '%' },
+    { key: 'compliance', label: 'Compliance Score', value: performanceData.value.compliance_score || 0, suffix: '%' }
+  ]
+})
+
+const isOlderVersion = computed(() => {
+  if (!currentVersion.value || !versions.value.length) return false
+  const latestVersion = versions.value[0] // versions sorted desc by version_number
+  return currentVersion.value.version_number < latestVersion.version_number
+})
+
+// Watch for section expansions to trigger textarea resize
+watch(expandedSections, (newSections, oldSections) => {
+  const newlyExpanded = newSections.filter(s => !oldSections.includes(s))
+  newlyExpanded.forEach(key => {
+    setTimeout(() => {
+      const textarea = textareaRefs.value[key]
+      if (textarea) {
+        // Populate content (always update to latest content)
+        if (currentVersion.value?.content[key] !== undefined) {
+          textarea.innerText = currentVersion.value.content[key] || ''
+        }
+        
+        textarea.style.height = '0px'
+        nextTick(() => {
+          textarea.style.height = textarea.scrollHeight + 20 + 'px'
+          textarea.style.overflowY = 'hidden'
+        })
+      }
+    }, 350)
+  })
+}, { deep: true })
+
+async function selectPrompt(id) {
+  // Check for unsaved changes before switching prompts
+  if (hasChanges.value) {
+    const confirmed = window.confirm('You have unsaved changes. Do you want to save before switching prompts?')
+    if (confirmed) {
+      await saveChanges()
+    } else {
+      hasChanges.value = false
+    }
+  }
+  
+  activePromptId.value = id
+  
+  // Reload versions for the selected prompt
+  loading.value = true
+  try {
+    const { data, error: fetchError } = await supabase
+      .from('prompt_versions')
+      .select('*')
+      .eq('prompt_id', id)
+      .order('version_number', { ascending: false })
+
+    if (fetchError) throw fetchError
+
+    versions.value = data || []
+
+    if (versions.value.length > 0) {
+      const activeVersion = versions.value.find(v => v.is_active) || versions.value[0]
+      await loadVersion(activeVersion.id)
+    } else {
+      // No versions for this prompt yet
+      currentVersion.value = null
+      performanceData.value = null
+    }
+  } catch (err) {
+    error.value = err.message
+    console.error('Failed to load versions for prompt:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function createNewPrompt() {
+  console.log('🆕 Create new prompt clicked')
+  console.log('📊 showNewPromptModal BEFORE:', showNewPromptModal.value)
+  // Reset form fields
+  newPromptName.value = ''
+  newPromptCategory.value = 'voice-assistant'
+  showNewPromptModal.value = true
+  console.log('📊 showNewPromptModal AFTER:', showNewPromptModal.value)
+  
+  // Debug: force a nextTick to ensure Vue has processed the change
+  await nextTick()
+  console.log('📊 showNewPromptModal after nextTick:', showNewPromptModal.value)
+}
+
+async function confirmCreatePrompt() {
+  if (!newPromptName.value.trim()) return
+  
+  // Check for duplicate name before attempting insert
+  const existingPrompt = prompts.value.find(
+    p => p.name.toLowerCase() === newPromptName.value.trim().toLowerCase()
+  )
+  
+  if (existingPrompt) {
+    window.$message?.error('A prompt with this name already exists. Please choose a different name.')
+    return
+  }
+  
+  loading.value = true
+  showNewPromptModal.value = false
+  
+  try {
+    // 1. Create the new prompt
+    const { data: newPrompt, error: promptError } = await supabase
+      .from('prompts')
+      .insert({
+        name: newPromptName.value.trim(),
+        category: newPromptCategory.value.trim(),
+        is_base_prompt: false,
+        is_active: true
+      })
+      .select()
+      .single()
+    
+    if (promptError) throw promptError
+    
+    // 2. Create v1 draft for the new prompt
+    const { data: newVersion, error: versionError } = await supabase
+      .from('prompt_versions')
+      .insert({
+        prompt_id: newPrompt.id,
+        version_number: 1,
+        content: {
+          role: '',
+          personality: '',
+          context: '',
+          pronunciation: '',
+          tools: '',
+          instructions: '',
+          conversation_flow: '',
+          output_format: '',
+          safety: ''
+        },
+        variables: [],
+        change_summary: 'Initial version',
+        is_draft: true,
+        is_active: false,
+        created_by: 'Admin'
+      })
+      .select()
+      .single()
+    
+    if (versionError) throw versionError
+    
+    // 3. Add to prompts list and select it
+    prompts.value.push({
+      id: newPrompt.id,
+      name: newPrompt.name,
+      category: newPrompt.category
+    })
+    
+    activePromptId.value = newPrompt.id
+    
+    // 4. Reload versions and load the new v1 draft
+    await loadVersions()
+    
+    window.$message?.success(`Prompt "${newPrompt.name}" created successfully!`)
+  } catch (err) {
+    console.error('❌ Error creating prompt:', err)
+    showNewPromptModal.value = true // Re-open modal so user can fix the issue
+    
+    if (err.code === '23505') {
+      error.value = 'A prompt with this name already exists. Please choose a different name.'
+      window.$message?.error('A prompt with this name already exists. Please choose a different name.')
+    } else {
+      error.value = err.message
+      window.$message?.error(`Failed to create prompt: ${err.message}`)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+function markAsChanged() {
+  hasChanges.value = true
+}
+
+function handleTextareaInput(key) {
+  markAsChanged()
+  autoResizeTextarea(key)
+}
+
+async function handleContentEditableInput(event, key) {
+  console.log('Input detected on key:', key, 'hasChanges before:', hasChanges.value)
+  
+  currentVersion.value.content[key] = event.target.innerText
+  markAsChanged()
+  console.log('hasChanges after:', hasChanges.value)
+}
+
+function handleContentEditableBlur(event, key) {
+  currentVersion.value.content[key] = event.target.innerText
+}
+
+function handleContentEditableKeydown(event, key) {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    
+    const selection = window.getSelection()
+    if (!selection.rangeCount) return
+    
+    const range = selection.getRangeAt(0)
+    
+    // Insert a <br> element at the caret
+    const br = document.createElement('br')
+    range.insertNode(br)
+    
+    // Move cursor after the <br>
+    range.setStartAfter(br)
+    range.setEndAfter(br)
+    range.collapse(true)
+    
+    // Update selection
+    selection.removeAllRanges()
+    selection.addRange(range)
+    
+    // Trigger input event to sync model
+    handleContentEditableInput({ target: event.target }, key)
+  }
+}
+
+function ensureTextareaMirror() {
+  if (textareaMirror) return textareaMirror
+  const mirror = document.createElement('div')
+  mirror.setAttribute('aria-hidden', 'true')
+  mirror.style.position = 'absolute'
+  mirror.style.top = '-9999px'
+  mirror.style.left = '-9999px'
+  mirror.style.visibility = 'hidden'
+  mirror.style.pointerEvents = 'none'
+  mirror.style.whiteSpace = 'pre-wrap'
+  mirror.style.wordWrap = 'break-word'
+  mirror.style.overflowWrap = 'break-word'
+  mirror.style.padding = '0'
+  mirror.style.height = 'auto'
+  mirror.style.minHeight = '0'
+  mirror.style.zIndex = '-1'
+  document.body.appendChild(mirror)
+  textareaMirror = mirror
+  return textareaMirror
+}
+
+function measureTextareaHeight(textarea) {
+  const mirror = ensureTextareaMirror()
+  const computed = window.getComputedStyle(textarea)
+
+  const propertiesToCopy = [
+    'boxSizing',
+    'width',
+    'paddingTop',
+    'paddingBottom',
+    'paddingLeft',
+    'paddingRight',
+    'borderTopWidth',
+    'borderBottomWidth',
+    'fontFamily',
+    'fontSize',
+    'fontWeight',
+    'fontStyle',
+    'lineHeight',
+    'letterSpacing',
+    'textTransform',
+    'textIndent'
+  ]
+
+  propertiesToCopy.forEach(prop => {
+    mirror.style[prop] = computed[prop]
+  })
+
+  mirror.style.width = textarea.offsetWidth + 'px'
+  mirror.textContent = (textarea.value || textarea.placeholder || '') + '\n'
+
+  const contentHeight = mirror.scrollHeight
+
+  const lineHeight = parseFloat(computed.lineHeight) || parseFloat(computed.fontSize) * 1.35 || 18
+  const paddingTop = parseFloat(computed.paddingTop) || 0
+  const paddingBottom = parseFloat(computed.paddingBottom) || 0
+  const borderTop = parseFloat(computed.borderTopWidth) || 0
+  const borderBottom = parseFloat(computed.borderBottomWidth) || 0
+
+  const minHeight = lineHeight * 3 + paddingTop + paddingBottom + borderTop + borderBottom
+  const buffer = lineHeight
+
+  return Math.max(contentHeight + buffer, minHeight)
+}
+
+function autoResizeTextarea(key, attempt = 0) {
+  const textarea = textareaRefs.value[key]
+  if (!textarea) return
+
+  // Reset height to recalculate
+  textarea.style.height = '0px'
+  
+  // Use scrollHeight directly + small buffer
+  const scrollHeight = textarea.scrollHeight
+  
+  if (scrollHeight === 0 && attempt < 10) {
+    requestAnimationFrame(() => autoResizeTextarea(key, attempt + 1))
+    return
+  }
+  
+  // Add just one line of buffer (approx 20px)
+  textarea.style.height = `${scrollHeight + 20}px`
+  textarea.style.overflowY = 'hidden'
+}
+
+async function resizeAllTextareas() {
+  await nextTick()
+  Object.keys(textareaRefs.value).forEach(key => autoResizeTextarea(key))
+}
+
+async function loadVersions() {
+  loading.value = true
+  error.value = ''
+  try {
+    // Load ALL prompts (not just base prompts)
+    const { data: allPrompts, error: promptsError } = await supabase
+      .from('prompts')
+      .select('id, name, category, is_base_prompt')
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+
+    if (promptsError) throw promptsError
+
+    if (!allPrompts || allPrompts.length === 0) {
+      throw new Error('No prompts found. Create a prompt to get started.')
+    }
+
+    // Update prompts list
+    prompts.value = allPrompts.map(p => ({
+      id: p.id,
+      name: p.name,
+      category: p.category
+    }))
+
+    // Use the currently selected prompt, or default to first one
+    const targetPromptId = activePromptId.value || allPrompts[0].id
+    activePromptId.value = targetPromptId
+
+    // Load versions for the active prompt
+    const { data, error: fetchError } = await supabase
+      .from('prompt_versions')
+      .select('*')
+      .eq('prompt_id', targetPromptId)
+      .order('version_number', { ascending: false })
+
+    if (fetchError) throw fetchError
+
+    versions.value = data || []
+
+    if (versions.value.length > 0) {
+      const activeVersion = versions.value.find(v => v.is_active) || versions.value[0]
+      await loadVersion(activeVersion.id)
+    }
+  } catch (err) {
+    error.value = err.message
+    console.error('Failed to load versions:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadVersion(versionId) {
+  // Check for unsaved changes before switching
+  if (hasChanges.value) {
+    const confirmed = window.confirm('You have unsaved changes. Do you want to save before switching versions?')
+    if (confirmed) {
+      await saveChanges()
+    } else {
+      // User chose not to save, discard changes
+      hasChanges.value = false
+    }
+  }
+  
+  loading.value = true
+  error.value = ''
+  hasChanges.value = false
+
+  try {
+    const { data, error: fetchError } = await supabase
+      .from('prompt_versions')
+      .select('*')
+      .eq('id', versionId)
+      .single()
+
+    if (fetchError) throw fetchError
+
+    currentVersion.value = data
+    await loadPerformance(versionId)
+    await nextTick()
+    
+    // Populate contenteditable divs with loaded content
+    populateContentEditableDivs()
+    
+    resizeAllTextareas()
+  } catch (err) {
+    error.value = err.message
+    console.error('Failed to load version:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadPerformance(versionId) {
+  try {
+    const { data, error } = await supabase
+      .from('prompt_version_performance')
+      .select('*')
+      .eq('version_id', versionId)
+      .maybeSingle() // Use maybeSingle instead of single to handle missing table gracefully
+
+    if (error) {
+      console.warn('⚠️ Performance data not available:', error.message)
+      performanceData.value = null
+      return
+    }
+
+    performanceData.value = data || null
+  } catch (err) {
+    console.warn('⚠️ Failed to load performance data:', err)
+    performanceData.value = null
+  }
+}
+
+async function saveChanges() {
+  if (!currentVersion.value) return
+  loading.value = true
+  
+  try {
+    // If editing an active version, create a new draft instead of updating it
+    if (!currentVersion.value.is_draft) {
+      // Find the highest version number
+      const { data: versions, error: fetchError } = await supabase
+        .from('prompt_versions')
+        .select('version_number')
+        .eq('prompt_id', currentVersion.value.prompt_id)
+        .order('version_number', { ascending: false })
+        .limit(1)
+      
+      if (fetchError) throw fetchError
+      
+      const nextVersionNumber = versions && versions[0] ? versions[0].version_number + 1 : 1
+      
+      // Create new draft version with current changes
+      const { data: newVersion, error: insertError } = await supabase
+        .from('prompt_versions')
+        .insert({
+          prompt_id: currentVersion.value.prompt_id,
+          version_number: nextVersionNumber,
+          content: currentVersion.value.content,
+          variables: extractedVariables.value,
+          change_summary: `Draft v${nextVersionNumber}`,
+          is_draft: true,
+          is_active: false,
+          created_by: 'Admin'
+        })
+        .select()
+        .single()
+      
+      if (insertError) throw insertError
+      
+      // Reload versions and switch to the new draft
+      await loadVersions()
+      if (newVersion) {
+        await loadVersion(newVersion.id)
+      }
+      hasChanges.value = false
+    } else {
+      // If already a draft, just update it
+      const { error: updateError } = await supabase
+        .from('prompt_versions')
+        .update({
+          content: currentVersion.value.content,
+          variables: extractedVariables.value
+        })
+        .eq('id', currentVersion.value.id)
+
+      if (updateError) throw updateError
+
+      hasChanges.value = false
+      
+      // Reload to refresh the version card
+      await loadVersions()
+    }
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+async function createNewVersion() {
+  if (!currentVersion.value || versions.value.length === 0) return
+  const summary = prompt('Enter a summary for this new version:')
+  if (!summary) return
+  loading.value = true
+  try {
+    const nextVersionNumber = (versions.value[0]?.version_number || 0) + 1
+    const { data, error: insertError } = await supabase
+      .from('prompt_versions')
+      .insert({
+        prompt_id: currentVersion.value.prompt_id,
+        version_number: nextVersionNumber,
+        content: currentVersion.value.content,
+        variables: extractedVariables.value,
+        change_summary: summary,
+        is_draft: true,
+        created_by: 'Admin'
+      })
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    await loadVersions()
+    await loadVersion(data.id)
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+function openPreviewModal() {
+  showPreviewModal.value = true
+}
+
+async function openDeployModal() {
+  if (!currentVersion.value) return
+  
+  // Fetch the currently active version for comparison
+  try {
+    const { data: active, error: fetchError } = await supabase
+      .from('prompt_versions')
+      .select('*')
+      .eq('prompt_id', currentVersion.value.prompt_id)
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (fetchError) throw fetchError
+    
+    activeVersion.value = active
+    
+    // Generate diff for each section
+    if (active) {
+      diffSections.value = promptSections.map(section => {
+        const oldText = active.content[section.key] || ''
+        const newText = currentVersion.value.content[section.key] || ''
+        
+        const diff = Diff.diffWords(oldText, newText)
+        
+        return {
+          key: section.key,
+          label: section.label,
+          diff: diff,
+          hasChanges: diff.some(part => part.added || part.removed)
+        }
+      })
+    } else {
+      // No active version yet (first deployment)
+      diffSections.value = []
+    }
+    
+    showDeployModal.value = true
+  } catch (err) {
+    error.value = err.message
+  }
+}
+
+async function confirmDeploy() {
+  if (!currentVersion.value || !deployChangeSummary.value.trim()) return
+  
+  showDeployModal.value = false
+  loading.value = true
+  
+  try {
+    // 1. Deactivate all other versions
+    await supabase
+      .from('prompt_versions')
+      .update({ is_active: false })
+      .eq('prompt_id', currentVersion.value.prompt_id)
+
+    // 2. Mark current version as active (not draft) with change summary
+    const { error: updateError } = await supabase
+      .from('prompt_versions')
+      .update({ 
+        is_active: true, 
+        is_draft: false,
+        change_summary: deployChangeSummary.value.trim()
+      })
+      .eq('id', currentVersion.value.id)
+
+    if (updateError) throw updateError
+
+    // 3. Clear the deploy change summary
+    deployChangeSummary.value = ''
+
+    // 4. Reload versions to refresh the UI
+    await loadVersions()
+    await loadVersion(currentVersion.value.id)
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+async function createDraftFromActive() {
+  if (!currentVersion.value || currentVersion.value.is_draft) return
+  
+  // Check if a draft already exists
+  const { data: existingDraft } = await supabase
+    .from('prompt_versions')
+    .select('id')
+    .eq('prompt_id', currentVersion.value.prompt_id)
+    .eq('is_draft', true)
+    .maybeSingle()
+  
+  if (existingDraft) {
+    // Switch to existing draft instead of creating new one
+    await loadVersion(existingDraft.id)
+    return
+  }
+  
+  loading.value = true
+  
+  try {
+    // Find the highest version number
+    const { data: versions, error: fetchError } = await supabase
+      .from('prompt_versions')
+      .select('version_number')
+      .eq('prompt_id', currentVersion.value.prompt_id)
+      .order('version_number', { ascending: false })
+      .limit(1)
+    
+    if (fetchError) throw fetchError
+    
+    const nextVersionNumber = versions && versions[0] ? versions[0].version_number + 1 : 1
+    
+    // Create new draft version based on current active version
+    const { data: newVersion, error: insertError } = await supabase
+      .from('prompt_versions')
+      .insert({
+        prompt_id: currentVersion.value.prompt_id,
+        version_number: nextVersionNumber,
+        content: currentVersion.value.content,
+        variables: extractedVariables.value,
+        change_summary: `Draft v${nextVersionNumber}`,
+        is_draft: true,
+        is_active: false,
+        created_by: 'Admin'
+      })
+      .select()
+      .single()
+    
+    if (insertError) throw insertError
+    
+    // Reload and switch to new draft
+    await loadVersions()
+    if (newVersion) {
+      await loadVersion(newVersion.id)
+    }
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+function formatDate(dateString) {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatVariable(variable) {
+  return `{{${variable}}}`
+}
+
+function insertExample(guideKey) {
+  if (!currentVersion.value) return
+  
+  const guide = guideContent.find(g => g.key === guideKey)
+  if (!guide || !guide.example) return
+  
+  // Insert the example into the corresponding prompt section
+  currentVersion.value.content[guideKey] = guide.example
+  
+  // Mark as changed
+  hasChanges.value = true
+  
+  // Switch to editor tab and expand that section
+  activeTab.value = 'editor'
+  if (!expandedSections.value.includes(guideKey)) {
+    expandedSections.value.push(guideKey)
+  }
+}
+
+async function copyVariable(variableKey) {
+  const variableText = `{{${variableKey}}}`
+  try {
+    await navigator.clipboard.writeText(variableText)
+    // Could add a toast notification here
+    console.log(`Copied: ${variableText}`)
+  } catch (err) {
+    console.error('Failed to copy:', err)
+  }
+}
+
+function insertVariableIntoSection(sectionKey, variableKey) {
+  if (!currentVersion.value) return
+  
+  const textarea = textareaRefs.value[sectionKey]
+  if (!textarea) return
+  
+  const variableText = `{{${variableKey}}}`
+  
+  // Get current content
+  const currentContent = currentVersion.value.content[sectionKey] || ''
+  
+  // Try to insert at cursor position for contenteditable
+  const selection = window.getSelection()
+  if (selection && selection.rangeCount > 0 && textarea.contains(selection.anchorNode)) {
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+    const textNode = document.createTextNode(variableText)
+    range.insertNode(textNode)
+    range.setStartAfter(textNode)
+    range.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    
+    // Update the model
+    currentVersion.value.content[sectionKey] = textarea.innerText
+  } else {
+    // Fallback: append to end
+    currentVersion.value.content[sectionKey] = currentContent + (currentContent ? ' ' : '') + variableText
+    
+    // Update the textarea
+    nextTick(() => {
+      textarea.innerText = currentVersion.value.content[sectionKey]
+    })
+  }
+  
+  markAsChanged()
+}
+
+function insertToolIntoPrompt(tool) {
+  if (!currentVersion.value) return
+  
+  // Format: - tool_name: description
+  const toolText = `- ${tool.name}: ${tool.desc}`
+  
+  const toolsContent = currentVersion.value.content['tools'] || ''
+  
+  // Add tool to the Tools section (each tool on a new line)
+  currentVersion.value.content['tools'] = toolsContent + (toolsContent ? '\n' : '') + toolText
+  
+  // Update the textarea if it exists
+  const textarea = textareaRefs.value['tools']
+  if (textarea) {
+    nextTick(() => {
+      textarea.innerText = currentVersion.value.content['tools']
+    })
+  }
+  
+  // Switch to Editor tab and expand Tools section
+  activeTab.value = 'editor'
+  if (!expandedSections.value.includes('tools')) {
+    expandedSections.value.push('tools')
+  }
+  
+  markAsChanged()
+}
+
+function insertToolFromDropdown(toolKey) {
+  // Check if "Add All Tools" was clicked
+  if (toolKey === 'ADD_ALL_TOOLS') {
+    addAllTools()
+    return
+  }
+  
+  // Find the tool data
+  const allTools = [
+    ...availableTools.lead,
+    ...availableTools.knowledge,
+    ...availableTools.broker,
+    ...availableTools.appointment,
+    ...availableTools.tracking
+  ]
+  
+  const tool = allTools.find(t => t.key === toolKey)
+  if (!tool) return
+  
+  insertToolIntoPrompt(tool)
+}
+
+function addAllTools() {
+  if (!currentVersion.value) return
+  
+  // Get all tools
+  const allTools = [
+    ...availableTools.lead,
+    ...availableTools.knowledge,
+    ...availableTools.broker,
+    ...availableTools.appointment,
+    ...availableTools.tracking
+  ]
+  
+  // Format all tools as a list
+  const toolsList = allTools.map(tool => `- ${tool.name}: ${tool.desc}`).join('\n')
+  
+  // Set the Tools section content
+  currentVersion.value.content['tools'] = toolsList
+  
+  // Switch to Editor tab first
+  activeTab.value = 'editor'
+  
+  // Expand Tools section if not already expanded
+  if (!expandedSections.value.includes('tools')) {
+    expandedSections.value.push('tools')
+  }
+  
+  // Wait for section to expand, then directly update textarea
+  setTimeout(() => {
+    const textarea = textareaRefs.value['tools']
+    if (textarea) {
+      textarea.innerText = currentVersion.value.content['tools']
+    }
+  }, 400)
+  
+  markAsChanged()
+}
+
+// Removed: watch(() => currentVersion.value?.content, () => resizeAllTextareas(), { deep: true })
+// This was causing hasChanges to be reset because it triggers on every keystroke
+watch([promptsCollapsed, versionsCollapsed], () => resizeAllTextareas())
+
+// Helper function to populate contenteditable divs
+function populateContentEditableDivs() {
+  if (!currentVersion.value) return
+  
+  nextTick(() => {
+    // Populate all contenteditable divs with the loaded version content
+    Object.keys(textareaRefs.value).forEach(key => {
+      const textarea = textareaRefs.value[key]
+      if (textarea && currentVersion.value.content[key] !== undefined) {
+        // Only update if content is different to avoid cursor reset
+        if (textarea.innerText !== currentVersion.value.content[key]) {
+          textarea.innerText = currentVersion.value.content[key] || ''
+        }
+      }
+    })
+  })
+}
+
+// Watch for version changes and manually update contenteditable divs (avoid v-html reactivity issues)
+watch(() => currentVersion.value?.id, () => {
+  populateContentEditableDivs()
+})
+
+// Sync guide expanded sections with editor when switching to Guide tab
+watch(activeTab, (newTab, oldTab) => {
+  if (newTab === 'guide' && oldTab === 'editor') {
+    // Only open the guide sections that are currently expanded in the editor
+    guideExpandedSections.value = [...expandedSections.value]
+  }
+  
+  if (newTab === 'editor' && oldTab === 'guide') {
+    // Restore editor sections from guide if user was browsing guide
+    // Keep whatever was expanded in editor before
+  }
+})
+
+function handleWindowResize() {
+  resizeAllTextareas()
+}
+
+function getTrackElements(refEl) {
+  const container = refEl?.value
+  if (!container) return { container: null, content: null }
+  const content = container.querySelector('.meta-list')
+  return { container, content }
+}
+
+const SCROLL_STEP = 220
+const EPSILON = 2
+
+// Scroll functions for prompts and versions
+function scrollPrompts(direction) {
+  console.log('🔄 scrollPrompts called, direction:', direction)
+  const { container } = getTrackElements(promptsTrack)
+  if (!container) {
+    console.log('❌ prompts container not found')
+    return
+  }
+  const maxScroll = Math.max(container.scrollWidth - container.clientWidth, 0)
+  const proposed = container.scrollLeft + direction * SCROLL_STEP
+  const next = Math.min(Math.max(proposed, 0), maxScroll)
+  container.scrollTo({ left: next, behavior: 'smooth' })
+}
+
+function scrollVersions(direction) {
+  console.log('🔄 scrollVersions called, direction:', direction)
+  const { container } = getTrackElements(versionsTrack)
+  if (!container) {
+    console.log('❌ versions container not found')
+    return
+  }
+  const maxScroll = Math.max(container.scrollWidth - container.clientWidth, 0)
+  const proposed = container.scrollLeft + direction * SCROLL_STEP
+  const next = Math.min(Math.max(proposed, 0), maxScroll)
+  container.scrollTo({ left: next, behavior: 'smooth' })
+}
+
+function handlePromptsScroll(e) {
+  const container = e.target
+  const overflow = container.scrollWidth - container.clientWidth
+  canScrollPromptsLeft.value = container.scrollLeft > EPSILON
+  canScrollPromptsRight.value = overflow - container.scrollLeft > EPSILON
+}
+
+function handleVersionsScroll(e) {
+  const container = e.target
+  const overflow = container.scrollWidth - container.clientWidth
+  canScrollVersionsLeft.value = container.scrollLeft > EPSILON
+  canScrollVersionsRight.value = overflow - container.scrollLeft > EPSILON
+}
+
+// Check scroll state on mount and after data changes
+function updateScrollStates() {
+  nextTick(() => {
+    console.log('🔍 updateScrollStates called')
+    const { container: promptsContainer, content: promptsContent } = getTrackElements(promptsTrack)
+    if (promptsContainer && promptsContent) {
+      const overflow = promptsContent.scrollWidth - promptsContainer.clientWidth
+      canScrollPromptsLeft.value = promptsContainer.scrollLeft > EPSILON
+      canScrollPromptsRight.value = overflow - promptsContainer.scrollLeft > EPSILON
+      console.log('✅ Prompts scroll state - Left:', canScrollPromptsLeft.value, 'Right:', canScrollPromptsRight.value)
+    }
+
+    const { container: versionsContainer, content: versionsContent } = getTrackElements(versionsTrack)
+    if (versionsContainer && versionsContent) {
+      const overflow = versionsContent.scrollWidth - versionsContainer.clientWidth
+      canScrollVersionsLeft.value = versionsContainer.scrollLeft > EPSILON
+      canScrollVersionsRight.value = overflow - versionsContainer.scrollLeft > EPSILON
+      console.log('✅ Versions scroll state - Left:', canScrollVersionsLeft.value, 'Right:', canScrollVersionsRight.value)
+    }
+  })
+}
+
+onMounted(() => {
+  loadVersions()
+  window.addEventListener('resize', handleWindowResize)
+  
+  // Warn before leaving page with unsaved changes
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  
+  // Update scroll states after initial load (multiple attempts to ensure DOM is ready)
+  setTimeout(updateScrollStates, 500)
+  setTimeout(updateScrollStates, 1000)
+  setTimeout(updateScrollStates, 2000)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
+function handleBeforeUnload(e) {
+  if (hasChanges.value) {
+    e.preventDefault()
+    e.returnValue = '' // Required for Chrome
+    return '' // Required for some browsers
+  }
+}
+</script>
+
+<style scoped>
+.prompt-workspace {
+  display: grid;
+  grid-template-columns: 220px 220px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding-left: 0;
+  height: 100%;
+  max-height: calc(100vh - 140px);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.meta-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 10px 25px -22px rgba(15, 23, 42, 0.16);
+  padding: 0.55rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: flex-start;
+  position: relative;
+  height: fit-content;
+  max-height: 100%;
+  min-width: 0;
+}
+
+.meta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.meta-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 1.05rem;
+}
+
+.meta-title {
+  font-size: 0.78rem;
+}
+
+.meta-action {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  border: none;
+  background: transparent;
+  font-size: 0.75rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.meta-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.meta-action:not(:disabled):hover {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.meta-list-container {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scroll-arrow {
+  flex-shrink: 0;
+  width: 32px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #6366f1;
+  padding: 0;
+}
+
+.scroll-arrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.scroll-arrow:not(:disabled):hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+
+.meta-list-track {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: block;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.meta-list-track::-webkit-scrollbar {
+  display: none;
+}
+
+.meta-list {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.45rem;
+  padding: 0.35rem 0;
+  width: max-content;
+}
+
+.meta-item,
+.meta-item.version {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 12px;
+  padding: 0.45rem 1.1rem;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.62rem;
+  color: #1f2937;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  min-width: 180px;
+  width: 180px;
+  height: 60px;
+  scroll-snap-align: start;
+  box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.meta-item.active {
+  border-color: rgba(99, 102, 241, 0.65);
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.meta-item:hover {
+  border-color: rgba(99, 102, 241, 0.55);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.meta-item:not(.version) {
+  align-items: center;
+  text-align: center;
+}
+
+.meta-item:not(.version) .meta-item-title {
+  width: 100%;
+}
+
+.meta-item-title {
+  font-weight: 600;
+  justify-self: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta-item-sub {
+  grid-area: summary;
+  color: #64748b;
+  font-size: 0.58rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  line-height: 1.2;
+}
+
+.meta-item:not(.version) .meta-item-sub {
+  text-align: center;
+}
+
+.meta-item.version .meta-item-sub {
+  text-align: left;
+}
+
+.version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.version-row .meta-item-title {
+  font-weight: 600;
+  font-size: 0.75rem;
+  min-width: 0;
+}
+
+.meta-date {
+  font-size: 0.62rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.meta-status {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+  border-radius: 999px;
+  padding: 0 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.meta-status.draft {
+  background: rgba(250, 204, 21, 0.2);
+  color: #92400e;
+}
+
+.editor-pane {
+  min-width: 0;
+}
+
+.editor-card {
+  border-radius: 14px;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.22);
+  gap: 0.8rem;
+}
+
+.editor-card :deep(.n-tabs-nav) {
+  padding-left: 0;
+  margin-left: -10px;
+}
+
+.compact-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  padding-left: 0;
+  margin-left: -20px;
+  margin-top: -1rem;
+  margin-bottom: 0.5rem;
+}
+
+.compact-toolbar :deep(.n-button) {
+  min-width: 90px;
+  padding: 0 0.6rem;
+  border-radius: 8px !important;
+  border: 1px solid rgba(99, 102, 241, 0.3) !important;
+}
+
+.compact-toolbar :deep(.n-button:hover) {
+  border-color: rgba(99, 102, 241, 0.5) !important;
+}
+
+.compact-toolbar :deep(.n-button:disabled) {
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+.editor-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.78rem;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.info-icon {
+  color: #6366f1;
+  cursor: pointer;
+}
+
+.variable-trigger {
+  margin-left: auto;
+  color: #6366f1;
+}
+
+.variable-trigger:hover {
+  color: #4f46e5;
+}
+
+.notion-textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  background: rgba(248, 250, 255, 0.82);
+  transition: border 160ms ease, box-shadow 160ms ease;
+  box-sizing: border-box;
+  min-height: 60px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.notion-textarea:empty:before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.notion-textarea:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+.metrics-wrapper {
+  padding-top: 1rem;
+}
+
+.variables-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.variables-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.variables-section h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.variables-section .text-muted {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.variables-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding-top: 0.4rem;
+}
+
+.variable-category {
+  margin-bottom: 1.5rem;
+}
+
+.variable-category h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin: 0 0 0.5rem 0;
+}
+
+.variable-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+.variable-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248, 250, 255, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.variable-item:hover {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.variable-name {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.72rem;
+  color: #4f46e5;
+  font-weight: 600;
+}
+
+.variable-desc {
+  font-size: 0.68rem;
+  color: #6b7280;
+}
+
+.empty-state {
+  margin: 2.5rem 0;
+}
+
+.preview-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.preview-section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.preview-section-content {
+  background: rgba(248, 250, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #1f2937;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.deploy-warning {
+  padding: 0.75rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 8px;
+  color: #92400e;
+  margin-bottom: 1rem;
+}
+
+.deploy-info {
+  padding: 0.75rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  color: #1e40af;
+  margin-bottom: 1rem;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+/* Force modal visibility */
+.n-modal-container {
+  z-index: 10000 !important;
+}
+
+.n-modal-mask {
+  z-index: 9999 !important;
+}
+
+.n-modal-body-wrapper {
+  z-index: 10001 !important;
+}
+
+.diff-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.diff-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.changed-badge {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #f59e0b;
+  background: rgba(251, 191, 36, 0.15);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.diff-text {
+  background: rgba(248, 250, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.diff-added {
+  background: rgba(16, 185, 129, 0.2);
+  color: #065f46;
+  padding: 0.1rem 0.2rem;
+  border-radius: 3px;
+}
+
+.diff-removed {
+  background: rgba(239, 68, 68, 0.2);
+  color: #991b1b;
+  text-decoration: line-through;
+  padding: 0.1rem 0.2rem;
+  border-radius: 3px;
+}
+
+.diff-unchanged {
+  color: #1f2937;
+}
+
+.guide-content {
+  padding: 0.5rem 0;
+}
+
+.guide-section {
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.guide-purpose {
+  margin-bottom: 1rem;
+  color: #4b5563;
+}
+
+.guide-subsection {
+  margin-bottom: 1.5rem;
+}
+
+.guide-example-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.guide-example-header h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.guide-subsection h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.guide-subsection ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: #4b5563;
+}
+
+.guide-subsection li {
+  margin-bottom: 0.35rem;
+}
+
+.guide-example {
+  background: rgba(248, 250, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #1f2937;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1280px) {
+  .prompt-workspace {
+    grid-template-columns: 220px 240px 1fr;
+  }
+}
+
+@media (max-width: 1100px) {
+  .prompt-workspace {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .pane,
+  .editor-pane {
+    grid-column: 1 / -1;
+  }
+
+  .prompt-list,
+  .version-list {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    gap: 1rem;
+    max-height: 100px;
+  }
+
+  .prompt-item,
+  .version-card {
+    flex: 0 0 190px;
+  }
+}
+</style>
+
