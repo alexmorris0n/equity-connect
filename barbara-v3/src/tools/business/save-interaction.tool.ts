@@ -7,7 +7,8 @@ import { z } from 'zod';
 import { tool as realtimeTool } from '@openai/agents/realtime';
 import { getSupabaseClient } from '../../services/supabase.js';
 import { logger } from '../../utils/logger.js';
-import { getCurrentTranscript } from '../../services/transcript-store.js';
+import { getCurrentTranscript, getCurrentPromptMetadata } from '../../services/transcript-store.js';
+import { evaluateCall } from '../../services/call-evaluation.service.js';
 
 /**
  * Save call interaction details
@@ -36,6 +37,10 @@ export const saveInteractionTool = realtimeTool({
       const conversationTranscript = getCurrentTranscript();
       logger.info(`📝 Retrieved transcript with ${conversationTranscript?.length || 0} messages`);
       
+      // Get prompt metadata from store for evaluation tracking
+      const promptMeta = getCurrentPromptMetadata();
+      logger.info(`📊 Prompt metadata: ${promptMeta?.prompt_call_type} v${promptMeta?.prompt_version_number || 'hardcoded'}`);
+      
       // Check if lead should be marked as qualified
       const qualifiesByMetadata = metadata?.qualified === true
         || metadata?.met_qualification_requirements === true
@@ -61,6 +66,12 @@ export const saveInteractionTool = realtimeTool({
         
         // Include conversation transcript from store (or fallback to metadata if provided)
         conversation_transcript: conversationTranscript || metadata?.conversation_transcript || null,
+        
+        // Prompt tracking (for evaluation & A/B testing)
+        prompt_version_id: promptMeta?.prompt_version_id || metadata?.prompt_version_id || null,
+        prompt_version_number: promptMeta?.prompt_version_number || metadata?.prompt_version_number || null,
+        prompt_call_type: promptMeta?.prompt_call_type || metadata?.prompt_call_type || null,
+        prompt_source: promptMeta?.prompt_source || metadata?.prompt_source || 'unknown',
         
         // Lead qualification data
         money_purpose: metadata?.money_purpose || null,
@@ -142,11 +153,34 @@ export const saveInteractionTool = realtimeTool({
       
       logger.info(`✅ Interaction saved: ${data.id} (${Object.keys(interactionMetadata).length} metadata fields)`);
       
+      // Trigger call evaluation as a background job (don't await - let it run async)
+      if (conversationTranscript && conversationTranscript.length > 0) {
+        logger.info(`📊 Triggering call evaluation for interaction ${data.id}`);
+        
+        // Build prompt version identifier for evaluation tracking
+        const promptVersion = promptMeta?.prompt_version_id 
+          ? `${promptMeta.prompt_call_type}-v${promptMeta.prompt_version_number}` 
+          : 'hardcoded';
+        
+        // Run evaluation in background (don't block the tool response)
+        evaluateCall(
+          data.id, 
+          conversationTranscript,
+          promptVersion
+        ).catch(error => {
+          logger.error(`Failed to evaluate call ${data.id}:`, error);
+          // Don't throw - evaluation failure shouldn't break the interaction save
+        });
+      } else {
+        logger.warn('⚠️ No transcript available - skipping call evaluation');
+      }
+      
       return JSON.stringify({
         success: true,
         interaction_id: data.id,
         message: 'Call interaction saved successfully with full context.',
-        metadata_saved: Object.keys(interactionMetadata).length
+        metadata_saved: Object.keys(interactionMetadata).length,
+        evaluation_triggered: conversationTranscript && conversationTranscript.length > 0
       });
       
     } catch (error: any) {

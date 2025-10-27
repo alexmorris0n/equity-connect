@@ -1,7 +1,7 @@
 /**
  * Call Evaluation Service
  * 
- * Automated post-call analysis using GPT-4.5-mini to score calls on key metrics.
+ * Automated post-call analysis using GPT-5-mini to score calls on key metrics.
  * This enables data-driven prompt optimization and quality monitoring.
  */
 
@@ -110,9 +110,9 @@ export async function evaluateCall(
       throw new Error('Transcript is empty - cannot evaluate');
     }
     
-    // Call GPT-4.5-mini for evaluation
+    // Call GPT-5-mini for evaluation
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.5-mini',
+      model: 'gpt-5-mini',
       messages: [
         { role: 'system', content: EVALUATION_PROMPT },
         { role: 'user', content: `# Conversation Transcript:\n\n${formattedTranscript}` }
@@ -149,7 +149,7 @@ export async function evaluateCall(
         overall_call_flow: parsed.scores.overall_call_flow,
         analysis: parsed.analysis,
         prompt_version: promptVersion || null,
-        evaluation_model: 'gpt-4.5-mini',
+        evaluation_model: 'gpt-5-mini',
         evaluation_duration_ms: evaluationDuration
       })
       .select()
