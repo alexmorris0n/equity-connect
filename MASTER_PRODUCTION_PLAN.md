@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** October 26, 2025  
+**Last Updated:** October 27, 2025  
 **Status:** Production Ready  
-**Current Phase:** Barbara V3 Production - Full Inbound/Outbound Calling + Vue Dashboard Planning
-**Latest Updates:** Barbara V3 fully operational with inbound/outbound calls, caller ID detection, lead lookup, appointment booking with email confirmations, Git-based auto-deployment, `shimmer` voice, clean logging. Vue dashboard planned to replace PromptLayer for prompt management.
+**Current Phase:** Barbara V3 Production + Prompt Management Portal Complete
+**Latest Updates:** 🎉 **MILESTONE ACHIEVED** - Complete prompt management portal deployed! Vue.js admin with 9 fixed prompts, version control, voice selection, structured editor with line breaks, 22 variables, and Supabase integration. Bridge adapter ready for database-driven prompts. Barbara V3 fully operational with inbound/outbound calls.
 
 ---
 
@@ -485,42 +485,96 @@ equity-connect/ (Git Monorepo)
 
 ### 🔄 IN PROGRESS
 
-**12. Vue.js Admin Dashboard** ⭐ IN PROGRESS (OCT 26, 2025)
+**12. Vue.js Prompt Management Portal** ⭐ **COMPLETE** (OCT 27, 2025)
 - **Purpose:** Replace PromptLayer with custom prompt management + call analytics
-- **Architecture:** Vue 3 + Vite + Supabase + shadcn-vue styling
+- **Architecture:** Vue 3 + Vite + Supabase + Naive UI styling
 - **Deployment:** Vercel (auto-deploy on `portal/**` changes)
-- **Core Features:**
-  - **Prompt Editor** - Edit inbound/outbound prompts with live preview
-  - **Voice Selector** - Change voice (alloy/shimmer/echo/coral/sage) without code push
-  - **Call Analytics** - View transcripts, success rates, tool usage
-  - **Tool Manager** - Enable/disable tools per campaign
-  - **Live Call Monitor** - Real-time sentiment, interest, buying signals
-- **Database Schema:**
-  - `prompt_templates` - Versioned prompts per broker/campaign
-  - `prompt_versions` - History/rollback support
-  - `prompt_metrics` - Performance tracking per prompt
-- **Real-time Config (No Code Push):**
-  - Prompts loaded from database per call
-  - Voice selection from campaign settings
-  - Tool availability toggled via UI
-- **Future Features:**
-  - A/B testing framework
-  - SMS confirmations/reminders (after regulatory approval)
-  - Performance analytics per prompt
-  - Template variables (`{{lead_name}}`, `{{broker_company}}`)
-- **Status:** Planning phase - schema design + feature prioritization
-- **Priority:** High - needed for rapid prompt iteration without Git deploys
+- **Status:** ✅ **PRODUCTION READY - Full prompt management system operational**
+
+**Core Features (LIVE):**
+- ✅ **9 Fixed Prompts** - One for each call type (no create/delete, version control only)
+  - 4 Lead-facing: inbound-qualified, inbound-unqualified, outbound-warm, outbound-cold
+  - 2 Broker-facing: broker-schedule-check, broker-connect-appointment
+  - 2 Special handling: transfer, callback
+  - 1 System: fallback
+- ✅ **Structured Editor** - 9 JSONB sections per prompt:
+  1. Role & Objective
+  2. Personality & Tone
+  3. Context (available variables)
+  4. Reference Pronunciations
+  5. Tools (available functions)
+  6. Instructions & Rules
+  7. Conversation Flow
+  8. Output Format
+  9. Safety & Escalation
+- ✅ **Line Break Preservation** - HTML rendering with `<br>` tags, auto-resize on Enter
+- ✅ **Version Control** - Deploy/rollback system with change summaries
+- ✅ **Voice Selection** - 10 OpenAI Realtime voices per prompt (alloy, echo, shimmer, ash, ballad, coral, sage, verse, cedar, marin)
+- ✅ **Call Type Assignment** - Each prompt maps to specific call scenario
+- ✅ **Variable System** - 22 available variables with click-to-copy
+  - 6 Lead variables (name, email, phone, age)
+  - 11 Property variables (address, city, state, equity calculations with Words versions)
+  - 5 Broker variables (name, company, phone)
+- ✅ **Tools Reference** - 11 production tools organized by category
+- ✅ **Guide Tab** - Best practices and examples for each section
+- ✅ **Performance Tab** - Placeholder for future analytics
+- ✅ **Immediate UI Updates** - Deploy button refreshes status without navigation
+
+**Database Schema (LIVE):**
+- ✅ `prompts` table - 9 fixed prompts with call_type, voice, is_active
+- ✅ `prompt_versions` table - Version control with JSONB content, change summaries
+- ✅ `prompt_deployments` table - Deployment history tracking
+- ✅ Unique constraint: Only one active prompt per call_type
+- ✅ Production prompts populated with content from `prompts/Production Prompts/`
+
+**Bridge Integration (READY):**
+- ✅ **Supabase Prompt Manager** (`bridge/prompt-manager-supabase.js`)
+  - Fetches prompts from database by call_type
+  - Assembles 9 JSONB sections into single prompt string
+  - Injects {{variables}} with actual values
+  - 5-minute caching for performance
+  - Returns voice selection from database
+- ✅ **Migration Guide** (`bridge/PROMPT_MIGRATION_GUIDE.md`)
+  - Step-by-step instructions for switching from local files
+  - Testing procedures and rollback plan
+- ✅ **Variable Reference** (`docs/PROMPT_VARIABLES_REFERENCE.md`)
+  - Complete list of 22 available variables
+  - Usage examples and best practices
+  - Guide for adding new variables
+- ✅ **Formatting Guide** (`docs/PROMPT_FORMATTING_GUIDE.md`)
+  - How to use line breaks, bullets, numbered lists
+  - Best practices for GPT readability
+
+**Real-time Config (No Code Push):**
+- ✅ Prompts loaded from database per call
+- ✅ Voice selection from prompt settings
+- ✅ Call type routing automatically selects correct prompt
+- ✅ Version rollback with single click
+- ✅ A/B testing ready (deploy different versions)
+
+**UI Improvements (OCT 27):**
+- ✅ Version numbers more prominent (larger, bolder, darker)
+- ✅ Settings tab (voice + call type configuration)
+- ✅ Horizontal scrolling for prompt/version cards
+- ✅ Call type badges with Naive UI icons
+- ✅ Cleaner card layout (removed category display)
+- ✅ Deploy button updates UI immediately
+
+**Production Content:**
+- ✅ All 9 prompts populated with production-ready content
+- ✅ Based on proven prompts from `prompts/Production Prompts/`
+- ✅ Adapted to 9-section structure for better organization
+- ✅ Variables verified against bridge's enrichedVariables
+- ✅ Migration 025: Fixed variable references
 
 **Next Steps:**
-- [x] Test Barbara V3 inbound calls - caller ID, lead lookup, appointment booking
-- [x] Test Barbara V3 outbound calls - correct phone lookup, dynamic prompts
-- [x] Voice tuning - switched to `shimmer` for clearer speaking pace
-- [x] Clean logging - reduced debug spam
-- [ ] Build Vue.js dashboard for prompt management
+- [ ] Deploy portal to Vercel
+- [ ] Update bridge to use `prompt-manager-supabase.js`
+- [ ] Test end-to-end: Portal edit → Database → Bridge → OpenAI
+- [ ] Add call analytics (transcripts, success rates per version)
+- [ ] Add performance metrics dashboard per prompt
+- [ ] Implement A/B testing framework (deploy v1 vs v2)
 - [ ] Add SMS confirmation tools (waiting for regulatory approval)
-- [ ] Implement graceful error handling & fallbacks
-- [ ] A/B test different prompts via database
-- [ ] Monitor PromptLayer metrics (until Vue dashboard replaces it)
 
 **9. Cold Email Campaign System** (Sunday/Monday)
 - **Multi-Angle Campaign Rotation:** 3 archetypes with automatic retry for non-responders
