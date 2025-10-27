@@ -76,47 +76,87 @@ export async function streamingRoute(
     });
 
     try {
-      // Listen directly to raw WebSocket for SignalWire's 'start' event (before transport layer processes it)
-      connection.addEventListener('message', (event: any) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.event === 'start') {
-            logger.info(`📡 SignalWire 'start' event received (RAW)`);
-            
-            // Extract call context from customParameters
-            const customParams = data.start?.customParameters || {};
-            fromPhone = customParams.From || customParams.from || null;
-            toPhone = customParams.To || customParams.to || null;
-            callDirection = customParams.direction || 'inbound';
-            leadId = customParams.lead_id || null;
-            brokerId = customParams.broker_id || null;
-            
-            logger.info(`📞 Call direction: ${callDirection}`);
-            logger.info(`📞 From: ${fromPhone}, To: ${toPhone}`);
-            
-            if (leadId) {
-              logger.info(`👤 Lead ID: ${leadId}`);
-            }
-            if (brokerId) {
-              logger.info(`🏢 Broker ID: ${brokerId}`);
-            }
-          }
-        } catch (err) {
-          // Ignore parse errors (binary audio data)
-        }
-      });
-      
-      // Create SignalWire transport layer
+      // Create SignalWire transport layer first
       const signalWireTransportLayer = new SignalWireCompatibilityTransportLayer({
         signalWireWebSocket: connection,
         audioFormat: AGENT_CONFIG.audioFormat
       });
 
-      // Create agent with default inbound instructions (will update when we detect direction from 'start' event)
-      const defaultPromptMetadata = await getInstructionsForCallType('inbound', {});
+      // Wait for the 'start' event to get call context BEFORE creating session
+      const startEventPromise = new Promise<any>((resolve) => {
+        connection.addEventListener('message', (event: any) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'start') {
+              resolve(data);
+            }
+          } catch (err) {
+            // Ignore parse errors (binary audio data)
+          }
+        });
+      });
+
+      // Wait up to 2 seconds for start event (should arrive in ~50ms)
+      const startData = await Promise.race([
+        startEventPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
+      ]);
+
+      if (startData) {
+        logger.info(`📡 SignalWire 'start' event received`);
+        
+        // Extract call context from customParameters
+        const customParams = startData.start?.customParameters || {};
+        fromPhone = customParams.From || customParams.from || null;
+        toPhone = customParams.To || customParams.to || null;
+        callDirection = customParams.direction || 'inbound';
+        leadId = customParams.lead_id || null;
+        brokerId = customParams.broker_id || null;
+        
+        logger.info(`📞 Call direction: ${callDirection}`);
+        logger.info(`📞 From: ${fromPhone}, To: ${toPhone}`);
+        
+        if (leadId) {
+          logger.info(`👤 Lead ID: ${leadId}`);
+        }
+        if (brokerId) {
+          logger.info(`🏢 Broker ID: ${brokerId}`);
+        }
+      } else {
+        logger.warn(`⚠️ No 'start' event received within 2s, defaulting to inbound`);
+      }
+
+      // NOW load the correct prompt based on call direction
+      logger.info(`📝 Loading prompt for ${callDirection} call`);
+      const promptMetadata = await getInstructionsForCallType(callDirection, {
+        leadId: leadId || undefined,
+        brokerId: brokerId || undefined,
+        from: fromPhone || undefined,
+        to: toPhone || undefined
+      });
+
+      // Store prompt metadata for evaluation tracking
+      promptVersionId = promptMetadata.prompt_version_id || null;
+      promptVersionNumber = promptMetadata.version_number || null;
+      promptCallType = promptMetadata.call_type;
+      
+      // Save to transcript store so save_interaction can access it
+      setPromptMetadata(sessionId, {
+        prompt_version_id: promptMetadata.prompt_version_id || null,
+        prompt_version_number: promptMetadata.version_number || null,
+        prompt_call_type: promptMetadata.call_type,
+        prompt_source: promptMetadata.source
+      });
+      
+      logger.info(`✅ Loaded prompt: ${promptCallType} v${promptVersionNumber || 'hardcoded'} (${promptMetadata.source})`);
+      logger.info(`🎙️ Voice: ${promptMetadata.voice || 'shimmer'}`);
+      logger.info(`🎛️ VAD: threshold=${promptMetadata.vad_threshold || 0.5}, padding=${promptMetadata.vad_prefix_padding_ms || 300}ms, silence=${promptMetadata.vad_silence_duration_ms || 500}ms`);
+
+      // Create agent with the CORRECT prompt loaded from the start
       const sessionAgent = new RealtimeAgent({
         ...agentConfig,
-        instructions: defaultPromptMetadata.prompt
+        instructions: promptMetadata.prompt,
+        voice: promptMetadata.voice || 'shimmer'
       });
 
       // Create session with SignalWire transport
@@ -226,15 +266,15 @@ export async function streamingRoute(
         
         // Enable input audio transcription after session is connected
         if (event.type === 'session.created' || event.type === 'session.updated') {
-          // Send session update to enable transcription and VAD
+          // Send session update to enable transcription and VAD with settings from prompt
           const updateEvent: RealtimeClientMessage = {
             type: 'session.update',
             session: {
               turn_detection: {
                 type: 'server_vad',
-                threshold: 0.5,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 500
+                threshold: promptMetadata.vad_threshold || 0.5,
+                prefix_padding_ms: promptMetadata.vad_prefix_padding_ms || 300,
+                silence_duration_ms: promptMetadata.vad_silence_duration_ms || 500
               },
               input_audio_transcription: {
                 model: 'whisper-1'
@@ -257,29 +297,6 @@ export async function streamingRoute(
           
           logger.info(`📞 Lead phone number for lookup: ${leadPhone}`);
           
-          // Update agent instructions based on call direction
-          const promptMetadata = await getInstructionsForCallType(callDirection, {
-            leadId: leadId || undefined,
-            brokerId: brokerId || undefined,
-            from: fromPhone,
-            to: toPhone
-          });
-          
-          // Store prompt metadata for evaluation tracking
-          promptVersionId = promptMetadata.prompt_version_id || null;
-          promptVersionNumber = promptMetadata.version_number || null;
-          promptCallType = promptMetadata.call_type;
-          
-          // Save to transcript store so save_interaction can access it
-          setPromptMetadata(sessionId, {
-            prompt_version_id: promptMetadata.prompt_version_id || null,
-            prompt_version_number: promptMetadata.version_number || null,
-            prompt_call_type: promptMetadata.call_type,
-            prompt_source: promptMetadata.source
-          });
-          
-          logger.info(`📝 Using prompt: ${promptCallType} v${promptVersionNumber || 'hardcoded'} (${promptMetadata.source})`);
-          
           // Inject lead phone context as system message
           const systemMessage: RealtimeClientMessage = {
             type: 'conversation.item.create',
@@ -295,37 +312,6 @@ export async function streamingRoute(
           
           signalWireTransportLayer.sendEvent(systemMessage);
           logger.info(`✅ Lead context injected successfully`);
-          
-          // Update agent instructions with the loaded prompt
-          const updateInstructionsMessage: RealtimeClientMessage = {
-            type: 'session.update',
-            session: {
-              instructions: promptMetadata.prompt,
-              voice: promptMetadata.voice || 'shimmer',
-              turn_detection: {
-                type: 'server_vad',
-                threshold: promptMetadata.vad_threshold || 0.5,
-                prefix_padding_ms: promptMetadata.vad_prefix_padding_ms || 300,
-                silence_duration_ms: promptMetadata.vad_silence_duration_ms || 500
-              }
-            }
-          } as any;
-          
-          signalWireTransportLayer.sendEvent(updateInstructionsMessage);
-          logger.info(`✅ Agent instructions updated with prompt`);
-          
-          // NOW trigger the initial AI greeting AFTER context is injected
-          try {
-            const responseEvent: RealtimeClientMessage = { type: 'response.create' } as RealtimeClientMessage;
-            signalWireTransportLayer.sendEvent(responseEvent);
-            logger.info(`👋 Triggered initial AI greeting for ${callDirection} call`);
-          } catch (error) {
-            logger.debug('AI greeting trigger failed (non-fatal)');
-          }
-          
-          // Clear phones so we don't inject twice
-          fromPhone = null;
-          toPhone = null;
         }
         
         switch (event.type) {
