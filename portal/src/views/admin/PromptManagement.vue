@@ -18,7 +18,6 @@
             @click="selectPrompt(prompt.id)"
           >
             <span class="meta-item-title">{{ prompt.name }}</span>
-            <span class="meta-item-sub" :title="prompt.category">{{ prompt.category }}</span>
             <span v-if="prompt.call_type" class="meta-badge" :title="getCallTypeLabel(prompt.call_type)">
               <n-icon size="12" style="vertical-align: middle; margin-right: 2px;">
                 <component :is="getCallTypeIcon(prompt.call_type)" />
@@ -1946,6 +1945,7 @@ function updateScrollStates() {
 }
 
 async function loadPrompts() {
+  console.log('🔍 Loading prompts from database...')
   loading.value = true
   try {
     const { data, error: fetchError } = await supabase
@@ -1953,19 +1953,24 @@ async function loadPrompts() {
       .select('*')
       .order('call_type')
     
-    if (fetchError) throw fetchError
+    if (fetchError) {
+      console.error('❌ Error loading prompts:', fetchError)
+      throw fetchError
+    }
     
+    console.log('📦 Raw prompts data:', data)
     prompts.value = data || []
+    console.log('✅ Loaded prompts:', prompts.value.length, prompts.value)
     
     // Auto-select first prompt if available
     if (prompts.value.length > 0 && !activePromptId.value) {
+      console.log('👉 Auto-selecting first prompt:', prompts.value[0].name)
       await selectPrompt(prompts.value[0].id)
     }
-    
-    console.log('✅ Loaded prompts:', prompts.value.length)
   } catch (err) {
     error.value = err.message
-    console.error('Failed to load prompts:', err)
+    console.error('❌ Failed to load prompts:', err)
+    window.$message?.error('Failed to load prompts: ' + err.message)
   } finally {
     loading.value = false
   }
