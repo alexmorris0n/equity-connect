@@ -201,73 +201,13 @@ export async function streamingRoute(
         
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
-            // Extract Barbara's transcript from response.done
-            const response = (event as any).response;
-            const output = response?.output || [];
-            
-            // Debug: Log the structure to understand what we're getting
-            if (SERVER_CONFIG.logLevel === 'debug') {
-              logger.debug('RESPONSE_DONE output:', JSON.stringify(output, null, 2));
-            }
-            
-            // Try multiple paths to find Barbara's transcript
-            let barbaraTranscript = '';
-            
-            // Path 1: Look for audio message with transcript
-            const audioMessage = output.find((item: any) => 
-              item.type === 'message' && 
-              item.role === 'assistant' && 
-              item.content?.some((c: any) => c.type === 'audio' && c.transcript)
-            );
-            
-            if (audioMessage) {
-              const audioContent = audioMessage.content.find((c: any) => c.type === 'audio');
-              barbaraTranscript = audioContent?.transcript || '';
-            }
-            
-            // Path 2: Try alternative structure - check for text content
-            if (!barbaraTranscript) {
-              const textMessage = output.find((item: any) => 
-                item.type === 'message' && 
-                item.role === 'assistant' && 
-                item.content?.some((c: any) => c.type === 'text')
-              );
-              if (textMessage) {
-                const textContent = textMessage.content.find((c: any) => c.type === 'text');
-                barbaraTranscript = textContent?.text || '';
-              }
-            }
-            
-            // Path 3: Check if transcript is directly in output
-            if (!barbaraTranscript && output.length > 0) {
-              for (const item of output) {
-                if (item.transcript) {
-                  barbaraTranscript = item.transcript;
-                  break;
-                }
-              }
-            }
-            
-            // Save to conversation transcript if we found anything
-            if (barbaraTranscript) {
-              conversationTranscript.push({
-                role: 'assistant',
-                content: barbaraTranscript,
-                timestamp: new Date().toISOString()
-              });
-              logger.info(`💬 Barbara: "${barbaraTranscript}"`);
-            } else {
-              // Log when we can't find transcript (only in debug mode)
-              if (SERVER_CONFIG.logLevel === 'debug') {
-                logger.debug('⚠️  Could not extract Barbara transcript from RESPONSE_DONE');
-              }
-            }
-            
+            // Barbara's transcript will come from conversation.item.input_audio_transcription.completed
+            // This event just marks response completion
             logger.event('🤖', 'AI response completed');
             break;
 
           case EVENT_TYPES.TRANSCRIPTION_COMPLETED:
-            // Extract user's transcript
+            // Legacy user transcript extraction (backup to audio transcription event)
             const userTranscript = (event as any).transcript || '';
             
             // Save to conversation transcript
