@@ -94,6 +94,123 @@
         </div>
 
         <n-tabs type="line" size="small" v-model:value="activeTab">
+          <n-tab-pane name="performance" tab="Performance">
+            <div v-if="evaluationData && evaluationData.count > 0" class="performance-container">
+              <!-- Summary Stats Grid -->
+              <n-grid :cols="4" :x-gap="12" :y-gap="12" style="margin-bottom: 24px;">
+                <n-grid-item>
+                  <n-statistic label="Total Calls" :value="evaluationData.count" />
+                </n-grid-item>
+                <n-grid-item>
+                  <n-statistic label="Overall Score" :value="evaluationData.avgOverallScore">
+                    <template #suffix>/10</template>
+                  </n-statistic>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-statistic label="Best Call" :value="evaluationData.bestScore">
+                    <template #suffix>/10</template>
+                  </n-statistic>
+                </n-grid-item>
+                <n-grid-item>
+                  <n-statistic label="Last Evaluated" :value="formatRelativeTime(evaluationData.lastEvaluated)" />
+                </n-grid-item>
+              </n-grid>
+
+              <!-- 6 Metric Scores -->
+              <n-card title="Performance Metrics" :bordered="false" style="margin-bottom: 24px;">
+                <n-grid :cols="3" :x-gap="12" :y-gap="16">
+                  <n-grid-item v-for="metric in evaluationMetrics" :key="metric.key">
+                    <div class="metric-card">
+                      <div class="metric-label">{{ metric.label }}</div>
+                      <div class="metric-score" :class="getScoreClass(metric.value)">
+                        {{ metric.value.toFixed(1) }}/10
+                      </div>
+                      <n-progress 
+                        type="line" 
+                        :percentage="(metric.value / 10) * 100" 
+                        :show-indicator="false"
+                        :color="getScoreColor(metric.value)"
+                        :height="6"
+                      />
+                    </div>
+                  </n-grid-item>
+                </n-grid>
+              </n-card>
+
+              <!-- AI Analysis Section -->
+              <n-card title="AI Analysis" :bordered="false" style="margin-bottom: 24px;">
+                <n-collapse>
+                  <n-collapse-item title="Strengths" name="strengths">
+                    <n-list bordered>
+                      <n-list-item v-for="(strength, idx) in evaluationData.commonStrengths" :key="idx">
+                        <template #prefix>
+                          <n-icon color="#10b981"><CheckmarkCircleOutline /></n-icon>
+                        </template>
+                        {{ strength }}
+                      </n-list-item>
+                    </n-list>
+                  </n-collapse-item>
+                  
+                  <n-collapse-item title="Weaknesses" name="weaknesses">
+                    <n-list bordered>
+                      <n-list-item v-for="(weakness, idx) in evaluationData.commonWeaknesses" :key="idx">
+                        <template #prefix>
+                          <n-icon color="#f59e0b"><WarningOutline /></n-icon>
+                        </template>
+                        {{ weakness }}
+                      </n-list-item>
+                    </n-list>
+                  </n-collapse-item>
+                  
+                  <n-collapse-item title="Red Flags" name="red-flags" v-if="evaluationData.redFlags.length > 0">
+                    <n-list bordered>
+                      <n-list-item v-for="(flag, idx) in evaluationData.redFlags" :key="idx">
+                        <template #prefix>
+                          <n-icon color="#ef4444"><CloseCircleOutline /></n-icon>
+                        </template>
+                        {{ flag }}
+                      </n-list-item>
+                    </n-list>
+                  </n-collapse-item>
+                </n-collapse>
+              </n-card>
+
+              <!-- AI Improvement Suggestions -->
+              <n-card :bordered="false" style="background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2);">
+                <template #header>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <n-icon size="20" color="#8b5cf6"><SparklesOutline /></n-icon>
+                    <span>AI Improvement Suggestions</span>
+                  </div>
+                </template>
+                <n-list>
+                  <n-list-item v-for="(suggestion, idx) in aiSuggestions" :key="idx">
+                    <template #prefix>
+                      <n-badge :value="suggestion.priority" :type="getPriorityType(suggestion.priority)" />
+                    </template>
+                    <div>
+                      <div style="font-weight: 500; margin-bottom: 4px;">{{ suggestion.title }}</div>
+                      <div style="font-size: 0.9em; color: #6b7280;">{{ suggestion.description }}</div>
+                    </div>
+                    <template #suffix>
+                      <n-button size="small" tertiary @click="applySuggestion(suggestion)">
+                        Apply
+                      </n-button>
+                    </template>
+                  </n-list-item>
+                </n-list>
+              </n-card>
+            </div>
+            
+            <!-- Empty State -->
+            <n-empty v-else description="No evaluation data yet. Make test calls to see performance metrics." 
+                     style="padding: 60px 0;">
+              <template #icon>
+                <n-icon size="80" :depth="3"><BarChartOutline /></n-icon>
+              </template>
+            </n-empty>
+          </n-tab-pane>
+
           <n-tab-pane name="editor" tab="Editor">
             <div v-if="currentVersion" class="editor-sections">
               <n-collapse display-directive="show" accordion v-model:expanded-names="expandedSections">
@@ -154,19 +271,6 @@
               </n-collapse>
             </div>
             <n-empty v-else description="Select a version or create a new one." class="empty-state" />
-          </n-tab-pane>
-
-          <n-tab-pane name="performance" tab="Performance">
-            <div class="metrics-wrapper" v-if="performanceData">
-              <n-grid :cols="4" :x-gap="12" :y-gap="12">
-                <n-grid-item v-for="metric in performanceMetrics" :key="metric.key">
-                  <n-statistic :label="metric.label" :value="metric.value">
-                    <template #suffix>{{ metric.suffix }}</template>
-                  </n-statistic>
-                </n-grid-item>
-              </n-grid>
-            </div>
-            <n-empty v-else description="No performance data yet." class="empty-state" />
           </n-tab-pane>
 
           <n-tab-pane name="settings" tab="Settings">
@@ -874,7 +978,11 @@ import {
   NSelect,
   NSlider,
   NInputNumber,
-  NAlert
+  NAlert,
+  NProgress,
+  NList,
+  NListItem,
+  NBadge
 } from 'naive-ui'
 import {
   RefreshOutline,
@@ -900,12 +1008,16 @@ import {
   CalendarOutline,
   PeopleOutline,
   ShieldCheckmarkOutline,
-  CheckmarkDoneOutline
+  CheckmarkDoneOutline,
+  CheckmarkCircleOutline,
+  CloseCircleOutline,
+  WarningOutline,
+  BarChartOutline
 } from '@vicons/ionicons5'
 
 const loading = ref(false)
 const error = ref('')
-const activeTab = ref('editor')
+const activeTab = ref('performance')
 const versions = ref([])
 const showPreviewModal = ref(false)
 const showDeployModal = ref(false)
@@ -1310,10 +1422,263 @@ const performanceMetrics = computed(() => {
   ]
 })
 
+// Evaluation data for current prompt version
+const evaluationData = ref(null)
+const evaluationLoading = ref(false)
+
+// Computed property for evaluation metrics display
+const evaluationMetrics = computed(() => {
+  if (!evaluationData.value) return []
+  return [
+    { key: 'opening_effectiveness', label: 'Opening Effectiveness', value: evaluationData.value.avgOpeningEffectiveness || 0 },
+    { key: 'property_discussion_quality', label: 'Property Discussion', value: evaluationData.value.avgPropertyDiscussionQuality || 0 },
+    { key: 'objection_handling', label: 'Objection Handling', value: evaluationData.value.avgObjectionHandling || 0 },
+    { key: 'booking_attempt_quality', label: 'Booking Attempts', value: evaluationData.value.avgBookingAttemptQuality || 0 },
+    { key: 'tone_consistency', label: 'Tone Consistency', value: evaluationData.value.avgToneConsistency || 0 },
+    { key: 'overall_call_flow', label: 'Overall Call Flow', value: evaluationData.value.avgOverallCallFlow || 0 }
+  ]
+})
+
+// AI suggestions based on weaknesses and low scores
+const aiSuggestions = computed(() => {
+  if (!evaluationData.value) return []
+  
+  const suggestions = []
+  const metrics = {
+    opening_effectiveness: evaluationData.value.avgOpeningEffectiveness || 0,
+    property_discussion_quality: evaluationData.value.avgPropertyDiscussionQuality || 0,
+    objection_handling: evaluationData.value.avgObjectionHandling || 0,
+    booking_attempt_quality: evaluationData.value.avgBookingAttemptQuality || 0,
+    tone_consistency: evaluationData.value.avgToneConsistency || 0,
+    overall_call_flow: evaluationData.value.avgOverallCallFlow || 0
+  }
+  
+  // Suggest improvements for metrics scoring below 7
+  if (metrics.opening_effectiveness < 7) {
+    suggestions.push({
+      priority: metrics.opening_effectiveness < 5 ? 'High' : 'Medium',
+      title: 'Improve Opening Effectiveness',
+      description: 'Focus on warmer greetings, faster rapport building, and confirming the lead\'s name early',
+      section: 'role_objective'
+    })
+  }
+  
+  if (metrics.property_discussion_quality < 7) {
+    suggestions.push({
+      priority: metrics.property_discussion_quality < 5 ? 'High' : 'Medium',
+      title: 'Enhance Property Discussion Quality',
+      description: 'Add more targeted questions about property details and equity calculations',
+      section: 'instructions_rules'
+    })
+  }
+  
+  if (metrics.objection_handling < 7) {
+    suggestions.push({
+      priority: metrics.objection_handling < 5 ? 'High' : 'Medium',
+      title: 'Strengthen Objection Handling',
+      description: 'Include techniques for reframing concerns and addressing common objections',
+      section: 'conversation_flow'
+    })
+  }
+  
+  if (metrics.booking_attempt_quality < 7) {
+    suggestions.push({
+      priority: metrics.booking_attempt_quality < 5 ? 'High' : 'Medium',
+      title: 'Improve Booking Attempts',
+      description: 'Make appointment requests clearer, more confident, and tied to value proposition',
+      section: 'conversation_flow'
+    })
+  }
+  
+  if (metrics.tone_consistency < 7) {
+    suggestions.push({
+      priority: 'Medium',
+      title: 'Maintain Tone Consistency',
+      description: 'Review personality guidelines to ensure conversational and empathetic tone throughout',
+      section: 'personality_tone'
+    })
+  }
+  
+  if (metrics.overall_call_flow < 7) {
+    suggestions.push({
+      priority: metrics.overall_call_flow < 5 ? 'High' : 'Medium',
+      title: 'Optimize Call Flow',
+      description: 'Improve logical progression and pacing through better conversation structure',
+      section: 'conversation_flow'
+    })
+  }
+  
+  // Add suggestions from common weaknesses
+  if (evaluationData.value.commonWeaknesses && evaluationData.value.commonWeaknesses.length > 0) {
+    const topWeakness = evaluationData.value.commonWeaknesses[0]
+    if (topWeakness.toLowerCase().includes('rapport')) {
+      suggestions.push({
+        priority: 'High',
+        title: 'Build Stronger Rapport',
+        description: 'Add empathetic responses and active listening cues based on AI analysis',
+        section: 'personality_tone'
+      })
+    }
+  }
+  
+  return suggestions.slice(0, 5) // Limit to top 5 suggestions
+})
+
+// Helper functions
+const getScoreClass = (score) => {
+  if (score >= 8) return 'score-good'
+  if (score >= 6) return 'score-fair'
+  return 'score-poor'
+}
+
+const getScoreColor = (score) => {
+  if (score >= 8) return '#10b981' // green
+  if (score >= 6) return '#f59e0b' // yellow
+  return '#ef4444' // red
+}
+
+const getPriorityType = (priority) => {
+  if (priority === 'High') return 'error'
+  if (priority === 'Medium') return 'warning'
+  return 'info'
+}
+
+const formatRelativeTime = (timestamp) => {
+  if (!timestamp) return 'Never'
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+  const diffWeeks = Math.floor(diffDays / 7)
+  if (diffWeeks < 4) return `${diffWeeks}w ago`
+  return date.toLocaleDateString()
+}
+
+// Apply suggestion to prompt
+const applySuggestion = async (suggestion) => {
+  // Open the relevant section in Editor tab
+  activeTab.value = 'editor'
+  expandedSections.value = [suggestion.section]
+  
+  // Show notification
+  window.$message?.info(`Opening ${suggestion.section.replace(/_/g, ' ')} section. Review and apply the suggestion.`)
+}
+
+// Fetch evaluation data for current prompt version
+const fetchEvaluationData = async () => {
+  if (!currentVersion.value || !activePrompt.value) {
+    evaluationData.value = null
+    return
+  }
+  
+  evaluationLoading.value = true
+  
+  try {
+    // Format: "inbound-qualified-v3" or "outbound-warm-v2"
+    const promptVersion = `${activePrompt.value.call_type}-v${currentVersion.value.version_number}`
+    
+    // Query Supabase for evaluations matching this prompt_version
+    const { data, error: queryError } = await supabase
+      .from('call_evaluations')
+      .select('*')
+      .eq('prompt_version', promptVersion)
+    
+    if (queryError) {
+      console.error('Error fetching evaluation data:', queryError)
+      evaluationData.value = null
+      return
+    }
+    
+    if (!data || data.length === 0) {
+      evaluationData.value = null
+      return
+    }
+    
+    // Calculate averages for all 6 metrics
+    const avgOpeningEffectiveness = data.reduce((sum, e) => sum + (e.opening_effectiveness || 0), 0) / data.length
+    const avgPropertyDiscussionQuality = data.reduce((sum, e) => sum + (e.property_discussion_quality || 0), 0) / data.length
+    const avgObjectionHandling = data.reduce((sum, e) => sum + (e.objection_handling || 0), 0) / data.length
+    const avgBookingAttemptQuality = data.reduce((sum, e) => sum + (e.booking_attempt_quality || 0), 0) / data.length
+    const avgToneConsistency = data.reduce((sum, e) => sum + (e.tone_consistency || 0), 0) / data.length
+    const avgOverallCallFlow = data.reduce((sum, e) => sum + (e.overall_call_flow || 0), 0) / data.length
+    const avgOverallScore = data.reduce((sum, e) => sum + (parseFloat(e.overall_score) || 0), 0) / data.length
+    const bestScore = Math.max(...data.map(e => parseFloat(e.overall_score) || 0))
+    
+    // Collect all analysis objects
+    const allStrengths = []
+    const allWeaknesses = []
+    const allRedFlags = []
+    
+    data.forEach(evaluation => {
+      if (evaluation.analysis) {
+        if (evaluation.analysis.strengths) {
+          allStrengths.push(...evaluation.analysis.strengths)
+        }
+        if (evaluation.analysis.weaknesses) {
+          allWeaknesses.push(...evaluation.analysis.weaknesses)
+        }
+        if (evaluation.analysis.red_flags) {
+          allRedFlags.push(...evaluation.analysis.red_flags)
+        }
+      }
+    })
+    
+    // Get most common items (simple frequency count)
+    const getTopItems = (items, limit = 5) => {
+      const frequency = {}
+      items.forEach(item => {
+        frequency[item] = (frequency[item] || 0) + 1
+      })
+      return Object.entries(frequency)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([item]) => item)
+    }
+    
+    evaluationData.value = {
+      count: data.length,
+      avgOverallScore: avgOverallScore.toFixed(1),
+      bestScore: bestScore.toFixed(1),
+      lastEvaluated: data[0]?.evaluated_at, // Assuming sorted by evaluated_at desc
+      avgOpeningEffectiveness,
+      avgPropertyDiscussionQuality,
+      avgObjectionHandling,
+      avgBookingAttemptQuality,
+      avgToneConsistency,
+      avgOverallCallFlow,
+      commonStrengths: getTopItems(allStrengths),
+      commonWeaknesses: getTopItems(allWeaknesses),
+      redFlags: getTopItems(allRedFlags, 3)
+    }
+  } catch (err) {
+    console.error('Error in fetchEvaluationData:', err)
+    evaluationData.value = null
+  } finally {
+    evaluationLoading.value = false
+  }
+}
+
+// Watch for version changes to fetch evaluation data
+watch([currentVersion, activePrompt], () => {
+  fetchEvaluationData()
+}, { immediate: true })
+
 const isOlderVersion = computed(() => {
   if (!currentVersion.value || !versions.value.length) return false
   const latestVersion = versions.value[0] // versions sorted desc by version_number
   return currentVersion.value.version_number < latestVersion.version_number
+})
+
+// Computed property to get active prompt object
+const activePrompt = computed(() => {
+  return prompts.value.find(p => p.id === activePromptId.value) || null
 })
 
 // Watch for section expansions to trigger textarea resize
@@ -3752,6 +4117,41 @@ function handleBeforeUnload(e) {
   .version-card {
     flex: 0 0 190px;
   }
+}
+
+/* Performance Tab Styles */
+.performance-container {
+  padding: 16px 0;
+}
+
+.metric-card {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.metric-score {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.score-good { 
+  color: #10b981; 
+}
+
+.score-fair { 
+  color: #f59e0b; 
+}
+
+.score-poor { 
+  color: #ef4444; 
 }
 </style>
 
