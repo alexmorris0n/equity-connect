@@ -144,12 +144,13 @@ export async function streamingRoute(
               timestamp: new Date().toISOString(),
               itemId
             });
+            // ✅ ALWAYS log user transcript (important)
             logger.info(`💬 User: "${transcriptText}"`);
           }
         }
         
         // ---- BARBARA (Assistant) transcript events ----
-        // Accumulate deltas as they stream in
+        // Accumulate deltas as they stream in (NO LOGGING - too noisy)
         if (event.type === 'response.audio_transcript.delta') {
           const responseId = (event as any).response_id;
           const delta = (event as any).delta || '';
@@ -158,7 +159,7 @@ export async function streamingRoute(
           }
         }
         
-        // Finalize on done
+        // Finalize on done (LOG ONLY THE COMPLETE TEXT)
         if (event.type === 'response.audio_transcript.done') {
           const responseId = (event as any).response_id;
           if (responseId) {
@@ -172,6 +173,7 @@ export async function streamingRoute(
                 timestamp: new Date().toISOString(),
                 responseId
               });
+              // ✅ ALWAYS log Barbara's complete response (important)
               logger.info(`🤖 Barbara: "${fullText}"`);
             }
           }
@@ -209,11 +211,11 @@ export async function streamingRoute(
           const responseId = (event as any).response_id;
           if (responseId) {
             botTurnCache.delete(responseId);
-            logger.info('🚫 Response cancelled (user interrupted)');
+            logger.info('🚫 User interrupted Barbara');
           }
         }
         
-        // Handle transcription failures
+        // Handle transcription failures (important to know)
         if (event.type === 'conversation.item.input_audio_transcription.failed') {
           logger.error('❌ Audio transcription failed:', event);
         }
@@ -293,41 +295,18 @@ export async function streamingRoute(
         
         switch (event.type) {
           case EVENT_TYPES.RESPONSE_DONE:
-            // Barbara's transcript will come from response.audio_transcript.done
-            // This event just marks response completion
-            logger.event('🤖', 'AI response completed');
-            
-            // DEBUG: Log the full response.done event to see structure
-            logger.info('🔍 RESPONSE_DONE event structure:', JSON.stringify(event, null, 2));
+            logger.event('✅', 'AI response completed');
             break;
 
           case EVENT_TYPES.TRANSCRIPTION_COMPLETED:
-            // Legacy user transcript extraction (backup to audio transcription event)
-            const userTranscript = (event as any).transcript || '';
-            
-            // Save to conversation transcript
-            if (userTranscript) {
-              conversationTranscript.push({
-                role: 'user',
-                content: userTranscript,
-                timestamp: new Date().toISOString()
-              });
-              
-              logger.info(`💬 User: "${userTranscript}"`);
-            }
-            
+            // Handled above in dedicated event listener
             logger.event('🎤', 'User transcription completed');
             break;
 
           default:
-            // DEBUG: Log ALL event types to see what we're getting
-            if (event.type && !event.type.includes('audio.delta') && !event.type.includes('speech_started')) {
-              logger.info(`📨 Event type: ${event.type}`);
-            }
-            
-            // Only log raw transport events in debug mode
+            // Only log in debug mode
             if (SERVER_CONFIG.logLevel === 'debug') {
-              logger.debug('Transport event:', event);
+              logger.debug(`Transport event: ${event.type}`);
             }
         }
       });
