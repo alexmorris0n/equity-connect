@@ -203,12 +203,31 @@
             </div>
             
             <!-- Empty State -->
-            <n-empty v-else description="No evaluation data yet. Make test calls to see performance metrics." 
-                     style="padding: 60px 0;">
-              <template #icon>
-                <n-icon size="80" :depth="3"><BarChartOutline /></n-icon>
-              </template>
-            </n-empty>
+            <div v-else class="evaluation-empty-state">
+              <n-empty size="large">
+                <template #icon>
+                  <div class="empty-icon-wrapper">
+                    <n-icon size="64" :depth="3" color="#9ca3af">
+                      <BarChartOutline />
+                    </n-icon>
+                  </div>
+                </template>
+                <template #default>
+                  <div class="empty-content">
+                    <h3>No Evaluation Data Yet</h3>
+                    <p>Make test calls to see performance metrics and AI-generated insights.</p>
+                  </div>
+                </template>
+                <template #extra>
+                  <n-button type="primary" size="small" round @click="activeTab = 'editor'">
+                    <template #icon>
+                      <n-icon><SparklesOutline /></n-icon>
+                    </template>
+                    Edit Prompt
+                  </n-button>
+                </template>
+              </n-empty>
+            </div>
           </n-tab-pane>
 
           <n-tab-pane name="editor" tab="Editor">
@@ -4152,6 +4171,38 @@ function handleBeforeUnload(e) {
 
 .score-poor { 
   color: #ef4444; 
+}
+
+/* Empty State Styling */
+.evaluation-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 60px 20px;
+}
+
+.empty-icon-wrapper {
+  margin-bottom: 16px;
+}
+
+.empty-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.empty-content h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.empty-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
 }
 </style>
 
