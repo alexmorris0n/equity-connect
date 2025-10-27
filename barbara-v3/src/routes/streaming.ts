@@ -18,7 +18,7 @@ import { CONNECTION_MESSAGES, ERROR_MESSAGES, EVENT_TYPES } from '../constants.j
 import type { StreamingOptions } from '../types/index.js';
 import { AGENT_CONFIG, SERVER_CONFIG } from '../config.js';
 import { getInstructionsForCallType } from '../services/prompts.js';
-import { setCurrentSessionId, setTranscript, clearTranscript } from '../services/transcript-store.js';
+import { setCurrentSessionId, setTranscript, clearTranscript, setPromptMetadata } from '../services/transcript-store.js';
 
 export async function streamingRoute(
   fastify: FastifyInstance,
@@ -42,6 +42,9 @@ export async function streamingRoute(
     let callDirection: string = 'inbound'; // default to inbound
     let leadId: string | null = null;
     let brokerId: string | null = null;
+    let promptVersionId: string | null = null; // Track prompt version for evaluation
+    let promptVersionNumber: number | null = null;
+    let promptCallType: string | null = null;
     
     // Conversation transcript tracking (for save_interaction)
     const conversationTranscript: Array<{
@@ -255,14 +258,27 @@ export async function streamingRoute(
           logger.info(`📞 Lead phone number for lookup: ${leadPhone}`);
           
           // Update agent instructions based on call direction
-          const updatedInstructions = await getInstructionsForCallType(callDirection, {
+          const promptMetadata = await getInstructionsForCallType(callDirection, {
             leadId: leadId || undefined,
             brokerId: brokerId || undefined,
             from: fromPhone,
             to: toPhone
           });
           
-          logger.info(`📝 Updated prompt for ${callDirection} call`);
+          // Store prompt metadata for evaluation tracking
+          promptVersionId = promptMetadata.prompt_version_id || null;
+          promptVersionNumber = promptMetadata.version_number || null;
+          promptCallType = promptMetadata.call_type;
+          
+          // Save to transcript store so save_interaction can access it
+          setPromptMetadata(sessionId, {
+            prompt_version_id: promptMetadata.prompt_version_id || null,
+            prompt_version_number: promptMetadata.version_number || null,
+            prompt_call_type: promptMetadata.call_type,
+            prompt_source: promptMetadata.source
+          });
+          
+          logger.info(`📝 Using prompt: ${promptCallType} v${promptVersionNumber || 'hardcoded'} (${promptMetadata.source})`);
           
           // Inject lead phone context as system message
           const systemMessage: RealtimeClientMessage = {

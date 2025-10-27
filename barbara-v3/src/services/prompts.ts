@@ -6,9 +6,9 @@
 import { logger } from '../utils/logger.js';
 import { getSupabaseClient } from './supabase.js';
 
-// In-memory prompt cache
+// In-memory prompt cache (now stores full metadata)
 interface PromptCache {
-  prompts: Map<string, string>;
+  prompts: Map<string, PromptMetadata>;
   lastFetched: number;
 }
 
@@ -19,9 +19,18 @@ const promptCache: PromptCache = {
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+export interface PromptMetadata {
+  prompt: string;
+  call_type: string;
+  version_number?: number;
+  prompt_version_id?: string;
+  source: 'supabase' | 'hardcoded';
+}
+
 /**
  * Get instructions for call type
  * Loads from Supabase prompts table with in-memory caching
+ * Returns prompt + metadata for evaluation tracking
  */
 export async function getInstructionsForCallType(
   direction: string,
@@ -31,7 +40,7 @@ export async function getInstructionsForCallType(
     from?: string;
     to?: string;
   }
-): Promise<string> {
+): Promise<PromptMetadata> {
   logger.info(`📝 Loading prompt for ${direction} call`);
   
   // Determine call_type based on direction
@@ -40,10 +49,10 @@ export async function getInstructionsForCallType(
   
   // Try to load from Supabase (with cache)
   try {
-    const prompt = await loadPromptFromSupabase(callType);
-    if (prompt) {
-      logger.info(`✅ Loaded prompt from Supabase: ${callType}`);
-      return prompt;
+    const result = await loadPromptFromSupabase(callType);
+    if (result) {
+      logger.info(`✅ Loaded prompt from Supabase: ${callType} v${result.version_number}`);
+      return result;
     }
   } catch (error) {
     logger.error(`❌ Error loading prompt from Supabase:`, error);
@@ -51,11 +60,13 @@ export async function getInstructionsForCallType(
   
   // Fallback to hardcoded prompts
   logger.warn(`⚠️  Falling back to hardcoded prompt for ${direction}`);
-  if (direction === 'inbound') {
-    return INBOUND_QUALIFIED_PROMPT;
-  } else {
-    return OUTBOUND_WARM_PROMPT;
-  }
+  const prompt = direction === 'inbound' ? INBOUND_QUALIFIED_PROMPT : OUTBOUND_WARM_PROMPT;
+  
+  return {
+    prompt,
+    call_type: callType,
+    source: 'hardcoded'
+  };
 }
 
 /**
@@ -75,8 +86,9 @@ function determineCallType(direction: string, context: any): string {
 
 /**
  * Load prompt from Supabase with caching
+ * Returns formatted prompt + metadata for tracking
  */
-async function loadPromptFromSupabase(callType: string): Promise<string | null> {
+async function loadPromptFromSupabase(callType: string): Promise<PromptMetadata | null> {
   const now = Date.now();
   
   // Check cache first
@@ -92,10 +104,12 @@ async function loadPromptFromSupabase(callType: string): Promise<string | null> 
   const { data, error } = await supabase
     .from('prompts')
     .select(`
+      id,
       name,
       call_type,
       voice,
       prompt_versions!inner(
+        id,
         content,
         is_active,
         version_number
@@ -120,11 +134,19 @@ async function loadPromptFromSupabase(callType: string): Promise<string | null> 
   
   const formattedPrompt = formatPromptContent(version.content);
   
+  const metadata: PromptMetadata = {
+    prompt: formattedPrompt,
+    call_type: callType,
+    version_number: version.version_number,
+    prompt_version_id: version.id,
+    source: 'supabase'
+  };
+  
   // Update cache
-  promptCache.prompts.set(callType, formattedPrompt);
+  promptCache.prompts.set(callType, metadata);
   promptCache.lastFetched = now;
   
-  return formattedPrompt;
+  return metadata;
 }
 
 /**
