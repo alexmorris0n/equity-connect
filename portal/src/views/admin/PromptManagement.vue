@@ -156,9 +156,9 @@
             <n-empty v-else description="No performance data yet." class="empty-state" />
           </n-tab-pane>
 
-          <n-tab-pane name="voice" tab="Voice">
+          <n-tab-pane name="settings" tab="Settings">
             <div class="tab-content">
-              <div class="voice-section">
+              <div class="settings-section">
                 <h3>Voice & Call Type Settings</h3>
                 <p class="text-muted">Configure the voice and call type for this prompt:</p>
                 
@@ -620,20 +620,29 @@ const availableVariables = {
   lead: [
     { key: 'leadFirstName', desc: 'Lead first name' },
     { key: 'leadLastName', desc: 'Lead last name' },
+    { key: 'leadFullName', desc: 'Lead full name' },
     { key: 'leadEmail', desc: 'Lead email address' },
-    { key: 'leadPhone', desc: 'Lead phone number' }
+    { key: 'leadPhone', desc: 'Lead phone number' },
+    { key: 'leadAge', desc: 'Lead age' }
   ],
   property: [
+    { key: 'propertyAddress', desc: 'Full property address' },
     { key: 'propertyCity', desc: 'Property city' },
     { key: 'propertyState', desc: 'Property state' },
-    { key: 'propertyAddress', desc: 'Full property address' },
-    { key: 'propertyValue', desc: 'Estimated property value' }
+    { key: 'propertyZipcode', desc: 'Property ZIP code' },
+    { key: 'propertyValue', desc: 'Property value (number)' },
+    { key: 'propertyValueWords', desc: 'Property value in words' },
+    { key: 'mortgageBalance', desc: 'Mortgage balance (number)' },
+    { key: 'mortgageBalanceWords', desc: 'Mortgage balance in words' },
+    { key: 'estimatedEquity', desc: 'Estimated equity (number)' },
+    { key: 'estimatedEquityWords', desc: 'Estimated equity in words' },
+    { key: 'ownerOccupied', desc: 'Owner occupied (true/false)' }
   ],
   broker: [
     { key: 'brokerFirstName', desc: 'Broker first name' },
+    { key: 'brokerLastName', desc: 'Broker last name' },
     { key: 'brokerFullName', desc: 'Broker full name' },
     { key: 'brokerCompany', desc: 'Broker company name' },
-    { key: 'brokerNMLS', desc: 'Broker NMLS number' },
     { key: 'brokerPhone', desc: 'Broker phone number' }
   ]
 }
@@ -1089,13 +1098,23 @@ function handleTextareaInput(key) {
 async function handleContentEditableInput(event, key) {
   console.log('Input detected on key:', key, 'hasChanges before:', hasChanges.value)
   
-  currentVersion.value.content[key] = event.target.innerText
+  // Convert <br> back to \n for storage
+  const htmlContent = event.target.innerHTML
+  const textContent = htmlContent.replace(/<br\s*\/?>/gi, '\n').replace(/<div>/gi, '\n').replace(/<\/div>/gi, '')
+  currentVersion.value.content[key] = textContent
   markAsChanged()
+  
+  // Auto-resize the contenteditable div
+  autoResizeTextarea(key)
+  
   console.log('hasChanges after:', hasChanges.value)
 }
 
 function handleContentEditableBlur(event, key) {
-  currentVersion.value.content[key] = event.target.innerText
+  // Convert <br> back to \n for storage
+  const htmlContent = event.target.innerHTML
+  const textContent = htmlContent.replace(/<br\s*\/?>/gi, '\n').replace(/<div>/gi, '\n').replace(/<\/div>/gi, '')
+  currentVersion.value.content[key] = textContent
 }
 
 function handleContentEditableKeydown(event, key) {
@@ -1120,8 +1139,13 @@ function handleContentEditableKeydown(event, key) {
     selection.removeAllRanges()
     selection.addRange(range)
     
-    // Trigger input event to sync model
+    // Trigger input event to sync model and resize
     handleContentEditableInput({ target: event.target }, key)
+    
+    // Force immediate resize after DOM update
+    requestAnimationFrame(() => {
+      autoResizeTextarea(key)
+    })
   }
 }
 
@@ -1480,11 +1504,14 @@ async function confirmDeploy() {
   loading.value = true
   
   try {
+    const versionId = currentVersion.value.id
+    const promptId = currentVersion.value.prompt_id
+    
     // 1. Deactivate all other versions
     await supabase
       .from('prompt_versions')
       .update({ is_active: false })
-      .eq('prompt_id', currentVersion.value.prompt_id)
+      .eq('prompt_id', promptId)
 
     // 2. Mark current version as active (not draft) with change summary
     const { error: updateError } = await supabase
@@ -1494,16 +1521,35 @@ async function confirmDeploy() {
         is_draft: false,
         change_summary: deployChangeSummary.value.trim()
       })
-      .eq('id', currentVersion.value.id)
+      .eq('id', versionId)
 
     if (updateError) throw updateError
 
-    // 3. Clear the deploy change summary
+    // 3. Update the current version object immediately for UI responsiveness
+    currentVersion.value.is_active = true
+    currentVersion.value.is_draft = false
+    currentVersion.value.change_summary = deployChangeSummary.value.trim()
+    
+    // 4. Update the versions list to reflect the change
+    const versionIndex = versions.value.findIndex(v => v.id === versionId)
+    if (versionIndex !== -1) {
+      versions.value[versionIndex].is_active = true
+      versions.value[versionIndex].is_draft = false
+      versions.value[versionIndex].change_summary = deployChangeSummary.value.trim()
+      
+      // Mark all other versions as inactive in the UI
+      versions.value.forEach((v, idx) => {
+        if (idx !== versionIndex) {
+          v.is_active = false
+        }
+      })
+    }
+
+    // 5. Clear the deploy change summary
     deployChangeSummary.value = ''
 
-    // 4. Reload versions to refresh the UI
-    await loadVersions()
-    await loadVersion(currentVersion.value.id)
+    // 6. Force reactivity update
+    versions.value = [...versions.value]
   } catch (err) {
     error.value = err.message
   } finally {
@@ -1840,9 +1886,13 @@ function populateContentEditableDivs() {
     Object.keys(textareaRefs.value).forEach(key => {
       const textarea = textareaRefs.value[key]
       if (textarea && currentVersion.value.content[key] !== undefined) {
+        const rawContent = currentVersion.value.content[key] || ''
+        // Convert \n to <br> for HTML rendering, preserve the raw text structure
+        const htmlContent = rawContent.replace(/\n/g, '<br>')
+        
         // Only update if content is different to avoid cursor reset
-        if (textarea.innerText !== currentVersion.value.content[key]) {
-          textarea.innerText = currentVersion.value.content[key] || ''
+        if (textarea.innerHTML !== htmlContent) {
+          textarea.innerHTML = htmlContent
         }
       }
     })
@@ -2231,13 +2281,11 @@ function handleBeforeUnload(e) {
 
 .meta-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 2px 0;
   margin-top: 4px;
   font-size: 0.55rem;
   font-weight: 500;
-  background: rgba(99, 102, 241, 0.1);
   color: #4f46e5;
-  border-radius: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2261,9 +2309,10 @@ function handleBeforeUnload(e) {
 }
 
 .version-row .meta-item-title {
-  font-weight: 600;
-  font-size: 0.75rem;
+  font-weight: 700;
+  font-size: 0.9rem;
   min-width: 0;
+  color: #1e293b;
 }
 
 .meta-date {
@@ -2370,13 +2419,20 @@ function handleBeforeUnload(e) {
   padding: 0.5rem;
   font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
-  line-height: 1.35;
+  line-height: 1.6;
   background: rgba(248, 250, 255, 0.82);
   transition: border 160ms ease, box-shadow 160ms ease;
   box-sizing: border-box;
   min-height: 60px;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+/* Better spacing for line breaks in contenteditable */
+.notion-textarea br {
+  display: block;
+  content: "";
+  margin: 0.25rem 0;
 }
 
 .notion-textarea:empty:before {
@@ -2399,11 +2455,11 @@ function handleBeforeUnload(e) {
   padding: 1rem 0;
 }
 
-.voice-section {
+.settings-section {
   max-width: 600px;
 }
 
-.voice-section h3 {
+.settings-section h3 {
   margin: 0 0 0.5rem 0;
   font-size: 1.1rem;
   font-weight: 600;
