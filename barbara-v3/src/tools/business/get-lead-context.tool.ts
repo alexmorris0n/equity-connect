@@ -27,10 +27,11 @@ export const getLeadContextTool = realtimeTool({
       // Get search patterns for phone number (10-digit, formatted, E.164)
       const patterns = phoneSearchPatterns(phone);
       
-      // Build OR query to match any format
-      const orConditions = patterns
-        .map(pattern => `primary_phone.ilike.%${pattern}%`)
-        .join(',');
+      // Build OR query to match any format in both primary_phone and primary_phone_e164
+      const orConditions = patterns.flatMap(pattern => [
+        `primary_phone.ilike.%${pattern}%`,
+        `primary_phone_e164.eq.${pattern}`
+      ]).join(',');
       
       // Query lead by phone - match various formats
       const { data: leads, error: leadError } = await sb
