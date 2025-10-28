@@ -118,8 +118,7 @@ export async function evaluateCall(
         { role: 'user', content: `# Conversation Transcript:\n\n${formattedTranscript}` }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.3, // Lower temperature for more consistent scoring
-      max_completion_tokens: 2000 // Changed from max_tokens for gpt-4o-mini compatibility
+      max_completion_tokens: 2000
     });
     
     const result = completion.choices[0]?.message?.content;

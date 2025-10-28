@@ -79,22 +79,35 @@ export async function getInstructionsForCallType(
 async function determineCallType(direction: string, context: any): Promise<string> {
   if (direction === 'inbound') {
     // Check if we have a lead_id or phone number to look up qualification
-    if (context?.leadId) {
-      try {
-        const supabase = getSupabaseClient();
-        const { data: lead } = await supabase
+    let leadData = null;
+    
+    try {
+      const supabase = getSupabaseClient();
+      
+      if (context?.leadId) {
+        // Look up by lead ID
+        const { data } = await supabase
           .from('leads')
           .select('qualified')
           .eq('id', context.leadId)
           .single();
-        
-        if (lead?.qualified) {
-          logger.info(`✅ Lead is qualified - using inbound-qualified prompt`);
-          return 'inbound-qualified';
-        }
-      } catch (error) {
-        logger.warn(`⚠️ Could not check lead qualification:`, error);
+        leadData = data;
+      } else if (context?.from) {
+        // Look up by phone number (inbound: from = lead phone)
+        const { data } = await supabase
+          .from('leads')
+          .select('qualified')
+          .eq('phone', context.from)
+          .single();
+        leadData = data;
       }
+      
+      if (leadData?.qualified) {
+        logger.info(`✅ Lead is qualified - using inbound-qualified prompt`);
+        return 'inbound-qualified';
+      }
+    } catch (error) {
+      logger.warn(`⚠️ Could not check lead qualification:`, error);
     }
     
     // Default to unqualified for inbound
