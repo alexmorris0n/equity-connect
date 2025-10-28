@@ -28,9 +28,9 @@
   "dependencies": {
     "@fastify/formbody": "^7.4.0",
     "@fastify/websocket": "^10.0.1",
-    "@openai/agents": "^0.1.4",
+    "@openai/agents": "^0.1.9",
     "@openai/agents-extensions": "^0.1.5",
-    "@openai/agents-realtime": "^0.1.4",
+    "@openai/agents-realtime": "^0.1.8",
     "@supabase/supabase-js": "^2.39.0",
     "dotenv": "^17.2.2",
     "fastify": "^4.28.1",
