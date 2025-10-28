@@ -95,11 +95,27 @@ async function determineCallType(direction: string, context: any): Promise<strin
       } else if (context?.from) {
         // Look up by phone number (inbound: from = lead phone)
         // Try both primary_phone_e164 and primary_phone fields
+        // Generate search patterns: +16505300051, 6505300051, (650) 530-0051
+        const phoneDigits = context.from.replace(/\D/g, '');
+        const last10 = phoneDigits.slice(-10);
+        const patterns = [
+          context.from,                           // +16505300051
+          last10,                                 // 6505300051
+          `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}` // (650) 530-0051
+        ];
+        
+        // Build OR query to match any format in both primary_phone and primary_phone_e164
+        const orConditions = patterns.flatMap(pattern => [
+          `primary_phone.ilike.%${pattern}%`,
+          `primary_phone_e164.eq.${pattern}`
+        ]).join(',');
+        
         const { data } = await supabase
           .from('leads')
           .select('qualified')
-          .or(`primary_phone_e164.eq.${context.from},primary_phone.eq.${context.from}`)
-          .single();
+          .or(orConditions)
+          .limit(1)
+          .maybeSingle();
         leadData = data;
       }
       
