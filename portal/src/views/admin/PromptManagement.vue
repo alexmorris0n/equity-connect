@@ -179,9 +179,22 @@
               <!-- AI Improvement Suggestions -->
               <n-card :bordered="false" style="background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2); margin-bottom: 16px;">
                 <template #header>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <n-icon size="20" color="#8b5cf6"><SparklesOutline /></n-icon>
-                    <span>AI Improvement Suggestions</span>
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <n-icon size="20" color="#8b5cf6"><SparklesOutline /></n-icon>
+                      <span>AI Improvement Suggestions</span>
+                    </div>
+                    <n-button 
+                      size="small" 
+                      @click="applyAllSuggestions" 
+                      :disabled="!aiSuggestions || aiSuggestions.length === 0"
+                      style="background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3);"
+                    >
+                      <template #icon>
+                        <n-icon><CheckmarkDoneOutline /></n-icon>
+                      </template>
+                      Apply All
+                    </n-button>
                   </div>
                 </template>
                 <n-list class="suggestions-list">
@@ -1587,6 +1600,21 @@ const applySuggestion = async (suggestion) => {
   
   // Show notification
   window.$message?.info(`Opening ${suggestion.section.replace(/_/g, ' ')} section. Review and apply the suggestion.`)
+}
+
+// Apply all suggestions at once
+const applyAllSuggestions = async () => {
+  if (!aiSuggestions.value || aiSuggestions.value.length === 0) return
+  
+  // Switch to Editor tab
+  activeTab.value = 'editor'
+  
+  // Expand all relevant sections
+  const sectionsToExpand = [...new Set(aiSuggestions.value.map(s => s.section))]
+  expandedSections.value = sectionsToExpand
+  
+  // Show notification
+  window.$message?.success(`Opened ${sectionsToExpand.length} sections with ${aiSuggestions.value.length} suggestions. Review and save when ready.`)
 }
 
 // Fetch evaluation data for current prompt version
