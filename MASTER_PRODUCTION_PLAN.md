@@ -274,9 +274,10 @@ equity-connect/ (Git Monorepo)
   - `get_time` - Current time in Eastern
   - `get_weather` - US weather via weather.gov
 - **Call Types:**
-  - ✅ **Inbound calls** - Lead calls Barbara → Answers, looks up lead, personalized conversation
-  - ✅ **Outbound calls** - n8n → barbara-mcp → Barbara calls lead → Warm introduction
+  - ✅ **Inbound calls** - Lead calls Barbara → Barbara greets first automatically → Looks up lead → Personalized conversation
+  - ✅ **Outbound calls** - n8n → barbara-mcp → Barbara calls lead → Waits for lead to answer → Warm introduction
   - 4-second pause for natural ringback (caller's phone rings during connection)
+  - **Auto-greeting (OCT 28)** - Inbound calls trigger `response.create` after context injection for immediate greeting
 - **Audio Stack:**
   - SignalWire → WebSocket (g711_ulaw @ 8kHz, default codec)
   - Barbara → OpenAI (pcm16 @ 24kHz) → Real-time voice
@@ -313,6 +314,8 @@ equity-connect/ (Git Monorepo)
   - ✅ Dynamic prompt loading - Fetches from Supabase with version tracking
   - ✅ Full transcript capture - Both user and Barbara sides recorded
   - ✅ Automated evaluation - GPT-5-mini scores every call on 6 metrics
+  - ✅ **Qualified lead detection (OCT 28)** - Pattern matching for phone lookups (handles E.164, 10-digit, formatted)
+  - ✅ **Inbound auto-greeting (OCT 28)** - Barbara speaks first on inbound calls without waiting for user
 - **Endpoints:**
   - Health: `https://barbara-v3-voice.fly.dev/health`
   - Inbound webhook: `https://barbara-v3-voice.fly.dev/incoming-call`
@@ -675,13 +678,14 @@ equity-connect/ (Git Monorepo)
   - Smaller font sizes for metric labels/scores (0.72rem labels, 1.3rem scores)
   - Summary stats grid with custom styling (replaces n-statistic)
   - Fixed text cropping in "Last Evaluated" (line-height: 1.3)
-- ✅ **AI Improvement Suggestions Styling (OCT 28)** - Perfect badge alignment:
+- ✅ **AI Improvement Suggestions Styling (OCT 28)** - Perfect badge alignment and bulk actions:
   - Pastel badge colors (soft red/orange/blue, 0.15 alpha backgrounds)
   - Fixed badge alignment with min-width: 60px
   - Vertical centering with inline-flex + align-items: center
   - Left-justified suggestion text with proper spacing (16px padding)
   - Fixed "g" cropping with balanced padding (3px 8px) and line-height: 1.4
   - Consistent badge heights (min-height: 22px) for visual alignment
+  - **"Apply All" button** - Pastel purple styling to open all suggested sections at once
 
 **Production Content:**
 - ✅ All 9 prompts populated with production-ready content
