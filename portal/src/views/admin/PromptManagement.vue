@@ -2927,15 +2927,15 @@ function getCallTypeShort(callType) {
 
 function getCallTypeLabel(callType) {
   const labelMap = {
-    'inbound-qualified': 'Inbound - Qualified (Returning Lead)',
-    'inbound-unqualified': 'Inbound - Unqualified (New Lead)',
-    'outbound-warm': 'Outbound - Warm (Follow-up)',
-    'outbound-cold': 'Outbound - Cold (First Touch)',
-    'transfer': 'Transfer/Handoff',
-    'callback': 'Scheduled Callback',
-    'broker-schedule-check': 'Broker - Schedule Check',
-    'broker-connect-appointment': 'Broker - Connect for Appointment',
-    'fallback': 'Emergency Fallback'
+    'inbound-qualified': 'inbound-qualified',
+    'inbound-unqualified': 'inbound-unqualified',
+    'outbound-warm': 'outbound-warm',
+    'outbound-cold': 'outbound-cold',
+    'transfer': 'transfer',
+    'callback': 'callback',
+    'broker-schedule-check': 'broker-schedule-check',
+    'broker-connect-appointment': 'broker-connect-appointment',
+    'fallback': 'fallback'
   }
   return labelMap[callType] || callType
 }
