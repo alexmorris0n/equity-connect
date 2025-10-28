@@ -97,40 +97,41 @@
           <n-tab-pane name="performance" tab="Performance">
             <div v-if="evaluationData && evaluationData.count > 0" class="performance-container">
               <!-- Summary Stats Grid -->
-              <n-grid :cols="4" :x-gap="12" :y-gap="12" style="margin-bottom: 24px;">
-                <n-grid-item>
-                  <n-statistic label="Total Calls" :value="evaluationData.count" />
-                </n-grid-item>
-                <n-grid-item>
-                  <n-statistic label="Overall Score" :value="evaluationData.avgOverallScore">
-                    <template #suffix>/10</template>
-                  </n-statistic>
-                </n-grid-item>
-                <n-grid-item>
-                  <n-statistic label="Best Call" :value="evaluationData.bestScore">
-                    <template #suffix>/10</template>
-                  </n-statistic>
-                </n-grid-item>
-                <n-grid-item>
-                  <n-statistic label="Last Evaluated" :value="formatRelativeTime(evaluationData.lastEvaluated)" />
-                </n-grid-item>
-              </n-grid>
+              <div class="summary-stats-grid">
+                <div class="summary-stat">
+                  <div class="summary-stat-label">Total Calls</div>
+                  <div class="summary-stat-value">{{ evaluationData.count }}</div>
+                </div>
+                <div class="summary-stat">
+                  <div class="summary-stat-label">Overall Score</div>
+                  <div class="summary-stat-value">{{ evaluationData.avgOverallScore }}<span class="summary-stat-suffix">/10</span></div>
+                </div>
+                <div class="summary-stat">
+                  <div class="summary-stat-label">Best Call</div>
+                  <div class="summary-stat-value">{{ evaluationData.bestScore }}<span class="summary-stat-suffix">/10</span></div>
+                </div>
+                <div class="summary-stat">
+                  <div class="summary-stat-label">Last Evaluated</div>
+                  <div class="summary-stat-value">{{ formatRelativeTime(evaluationData.lastEvaluated) }}</div>
+                </div>
+              </div>
 
               <!-- 6 Metric Scores -->
-              <n-card title="Performance Metrics" :bordered="false" style="margin-bottom: 24px;">
-                <n-grid :cols="3" :x-gap="12" :y-gap="16">
+              <n-card title="Performance Metrics" :bordered="false" style="margin-bottom: 16px; background: rgba(248, 250, 255, 0.4);">
+                <n-grid :cols="3" :x-gap="8" :y-gap="10">
                   <n-grid-item v-for="metric in evaluationMetrics" :key="metric.key">
                     <div class="metric-card">
                       <div class="metric-label">{{ metric.label }}</div>
                       <div class="metric-score" :class="getScoreClass(metric.value)">
-                        {{ metric.value.toFixed(1) }}/10
+                        {{ metric.value.toFixed(1) }}<span class="metric-suffix">/10</span>
                       </div>
                       <n-progress 
                         type="line" 
                         :percentage="(metric.value / 10) * 100" 
                         :show-indicator="false"
                         :color="getScoreColor(metric.value)"
-                        :height="6"
+                        :height="4"
+                        :border-radius="2"
                       />
                     </div>
                   </n-grid-item>
@@ -176,19 +177,19 @@
               </n-card>
 
               <!-- AI Improvement Suggestions -->
-              <n-card :bordered="false" style="background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2);">
+              <n-card :bordered="false" style="background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2); margin-bottom: 16px;">
                 <template #header>
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <n-icon size="20" color="#8b5cf6"><SparklesOutline /></n-icon>
                     <span>AI Improvement Suggestions</span>
                   </div>
                 </template>
-                <n-list>
-                  <n-list-item v-for="(suggestion, idx) in aiSuggestions" :key="idx">
+                <n-list class="suggestions-list">
+                  <n-list-item v-for="(suggestion, idx) in aiSuggestions" :key="idx" class="suggestion-item">
                     <template #prefix>
-                      <n-badge :value="suggestion.priority" :type="getPriorityType(suggestion.priority)" />
+                      <n-badge :value="suggestion.priority" :type="getPriorityType(suggestion.priority)" class="suggestion-badge" />
                     </template>
-                    <div>
+                    <div style="text-align: left; flex: 1;">
                       <div style="font-weight: 500; margin-bottom: 4px;">{{ suggestion.title }}</div>
                       <div style="font-size: 0.9em; color: #6b7280;">{{ suggestion.description }}</div>
                     </div>
@@ -1549,9 +1550,9 @@ const getScoreClass = (score) => {
 }
 
 const getScoreColor = (score) => {
-  if (score >= 8) return '#10b981' // green
-  if (score >= 6) return '#f59e0b' // yellow
-  return '#ef4444' // red
+  if (score >= 8) return 'rgba(34, 197, 94, 0.6)' // pastel green
+  if (score >= 6) return 'rgba(251, 191, 36, 0.6)' // pastel yellow
+  return 'rgba(239, 68, 68, 0.5)' // pastel red
 }
 
 const getPriorityType = (priority) => {
@@ -1590,7 +1591,15 @@ const applySuggestion = async (suggestion) => {
 
 // Fetch evaluation data for current prompt version
 const fetchEvaluationData = async () => {
+  console.log('🔍 fetchEvaluationData called', {
+    hasCurrentVersion: !!currentVersion.value,
+    hasActivePrompt: !!activePrompt.value,
+    currentVersionId: currentVersion.value?.id,
+    activePromptCallType: activePrompt.value?.call_type
+  })
+  
   if (!currentVersion.value || !activePrompt.value) {
+    console.log('⚠️ Missing version or prompt, skipping evaluation fetch')
     evaluationData.value = null
     return
   }
@@ -1600,6 +1609,7 @@ const fetchEvaluationData = async () => {
   try {
     // Format: "inbound-qualified-v3" or "outbound-warm-v2"
     const promptVersion = `${activePrompt.value.call_type}-v${currentVersion.value.version_number}`
+    console.log('🔍 Querying evaluations for prompt_version:', promptVersion)
     
     // Query Supabase for evaluations matching this prompt_version
     const { data, error: queryError } = await supabase
@@ -1608,12 +1618,15 @@ const fetchEvaluationData = async () => {
       .eq('prompt_version', promptVersion)
     
     if (queryError) {
-      console.error('Error fetching evaluation data:', queryError)
+      console.error('❌ Error fetching evaluation data:', queryError)
       evaluationData.value = null
       return
     }
     
+    console.log('📊 Evaluation query result:', { count: data?.length || 0, data })
+    
     if (!data || data.length === 0) {
+      console.log('⚠️ No evaluations found for', promptVersion)
       evaluationData.value = null
       return
     }
@@ -2911,18 +2924,8 @@ function getCallTypeIcon(callType) {
 }
 
 function getCallTypeShort(callType) {
-  const shortMap = {
-    'inbound-qualified': 'In-Qual',
-    'inbound-unqualified': 'In-New',
-    'outbound-warm': 'Out-Warm',
-    'outbound-cold': 'Out-Cold',
-    'transfer': 'Transfer',
-    'callback': 'Callback',
-    'broker-schedule-check': 'Broker-Sched',
-    'broker-connect-appointment': 'Broker-Appt',
-    'fallback': 'Fallback'
-  }
-  return shortMap[callType] || callType
+  // Just return the database name directly (no abbreviations)
+  return callType || 'unknown'
 }
 
 function getCallTypeLabel(callType) {
@@ -3336,8 +3339,8 @@ async function loadPrompts() {
     
     // Custom sort order for call types (left to right in UI)
     const callTypeOrder = {
-      'inbound-qualified': 1,
-      'inbound-unqualified': 2,
+      'inbound-unqualified': 1,
+      'inbound-qualified': 2,
       'outbound-warm': 3,
       'outbound-cold': 4,
       'transfer': 5,
@@ -4165,37 +4168,139 @@ function handleBeforeUnload(e) {
 
 /* Performance Tab Styles */
 .performance-container {
-  padding: 16px 0;
+  padding: 8px 0;
+}
+
+.summary-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 160px));
+  gap: 8px;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.summary-stat {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.summary-stat-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.summary-stat-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-stat-suffix {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-left: 2px;
 }
 
 .metric-card {
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.02);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.metric-card:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(99, 102, 241, 0.2);
 }
 
 .metric-label {
-  font-size: 0.85rem;
-  color: #6b7280;
-  margin-bottom: 8px;
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 500;
 }
 
 .metric-score {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  line-height: 1;
+}
+
+.metric-suffix {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-left: 2px;
 }
 
 .score-good { 
-  color: #10b981; 
+  color: rgba(34, 197, 94, 0.85);
 }
 
 .score-fair { 
-  color: #f59e0b; 
+  color: rgba(251, 146, 60, 0.9);
 }
 
 .score-poor { 
-  color: #ef4444; 
+  color: rgba(239, 68, 68, 0.8);
+}
+
+/* AI Suggestions Styling */
+.suggestions-list :deep(.n-list-item) {
+  align-items: center;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
+.suggestion-item :deep(.n-list-item__prefix) {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+  min-width: 70px;
+}
+
+.suggestion-badge :deep(.n-badge-sup) {
+  position: static !important;
+  transform: none !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  min-width: 60px;
+  min-height: 22px;
+  text-align: center;
+  line-height: 1.4;
+  padding: 3px 8px;
+}
+
+/* Pastel colors for priority badges */
+.suggestion-badge :deep(.n-badge-sup.n-badge-sup--error) {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: rgba(153, 27, 27, 0.9) !important;
+}
+
+.suggestion-badge :deep(.n-badge-sup.n-badge-sup--warning) {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+  color: rgba(146, 64, 14, 0.9) !important;
+}
+
+.suggestion-badge :deep(.n-badge-sup.n-badge-sup--info) {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  color: rgba(30, 64, 175, 0.9) !important;
 }
 
 /* Empty State Styling */

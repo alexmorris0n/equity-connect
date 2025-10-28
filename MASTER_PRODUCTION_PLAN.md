@@ -657,7 +657,7 @@ equity-connect/ (Git Monorepo)
   - Enables performance comparison across versions
 - ✅ **Live in Production** - Barbara V3 loads all prompts from Supabase with dynamic voice & VAD per call type
 
-**UI Improvements (OCT 27):**
+**UI Improvements (OCT 27-28):**
 - ✅ Version numbers more prominent (larger, bolder, darker)
 - ✅ Settings tab with Voice & VAD configuration (call type removed - fixed per prompt)
 - ✅ Horizontal scrolling for prompt/version cards
@@ -668,6 +668,20 @@ equity-connect/ (Git Monorepo)
 - ✅ Button reordering: Variable bolt before AI sparkle
 - ✅ Styled AI Audit button (purple background, gold sparkle icon)
 - ✅ Compact VAD controls (~25% smaller for better UI density)
+- ✅ **Performance Metrics Styling (OCT 28)** - Compact, pastel design for better visual hierarchy:
+  - Reduced card padding and spacing (8px gaps, tighter layout)
+  - Pastel progress bar colors (soft green/yellow/red, 0.5-0.6 alpha)
+  - Lighter card backgrounds (rgba(255, 255, 255, 0.5))
+  - Smaller font sizes for metric labels/scores (0.72rem labels, 1.3rem scores)
+  - Summary stats grid with custom styling (replaces n-statistic)
+  - Fixed text cropping in "Last Evaluated" (line-height: 1.3)
+- ✅ **AI Improvement Suggestions Styling (OCT 28)** - Perfect badge alignment:
+  - Pastel badge colors (soft red/orange/blue, 0.15 alpha backgrounds)
+  - Fixed badge alignment with min-width: 60px
+  - Vertical centering with inline-flex + align-items: center
+  - Left-justified suggestion text with proper spacing (16px padding)
+  - Fixed "g" cropping with balanced padding (3px 8px) and line-height: 1.4
+  - Consistent badge heights (min-height: 22px) for visual alignment
 
 **Production Content:**
 - ✅ All 9 prompts populated with production-ready content
