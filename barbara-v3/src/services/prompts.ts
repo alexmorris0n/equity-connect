@@ -94,10 +94,11 @@ async function determineCallType(direction: string, context: any): Promise<strin
         leadData = data;
       } else if (context?.from) {
         // Look up by phone number (inbound: from = lead phone)
+        // Try both primary_phone_e164 and primary_phone fields
         const { data } = await supabase
           .from('leads')
           .select('qualified')
-          .eq('phone', context.from)
+          .or(`primary_phone_e164.eq.${context.from},primary_phone.eq.${context.from}`)
           .single();
         leadData = data;
       }
