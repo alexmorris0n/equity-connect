@@ -8,8 +8,8 @@ let initialized = false
 
 export function useAuth() {
   const isAuthenticated = computed(() => !!user.value)
-  const isAdmin = computed(() => broker.value?.user_role === 'admin')
-  const isBroker = computed(() => broker.value?.user_role === 'broker')
+  const isAdmin = computed(() => user.value?.app_metadata?.user_role === 'admin')
+  const isBroker = computed(() => user.value?.app_metadata?.user_role === 'broker')
 
   async function checkAuth() {
     if (loading.value) return // Prevent concurrent calls
@@ -22,11 +22,19 @@ export function useAuth() {
         user.value = session.user
         
         // Get broker info with role
-        const { data: brokerData } = await supabase
+        const { data: brokerData, error: brokerError } = await supabase
           .from('brokers')
           .select('*')
           .eq('user_id', session.user.id)
           .single()
+        
+        if (brokerError) {
+          console.error('❌ Broker query error:', brokerError)
+          console.log('User ID:', session.user.id)
+          console.log('User email:', session.user.email)
+        } else {
+          console.log('✅ Broker data loaded:', brokerData)
+        }
         
         broker.value = brokerData
       } else {

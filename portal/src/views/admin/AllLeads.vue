@@ -1,8 +1,609 @@
 <template>
-  <div>
-    <h2>All Leads</h2>
-    <p class="text-muted">View all leads across all brokers</p>
-    <p class="text-sm text-muted mt-2">Coming in Phase 4</p>
+  <div class="leads-workspace">
+    <!-- Filters Card -->
+    <section class="meta-card">
+      <header class="meta-header">
+        <div class="meta-title-wrap">
+          <n-icon size="20" class="meta-icon"><PeopleOutline /></n-icon>
+          <span class="meta-title">All Leads</span>
+        </div>
+      </header>
+      <n-space :size="12" style="margin-top: 0.75rem;">
+        <n-input 
+          v-model:value="searchQuery" 
+          placeholder="Search name or address..." 
+          clearable
+          size="small"
+          style="min-width: 200px;"
+        >
+          <template #prefix>
+            <n-icon><SearchOutline /></n-icon>
+          </template>
+        </n-input>
+                 <n-select
+                   v-model:value="statusFilter"
+                   placeholder="Status"
+                   clearable
+                   multiple
+                   :options="statusOptions"
+                   size="small"
+                   style="min-width: 140px;"
+                 />
+                 <n-select
+                   v-model:value="campaignStatusFilter"
+                   placeholder="Campaign Status"
+                   clearable
+                   multiple
+                   :options="campaignStatusOptions"
+                   size="small"
+                   style="min-width: 160px;"
+                 />
+                 <n-select
+                   v-model:value="brokerFilter"
+                   placeholder="Broker"
+                   clearable
+                   multiple
+                   :options="brokerOptions"
+                   size="small"
+                   style="min-width: 140px;"
+                 />
+      </n-space>
+    </section>
+
+    <!-- Custom Table Card -->
+    <n-card class="editor-card" :bordered="false">
+      <div class="table-wrapper">
+        <!-- Table Header -->
+        <div class="table-header-row">
+          <div class="th-cell">Name</div>
+          <div class="th-cell">ZIP</div>
+          <div class="th-cell">Status</div>
+          <div class="th-cell">Campaign</div>
+          <div class="th-cell">Broker</div>
+                 <div class="th-cell">Age</div>
+          <div class="th-cell">Activity</div>
+        </div>
+        
+        <div class="custom-table-body">
+          <div v-if="loading && paginatedLeads.length === 0" class="loading-row">
+            <n-spin size="small" />
+          </div>
+          <div v-for="(lead, index) in paginatedLeads" :key="lead.id" 
+               :class="['table-row', { 'striped': index % 2 === 1 }]" 
+               @click="router.push(`/admin/leads/${lead.id}`)">
+            <div class="td-cell ellipsis">{{ `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown' }}</div>
+            <div class="td-cell">{{ lead.property_zip || 'N/A' }}</div>
+            <div class="td-cell">
+              <n-tag v-if="lead.status" :type="statusColors[lead.status] || 'default'" size="small" round>
+                {{ formatStatus(lead.status) }}
+              </n-tag>
+              <span v-else>N/A</span>
+            </div>
+            <div class="td-cell">
+              <n-tag v-if="lead.campaign_status" :type="campaignStatusColors[lead.campaign_status] || 'default'" size="small" round>
+                {{ formatStatus(lead.campaign_status) }}
+              </n-tag>
+              <span v-else>N/A</span>
+            </div>
+            <div class="td-cell ellipsis">{{ lead.broker_name || 'Unassigned' }}</div>
+            <div class="td-cell">{{ formatAge(lead) }}</div>
+            <div class="td-cell">{{ formatRelativeTime(lead.last_contact || lead.updated_at) }}</div>
+          </div>
+        </div>
+      </div>
+    </n-card>
+
+    <!-- Scroll to top button -->
+    <transition name="fade">
+      <button v-if="showScrollTop" @click="scrollToTop" class="scroll-to-top" aria-label="Scroll to top">
+        <n-icon size="24">
+          <ArrowUpOutline />
+        </n-icon>
+      </button>
+    </transition>
   </div>
 </template>
 
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { supabase } from '@/lib/supabase'
+import {
+  NCard,
+  NSpace,
+  NInput,
+  NSelect,
+  NTag,
+  NIcon,
+  NSpin
+} from 'naive-ui'
+import {
+  PeopleOutline,
+  SearchOutline,
+  ArrowUpOutline
+} from '@vicons/ionicons5'
+
+const router = useRouter()
+const loading = ref(false)
+const leads = ref([])
+const brokers = ref([])
+const showScrollTop = ref(true) // Always show for now
+
+// Infinite scroll state
+const pageSize = 20
+const currentPage = ref(1)
+const hasMore = computed(() => currentPage.value * pageSize < filteredLeads.value.length)
+
+// Filter states
+const searchQuery = ref('')
+const statusFilter = ref([])
+const campaignStatusFilter = ref([])
+const brokerFilter = ref([])
+
+// Status color mappings
+const statusColors = {
+  'new': 'default',
+  'contacted': 'info',
+  'replied': 'warning',
+  'qualified': 'success',
+  'appointment_set': 'success',
+  'showed': 'success',
+  'application': 'success',
+  'funded': 'success',
+  'closed_lost': 'error',
+  'needs_contact_info': 'warning',
+  'enriched': 'info',
+  'contactable': 'warning',
+  'do_not_contact': 'error'
+}
+
+const campaignStatusColors = {
+  'new': 'default',
+  'queued': 'default',
+  'active': 'info',
+  'sent': 'info',
+  'delivered': 'warning',
+  'opened': 'warning',
+  'clicked': 'warning',
+  'replied': 'success',
+  'bounced': 'error',
+  'unsubscribed': 'error',
+  'paused': 'default',
+  'completed': 'success',
+  'do_not_contact': 'error',
+  'converted': 'success'
+}
+
+// Filter options
+const statusOptions = computed(() => {
+  const uniqueStatuses = [...new Set(leads.value.map(l => l.status).filter(Boolean))]
+  return uniqueStatuses.map(status => ({
+    label: formatStatus(status),
+    value: status
+  }))
+})
+
+const campaignStatusOptions = computed(() => {
+  const uniqueStatuses = [...new Set(leads.value.map(l => l.campaign_status).filter(Boolean))]
+  return uniqueStatuses.map(status => ({
+    label: formatStatus(status),
+    value: status
+  }))
+})
+
+const brokerOptions = computed(() => {
+  return brokers.value.map(broker => ({
+    label: broker.company_name || 'Unknown',
+    value: broker.id
+  }))
+})
+
+// Filtered leads
+const filteredLeads = computed(() => {
+  let results = leads.value
+
+  // Default filter: exclude needs_contact_info by default
+  results = results.filter(lead => lead.status !== 'needs_contact_info')
+
+  // Search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    results = results.filter(lead => {
+      const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.toLowerCase()
+      const address = (lead.property_address || '').toLowerCase()
+      return fullName.includes(query) || address.includes(query)
+    })
+  }
+
+  // Status filter
+  if (statusFilter.value && statusFilter.value.length > 0) {
+    results = results.filter(lead => statusFilter.value.includes(lead.status))
+  }
+
+  // Campaign status filter
+  if (campaignStatusFilter.value && campaignStatusFilter.value.length > 0) {
+    results = results.filter(lead => campaignStatusFilter.value.includes(lead.campaign_status))
+  }
+
+  // Broker filter
+  if (brokerFilter.value && brokerFilter.value.length > 0) {
+    results = results.filter(lead => brokerFilter.value.includes(lead.assigned_broker_id))
+  }
+
+  return results
+})
+
+// Paginated leads for infinite scroll
+const paginatedLeads = computed(() => {
+  // Just show all filtered leads - no pagination
+  return filteredLeads.value
+})
+
+// Scroll handler for infinite scroll on window
+function handleScroll() {
+  // Only check if we have more leads to load
+  if (!hasMore.value || loading.value) return
+  
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+  const scrollHeight = document.documentElement.scrollHeight
+  const clientHeight = window.innerHeight
+  
+  // Load more when scrolled near bottom (500px threshold)
+  if (scrollHeight - scrollTop - clientHeight < 500) {
+    currentPage.value++
+  }
+}
+
+// Helper functions
+function formatStatus(status) {
+  if (!status) return 'N/A'
+  return status
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+function formatAge(lead) {
+  console.log('formatAge called with:', lead) // Debug log
+  const parts = []
+  
+  // Person's age
+  if (lead.age) {
+    parts.push(`${lead.age}y`)
+  }
+  
+  // Days since creation
+  if (lead.created_at) {
+    const createdDate = new Date(lead.created_at)
+    const now = new Date()
+    const diffTime = Math.abs(now - createdDate)
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    parts.push(`${diffDays}d`)
+  }
+  
+  const result = parts.length > 0 ? parts.join(', ') : 'N/A'
+  console.log('formatAge result:', result) // Debug log
+  return result
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return 'Never'
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d`
+  const diffWeeks = Math.floor(diffDays / 7)
+  if (diffWeeks < 4) return `${diffWeeks}w`
+  return date.toLocaleDateString()
+}
+
+// Load data
+async function loadLeads() {
+  loading.value = true
+  try {
+    // First get all leads
+    const { data: leadsData, error: leadsError } = await supabase
+      .from('leads')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (leadsError) throw leadsError
+
+    // Get all brokers
+    const { data: brokersData, error: brokersError } = await supabase
+      .from('brokers')
+      .select('id, company_name')
+
+    if (brokersError) throw brokersError
+
+    // Create a broker lookup map
+    const brokerMap = {}
+    brokersData.forEach(broker => {
+      brokerMap[broker.id] = broker.company_name
+    })
+
+    console.log('Broker map:', brokerMap)
+    console.log('First lead:', leadsData?.[0])
+    
+    // Map leads with broker names
+    leads.value = (leadsData || []).map(lead => ({
+      ...lead,
+      broker_name: brokerMap[lead.assigned_broker_id] || 'Unassigned'
+    }))
+
+    console.log('First mapped lead:', leads.value[0])
+  } catch (err) {
+    console.error('Failed to load leads:', err)
+    window.$message?.error('Failed to load leads')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadBrokers() {
+  try {
+    // Check current user
+    const { data: { user } } = await supabase.auth.getUser()
+    console.log('Current authenticated user:', user)
+    
+    const { data, error } = await supabase
+      .from('brokers')
+      .select('id, company_name')
+      .order('company_name', { ascending: true })
+
+    console.log('Brokers query result:', data, 'Error:', error)
+    
+    if (error) throw error
+    brokers.value = data || []
+  } catch (err) {
+    console.error('Failed to load brokers:', err)
+  }
+}
+
+// Scroll to top functionality
+function handleScrollVisibility() {
+  showScrollTop.value = window.pageYOffset > 100
+}
+
+function scrollToTop() {
+  // Simple scroll to top without complex DOM manipulation
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+onMounted(() => {
+  loadLeads()
+  loadBrokers()
+  window.addEventListener('scroll', handleScrollVisibility)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScrollVisibility)
+})
+</script>
+
+<style scoped>
+.leads-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.meta-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 10px 25px -22px rgba(15, 23, 42, 0.16);
+  padding: 0.75rem;
+}
+
+.table-header-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0.75rem;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 18px 18px 0 0;
+  font-weight: 600;
+  color: #4f46e5;
+  font-size: 0.875rem;
+}
+
+.th-cell {
+  flex: 1;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.th-cell:nth-child(1) { min-width: 140px; } /* Name */
+.th-cell:nth-child(2) { min-width: 60px; }  /* ZIP */
+.th-cell:nth-child(3) { min-width: 100px; } /* Status */
+.th-cell:nth-child(4) { min-width: 90px; } /* Campaign */
+.th-cell:nth-child(5) { flex: 2; min-width: 100px; }  /* Broker */
+.th-cell:nth-child(6) { min-width: 80px; } /* Age */
+.th-cell:nth-child(7) { min-width: 80px; } /* Activity */
+
+.meta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.meta-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 1.05rem;
+}
+
+.meta-title {
+  font-size: 0.78rem;
+}
+
+.editor-card {
+  border-radius: 18px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.22);
+}
+
+.editor-card :deep(.n-card__content) {
+  padding: 0 !important;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: #6366f1;
+  font-size: 0.875rem;
+}
+
+/* Custom Table Styles */
+.table-wrapper {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.custom-table-body {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.875rem;
+}
+
+.table-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.table-row:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.table-row.striped {
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.table-row.striped:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.td-cell {
+  flex: 1;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.td-cell:nth-child(1),
+.td-cell:nth-child(5) {
+  justify-content: flex-start;
+  padding-left: 0.75rem;
+}
+
+.td-cell:nth-child(1) { min-width: 140px; } /* Name */
+.td-cell:nth-child(2) { min-width: 60px; }  /* ZIP */
+.td-cell:nth-child(3) { min-width: 100px; } /* Status */
+.td-cell:nth-child(4) { min-width: 90px; } /* Campaign */
+.td-cell:nth-child(5) { flex: 2; min-width: 100px; }  /* Broker */
+.td-cell:nth-child(6) { min-width: 80px; } /* Age */
+.td-cell:nth-child(7) { min-width: 80px; } /* Activity */
+
+.loading-row {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scroll to top button */
+.scroll-to-top {
+  position: fixed !important;
+  bottom: 30px !important;
+  right: 30px !important;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  transition: all 0.3s ease;
+  z-index: 9999 !important;
+  pointer-events: auto !important;
+}
+
+.scroll-to-top:hover {
+  background: #4f46e5;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+}
+
+.scroll-to-top:active {
+  transform: translateY(0);
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
+/* Filter inputs styling */
+.meta-card :deep(.n-input),
+.meta-card :deep(.n-base-selection) {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 8px;
+  background: rgba(248, 250, 255, 0.82);
+  transition: border 160ms ease, box-shadow 160ms ease;
+}
+
+.meta-card :deep(.n-input:hover),
+.meta-card :deep(.n-base-selection:hover) {
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.meta-card :deep(.n-input:focus-within),
+.meta-card :deep(.n-base-selection:focus-within) {
+  border-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+</style>

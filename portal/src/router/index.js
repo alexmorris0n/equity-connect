@@ -35,6 +35,11 @@ const router = createRouter({
           component: () => import('@/views/admin/AllLeads.vue')
         },
         {
+          path: 'leads/:id',
+          name: 'LeadDetail',
+          component: () => import('@/views/admin/LeadDetail.vue')
+        },
+        {
           path: 'analytics',
           name: 'SystemAnalytics',
           component: () => import('@/views/admin/SystemAnalytics.vue')
