@@ -383,6 +383,15 @@ export async function streamingRoute(
           
           signalWireTransportLayer.sendEvent(systemMessage);
           logger.info(`✅ Lead context injected successfully`);
+          
+          // For INBOUND calls, trigger Barbara to speak first (greeting)
+          if (callDirection === 'inbound') {
+            logger.info(`📞 Inbound call - triggering Barbara's greeting`);
+            const responseCreate: RealtimeClientMessage = {
+              type: 'response.create'
+            } as any;
+            signalWireTransportLayer.sendEvent(responseCreate);
+          }
         }
         
         switch (event.type) {
