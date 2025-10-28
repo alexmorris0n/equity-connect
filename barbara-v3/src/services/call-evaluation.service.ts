@@ -119,7 +119,7 @@ export async function evaluateCall(
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3, // Lower temperature for more consistent scoring
-      max_tokens: 2000
+      max_completion_tokens: 2000 // Changed from max_tokens for gpt-4o-mini compatibility
     });
     
     const result = completion.choices[0]?.message?.content;

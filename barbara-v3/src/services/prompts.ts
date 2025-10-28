@@ -47,9 +47,8 @@ export async function getInstructionsForCallType(
 ): Promise<PromptMetadata> {
   logger.info(`📝 Loading prompt for ${direction} call`);
   
-  // Determine call_type based on direction
-  // For now, simple mapping - can be enhanced with context analysis
-  const callType = determineCallType(direction, context);
+  // Determine call_type based on direction (checks lead qualification from DB)
+  const callType = await determineCallType(direction, context);
   
   // Try to load from Supabase (with cache)
   try {
@@ -75,12 +74,31 @@ export async function getInstructionsForCallType(
 
 /**
  * Determine call_type from direction and context
+ * Checks lead qualification status from database
  */
-function determineCallType(direction: string, context: any): string {
-  // Simple mapping for now
-  // TODO: Enhance with lead qualification status, broker context, etc.
+async function determineCallType(direction: string, context: any): Promise<string> {
   if (direction === 'inbound') {
-    return 'inbound-unqualified'; // Use the most common inbound prompt
+    // Check if we have a lead_id or phone number to look up qualification
+    if (context?.leadId) {
+      try {
+        const supabase = getSupabaseClient();
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('qualified')
+          .eq('id', context.leadId)
+          .single();
+        
+        if (lead?.qualified) {
+          logger.info(`✅ Lead is qualified - using inbound-qualified prompt`);
+          return 'inbound-qualified';
+        }
+      } catch (error) {
+        logger.warn(`⚠️ Could not check lead qualification:`, error);
+      }
+    }
+    
+    // Default to unqualified for inbound
+    return 'inbound-unqualified';
   } else if (direction === 'outbound') {
     return 'outbound-warm'; // Default to warm for outbound
   }

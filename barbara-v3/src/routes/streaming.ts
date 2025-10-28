@@ -64,6 +64,9 @@ export async function streamingRoute(
 
     // Track if save_interaction was already called
     let interactionSaved = false;
+    
+    // Track if context was already injected
+    let contextInjected = false;
 
     // Handle disconnection
     connection.on('close', async () => {
@@ -354,7 +357,8 @@ export async function streamingRoute(
         }
         
         // If we have phone numbers and haven't injected yet, inject context now
-        if (fromPhone && toPhone && event.type === 'session.updated') {
+        if (fromPhone && toPhone && event.type === 'session.updated' && !contextInjected) {
+          contextInjected = true; // Set flag to prevent double injection
           logger.info(`💉 Injecting call context into conversation`);
           
           // Determine which phone number is the lead based on call direction
