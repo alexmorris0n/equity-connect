@@ -6,12 +6,13 @@
         <div class="meta-title-wrap">
           <n-icon size="20" class="meta-icon"><PeopleOutline /></n-icon>
           <span class="meta-title">All Leads</span>
+          <span class="meta-count">({{ filteredLeads.length }})</span>
         </div>
       </header>
       <n-space :size="12" style="margin-top: 0.75rem;">
         <n-input 
           v-model:value="searchQuery" 
-          placeholder="Search name or address..." 
+          placeholder="Search name, address, city, or ZIP..." 
           clearable
           size="small"
           style="min-width: 200px;"
@@ -55,13 +56,55 @@
       <div class="table-wrapper">
         <!-- Table Header -->
         <div class="table-header-row">
-          <div class="th-cell">Name</div>
-          <div class="th-cell">ZIP</div>
-          <div class="th-cell">Status</div>
-          <div class="th-cell">Campaign</div>
-          <div class="th-cell">Broker</div>
-                 <div class="th-cell">Age</div>
-          <div class="th-cell">Activity</div>
+          <div class="th-cell sortable" @click="handleSort('name')">
+            Name
+            <n-icon v-if="sortField === 'name'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
+          <div class="th-cell sortable" @click="handleSort('zip')">
+            ZIP
+            <n-icon v-if="sortField === 'zip'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
+          <div class="th-cell sortable" @click="handleSort('status')">
+            Status
+            <n-icon v-if="sortField === 'status'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
+          <div class="th-cell sortable" @click="handleSort('campaign')">
+            Campaign
+            <n-icon v-if="sortField === 'campaign'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
+          <div class="th-cell sortable" @click="handleSort('broker')">
+            Broker
+            <n-icon v-if="sortField === 'broker'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
+          <div class="th-cell sortable" @click="handleSort('age')">
+            Age
+            <n-icon v-if="sortField === 'age'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
+          <div class="th-cell sortable" @click="handleSort('created_at')">
+            Activity
+            <n-icon v-if="sortField === 'created_at'" size="14" class="sort-icon">
+              <ArrowUpOutline v-if="sortOrder === 'asc'" />
+              <ArrowDownOutline v-else />
+            </n-icon>
+          </div>
         </div>
         
         <div class="custom-table-body">
@@ -120,14 +163,15 @@ import {
 import {
   PeopleOutline,
   SearchOutline,
-  ArrowUpOutline
+  ArrowUpOutline,
+  ArrowDownOutline
 } from '@vicons/ionicons5'
 
 const router = useRouter()
 const loading = ref(false)
 const leads = ref([])
 const brokers = ref([])
-const showScrollTop = ref(true) // Always show for now
+const showScrollTop = ref(false)
 
 // Infinite scroll state
 const pageSize = 20
@@ -139,6 +183,10 @@ const searchQuery = ref('')
 const statusFilter = ref([])
 const campaignStatusFilter = ref([])
 const brokerFilter = ref([])
+
+// Sorting state
+const sortField = ref('created_at')
+const sortOrder = ref('desc')
 
 // Status color mappings
 const statusColors = {
@@ -176,16 +224,16 @@ const campaignStatusColors = {
 
 // Filter options
 const statusOptions = computed(() => {
-  const uniqueStatuses = [...new Set(leads.value.map(l => l.status).filter(Boolean))]
-  return uniqueStatuses.map(status => ({
+  const allStatuses = ['new', 'contacted', 'replied', 'qualified', 'appointment_set', 'showed', 'application', 'funded', 'closed_lost', 'needs_contact_info']
+  return allStatuses.map(status => ({
     label: formatStatus(status),
     value: status
   }))
 })
 
 const campaignStatusOptions = computed(() => {
-  const uniqueStatuses = [...new Set(leads.value.map(l => l.campaign_status).filter(Boolean))]
-  return uniqueStatuses.map(status => ({
+  const allCampaignStatuses = ['new', 'queued', 'active', 'sent', 'delivered', 'opened', 'clicked', 'replied', 'bounced', 'unsubscribed', 'paused', 'completed', 'do_not_contact', 'converted']
+  return allCampaignStatuses.map(status => ({
     label: formatStatus(status),
     value: status
   }))
@@ -211,7 +259,9 @@ const filteredLeads = computed(() => {
     results = results.filter(lead => {
       const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.toLowerCase()
       const address = (lead.property_address || '').toLowerCase()
-      return fullName.includes(query) || address.includes(query)
+      const city = (lead.property_city || '').toLowerCase()
+      const zip = (lead.property_zip || '').toLowerCase()
+      return fullName.includes(query) || address.includes(query) || city.includes(query) || zip.includes(query)
     })
   }
 
@@ -229,6 +279,49 @@ const filteredLeads = computed(() => {
   if (brokerFilter.value && brokerFilter.value.length > 0) {
     results = results.filter(lead => brokerFilter.value.includes(lead.assigned_broker_id))
   }
+
+  // Apply sorting
+  results.sort((a, b) => {
+    let aVal, bVal
+    
+    switch (sortField.value) {
+      case 'name':
+        aVal = `${a.first_name || ''} ${a.last_name || ''}`.trim().toLowerCase()
+        bVal = `${b.first_name || ''} ${b.last_name || ''}`.trim().toLowerCase()
+        break
+      case 'zip':
+        aVal = a.property_zip || ''
+        bVal = b.property_zip || ''
+        break
+      case 'age':
+        aVal = a.age || 0
+        bVal = b.age || 0
+        break
+      case 'broker':
+        aVal = (a.broker_name || 'Unassigned').toLowerCase()
+        bVal = (b.broker_name || 'Unassigned').toLowerCase()
+        break
+      case 'status':
+        aVal = a.status || ''
+        bVal = b.status || ''
+        break
+      case 'campaign':
+        aVal = a.campaign_status || ''
+        bVal = b.campaign_status || ''
+        break
+      case 'created_at':
+      default:
+        aVal = new Date(a.created_at || 0)
+        bVal = new Date(b.created_at || 0)
+        break
+    }
+    
+    if (sortOrder.value === 'asc') {
+      return aVal > bVal ? 1 : aVal < bVal ? -1 : 0
+    } else {
+      return aVal < bVal ? 1 : aVal > bVal ? -1 : 0
+    }
+  })
 
   return results
 })
@@ -369,22 +462,96 @@ async function loadBrokers() {
 
 // Scroll to top functionality
 function handleScrollVisibility() {
-  showScrollTop.value = window.pageYOffset > 100
+  // Find the actual scrollable container
+  const scrollableElements = document.querySelectorAll('*')
+  let hasScrolled = false
+  
+  for (let element of scrollableElements) {
+    const style = window.getComputedStyle(element)
+    if (style.overflow === 'auto' || style.overflow === 'scroll' || style.overflowY === 'auto' || style.overflowY === 'scroll') {
+      if (element.scrollHeight > element.clientHeight && element.scrollTop > 100) {
+        hasScrolled = true
+        break
+      }
+    }
+  }
+  
+  // Also check window scroll as fallback
+  const windowScroll = window.pageYOffset || document.documentElement.scrollTop
+  showScrollTop.value = hasScrolled || windowScroll > 100
 }
 
 function scrollToTop() {
-  // Simple scroll to top without complex DOM manipulation
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  // Find the actual scrollable container by looking for elements with overflow
+  const scrollableElements = document.querySelectorAll('*')
+  let mainScrollContainer = null
+  
+  for (let element of scrollableElements) {
+    const style = window.getComputedStyle(element)
+    if (style.overflow === 'auto' || style.overflow === 'scroll' || style.overflowY === 'auto' || style.overflowY === 'scroll') {
+      if (element.scrollHeight > element.clientHeight) {
+        if (element.scrollTop > 0) {
+          mainScrollContainer = element
+          break
+        }
+      }
+    }
+  }
+  
+  if (mainScrollContainer) {
+    mainScrollContainer.scrollTo({ top: 0, behavior: 'smooth' })
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// Sorting function
+function handleSort(field) {
+  if (sortField.value === field) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortField.value = field
+    sortOrder.value = 'asc'
+  }
 }
 
 onMounted(() => {
   loadLeads()
   loadBrokers()
+  
+  // Add scroll listeners for multiple containers
   window.addEventListener('scroll', handleScrollVisibility)
+  
+  // Find ALL elements with scrollable content and add listeners
+  setTimeout(() => {
+    const allElements = document.querySelectorAll('*')
+    
+    allElements.forEach(element => {
+      const style = window.getComputedStyle(element)
+      if (style.overflow === 'auto' || style.overflow === 'scroll' || 
+          style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        if (element.scrollHeight > element.clientHeight) {
+          element.addEventListener('scroll', handleScrollVisibility)
+        }
+      }
+    })
+  }, 1000) // Wait 1 second for DOM to be fully rendered
 })
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScrollVisibility)
+  
+  // Remove layout container listener if it exists
+  const layoutContainer = document.querySelector('.n-layout-scroll-container')
+  if (layoutContainer) {
+    layoutContainer.removeEventListener('scroll', handleScrollVisibility)
+  }
+  
+  // Remove workspace container listener if it exists
+  const workspaceContainer = document.querySelector('.leads-workspace')
+  if (workspaceContainer) {
+    workspaceContainer.removeEventListener('scroll', handleScrollVisibility)
+  }
 })
 </script>
 
@@ -423,6 +590,21 @@ onUnmounted(() => {
   text-align: center;
 }
 
+.th-cell.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.th-cell.sortable:hover {
+  background-color: rgba(99, 102, 241, 0.08);
+}
+
+.sort-icon {
+  margin-left: 0.25rem;
+  opacity: 0.7;
+}
+
 .th-cell:nth-child(1) { min-width: 140px; } /* Name */
 .th-cell:nth-child(2) { min-width: 60px; }  /* ZIP */
 .th-cell:nth-child(3) { min-width: 100px; } /* Status */
@@ -459,6 +641,12 @@ onUnmounted(() => {
 
 .meta-title {
   font-size: 0.78rem;
+}
+
+.meta-count {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
 }
 
 .editor-card {
