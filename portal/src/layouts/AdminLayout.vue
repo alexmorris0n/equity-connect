@@ -147,6 +147,7 @@ const routeKeyMap = {
   PromptManagement: 'prompts',
   BrokerManagement: 'brokers',
   AllLeads: 'leads',
+  LeadDetail: 'leads', // Lead Detail should highlight Lead Library
   SystemAnalytics: 'analytics'
 }
 

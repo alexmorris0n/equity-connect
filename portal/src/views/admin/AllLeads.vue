@@ -401,12 +401,18 @@ function formatRelativeTime(timestamp) {
 async function loadLeads() {
   loading.value = true
   try {
+    // Check current user first
+    const { data: { user } } = await supabase.auth.getUser()
+    console.log('🔍 Current user in loadLeads:', user)
+    console.log('🔍 User role:', user?.app_metadata?.user_role)
+    
     // First get all leads
     const { data: leadsData, error: leadsError } = await supabase
       .from('leads')
       .select('*')
       .order('created_at', { ascending: false })
 
+    console.log('🔍 Leads query result:', { leadsData, leadsError })
     if (leadsError) throw leadsError
 
     // Get all brokers

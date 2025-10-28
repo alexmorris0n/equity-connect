@@ -21,22 +21,26 @@ export function useAuth() {
       if (session?.user) {
         user.value = session.user
         
-        // Get broker info with role
-        const { data: brokerData, error: brokerError } = await supabase
-          .from('brokers')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .single()
-        
-        if (brokerError) {
-          console.error('❌ Broker query error:', brokerError)
-          console.log('User ID:', session.user.id)
-          console.log('User email:', session.user.email)
+        // Only get broker info if user is a broker (not admin)
+        if (session.user.app_metadata?.user_role === 'broker') {
+          const { data: brokerData, error: brokerError } = await supabase
+            .from('brokers')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .single()
+          
+          if (brokerError) {
+            console.error('❌ Broker query error:', brokerError)
+            console.log('User ID:', session.user.id)
+            console.log('User email:', session.user.email)
+          } else {
+            console.log('✅ Broker data loaded:', brokerData)
+          }
+          
+          broker.value = brokerData
         } else {
-          console.log('✅ Broker data loaded:', brokerData)
+          broker.value = null
         }
-        
-        broker.value = brokerData
       } else {
         user.value = null
         broker.value = null
@@ -61,14 +65,18 @@ export function useAuth() {
       if (!error && data?.user) {
         user.value = data.user
         
-        // Get broker info
-        const { data: brokerData } = await supabase
-          .from('brokers')
-          .select('*')
-          .eq('user_id', data.user.id)
-          .single()
-        
-        broker.value = brokerData
+        // Only get broker info if user is a broker (not admin)
+        if (data.user.app_metadata?.user_role === 'broker') {
+          const { data: brokerData } = await supabase
+            .from('brokers')
+            .select('*')
+            .eq('user_id', data.user.id)
+            .single()
+          
+          broker.value = brokerData
+        } else {
+          broker.value = null
+        }
       }
       
       return { data, error }
