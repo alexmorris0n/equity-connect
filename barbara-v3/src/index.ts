@@ -20,6 +20,7 @@ import { webhookRoute } from './routes/webhook.js';
 import { streamingRoute } from './routes/streaming.js';
 import { healthRoute } from './routes/health.js';
 import { apiRoutes } from './routes/api.js';
+import { smsRoute } from './routes/sms.js';
 import { logger } from './utils/logger.js';
 import { CONNECTION_MESSAGES } from './constants.js';
 
@@ -51,6 +52,7 @@ async function createServer() {
   await fastify.register(healthRoute);
   await fastify.register(webhookRoute);
   await fastify.register(apiRoutes);
+  await fastify.register(smsRoute);
   await fastify.register(async (scopedFastify) => {
     await streamingRoute(scopedFastify, {
       agentConfig,

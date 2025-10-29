@@ -18,6 +18,32 @@ export interface OutboundCallParams {
   brokerId?: string;
 }
 
+export interface SendSmsParams {
+  to: string;
+  from: string;
+  body: string;
+  statusCallback?: string;
+  metadata?: Record<string, any>;
+}
+
+interface SignalWireCredentials {
+  projectId: string;
+  token: string;
+  space: string;
+}
+
+function requireCredentials(): SignalWireCredentials {
+  if (!SW_PROJECT_ID || !SW_TOKEN || !SW_SPACE) {
+    throw new Error('SignalWire credentials not configured');
+  }
+
+  return {
+    projectId: SW_PROJECT_ID,
+    token: SW_TOKEN,
+    space: SW_SPACE
+  };
+}
+
 /**
  * Place an outbound call via SignalWire REST API
  * 
@@ -25,9 +51,7 @@ export interface OutboundCallParams {
  * @returns SignalWire Call SID
  */
 export async function placeOutboundCall(params: OutboundCallParams): Promise<string> {
-  if (!SW_PROJECT_ID || !SW_TOKEN || !SW_SPACE) {
-    throw new Error('SignalWire credentials not configured');
-  }
+  const { projectId, token, space } = requireCredentials();
 
   const { to, from, webhookUrl, leadId, brokerId } = params;
   
@@ -36,7 +60,7 @@ export async function placeOutboundCall(params: OutboundCallParams): Promise<str
   if (leadId) fullWebhookUrl += `&lead_id=${leadId}`;
   if (brokerId) fullWebhookUrl += `&broker_id=${brokerId}`;
 
-  const url = `https://${SW_SPACE}/api/laml/2010-04-01/Accounts/${SW_PROJECT_ID}/Calls.json`;
+  const url = `https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Calls.json`;
   
   const body = new URLSearchParams({
     To: to,
@@ -50,7 +74,7 @@ export async function placeOutboundCall(params: OutboundCallParams): Promise<str
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${Buffer.from(`${SW_PROJECT_ID}:${SW_TOKEN}`).toString('base64')}`
+      'Authorization': `Basic ${Buffer.from(`${projectId}:${token}`).toString('base64')}`
     },
     body: body.toString()
   });
@@ -67,5 +91,45 @@ export async function placeOutboundCall(params: OutboundCallParams): Promise<str
   logger.info(`✅ Call placed successfully: ${callSid}`);
   
   return callSid;
+}
+
+/**
+ * Send an outbound SMS via SignalWire REST API
+ */
+export async function sendSmsMessage(params: SendSmsParams): Promise<any> {
+  const { projectId, token, space } = requireCredentials();
+  const { to, from, body, statusCallback } = params;
+
+  const url = `https://${space}/api/laml/2010-04-01/Accounts/${projectId}/Messages.json`;
+
+  const payload = new URLSearchParams({
+    To: to,
+    From: from,
+    Body: body
+  });
+
+  if (statusCallback) {
+    payload.append('StatusCallback', statusCallback);
+  }
+
+  logger.info(`💬 Sending SMS: ${from} → ${to}`);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${Buffer.from(`${projectId}:${token}`).toString('base64')}`
+    },
+    body: payload.toString()
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error(`SignalWire SMS failed: ${response.status} ${errorText}`);
+    throw new Error(`Failed to send SMS: ${response.status}`);
+  }
+
+  const json = await response.json();
+  return json;
 }
 

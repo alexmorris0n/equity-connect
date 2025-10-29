@@ -46,19 +46,88 @@
             type="button"
             @click="loadVersion(version.id)"
           >
-            <div class="version-row">
+            <div class="version-content">
+              <span class="meta-status-top" v-if="version.is_active">Active</span>
+              <span class="meta-status-top draft" v-else-if="version.is_draft">Draft</span>
               <span class="meta-item-title">v{{ version.version_number }}</span>
-              <span class="meta-date">{{ formatDate(version.created_at) }}</span>
-              <span class="meta-status" v-if="version.is_active">Active</span>
-              <span class="meta-status draft" v-else-if="version.is_draft">Draft</span>
+              <span class="meta-item-sub">
+                {{ formatDate(version.created_at) }}
+              </span>
             </div>
-            <span
-              class="meta-item-sub"
-              v-if="version.change_summary"
-              :title="version.change_summary"
-            >
-              {{ version.change_summary }}
-            </span>
+            <!-- Activity Rings with Tooltip -->
+            <n-tooltip placement="right" trigger="hover">
+              <template #trigger>
+                <svg class="activity-rings" width="50" height="50" viewBox="0 0 50 50">
+                  <g v-for="(ring, idx) in getVersionRings(version)" :key="idx">
+                    <!-- Background ring -->
+                    <circle
+                      :cx="25"
+                      :cy="25"
+                      :r="18 - (idx * 5)"
+                      fill="none"
+                      stroke="rgba(0,0,0,0.08)"
+                      :stroke-width="3"
+                    />
+                    <!-- Progress ring -->
+                    <circle
+                      :cx="25"
+                      :cy="25"
+                      :r="18 - (idx * 5)"
+                      fill="none"
+                      :stroke="ring.color"
+                      :stroke-width="3"
+                      stroke-linecap="round"
+                      :stroke-dasharray="`${2 * Math.PI * (18 - idx * 5)}`"
+                      :stroke-dashoffset="`${2 * Math.PI * (18 - idx * 5) * (1 - ring.value / ring.max)}`"
+                      transform="rotate(-90 25 25)"
+                    />
+                  </g>
+                </svg>
+              </template>
+              <!-- Tooltip Content: Larger rings with labels -->
+              <div class="rings-tooltip">
+                <div class="rings-tooltip-header">
+                  <strong>v{{ version.version_number }} Performance</strong>
+                  <span class="rings-tooltip-calls" v-if="versionMetrics[`${activePrompt?.call_type}-v${version.version_number}`]">
+                    {{ versionMetrics[`${activePrompt?.call_type}-v${version.version_number}`].count }} calls
+                  </span>
+                  <span class="rings-tooltip-calls" v-else>No data</span>
+                </div>
+                <svg width="140" height="140" viewBox="0 0 140 140" style="display: block; margin: 0.5rem auto;">
+                  <g v-for="(ring, idx) in getVersionRings(version)" :key="idx">
+                    <!-- Background ring -->
+                    <circle
+                      :cx="70"
+                      :cy="70"
+                      :r="55 - (idx * 15)"
+                      fill="none"
+                      stroke="rgba(0,0,0,0.08)"
+                      :stroke-width="10"
+                    />
+                    <!-- Progress ring -->
+                    <circle
+                      :cx="70"
+                      :cy="70"
+                      :r="55 - (idx * 15)"
+                      fill="none"
+                      :stroke="ring.color"
+                      :stroke-width="10"
+                      stroke-linecap="round"
+                      :stroke-dasharray="`${2 * Math.PI * (55 - idx * 15)}`"
+                      :stroke-dashoffset="`${2 * Math.PI * (55 - idx * 15) * (1 - ring.value / ring.max)}`"
+                      transform="rotate(-90 70 70)"
+                    />
+                  </g>
+                </svg>
+                <div class="rings-tooltip-legend">
+                  <div v-for="(ring, idx) in getVersionRings(version)" :key="idx" class="legend-item">
+                    <div class="legend-color" :style="{ background: ring.color }"></div>
+                    <span class="legend-label">{{ ring.label }}</span>
+                    <span class="legend-value">{{ ring.value ? ring.value.toFixed(1) : '—' }}/10</span>
+                  </div>
+                </div>
+              </div>
+            </n-tooltip>
           </button>
         </div>
       </div>
@@ -96,46 +165,37 @@
         <n-tabs type="line" size="small" v-model:value="activeTab">
           <n-tab-pane name="performance" tab="Performance">
             <div v-if="evaluationData && evaluationData.count > 0" class="performance-container">
-              <!-- Summary Stats Grid -->
-              <div class="summary-stats-grid">
-                <div class="summary-stat">
-                  <div class="summary-stat-label">Total Calls</div>
-                  <div class="summary-stat-value">{{ evaluationData.count }}</div>
+              <!-- Summary Info Bar -->
+              <div class="summary-info-bar">
+                <div class="summary-info-item">
+                  <n-icon size="18" color="#6366f1" style="margin-right: 0.4rem;"><CallOutline /></n-icon>
+                  <span class="summary-info-label">{{ evaluationData.count }} {{ evaluationData.count === 1 ? 'call' : 'calls' }}</span>
                 </div>
-                <div class="summary-stat">
-                  <div class="summary-stat-label">Overall Score</div>
-                  <div class="summary-stat-value">{{ evaluationData.avgOverallScore }}<span class="summary-stat-suffix">/10</span></div>
-                </div>
-                <div class="summary-stat">
-                  <div class="summary-stat-label">Best Call</div>
-                  <div class="summary-stat-value">{{ evaluationData.bestScore }}<span class="summary-stat-suffix">/10</span></div>
-                </div>
-                <div class="summary-stat">
-                  <div class="summary-stat-label">Last Evaluated</div>
-                  <div class="summary-stat-value">{{ formatRelativeTime(evaluationData.lastEvaluated) }}</div>
+                <div class="summary-info-divider"></div>
+                <div class="summary-info-item">
+                  <n-icon size="18" color="#94a3b8" style="margin-right: 0.4rem;"><TimeOutline /></n-icon>
+                  <span class="summary-info-label">{{ formatRelativeTime(evaluationData.lastEvaluated) }}</span>
                 </div>
               </div>
 
-              <!-- 6 Metric Scores -->
-              <n-card title="Performance Metrics" :bordered="false" style="margin-bottom: 16px; background: rgba(248, 250, 255, 0.4);">
-                <n-grid :cols="3" :x-gap="8" :y-gap="10">
-                  <n-grid-item v-for="metric in evaluationMetrics" :key="metric.key">
-                    <div class="metric-card">
-                      <div class="metric-label">{{ metric.label }}</div>
-                      <div class="metric-score" :class="getScoreClass(metric.value)">
-                        {{ metric.value.toFixed(1) }}<span class="metric-suffix">/10</span>
-                      </div>
-                      <n-progress 
-                        type="line" 
-                        :percentage="(metric.value / 10) * 100" 
-                        :show-indicator="false"
-                        :color="getScoreColor(metric.value)"
-                        :height="4"
-                        :border-radius="2"
-                      />
-                    </div>
-                  </n-grid-item>
-                </n-grid>
+              <!-- 6 Metric Scores - Circular Progress -->
+              <n-card :bordered="false" style="margin-bottom: 16px; background: rgba(248, 250, 255, 0.4); padding: 1rem 1.5rem;">
+                <div class="metrics-ring-grid">
+                  <div v-for="metric in evaluationMetrics" :key="metric.key" class="metric-ring-item">
+                    <n-progress
+                      type="circle"
+                      :percentage="(metric.value / 10) * 100"
+                      :stroke-width="12"
+                      :color="getMetricColorWithIntensity(metric.value, metric.key)"
+                      :rail-color="'rgba(0,0,0,0.06)'"
+                      :show-indicator="false"
+                      style="width: 100px; height: 100px;"
+                    >
+                    </n-progress>
+                    <div class="metric-ring-score">{{ metric.value.toFixed(1) }}<span class="metric-ring-suffix">/10</span></div>
+                    <div class="metric-ring-label">{{ metric.label }}</div>
+                  </div>
+                </div>
               </n-card>
 
               <!-- AI Analysis Section -->
@@ -694,14 +754,23 @@
           <p class="text-muted" style="margin: 0; font-size: 0.85rem;">Review the changes and accept or reject:</p>
         </div>
 
-        <div class="side-by-side-diff" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-          <div class="diff-column">
-            <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #6b7280;">Original</h5>
-            <pre style="background: rgba(248, 250, 255, 0.8); padding: 1rem; border-radius: 8px; font-size: 0.8rem; line-height: 1.5; max-height: 400px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(148, 163, 184, 0.18);">{{ currentVersion?.content[aiImprovingSection?.key] || '(empty)' }}</pre>
-          </div>
-          <div class="diff-column">
-            <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #10b981;">AI Improved</h5>
-            <pre style="background: rgba(16, 185, 129, 0.05); padding: 1rem; border-radius: 8px; font-size: 0.8rem; line-height: 1.5; max-height: 400px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(16, 185, 129, 0.3);">{{ aiSuggestion }}</pre>
+        <div class="diff-content">
+          <div class="diff-section">
+            <h4 class="preview-section-title">
+              {{ aiImprovingSection?.label }}
+              <span class="changed-badge">AI Modified</span>
+            </h4>
+            <div class="diff-text">
+              <span
+                v-for="(part, index) in aiDiff"
+                :key="index"
+                :class="{
+                  'diff-added': part.added,
+                  'diff-removed': part.removed,
+                  'diff-unchanged': !part.added && !part.removed
+                }"
+              >{{ part.value }}</span>
+            </div>
           </div>
         </div>
 
@@ -922,9 +991,19 @@
                 </div>
                 <p style="margin: 0 0 0.5rem 0; color: #ef4444; font-size: 0.9rem;"><strong>Issue:</strong> {{ rec.issue }}</p>
                 <p style="margin: 0 0 0.5rem 0; color: #6b7280; font-size: 0.85rem;"><strong>Why:</strong> {{ rec.reasoning }}</p>
-                <div style="margin-top: 0.75rem; padding: 0.75rem; background: rgba(16, 185, 129, 0.05); border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">
-                  <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; font-weight: 600; color: #10b981;">Suggested Change:</p>
-                  <pre style="margin: 0; white-space: pre-wrap; font-size: 0.85rem; line-height: 1.5; color: #1f2937;">{{ rec.suggestion }}</pre>
+                <div style="margin-top: 0.75rem;">
+                  <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; font-weight: 600; color: #10b981;">Suggested Changes:</p>
+                  <div class="diff-text">
+                    <span
+                      v-for="(part, partIdx) in auditRecommendationDiffs[idx]"
+                      :key="partIdx"
+                      :class="{
+                        'diff-added': part.added,
+                        'diff-removed': part.removed,
+                        'diff-unchanged': !part.added && !part.removed
+                      }"
+                    >{{ part.value }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1068,6 +1147,7 @@ const aiImprovingSection = ref(null)
 const aiUserRequest = ref('')
 const aiSuggestion = ref('')
 const aiChanges = ref([])
+const aiDiff = ref([])
 const aiIsLoading = ref(false)
 
 // AI Audit feature
@@ -1089,6 +1169,7 @@ const auditResults = ref({
   criticalIssues: [],
   recommendations: []
 })
+const auditRecommendationDiffs = ref({})
 
 const voiceOptions = [
   { label: 'Alloy', value: 'alloy' },
@@ -1452,6 +1533,9 @@ const performanceMetrics = computed(() => {
 const evaluationData = ref(null)
 const evaluationLoading = ref(false)
 
+// Version performance metrics (for activity rings on version cards)
+const versionMetrics = ref({})
+
 // Computed property for evaluation metrics display
 const evaluationMetrics = computed(() => {
   if (!evaluationData.value) return []
@@ -1723,9 +1807,66 @@ const fetchEvaluationData = async () => {
   }
 }
 
+// Fetch performance metrics for ALL versions (for activity rings on cards)
+async function fetchAllVersionMetrics() {
+  if (!activePrompt.value) return
+  
+  try {
+    // Query all evaluations for this prompt type
+    const { data, error: queryError } = await supabase
+      .from('call_evaluations')
+      .select('prompt_version, overall_score, booking_attempt_quality, tone_consistency')
+      .like('prompt_version', `${activePrompt.value.call_type}%`)
+    
+    if (queryError) {
+      console.error('❌ Error fetching version metrics:', queryError)
+      return
+    }
+    
+    if (!data || data.length === 0) {
+      versionMetrics.value = {}
+      return
+    }
+    
+    // Group by version and calculate averages
+    const grouped = {}
+    data.forEach(evaluation => {
+      const version = evaluation.prompt_version
+      if (!grouped[version]) {
+        grouped[version] = {
+          overall_scores: [],
+          booking_scores: [],
+          tone_scores: []
+        }
+      }
+      if (evaluation.overall_score) grouped[version].overall_scores.push(parseFloat(evaluation.overall_score))
+      if (evaluation.booking_attempt_quality) grouped[version].booking_scores.push(evaluation.booking_attempt_quality)
+      if (evaluation.tone_consistency) grouped[version].tone_scores.push(evaluation.tone_consistency)
+    })
+    
+    // Calculate averages
+    const metrics = {}
+    Object.keys(grouped).forEach(version => {
+      const g = grouped[version]
+      metrics[version] = {
+        overall: g.overall_scores.length > 0 ? g.overall_scores.reduce((a, b) => a + b, 0) / g.overall_scores.length : null,
+        booking: g.booking_scores.length > 0 ? g.booking_scores.reduce((a, b) => a + b, 0) / g.booking_scores.length : null,
+        tone: g.tone_scores.length > 0 ? g.tone_scores.reduce((a, b) => a + b, 0) / g.tone_scores.length : null,
+        count: g.overall_scores.length
+      }
+    })
+    
+    versionMetrics.value = metrics
+    console.log('📊 Version metrics loaded:', metrics)
+  } catch (err) {
+    console.error('❌ Failed to fetch version metrics:', err)
+  }
+}
+
 // Watch for version changes to fetch evaluation data
 watch([currentVersion, activePrompt], () => {
   fetchEvaluationData()
+  fetchAllVersionMetrics()
 }, { immediate: true })
 
 const isOlderVersion = computed(() => {
@@ -2238,20 +2379,23 @@ async function saveChanges() {
       }
     } else {
       // If already a draft, just update it
+      const currentVersionId = currentVersion.value.id
+      
       const { error: updateError } = await supabase
         .from('prompt_versions')
         .update({
           content: currentVersion.value.content,
           variables: extractedVariables.value
         })
-        .eq('id', currentVersion.value.id)
+        .eq('id', currentVersionId)
 
       if (updateError) throw updateError
 
       hasChanges.value = false
       
-      // Reload to refresh the version card
+      // Reload to refresh the version card and stay on the current draft
       await loadVersions()
+      await loadVersion(currentVersionId)
     }
   } catch (err) {
     error.value = err.message
@@ -2355,6 +2499,7 @@ function openAIImprove(section) {
   aiUserRequest.value = ''
   aiSuggestion.value = ''
   aiChanges.value = []
+  aiDiff.value = []
   showAIImproveModal.value = true
 }
 
@@ -2364,6 +2509,7 @@ function closeAIImprove() {
   aiUserRequest.value = ''
   aiSuggestion.value = ''
   aiChanges.value = []
+  aiDiff.value = []
 }
 
 function getSectionGuidelines(sectionKey) {
@@ -2570,15 +2716,22 @@ USER REQUEST: ${aiUserRequest.value}
 SECTION-SPECIFIC GUIDELINES:
 ${getSectionGuidelines(aiImprovingSection.value.key)}
 
+CRITICAL GUARDRAILS:
+⚠️ You are ONLY improving the "${aiImprovingSection.value.label}" section
+⚠️ Do NOT add metadata like "Name:", "Call Type:", "Purpose:", "Goal:", "SECTION:"
+⚠️ Do NOT include section headers or other sections
+⚠️ Do NOT add explanatory text before or after the content
+⚠️ Return ONLY the improved content for this specific section
+
 REQUIREMENTS:
 1. Follow OpenAI Realtime API best practices (ultra-brief <200 chars, interrupt-friendly, numbers as words, tool fillers, micro-utterances)
 2. Match the prompt's purpose (${currentPromptMetadata.value.purpose})
 3. Align with the goal (${currentPromptMetadata.value.goal})
 4. Preserve line breaks and formatting (bullets -, numbers 1., arrows →, ALL CAPS headers)
 5. Use {{variableName}} syntax for template variables
-6. Return ONLY the improved content (no explanations, no code blocks, just the raw text)
+6. Return ONLY the section content - nothing else
 
-Provide the improved content now:`
+Provide the improved "${aiImprovingSection.value.label}" content now (no metadata, no headers, just the content):`
 
     // Call OpenAI API with GPT-5 (best for prompt refinement)
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -2592,7 +2745,7 @@ Provide the improved content now:`
         messages: [
           { 
             role: 'system', 
-            content: 'You are a prompt-refinement assistant specializing in OpenAI Realtime API voice prompts. Maintain all original formatting, indentation, line breaks, and {{variables}} exactly. Follow Realtime API best practices: ultra-brief responses, interrupt-friendly design, numbers as words, tool latency fillers, micro-utterances.'
+            content: 'You are a prompt-refinement assistant specializing in OpenAI Realtime API voice prompts. You ONLY return the improved content for the specific section being edited - NO metadata, NO section headers, NO explanations. Maintain all original formatting, indentation, line breaks, and {{variables}} exactly. Follow Realtime API best practices: ultra-brief responses, interrupt-friendly design, numbers as words, tool latency fillers, micro-utterances.'
           },
           { 
             role: 'user', 
@@ -2611,6 +2764,11 @@ Provide the improved content now:`
     
     const data = await response.json()
     aiSuggestion.value = data.choices[0].message.content
+    
+    // Generate redline diff between original and AI-improved content
+    const oldText = currentVersion.value.content[aiImprovingSection.value.key] || ''
+    const newText = aiSuggestion.value || ''
+    aiDiff.value = Diff.diffWords(oldText, newText)
     
     // Generate simple change summary (you could make this more sophisticated)
     aiChanges.value = [
@@ -2663,6 +2821,7 @@ function openAuditModal() {
     criticalIssues: [],
     recommendations: []
   }
+  auditRecommendationDiffs.value = {}
   showAuditQuestionsModal.value = true
 }
 
@@ -2672,6 +2831,7 @@ function closeAuditQuestions() {
 
 function closeAuditResults() {
   showAuditResultsModal.value = false
+  auditRecommendationDiffs.value = {}
 }
 
 async function runAudit() {
@@ -2780,6 +2940,16 @@ Provide your comprehensive evaluation now as valid JSON:`
       criticalIssues: auditData.criticalIssues || [],
       recommendations: auditData.recommendations || []
     }
+    
+    // Generate redline diffs for each recommendation
+    auditRecommendationDiffs.value = {}
+    auditResults.value.recommendations.forEach((rec, idx) => {
+      if (rec.section && rec.suggestion) {
+        const oldText = currentVersion.value.content[rec.section] || ''
+        const newText = rec.suggestion || ''
+        auditRecommendationDiffs.value[idx] = Diff.diffWords(oldText, newText)
+      }
+    })
     
     // Close questions modal and open results modal
     showAuditQuestionsModal.value = false
@@ -2934,6 +3104,92 @@ function formatDate(dateString) {
   if (!dateString) return ''
   const date = new Date(dateString)
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// Get color with intensity based on score (0-10 scale)
+// Higher score = brighter color, Lower score = dimmer color
+function getColorWithIntensity(baseHue, score) {
+  if (score === null || score === undefined) {
+    return `hsla(${baseHue}, 20%, 70%, 0.3)` // Very dim/gray for no data
+  }
+  
+  // Score 0-10, target is 8
+  // 8+ = full brightness
+  // 6-7.9 = medium brightness  
+  // <6 = low brightness
+  
+  let saturation, lightness, alpha
+  
+  if (score >= 8) {
+    // Great score - bright, vibrant
+    saturation = 85
+    lightness = 50
+    alpha = 1
+  } else if (score >= 6) {
+    // Medium score - moderate brightness
+    saturation = 60
+    lightness = 55
+    alpha = 0.8
+  } else {
+    // Poor score - dim, muted
+    saturation = 40
+    lightness = 60
+    alpha = 0.6
+  }
+  
+  return `hsla(${baseHue}, ${saturation}%, ${lightness}%, ${alpha})`
+}
+
+// Get color for performance metrics with varied hues
+function getMetricColorWithIntensity(score, metricKey) {
+  // Each metric gets its own hue, brightness varies based on score
+  const hueMap = {
+    'opening_effectiveness': 210,    // Blue
+    'property_discussion_quality': 140, // Green
+    'objection_handling': 30,        // Orange
+    'booking_attempt_quality': 0,    // Red
+    'tone_consistency': 270,         // Purple
+    'overall_call_flow': 190         // Cyan/Teal
+  }
+  
+  const hue = hueMap[metricKey] || 250 // Default to indigo if not found
+  return getColorWithIntensity(hue, score)
+}
+
+// Get ring data for a version
+function getVersionRings(version) {
+  const promptVersion = `${activePrompt.value?.call_type}-v${version.version_number}`
+  const metrics = versionMetrics.value[promptVersion]
+  
+  if (!metrics) {
+    // No data yet - show empty/dim rings
+    return [
+      { value: 0, max: 10, color: getColorWithIntensity(0, null), label: 'Overall' }, // Red hue = 0
+      { value: 0, max: 10, color: getColorWithIntensity(120, null), label: 'Booking' }, // Green hue = 120
+      { value: 0, max: 10, color: getColorWithIntensity(210, null), label: 'Tone' } // Blue hue = 210
+    ]
+  }
+  
+  return [
+    { 
+      value: metrics.overall || 0, 
+      max: 10, 
+      color: getColorWithIntensity(0, metrics.overall), // Red hue
+      label: 'Overall' 
+    },
+    { 
+      value: metrics.booking || 0, 
+      max: 10, 
+      color: getColorWithIntensity(120, metrics.booking), // Green hue
+      label: 'Booking' 
+    },
+    { 
+      value: metrics.tone || 0, 
+      max: 10, 
+      color: getColorWithIntensity(210, metrics.tone), // Blue hue
+      label: 'Tone' 
+    }
+  ]
 }
 
 function getCallTypeIcon(callType) {
@@ -3621,8 +3877,7 @@ function handleBeforeUnload(e) {
   width: max-content;
 }
 
-.meta-item,
-.meta-item.version {
+.meta-item {
   flex-shrink: 0;
   border: 1px solid rgba(148, 163, 184, 0.4);
   border-radius: 12px;
@@ -3642,6 +3897,87 @@ function handleBeforeUnload(e) {
   scroll-snap-align: start;
   box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.22);
   overflow: hidden;
+}
+
+.meta-item.version {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 200px;
+  width: 200px;
+  height: 70px;
+}
+
+.meta-item.version .version-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.meta-item.version .activity-rings {
+  flex-shrink: 0;
+  opacity: 0.9;
+  transition: opacity 0.2s ease;
+}
+
+.meta-item.version:hover .activity-rings {
+  opacity: 1;
+}
+
+/* Rings Tooltip */
+.rings-tooltip {
+  padding: 0.5rem;
+  min-width: 200px;
+}
+
+.rings-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.rings-tooltip-calls {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: normal;
+}
+
+.rings-tooltip-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: #64748b;
+  font-size: 0.8rem;
 }
 
 
@@ -3704,19 +4040,12 @@ function handleBeforeUnload(e) {
   text-align: left;
 }
 
-.version-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-}
-
-.version-row .meta-item-title {
+.meta-item.version .meta-item-title {
   font-weight: 700;
   font-size: 0.9rem;
   min-width: 0;
   color: #1e293b;
+  margin-bottom: 0.1rem;
 }
 
 .meta-date {
@@ -3736,6 +4065,23 @@ function handleBeforeUnload(e) {
 }
 
 .meta-status.draft {
+  background: rgba(250, 204, 21, 0.2);
+  color: #92400e;
+}
+
+.meta-status-top {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+  border-radius: 999px;
+  padding: 0 0.35rem;
+  font-size: 0.55rem;
+  font-weight: 600;
+  white-space: nowrap;
+  width: fit-content;
+  margin-bottom: 0.15rem;
+}
+
+.meta-status-top.draft {
   background: rgba(250, 204, 21, 0.2);
   color: #92400e;
 }
@@ -4199,66 +4545,72 @@ function handleBeforeUnload(e) {
   padding: 8px 0;
 }
 
-.summary-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 160px));
-  gap: 8px;
-  margin-bottom: 16px;
-  justify-content: center;
+/* Summary Info Bar */
+.summary-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0;
+  flex-wrap: wrap;
 }
 
-.summary-stat {
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 8px;
+.summary-info-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.summary-info-label {
+  font-weight: 500;
+}
+
+.summary-info-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(148, 163, 184, 0.3);
+}
+
+/* Metrics Ring Grid */
+.metrics-ring-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem 1rem;
+  padding: 0;
+}
+
+.metric-ring-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
 }
 
-.summary-stat-label {
-  font-size: 0.72rem;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.summary-stat-value {
-  font-size: 1.25rem;
-  font-weight: 600;
+.metric-ring-score {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.1rem;
+  font-weight: 700;
   color: #1f2937;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  margin-top: -10px;
 }
 
-.summary-stat-suffix {
-  font-size: 0.85rem;
-  font-weight: 400;
-  color: #94a3b8;
-  margin-left: 2px;
-}
-
-.metric-card {
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.metric-card:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(99, 102, 241, 0.2);
-}
-
-.metric-label {
-  font-size: 0.72rem;
-  color: #64748b;
-  margin-bottom: 6px;
+.metric-ring-suffix {
+  font-size: 0.7rem;
   font-weight: 500;
+  color: #94a3b8;
+}
+
+.metric-ring-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+  text-align: center;
+  max-width: 120px;
 }
 
 .metric-score {

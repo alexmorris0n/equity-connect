@@ -1145,6 +1145,13 @@ GROUP BY campaign_archetype;
 - ✅ DNC registry integration
 - ✅ Call outcome tracking
 - **Status:** ✅ **PRODUCTION READY - Barbara V3 + SignalWire operational**
+- **SMS Coordinator Persona ("Sarah") — NEW**
+  - Continuity persona used in cold email campaigns now anchors SMS outreach. Barbara handles live calls, Sarah handles asynchronous texts so leads perceive a coordinated human team.
+  - **Missed-call follow-up:** "Hi John, this is Sarah from Walter's office. The team let me know they couldn't reach you earlier – that's totally fine. What's a good time for a callback? Or happy to answer any questions here." Sends automatically when Barbara's call goes unanswered.
+  - **Pre-appointment soft confirmation:** "Hi John, it's Sarah. Just confirming your appointment with Walter tomorrow at 2pm. Make sure you have your property tax bill handy – but if you can't find it, totally fine, we can work with that. Looking forward to it!"
+  - **Post-booking thank-you / FAQ check-in:** "Thanks again for booking with Walter. Do you have any questions before we meet? Happy to help here." Keeps the conversation warm and catches objections early.
+  - **Failed booking or call fallback:** If Barbara can't secure a time on voice, Sarah continues the conversation via SMS, re-running `check_broker_availability` → `book_appointment` and, once confirmed, `assign_tracking_number` directly from text.
+  - **Conversation memory requirements:** SMS handler must persist per-lead context (phone, prior messages, tool calls) so Sarah replies in-thread, references earlier touchpoints, and respects STOP/HELP compliance while logging outcomes via `save_interaction`.
 
 **9. Appointment Booking** ⭐ **PRODUCTION READY** (COMPLETE)
 - ✅ Nylas calendar integration (replaced Cal.com)

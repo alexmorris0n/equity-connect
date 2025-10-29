@@ -85,7 +85,6 @@
                 allowfullscreen=""
                 loading="lazy"
                 referrerpolicy="no-referrer-when-downgrade"
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                 @error="handleMapError"
                 @load="handleMapLoad">
               </iframe>

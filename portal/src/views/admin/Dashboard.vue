@@ -1,523 +1,531 @@
 <template>
   <div class="dashboard-shell">
-    <div class="stats-grid">
-      <n-card v-for="card in statCards" :key="card.key" :bordered="false" size="small" class="stat-card">
-        <div class="stat-header">
-          <div :class="['stat-icon', card.accent]">
+    <div class="dashboard-grid">
+      <div class="ai-performance-card">
+        <div class="ai-performance-header">
+          <div class="stat-icon accent-violet ai-performance-icon">
             <n-icon size="20">
-              <component :is="card.icon" />
+              <SparklesOutline />
             </n-icon>
           </div>
-          <span class="stat-label">{{ card.label }}</span>
+          <div class="ai-performance-heading">
+            <span class="ai-performance-title">AI Performance</span>
+            <span class="ai-performance-timeframe">{{ aiPerformance.timeframeLabel }}</span>
+          </div>
         </div>
-        <div class="stat-metric">
-          <span class="stat-value">{{ card.value }}</span>
-          <n-tag v-if="card.badge" round size="small" :type="card.badge.type">
-            {{ card.badge.text }}
-          </n-tag>
-        </div>
-        <span class="stat-subtitle">{{ card.subtitle }}</span>
-      </n-card>
-    </div>
+        <div class="ai-performance-body">
+          <div v-if="aiPerformance.count > 0" class="ai-performance-content">
+            <svg class="ai-performance-rings" width="250" height="250" viewBox="0 0 250 250">
+              <g v-for="(ring, idx) in aiPerformance.rings" :key="idx">
+                <circle
+                  cx="125"
+                  cy="125"
+                  :r="100 - (idx * 15)"
+                  fill="none"
+                  stroke="rgba(0,0,0,0.06)"
+                  stroke-width="12"
+                />
+                <circle
+                  cx="125"
+                  cy="125"
+                  :r="100 - (idx * 15)"
+                  fill="none"
+                  :stroke="ring.color"
+                  stroke-width="12"
+                  stroke-linecap="round"
+                  :stroke-dasharray="`${2 * Math.PI * (100 - idx * 15)}`"
+                  :stroke-dashoffset="`${2 * Math.PI * (100 - idx * 15) * (1 - ring.value / ring.max)}`"
+                  transform="rotate(-90 125 125)"
+                />
+              </g>
+              <text x="125" y="133" text-anchor="middle" font-size="36" fill="#1f2937" font-weight="700">
+                {{ aiPerformance.overallScore }}
+              </text>
+            </svg>
 
-    <n-grid class="overview-grid" cols="1 1024:3" :x-gap="16" :y-gap="16">
-      <n-gi :span="2">
-        <n-card :bordered="false" size="small" class="pipeline-card" title="Pipeline Overview">
-          <template #header-extra>
-            <span v-if="totalLeads" class="pipeline-total">{{ formatNumber(totalLeads) }} leads</span>
-          </template>
-          <div v-if="statusBreakdown.length" class="pipeline-list">
-            <div v-for="item in statusBreakdown" :key="item.status" class="pipeline-row">
-              <div class="pipeline-meta">
-                <span class="pipeline-label">{{ item.label }}</span>
-                <span class="pipeline-count">{{ formatNumber(item.count) }}</span>
+            <div class="ai-performance-legend">
+              <div v-for="(ring, idx) in aiPerformance.rings" :key="idx" class="legend-item">
+                <div class="legend-color" :style="{ background: ring.color }"></div>
+                <span class="legend-label">{{ ring.label }}</span>
+                <span class="legend-value">{{ ring.value ? ring.value.toFixed(1) : '—' }}/10</span>
               </div>
+            </div>
+          </div>
+          <n-empty v-else :description="'No data in ' + aiPerformance.timeframeLabel" size="small" />
+        </div>
+      </div>
+      <div class="calls-card">
+        <div class="calls-header">
+          <div class="stat-icon accent-sky">
+            <n-icon size="20">
+              <CallOutline />
+            </n-icon>
+          </div>
+          <div class="calls-heading">
+            <span class="calls-title">Calls & Bookings</span>
+            <span class="calls-timeframe">{{ callMetrics.timeframeLabel }}</span>
+          </div>
+        </div>
+        <div class="calls-body" v-if="!callMetrics.loading">
+          <div v-if="callMetrics.totalCalls > 0" class="calls-content">
+            <div class="calls-ring-wrapper">
               <n-progress
-                type="line"
-                :percentage="item.percentage"
-                :height="6"
-                indicator-placement="inside"
+                type="circle"
+                :percentage="Math.round(callMetrics.bookingRate)"
+                :stroke-width="12"
                 :show-indicator="false"
+                :color="bookingRingColor"
+                :rail-color="'rgba(148, 163, 184, 0.18)'"
+                :style="{ width: '160px', height: '160px' }"
               />
+              <div class="calls-ring-center">
+                <span class="calls-ring-value">
+                  {{ Math.round(callMetrics.bookingRate) }}
+                  <span class="calls-ring-percent">%</span>
+                </span>
+                <span class="calls-ring-label">Booking Rate</span>
+              </div>
+            </div>
+
+            <div v-if="callSegments.length" class="calls-bar">
+              <div
+                v-for="segment in callSegments"
+                :key="segment.label"
+                class="calls-bar-segment"
+                :style="{ width: segment.percent + '%', background: segment.barColor }"
+              ></div>
+            </div>
+
+            <div v-if="callSegments.length" class="calls-bar-legend">
+              <div v-for="segment in callSegments" :key="segment.label" class="legend-entry">
+                <span class="legend-dot" :style="{ background: segment.color }"></span>
+                <span class="legend-label">{{ segment.label }}</span>
+                <span class="legend-value">{{ formatNumber(segment.value) }}</span>
+              </div>
+            </div>
+
+            <div class="calls-stats">
+              <div class="calls-stat">
+                <span class="stat-label">Total Calls</span>
+                <span class="stat-value">{{ formatNumber(callMetrics.totalCalls) }}</span>
+              </div>
+              <div class="calls-stat">
+                <span class="stat-label">Booked</span>
+                <span class="stat-value success">{{ formatNumber(callMetrics.bookings) }}</span>
+              </div>
+              <div class="calls-stat" v-if="callMetrics.followUps">
+                <span class="stat-label">Follow Ups</span>
+                <span class="stat-value warning">{{ formatNumber(callMetrics.followUps) }}</span>
+              </div>
             </div>
           </div>
-          <n-empty v-else description="No pipeline data yet" size="small" />
-        </n-card>
-      </n-gi>
+          <n-empty v-else description="No calls in last 7 days" size="small" />
+        </div>
+        <div v-else class="calls-loading">
+          <n-spin size="medium" />
+        </div>
+      </div>
 
-      <n-gi>
-        <n-card :bordered="false" size="small" class="health-card" title="Platform Health">
-          <div class="health-grid">
-            <n-card :bordered="false" size="small" class="stat-card">
-              <div class="stat-header">
-                <div class="stat-icon accent-sky">
-                  <n-icon size="20">
-                    <TimeOutline />
-                  </n-icon>
-                </div>
-                <span class="stat-label">Data Freshness</span>
-              </div>
-              <div class="stat-metric">
-                <span class="stat-value">{{ platformHealth.dataFreshness }}</span>
-              </div>
-              <span class="stat-subtitle">Last lead captured</span>
-            </n-card>
-            
-            <n-card :bordered="false" size="small" class="stat-card">
-              <div class="stat-header">
-                <div class="stat-icon accent-mint">
-                  <n-icon size="20">
-                    <TrendingUpOutline />
-                  </n-icon>
-                </div>
-                <span class="stat-label">Lead Velocity</span>
-              </div>
-              <div class="stat-metric">
-                <span class="stat-value">{{ platformHealth.leadVelocity }}</span>
-              </div>
-              <span class="stat-subtitle">New leads (24h)</span>
-            </n-card>
-            
-            <n-card :bordered="false" size="small" class="stat-card">
-              <div class="stat-header">
-                <div class="stat-icon accent-amber">
-                  <n-icon size="20">
-                    <CashOutline />
-                  </n-icon>
-                </div>
-                <span class="stat-label">Funded This Week</span>
-              </div>
-              <div class="stat-metric">
-                <span class="stat-value">{{ platformHealth.fundedThisWeek }}</span>
-              </div>
-              <span class="stat-subtitle">Completed deals</span>
-            </n-card>
+      <div class="outcome-card">
+        <div class="outcome-header">
+          <div class="stat-icon accent-violet">
+            <n-icon size="20">
+              <PieChartOutline />
+            </n-icon>
           </div>
-        </n-card>
-      </n-gi>
-    </n-grid>
-
-    <n-grid class="lower-grid" cols="1 1024:3" :x-gap="16" :y-gap="16">
-      <n-gi :span="2">
-        <n-card :bordered="false" size="small" class="broker-card" title="Broker Performance">
-          <div v-if="topBrokers.length" class="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Broker</th>
-                  <th>Leads</th>
-                  <th>Conversion</th>
-                  <th>Appointments</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="broker in topBrokers" :key="broker.id">
-                  <td>
-                    <div class="broker-name">
-                      <span class="name">{{ broker.name }}</span>
-                      <span v-if="broker.company" class="company">{{ broker.company }}</span>
-                    </div>
-                  </td>
-                  <td>{{ formatNumber(broker.leads) }}</td>
-                  <td>{{ broker.conversion }}%</td>
-                  <td>{{ formatNumber(broker.appointments) }}</td>
-                  <td>
-                    <n-tag size="small" round :type="broker.status === 'active' ? 'success' : 'default'">
-                      {{ formatStatus(broker.status) }}
-                    </n-tag>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="outcome-heading">
+            <span class="outcome-title">Outcome Mix</span>
+            <span class="outcome-timeframe">{{ callMetrics.timeframeLabel }}</span>
           </div>
-          <n-empty v-else description="No broker performance data yet" size="small" />
-        </n-card>
-      </n-gi>
-
-      <n-gi>
-        <n-card :bordered="false" size="small" class="activity-card" title="Recent Activity">
-          <n-empty v-if="!recentActivity.length" description="No recent activity yet" size="small" />
-          <div v-else class="activity-list">
-            <div v-for="item in recentActivity" :key="item.id" class="activity-item">
-              <div :class="['activity-icon', item.type]">
-                <n-icon size="18">
-                  <component :is="item.icon" />
-                </n-icon>
-              </div>
-              <div class="activity-meta">
-                <div class="activity-title">{{ item.title }}</div>
-                <div class="activity-subtitle">{{ item.description }}</div>
-              </div>
-              <div class="activity-time">{{ item.timeAgo }}</div>
+        </div>
+        <div class="outcome-body" v-if="callMetrics.totalCalls > 0">
+          <div class="outcome-donut" :style="{ background: outcomeGradient }">
+            <div class="outcome-center">
+              <span class="outcome-total">{{ formatNumber(outcomeSummary.total) }}</span>
+              <span class="outcome-label">Total Calls</span>
             </div>
           </div>
-        </n-card>
-      </n-gi>
-    </n-grid>
+          <div class="outcome-legend">
+            <div v-for="segment in callSegments" :key="segment.label" class="legend-entry">
+              <span class="legend-dot" :style="{ background: segment.color }"></span>
+              <div class="legend-stack">
+                <span class="legend-label">{{ segment.label }}</span>
+                <span class="legend-value">{{ formatNumber(segment.value) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="outcome-empty">
+          <n-empty description="No call outcomes yet" size="small" />
+        </div>
+      </div>
+
+      <div class="trend-card">
+        <div class="trend-header">
+          <div class="stat-icon accent-mint">
+            <n-icon size="20">
+              <TrendingUpOutline />
+            </n-icon>
+          </div>
+          <div class="trend-heading">
+            <span class="trend-title">Call Volume Trend</span>
+            <span class="trend-timeframe">{{ callMetrics.timeframeLabel }}</span>
+          </div>
+        </div>
+        <div class="trend-body" v-if="callTrendChart.hasData">
+          <div class="trend-chart">
+            <svg
+              class="trend-sparkline"
+              :viewBox="`0 0 ${callTrendChart.width} ${callTrendChart.height}`"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <defs>
+                <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#6366f1" stop-opacity="0.5" />
+                  <stop offset="100%" stop-color="#cbd5f5" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <polygon
+                class="trend-area"
+                :points="callTrendChart.areaPoints"
+                fill="url(#trendGradient)"
+                opacity="0.3"
+              />
+              <polyline
+                class="trend-line"
+                fill="none"
+                stroke="#4f46e5"
+                stroke-width="3"
+                stroke-linecap="round"
+                :points="callTrendChart.points"
+              />
+            </svg>
+            <div class="trend-axis">
+              <span>{{ callTrendChart.labels.start }}</span>
+              <span>{{ callTrendChart.labels.end }}</span>
+            </div>
+          </div>
+          <div class="trend-stats">
+            <div class="trend-stat">
+              <span class="stat-label">Best Day</span>
+              <span class="stat-value">{{ formatNumber(callTrendChart.max.count) }}</span>
+              <span class="stat-sub">{{ callTrendChart.max.label }}</span>
+            </div>
+            <div class="trend-stat">
+              <span class="stat-label">Lowest</span>
+              <span class="stat-value">{{ formatNumber(callTrendChart.min.count) }}</span>
+              <span class="stat-sub">{{ callTrendChart.min.label }}</span>
+            </div>
+            <div class="trend-stat">
+              <span class="stat-label">Average</span>
+              <span class="stat-value">{{ callTrendChart.avg.toFixed(1) }}</span>
+              <span class="stat-sub">calls / day</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="trend-empty">
+          <n-empty description="Not enough data for trend" size="small" />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
-import {
-  PeopleOutline,
-  SparklesOutline,
-  CalendarOutline,
-  TrendingUpOutline,
-  PersonAddOutline,
-  BriefcaseOutline,
-  TimeOutline,
-  CashOutline
-} from '@vicons/ionicons5'
-
-const stats = reactive({
-  totalBrokers: 0,
-  newBrokersThisMonth: 0,
-  activeLeads: 0,
-  newLeads24h: 0,
-  appointmentsToday: 0,
-  appointmentsTrend: 'Awaiting data',
-  conversionRate: 0,
-  totalLeads: 0,
-  fundedThisWeek: 0,
-  lastLeadAt: null
-})
-
-const statusBreakdown = ref([])
-const topBrokers = ref([])
-const recentActivity = ref([])
-
-const platformHealth = reactive({
-  dataFreshness: '—',
-  leadVelocity: '0',
-  fundedThisWeek: '0'
-})
+import { SparklesOutline, CallOutline, PieChartOutline, TrendingUpOutline } from '@vicons/ionicons5'
 
 const numberFormatter = new Intl.NumberFormat('en-US')
 const formatNumber = (value) => numberFormatter.format(Number(value) || 0)
 
-const statCards = computed(() => [
-  {
-    key: 'brokers',
-    label: 'Total Brokers',
-    value: formatNumber(stats.totalBrokers),
-    subtitle: stats.newBrokersThisMonth
-      ? `${formatNumber(stats.newBrokersThisMonth)} new this month`
-      : 'Active on platform',
-    badge: stats.newBrokersThisMonth
-      ? { text: `+${formatNumber(stats.newBrokersThisMonth)}`, type: 'success' }
-      : null,
-    icon: PeopleOutline,
-    accent: 'accent-primary'
-  },
-  {
-    key: 'leads',
-    label: 'Active Leads',
-    value: formatNumber(stats.activeLeads),
-    subtitle: `${formatNumber(stats.newLeads24h)} new in 24h`,
-    badge: null,
-    icon: SparklesOutline,
-    accent: 'accent-sky'
-  },
-  {
-    key: 'appointments',
-    label: 'Appointments Today',
-    value: formatNumber(stats.appointmentsToday),
-    subtitle: stats.appointmentsTrend,
-    badge: null,
-    icon: CalendarOutline,
-    accent: 'accent-amber'
-  },
-  {
-    key: 'conversion',
-    label: 'System Conversion',
-    value: `${stats.conversionRate.toFixed(1)}%`,
-    subtitle: `${formatNumber(stats.fundedThisWeek)} funded this week`,
-    badge: null,
-    icon: TrendingUpOutline,
-    accent: 'accent-mint'
+function getColorWithIntensity(baseHue, score) {
+  if (score === null || score === undefined || Number.isNaN(score)) {
+    return `hsla(${baseHue}, 16%, 72%, 0.4)`
   }
-])
 
-const totalLeads = computed(() => stats.totalLeads)
+  const clamped = Math.max(0, Math.min(score, 10))
+  let saturation, lightness, alpha
+
+  if (clamped >= 8) {
+    saturation = 85
+    lightness = 50
+    alpha = 1
+  } else if (clamped >= 6) {
+    saturation = 60
+    lightness = 55
+    alpha = 0.85
+  } else {
+    saturation = 40
+    lightness = 62
+    alpha = 0.7
+  }
+
+  return `hsla(${baseHue}, ${saturation}%, ${lightness}%, ${alpha})`
+}
+
+function formatDateLabel(dateString) {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+const outcomeGradient = computed(() => {
+  if (!callMetrics.totalCalls || !callSegments.value.length) {
+    return 'conic-gradient(#e2e8f0 0 100%)'
+  }
+
+  const total = callMetrics.totalCalls
+  let current = 0
+  const stops = callSegments.value.map((segment) => {
+    const next = current + (segment.value / total) * 100
+    const stop = `${segment.color} ${current}% ${next}%`
+    current = next
+    return stop
+  })
+
+  return `conic-gradient(${stops.join(', ')})`
+})
+
+const outcomeSummary = computed(() => ({
+  total: callMetrics.totalCalls,
+  booked: callMetrics.bookings,
+  followUps: callMetrics.followUps,
+  other: callMetrics.otherCalls
+}))
+
+const TREND_WIDTH = 220
+const TREND_HEIGHT = 80
+
+const callTrendChart = computed(() => {
+  const data = callMetrics.dailyCounts
+  if (!data.length) {
+    return {
+      hasData: false,
+      width: TREND_WIDTH,
+      height: TREND_HEIGHT
+    }
+  }
+
+  const counts = data.map((item) => item.count)
+  const maxCount = Math.max(...counts)
+  const gap = data.length > 1 ? TREND_WIDTH / (data.length - 1) : TREND_WIDTH
+  const topPadding = 8
+  const bottomPadding = 10
+  const chartHeight = TREND_HEIGHT - topPadding - bottomPadding
+
+  const coords = data.map((item, index) => {
+    const x = index * gap
+    const ratio = maxCount === 0 ? 0 : item.count / maxCount
+    const y = topPadding + (chartHeight - ratio * chartHeight)
+    return [x, y]
+  })
+
+  const points = coords.map(([x, y]) => `${x},${y}`).join(' ')
+  const areaPoints = `${points} ${TREND_WIDTH},${TREND_HEIGHT} 0,${TREND_HEIGHT}`
+
+  const maxEntry = data.reduce((prev, curr) => (curr.count > prev.count ? curr : prev), data[0])
+  const minEntry = data.reduce((prev, curr) => (curr.count < prev.count ? curr : prev), data[0])
+  const avg = counts.reduce((sum, value) => sum + value, 0) / counts.length
+
+  return {
+    hasData: true,
+    width: TREND_WIDTH,
+    height: TREND_HEIGHT,
+    points,
+    areaPoints,
+    labels: {
+      start: formatDateLabel(data[0].date),
+      end: formatDateLabel(data[data.length - 1].date)
+    },
+    max: { count: maxEntry.count, label: formatDateLabel(maxEntry.date) },
+    min: { count: minEntry.count, label: formatDateLabel(minEntry.date) },
+    avg
+  }
+})
+
+const aiPerformance = reactive({
+  count: 0,
+  overallScore: '—',
+  rings: [],
+  timeframeLabel: 'Last 7 days'
+})
+
+const callMetrics = reactive({
+  loading: false,
+  timeframeLabel: 'Last 7 days',
+  totalCalls: 0,
+  bookings: 0,
+  followUps: 0,
+  otherCalls: 0,
+  bookingRate: 0,
+  dailyCounts: []
+})
+
+const bookingRingColor = computed(() => getColorWithIntensity(140, callMetrics.bookingRate / 10))
+
+const callSegments = computed(() => {
+  const total = callMetrics.totalCalls
+  if (!total) return []
+
+  const rawSegments = [
+    {
+      label: 'Booked',
+      value: callMetrics.bookings,
+      color: '#4f46e5',
+      barColor: 'linear-gradient(135deg, #60a5fa, #4f46e5)'
+    },
+    {
+      label: 'Follow Ups',
+      value: callMetrics.followUps,
+      color: '#f97316',
+      barColor: 'linear-gradient(135deg, #f97316, #facc15)'
+    },
+    {
+      label: 'Other Calls',
+      value: callMetrics.otherCalls,
+      color: '#cbd5f5',
+      barColor: 'linear-gradient(135deg, #cbd5f5, #e2e8f0)'
+    }
+  ]
+
+  return rawSegments
+    .filter((segment) => segment.value > 0)
+    .map((segment) => ({
+      ...segment,
+      percent: Math.max(2, (segment.value / total) * 100)
+    }))
+})
 
 onMounted(async () => {
   await Promise.all([
-    loadStats(),
-    loadPipeline(),
-    loadTopBrokers(),
-    loadRecentActivity()
+    loadAIPerformance(),
+    loadCallMetrics()
   ])
 })
 
-async function loadStats() {
+async function loadAIPerformance() {
   try {
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
+    const lookbackDays = 7
+    const now = new Date()
+    const sevenDaysAgo = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
+    const sevenDaysAgoIso = sevenDaysAgo.toISOString()
 
-    const startOfDay = new Date()
-    startOfDay.setHours(0, 0, 0, 0)
+    aiPerformance.timeframeLabel = `Last ${lookbackDays} days`
 
-    const previousDayStart = new Date(startOfDay)
-    previousDayStart.setDate(startOfDay.getDate() - 1)
+    const mainPromptTypes = [
+      'inbound-qualified',
+      'inbound-unqualified',
+      'outbound-warm',
+      'outbound-cold',
+      'fallback'
+    ]
 
-    const twentyFourHoursAgo = new Date()
-    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24)
-
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-
-    const [
-      { count: activeBrokerCount },
-      { count: newBrokersCount },
-      { count: activeLeadCount },
-      { count: newLeadsCount },
-      { count: appointmentCount },
-      { count: appointmentPrevCount },
-      { count: fundedCount },
-      { count: totalLeadCount },
-      lastLeadResponse,
-      fundedWeekResponse
-    ] = await Promise.all([
-      supabase
-        .from('brokers')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active'),
-      supabase
-        .from('brokers')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', startOfMonth.toISOString()),
-      supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['new', 'contacted', 'qualified', 'appointment_set', 'application', 'funded']),
-      supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', twentyFourHoursAgo.toISOString()),
-      supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'appointment_set')
-        .gte('updated_at', startOfDay.toISOString()),
-      supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'appointment_set')
-        .gte('updated_at', previousDayStart.toISOString())
-        .lt('updated_at', startOfDay.toISOString()),
-      supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'funded'),
-      supabase.from('leads').select('*', { count: 'exact', head: true }),
-      supabase
-        .from('leads')
-        .select('created_at')
-        .order('created_at', { ascending: false })
-        .limit(1),
-      supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'funded')
-        .gte('updated_at', sevenDaysAgo.toISOString())
-    ])
-
-    stats.totalBrokers = activeBrokerCount || 0
-    stats.newBrokersThisMonth = newBrokersCount || 0
-    stats.activeLeads = activeLeadCount || 0
-    stats.newLeads24h = newLeadsCount || 0
-    stats.appointmentsToday = appointmentCount || 0
-
-    const appointmentDelta = (appointmentCount || 0) - (appointmentPrevCount || 0)
-    stats.appointmentsTrend =
-      appointmentDelta > 0
-        ? `+${formatNumber(appointmentDelta)} vs yesterday`
-        : appointmentDelta < 0
-          ? `${formatNumber(appointmentDelta)} vs yesterday`
-          : 'No change from yesterday'
-
-    stats.conversionRate = totalLeadCount ? ((fundedCount || 0) / totalLeadCount) * 100 : 0
-    stats.fundedThisWeek = fundedWeekResponse.count || 0
-    stats.totalLeads = totalLeadCount || 0
-    stats.lastLeadAt = lastLeadResponse.data?.[0]?.created_at ?? null
-
-    platformHealth.leadVelocity = formatNumber(stats.newLeads24h)
-    platformHealth.fundedThisWeek = formatNumber(stats.fundedThisWeek)
-    platformHealth.dataFreshness = stats.lastLeadAt
-      ? formatRelativeTime(stats.lastLeadAt)
-      : 'No leads yet'
-  } catch (error) {
-    console.error('Error loading stats:', error)
-  }
-}
-
-async function loadPipeline() {
-  try {
     const { data, error } = await supabase
-      .from('leads')
-      .select('status, count:id', { head: false })
-      .not('status', 'is', null)
-      .group('status')
+      .from('call_evaluations')
+      .select('overall_score, opening_effectiveness, property_discussion_quality, objection_handling, booking_attempt_quality, tone_consistency, overall_call_flow, prompt_version, evaluated_at, created_at')
+      .gte('created_at', sevenDaysAgoIso)
 
     if (error) throw error
 
-    const total = data?.reduce((sum, item) => sum + (Number(item.count) || 0), 0) || 0
-    stats.totalLeads = total
+    const recentMainEvaluations = (data || []).filter((evaluation) => {
+      const matchesPrompt = mainPromptTypes.some((type) => evaluation.prompt_version?.startsWith(type))
+      if (!matchesPrompt) return false
 
-    statusBreakdown.value = (data || [])
-      .map((item) => {
-        const count = Number(item.count) || 0
-        return {
-          status: item.status,
-          label: formatStatus(item.status),
-          count,
-          percentage: total ? Math.round((count / total) * 100) : 0
-        }
-      })
-      .sort((a, b) => b.count - a.count)
-  } catch (error) {
-    console.error('Error loading pipeline data:', error)
-    statusBreakdown.value = []
-  }
-}
+      const timestamp = evaluation.evaluated_at || evaluation.created_at
+      if (!timestamp) return false
 
-async function loadTopBrokers() {
-  try {
-    const { data: aggregates, error } = await supabase
-      .from('leads')
-      .select('assigned_broker_id, count:id', { head: false })
-      .not('assigned_broker_id', 'is', null)
-      .group('assigned_broker_id')
-      .order('count', { ascending: false })
-      .limit(5)
+      return new Date(timestamp) >= sevenDaysAgo
+    })
 
-    if (error) throw error
-
-    if (!aggregates?.length) {
-      topBrokers.value = []
+    if (recentMainEvaluations.length === 0) {
+      aiPerformance.count = 0
+      aiPerformance.overallScore = '—'
+      aiPerformance.rings = []
       return
     }
 
-    const brokerIds = aggregates.map((item) => item.assigned_broker_id)
+    const avg = (fn) => recentMainEvaluations.reduce((sum, e) => sum + (fn(e) || 0), 0) / recentMainEvaluations.length
 
-    const [{ data: brokerRows }, { data: leadDetails }] = await Promise.all([
-      supabase
-        .from('brokers')
-        .select('id, contact_name, company_name, status')
-        .in('id', brokerIds),
-      supabase
-        .from('leads')
-        .select('assigned_broker_id, status')
-        .in('assigned_broker_id', brokerIds)
-    ])
+    const avgOverall = avg((e) => parseFloat(e.overall_score))
+    const avgOpening = avg((e) => e.opening_effectiveness)
+    const avgProperty = avg((e) => e.property_discussion_quality)
+    const avgObjection = avg((e) => e.objection_handling)
+    const avgBooking = avg((e) => e.booking_attempt_quality)
+    const avgTone = avg((e) => e.tone_consistency)
+    const avgFlow = avg((e) => e.overall_call_flow)
 
-    const detailMap = {}
-    leadDetails?.forEach((lead) => {
-      const id = lead.assigned_broker_id
-      if (!id) return
-      if (!detailMap[id]) {
-        detailMap[id] = { total: 0, funded: 0, appointments: 0 }
-      }
-      detailMap[id].total += 1
-      if (lead.status === 'funded') detailMap[id].funded += 1
-      if (lead.status === 'appointment_set') detailMap[id].appointments += 1
-    })
-
-    topBrokers.value = aggregates.map((item) => {
-      const broker = brokerRows?.find((row) => row.id === item.assigned_broker_id)
-      const detail = detailMap[item.assigned_broker_id] || { total: Number(item.count) || 0, funded: 0, appointments: 0 }
-      const total = detail.total || Number(item.count) || 0
-      const conversion = total ? ((detail.funded / total) * 100).toFixed(1) : '0.0'
-
-      return {
-        id: item.assigned_broker_id,
-        name: broker?.contact_name || broker?.company_name || 'Unassigned',
-        company: broker?.company_name || '',
-        leads: Number(item.count) || 0,
-        conversion,
-        appointments: detail.appointments || 0,
-        status: broker?.status || 'inactive'
-      }
-    })
+    aiPerformance.count = recentMainEvaluations.length
+    aiPerformance.overallScore = isFinite(avgOverall) ? avgOverall.toFixed(1) : '0.0'
+    aiPerformance.rings = [
+      { label: 'Opening', value: avgOpening, max: 10, color: getColorWithIntensity(210, avgOpening) },
+      { label: 'Property Discussion', value: avgProperty, max: 10, color: getColorWithIntensity(140, avgProperty) },
+      { label: 'Objection Handling', value: avgObjection, max: 10, color: getColorWithIntensity(30, avgObjection) },
+      { label: 'Booking Attempts', value: avgBooking, max: 10, color: getColorWithIntensity(0, avgBooking) },
+      { label: 'Tone Consistency', value: avgTone, max: 10, color: getColorWithIntensity(270, avgTone) },
+      { label: 'Overall Call Flow', value: avgFlow, max: 10, color: getColorWithIntensity(190, avgFlow) }
+    ]
   } catch (error) {
-    console.error('Error loading broker performance:', error)
-    topBrokers.value = []
+    console.error('Error loading AI performance:', error)
+    aiPerformance.count = 0
+    aiPerformance.overallScore = '—'
+    aiPerformance.rings = []
   }
 }
 
-async function loadRecentActivity() {
+async function loadCallMetrics() {
   try {
-    const activities = []
-    const [{ data: recentLeads }, { data: brokerUpdates }] = await Promise.all([
-      supabase
-        .from('leads')
-        .select('id, first_name, last_name, status, created_at')
-        .order('created_at', { ascending: false })
-        .limit(5),
-      supabase
-        .from('brokers')
-        .select('id, contact_name, status, updated_at')
-        .order('updated_at', { ascending: false })
-        .limit(5)
-    ])
+    callMetrics.loading = true
 
-    recentLeads?.forEach((lead) => {
-      activities.push({
-        id: `lead-${lead.id}`,
-        type: 'lead',
-        icon: PersonAddOutline,
-        title: [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'New lead',
-        description: `Status • ${formatStatus(lead.status)}`,
-        timestamp: lead.created_at,
-        timeAgo: formatRelativeTime(lead.created_at)
-      })
+    const lookbackDays = 7
+    const now = new Date()
+    const sevenDaysAgo = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
+
+    callMetrics.timeframeLabel = `Last ${lookbackDays} days`
+
+    const { data, error } = await supabase
+      .from('interactions')
+      .select('id, outcome, created_at')
+      .eq('type', 'ai_call')
+      .gte('created_at', sevenDaysAgo.toISOString())
+
+    if (error) throw error
+
+    const interactions = data || []
+    const bookings = interactions.filter((item) => item.outcome === 'appointment_booked').length
+    const followUps = interactions.filter((item) => item.outcome === 'follow_up_needed').length
+    const other = Math.max(0, interactions.length - bookings - followUps)
+
+    const dailyMap = new Map()
+    for (let i = 0; i < lookbackDays; i += 1) {
+      const day = new Date(sevenDaysAgo)
+      day.setDate(sevenDaysAgo.getDate() + i)
+      const key = day.toISOString().slice(0, 10)
+      dailyMap.set(key, { date: key, count: 0 })
+    }
+
+    interactions.forEach((item) => {
+      const key = new Date(item.created_at).toISOString().slice(0, 10)
+      if (dailyMap.has(key)) {
+        dailyMap.get(key).count += 1
+      }
     })
 
-    brokerUpdates?.forEach((broker) => {
-      activities.push({
-        id: `broker-${broker.id}`,
-        type: 'broker',
-        icon: BriefcaseOutline,
-        title: broker.contact_name || 'Broker update',
-        description: `Broker marked ${formatStatus(broker.status)}`,
-        timestamp: broker.updated_at,
-        timeAgo: formatRelativeTime(broker.updated_at)
-      })
-    })
-
-    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    recentActivity.value = activities.slice(0, 6)
+    callMetrics.totalCalls = interactions.length
+    callMetrics.bookings = bookings
+    callMetrics.followUps = followUps
+    callMetrics.otherCalls = other
+    callMetrics.bookingRate = interactions.length ? (bookings / interactions.length) * 100 : 0
+    callMetrics.dailyCounts = Array.from(dailyMap.values())
   } catch (error) {
-    console.error('Error loading recent activity:', error)
-    recentActivity.value = []
+    console.error('Error loading call metrics:', error)
+    callMetrics.totalCalls = 0
+    callMetrics.bookings = 0
+    callMetrics.followUps = 0
+    callMetrics.otherCalls = 0
+    callMetrics.bookingRate = 0
+  } finally {
+    callMetrics.loading = false
   }
-}
-
-function formatStatus(status) {
-  if (!status) return 'Unknown'
-  return status
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-function formatRelativeTime(timestamp) {
-  if (!timestamp) return '—'
-  const date = new Date(timestamp)
-  const diffMs = Date.now() - date.getTime()
-  const diffMinutes = Math.floor(diffMs / 60000)
-
-  if (diffMinutes < 1) return 'just now'
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
 }
 </script>
 
@@ -531,12 +539,15 @@ function formatRelativeTime(timestamp) {
   padding-bottom: 1rem;
 }
 
-.stats-grid {
+.dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-  width: 100%;
-  max-width: 750px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.ai-card {
+  min-width: 320px;
 }
 
 .overview-grid,
@@ -604,6 +615,11 @@ function formatRelativeTime(timestamp) {
   color: #10b981;
 }
 
+.accent-violet {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
 .stat-metric {
   display: flex;
   align-items: center;
@@ -636,8 +652,134 @@ function formatRelativeTime(timestamp) {
 .activity-card {
   min-height: 100%;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 46px -32px rgba(15, 23, 42, 0.22);
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 18px 46px -32px rgba(15, 23, 42, 0.22) !important;
+}
+
+.ai-performance-card,
+.calls-card,
+.outcome-card,
+.trend-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 20px 44px -30px rgba(79, 70, 229, 0.26);
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-height: 100%;
+  min-width: 320px;
+  max-width: 360px;
+}
+
+.ai-performance-header,
+.calls-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+.calls-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.calls-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.calls-timeframe {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.ai-performance-icon {
+  flex-shrink: 0;
+}
+
+.ai-performance-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.ai-performance-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.ai-performance-timeframe {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.ai-performance-body {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* AI Performance Card */
+.ai-performance-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  background: transparent;
+}
+
+.ai-performance-rings {
+  display: block;
+  margin: 0 auto;
+}
+
+.ai-performance-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 280px;
+}
+
+.ai-performance-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.ai-performance-legend .legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ai-performance-legend .legend-label {
+  flex: 1;
+  font-weight: 500;
+  color: #475569;
+}
+
+.ai-performance-legend .legend-value {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.8rem;
 }
 
 .pipeline-total {
@@ -776,6 +918,318 @@ td {
   color: #9ca3af;
 }
 
+.calls-body {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calls-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  width: 100%;
+  padding: 0 0.5rem;
+}
+
+.calls-ring-wrapper {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calls-ring-center {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -48%);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.calls-ring-value {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #1f2937;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.calls-ring-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.calls-ring-percent {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.2;
+}
+
+.calls-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 0.75rem;
+}
+
+.calls-stat {
+  background: rgba(148, 163, 184, 0.08);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-start;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.stat-value.success {
+  color: #0f766e;
+}
+
+.stat-value.warning {
+  color: #f97316;
+}
+
+.calls-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calls-bar {
+  width: 100%;
+  max-width: 320px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.6);
+  overflow: hidden;
+  display: flex;
+}
+
+.calls-bar-segment {
+  height: 100%;
+}
+
+.calls-bar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  justify-content: center;
+  max-width: 320px;
+}
+
+.legend-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-value {
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.outcome-card,
+.trend-card {
+  min-height: 100%;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 20px 44px -30px rgba(79, 70, 229, 0.26);
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 320px;
+  max-width: 360px;
+}
+
+.outcome-header,
+.trend-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+.outcome-heading,
+.trend-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.outcome-title,
+.trend-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.outcome-timeframe,
+.trend-timeframe {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.outcome-body,
+.trend-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+.outcome-donut {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 14px rgba(255, 255, 255, 0.95);
+}
+
+.outcome-center {
+  position: absolute;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.outcome-total {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.outcome-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.outcome-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.legend-stack {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.outcome-empty,
+.trend-empty {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.trend-chart {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.trend-sparkline {
+  width: 100%;
+  height: 90px;
+}
+
+.trend-axis {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.trend-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.trend-stat {
+  background: rgba(226, 232, 240, 0.4);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-start;
+}
+
+.trend-stat .stat-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.trend-stat .stat-sub {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.trend-area {
+  transition: opacity 0.2s ease;
+}
+
+.trend-line {
+  transition: stroke 0.2s ease;
+}
+
 @media (max-width: 768px) {
   .stat-value {
     font-size: 1.6rem;
@@ -783,6 +1237,21 @@ td {
 
   table {
     font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .calls-bar,
+  .calls-bar-legend,
+  .outcome-legend,
+  .trend-chart {
+    max-width: 100%;
   }
 }
 </style>

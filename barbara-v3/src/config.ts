@@ -99,6 +99,29 @@ Remember: You're here to help and make the caller feel comfortable and supported
   `.trim()
 } as const;
 
+// ============================================================================
+// SMS Assistant Configuration (Sarah persona)
+// ============================================================================
+
+export const SMS_CONFIG = {
+  model: process.env.OPENAI_SMS_MODEL || 'gpt-4.1-mini',
+  temperature: Number.isNaN(Number(process.env.SMS_MODEL_TEMPERATURE))
+    ? 0.6
+    : Number(process.env.SMS_MODEL_TEMPERATURE),
+  maxHistory: parseInt(process.env.SMS_HISTORY_LIMIT || '12', 10),
+  fromNumber: process.env.SIGNALWIRE_SMS_NUMBER || process.env.SIGNALWIRE_NUMBER || '',
+  statusCallbackUrl: process.env.SIGNALWIRE_SMS_STATUS_CALLBACK || '',
+  personaName: process.env.SMS_PERSONA_NAME || 'Sarah',
+  complianceKeywords: (process.env.SMS_OPTOUT_KEYWORDS || 'STOP,UNSUBSCRIBE,CANCEL,QUIT,END')
+    .split(',')
+    .map((keyword) => keyword.trim().toUpperCase())
+    .filter((keyword) => keyword.length > 0),
+  helpKeywords: (process.env.SMS_HELP_KEYWORDS || 'HELP,INFO,SUPPORT')
+    .split(',')
+    .map((keyword) => keyword.trim().toUpperCase())
+    .filter((keyword) => keyword.length > 0)
+} as const;
+
 // Validate audio format
 const validAudioFormats = Object.values(AUDIO_FORMAT);
 if (!validAudioFormats.includes(AGENT_CONFIG.audioFormat as any)) {
