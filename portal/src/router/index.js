@@ -34,6 +34,11 @@ const router = createRouter({
           component: () => import('@/views/admin/BrokerManagement.vue')
         },
         {
+          path: 'brokers/:id',
+          name: 'BrokerDetail',
+          component: () => import('@/views/admin/BrokerDetail.vue')
+        },
+        {
           path: 'leads',
           name: 'AllLeads',
           component: () => import('@/views/admin/AllLeads.vue')
@@ -47,6 +52,11 @@ const router = createRouter({
           path: 'analytics',
           name: 'SystemAnalytics',
           component: () => import('@/views/admin/SystemAnalytics.vue')
+        },
+        {
+          path: 'profile',
+          name: 'UserProfile',
+          component: () => import('@/views/admin/UserProfile.vue')
         }
       ]
     },

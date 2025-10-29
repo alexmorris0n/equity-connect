@@ -113,6 +113,9 @@ export function useAuth() {
       if (event === 'SIGNED_IN' && session) {
         user.value = session.user
         checkAuth()
+      } else if (event === 'USER_UPDATED' && session) {
+        // Update user when metadata changes
+        user.value = session.user
       } else if (event === 'SIGNED_OUT') {
         user.value = null
         broker.value = null

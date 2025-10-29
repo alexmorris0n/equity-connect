@@ -1,21 +1,10 @@
 <template>
   <div class="login-shell">
-    <div class="login-hero">
-      <div class="hero-content">
-        <h1>Welcome back to Barbara Platform</h1>
-        <p>Manage prompts, monitor calls, and keep Barbara performing at her best.</p>
-      </div>
-    </div>
-
-    <div class="login-panel">
-      <n-card class="login-card" size="huge" :bordered="false">
+    <n-card class="login-card" size="huge" :bordered="false">
         <div class="card-header">
-          <div class="brand-mark">
-            <span class="brand-icon">🌀</span>
-          </div>
+          <n-icon size="40" color="#6366f1"><AppsOutline /></n-icon>
           <div>
-            <h2>Equity Connect Portal</h2>
-            <p class="subtitle">Sign in with your admin credentials</p>
+            <h2>Barbara</h2>
           </div>
         </div>
 
@@ -55,7 +44,6 @@
           </n-button>
         </n-form>
       </n-card>
-    </div>
   </div>
 </template>
 
@@ -63,7 +51,8 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { NButton, NForm, NFormItem, NInput, NAlert, NCard } from 'naive-ui'
+import { NButton, NForm, NFormItem, NInput, NAlert, NCard, NIcon } from 'naive-ui'
+import { AppsOutline } from '@vicons/ionicons5'
 
 const router = useRouter()
 const { signIn, isAdmin } = useAuth()
@@ -94,64 +83,18 @@ async function handleLogin() {
 <style scoped>
 .login-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.25), transparent 45%),
     radial-gradient(circle at 80% 85%, rgba(56, 189, 248, 0.18), transparent 50%),
     linear-gradient(135deg, #2d2a66 0%, #1d1b38 40%, #151527 100%);
   color: var(--text-inverse);
 }
 
-.login-hero {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(3rem, 6vw, 6rem);
-}
-
-.login-hero::after {
-  content: '';
-  position: absolute;
-  inset: clamp(2rem, 5vw, 4rem);
-  border-radius: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  box-shadow: 0 25px 80px rgba(15, 23, 42, 0.25);
-  filter: blur(0.3px);
-}
-
-.hero-content {
-  position: relative;
-  max-width: 520px;
-  text-align: left;
-  z-index: 1;
-}
-
-.hero-content h1 {
-  font-size: clamp(2.4rem, 3vw, 3.2rem);
-  line-height: 1.1;
-  margin-bottom: 1rem;
-  color: #f9fafc;
-}
-
-.hero-content p {
-  font-size: clamp(1.05rem, 1.2vw, 1.2rem);
-  color: rgba(248, 250, 252, 0.72);
-  max-width: 28rem;
-}
-
-.login-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(2rem, 6vw, 4rem);
-  backdrop-filter: blur(12px);
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.6) 100%);
-}
-
 .login-card {
   width: 100%;
+  max-width: 520px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 32px 60px -24px rgba(15, 23, 42, 0.45);
@@ -162,32 +105,34 @@ async function handleLogin() {
 .card-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: center;
+  gap: 0.33rem;
   margin-bottom: 2rem;
 }
 
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #6366f1, #22d3ee);
-  display: grid;
-  place-items: center;
-  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.25);
-}
-
-.brand-icon {
-  font-size: 1.3rem;
+.card-header > div {
+  text-align: center;
 }
 
 h2 {
   font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-primary);
+  text-align: center;
+  margin: 0;
 }
 
 .subtitle {
   color: var(--text-secondary);
+}
+
+:deep(.n-input__input-el:focus) {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+:deep(.n-input__input-el) {
+  box-shadow: none !important;
 }
 
 .alert {

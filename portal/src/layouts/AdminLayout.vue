@@ -16,7 +16,7 @@
           </div>
           <transition name="fade">
             <div v-if="!sidebarCollapsed" class="workspace-meta">
-              <span class="workspace-sub">Admin Console</span>
+              <span class="workspace-sub">BARBARA</span>
             </div>
           </transition>
         </div>
@@ -31,13 +31,17 @@
       </div>
 
       <div class="sider-footer">
-        <div class="user-avatar">{{ initials }}</div>
-        <transition name="fade">
-          <div v-if="!sidebarCollapsed" class="user-info-text">
-            <div class="user-name">{{ brokerName }}</div>
-            <div class="user-role">Administrator</div>
+        <div class="user-profile" @click="handleUserProfile">
+          <div class="user-avatar">
+            <img v-if="userAvatar" :src="userAvatar" alt="Profile" class="avatar-image" />
+            <span v-else>{{ initials }}</span>
           </div>
-        </transition>
+          <transition name="fade">
+            <div v-if="!sidebarCollapsed" class="user-role-only">
+              Administrator
+            </div>
+          </transition>
+        </div>
         <n-button v-if="!sidebarCollapsed" quaternary circle size="small" @click="handleSignOut">
           <n-icon>
             <LogOutOutline />
@@ -49,24 +53,10 @@
     <n-layout class="main-canvas">
       <header class="workspace-header">
         <div class="breadcrumbs">
-          <span class="crumb">Barbara Platform</span>
-          <span class="divider">/</span>
           <span class="crumb active">{{ pageTitle }}</span>
         </div>
 
         <div class="header-actions">
-          <n-button tertiary round size="small">
-            <template #icon>
-              <n-icon><FlashOutline /></n-icon>
-            </template>
-            Quick Actions
-          </n-button>
-          <n-button secondary round size="small">
-            <template #icon>
-              <n-icon><HelpCircleOutline /></n-icon>
-            </template>
-            Help
-          </n-button>
         </div>
       </header>
 
@@ -105,7 +95,7 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const { broker, signOut } = useAuth()
+const { user, broker, signOut } = useAuth()
 
 const sidebarCollapsed = ref(false)
 
@@ -118,19 +108,19 @@ const menuOptions = [
   },
   {
     key: 'prompts',
-    label: 'Prompt Management',
+    label: 'Prompts',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(DocumentTextOutline) }),
     to: '/admin/prompts'
   },
   {
     key: 'brokers',
-    label: 'Broker Workspace',
+    label: 'Brokers',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(BriefcaseOutline) }),
     to: '/admin/brokers'
   },
   {
     key: 'leads',
-    label: 'Lead Library',
+    label: 'Leads',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(PeopleOutline) }),
     to: '/admin/leads'
   },
@@ -147,8 +137,9 @@ const routeKeyMap = {
   PromptManagement: 'prompts',
   BrokerManagement: 'brokers',
   AllLeads: 'leads',
-  LeadDetail: 'leads', // Lead Detail should highlight Lead Library
-  SystemAnalytics: 'analytics'
+  LeadDetail: 'leads', // Lead Detail should highlight Leads
+  SystemAnalytics: 'analytics',
+  UserProfile: 'profile'
 }
 
 const activeKey = computed(() => routeKeyMap[route.name] || 'dashboard')
@@ -156,10 +147,11 @@ const activeKey = computed(() => routeKeyMap[route.name] || 'dashboard')
 const pageTitle = computed(() => {
   const titles = {
     dashboard: 'Dashboard',
-    prompts: 'Prompt Management',
-    brokers: 'Broker Workspace',
-    leads: 'Lead Library',
-    analytics: 'System Metrics'
+    prompts: 'Prompts',
+    brokers: 'Brokers',
+    leads: 'Leads',
+    analytics: 'System Metrics',
+    profile: 'User Profile'
   }
   return titles[activeKey.value] ?? 'Workspace'
 })
@@ -167,18 +159,50 @@ const pageTitle = computed(() => {
 const brokerName = computed(() => broker.value?.contact_name || 'Admin User')
 
 const initials = computed(() => {
-  if (!broker.value?.contact_name) return 'EC'
-  return broker.value.contact_name
-    .split(' ')
-    .map(part => part[0]?.toUpperCase())
-    .slice(0, 2)
-    .join('')
+  // Check user metadata for display name first
+  if (user.value?.user_metadata?.display_name) {
+    const parts = user.value.user_metadata.display_name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      // First name + Last name
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    // Just first name
+    return parts[0][0].toUpperCase()
+  }
+  
+  // Check broker contact name
+  if (broker.value?.contact_name) {
+    const parts = broker.value.contact_name.trim().split(/\s+/)
+    if (parts.length >= 2) {
+      // First name + Last name
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    }
+    // Just first name
+    return parts[0][0].toUpperCase()
+  }
+  
+  // Fall back to email - just use first letter
+  if (user.value?.email) {
+    const emailName = user.value.email.split('@')[0]
+    return emailName[0].toUpperCase()
+  }
+  
+  return 'U'
+})
+
+const userAvatar = computed(() => {
+  // Check for avatar in user metadata
+  return user.value?.user_metadata?.avatar_url || null
 })
 
 function handleMenuSelect(key, option) {
   if (option?.to && option.to !== route.path) {
     router.push(option.to)
   }
+}
+
+function handleUserProfile() {
+  router.push('/admin/profile')
 }
 
 async function handleSignOut() {
@@ -265,8 +289,8 @@ async function handleSignOut() {
 }
 
 .workspace-icon {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
   background: transparent;
   display: grid;
@@ -282,8 +306,8 @@ async function handleSignOut() {
 }
 
 .workspace-sub {
-  font-size: 0.75rem;
-  color: #6b7280;
+  color: #4b5563;
+  font-weight: 500;
 }
 
 .nav-menu :deep(.n-menu-item-content) {
@@ -316,6 +340,27 @@ async function handleSignOut() {
   display: none !important;
 }
 
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background 160ms ease;
+  flex: 1;
+}
+
+.user-profile:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.user-role-only {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #4b5563;
+}
+
 .user-summary {
   display: flex;
   align-items: center;
@@ -332,6 +377,17 @@ async function handleSignOut() {
   font-weight: 600;
   color: #3730a3;
   flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .user-name {
@@ -370,6 +426,7 @@ async function handleSignOut() {
   color: #6b7280;
   font-size: 0.95rem;
   white-space: nowrap;
+  padding-left: 1.5rem;
 }
 
 .breadcrumb-icon {
