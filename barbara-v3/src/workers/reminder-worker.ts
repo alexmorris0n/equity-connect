@@ -8,6 +8,7 @@ interface AppointmentRecord {
   id: string;
   lead_id: string;
   broker_id: string | null;
+  scheduled_for: string | null;
   metadata: any;
   leads?: (
     | {
@@ -60,12 +61,15 @@ async function fetchAppointmentsToRemind(): Promise<AppointmentRecord[]> {
   const now = new Date();
   const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
+  // Query appointments with scheduled_for in the time window
+  // Note: We filter by top-level scheduled_for, but will check metadata as fallback in processing
   const { data, error } = await supabase
     .from('interactions')
     .select(`
       id,
       lead_id,
       broker_id,
+      scheduled_for,
       metadata,
       leads:leads!inner(
         first_name,
@@ -80,8 +84,6 @@ async function fetchAppointmentsToRemind(): Promise<AppointmentRecord[]> {
       )
     `)
     .eq('type', 'appointment')
-    .filter('metadata->>scheduled_for', 'gt', now.toISOString())
-    .filter('metadata->>scheduled_for', 'lte', windowEnd.toISOString())
     .or('metadata->>sms_reminder_sent_at.is.null,metadata->>sms_reminder_sent_at.eq.""');
 
   if (error) {
@@ -89,7 +91,17 @@ async function fetchAppointmentsToRemind(): Promise<AppointmentRecord[]> {
     return [];
   }
 
-  return (data || []) as AppointmentRecord[];
+  // Filter appointments to those in the reminder window (next 24 hours)
+  // Check both top-level scheduled_for and metadata.scheduled_for for backward compatibility
+  const filtered = (data || []).filter((apt) => {
+    const scheduledFor = apt.scheduled_for || apt.metadata?.scheduled_for;
+    if (!scheduledFor) return false;
+    
+    const aptDate = new Date(scheduledFor);
+    return aptDate > now && aptDate <= windowEnd;
+  });
+
+  return filtered as AppointmentRecord[];
 }
 
 async function markReminderSent(appointmentId: string, metadata: any) {
@@ -132,9 +144,10 @@ async function runReminderSweep() {
         continue;
       }
 
-      const scheduledFor = appointment.metadata?.scheduled_for;
+      // Check both top-level scheduled_for (new appointments) and metadata.scheduled_for (legacy)
+      const scheduledFor = appointment.scheduled_for || appointment.metadata?.scheduled_for;
       if (!scheduledFor) {
-        logger.warn(`Skipping appointment ${appointment.id} - missing scheduled_for in metadata.`);
+        logger.warn(`Skipping appointment ${appointment.id} - missing scheduled_for.`);
         continue;
       }
 

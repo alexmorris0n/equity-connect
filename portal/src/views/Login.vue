@@ -147,11 +147,11 @@ async function handleLogin() {
 
 @media (max-width: 960px) {
   .login-shell {
-    grid-template-columns: 1fr;
+    padding: 1rem;
   }
 
-  .login-hero {
-    display: none;
+  .login-card {
+    max-width: 100%;
   }
 }
 </style>

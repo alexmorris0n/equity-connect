@@ -1543,7 +1543,7 @@ async function cancelAppointment({ lead_id }) {
       outcome: 'cancelled',
       metadata: {
         original_appointment_id: appointment.id,
-        original_scheduled_for: appointment.scheduled_for,
+        original_scheduled_for: appointment.scheduled_for || appointment.metadata?.scheduled_for,
         cancelled_via: 'barbara_ai'
       },
       created_at: new Date().toISOString()
@@ -1555,7 +1555,7 @@ async function cancelAppointment({ lead_id }) {
     return {
       success: true,
       cancelled_appointment: {
-        scheduled_for: appointment.scheduled_for,
+        scheduled_for: appointment.scheduled_for || appointment.metadata?.scheduled_for,
         broker_name: broker.contact_name
       },
       message: `Appointment cancelled successfully. ${broker.contact_name} has been notified and the event has been removed from the calendar.`
@@ -1614,7 +1614,9 @@ async function rescheduleAppointment({ lead_id, new_scheduled_for }) {
     
     const nylasEventId = appointment.metadata?.nylas_event_id;
     const brokerId = appointment.broker_id;
-    const oldScheduledFor = appointment.scheduled_for;
+    // Backward compatibility: check top-level scheduled_for (new appointments) 
+    // or fall back to metadata.scheduled_for (old appointments)
+    const oldScheduledFor = appointment.scheduled_for || appointment.metadata?.scheduled_for;
     
     if (!nylasEventId) {
       console.error('❌ No Nylas event ID found');

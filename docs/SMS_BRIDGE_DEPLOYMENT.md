@@ -17,7 +17,7 @@ Key components:
 Add the following to `barbara-v3/.env` (see `env.example`):
 
 ```
-OPENAI_SMS_MODEL=gpt-4.1-mini
+OPENAI_SMS_MODEL=gpt-5-mini
 SMS_MODEL_TEMPERATURE=0.6
 SMS_HISTORY_LIMIT=12
 SMS_PERSONA_NAME=Sarah

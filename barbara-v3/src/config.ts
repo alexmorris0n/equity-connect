@@ -104,10 +104,12 @@ Remember: You're here to help and make the caller feel comfortable and supported
 // ============================================================================
 
 export const SMS_CONFIG = {
-  model: process.env.OPENAI_SMS_MODEL || 'gpt-4.1-mini',
-  temperature: Number.isNaN(Number(process.env.SMS_MODEL_TEMPERATURE))
-    ? 0.6
-    : Number(process.env.SMS_MODEL_TEMPERATURE),
+  model: process.env.OPENAI_SMS_MODEL || 'gpt-5-mini',
+  temperature: (() => {
+    const raw = Number(process.env.SMS_MODEL_TEMPERATURE);
+    // Use fallback 0.6 if env is missing or invalid
+    return Number.isNaN(raw) ? 0.6 : raw;
+  })(),
   maxHistory: parseInt(process.env.SMS_HISTORY_LIMIT || '12', 10),
   fromNumber: process.env.SIGNALWIRE_SMS_NUMBER || process.env.SIGNALWIRE_NUMBER || '',
   statusCallbackUrl: process.env.SIGNALWIRE_SMS_STATUS_CALLBACK || '',
