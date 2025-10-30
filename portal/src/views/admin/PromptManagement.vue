@@ -154,7 +154,7 @@
             </template>
             {{ isOlderVersion ? 'Rollback' : 'Deploy' }}
           </n-button>
-          <n-button size="small" round :disabled="loading || !currentVersion?.id" @click="openAuditModal" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3);" class="ai-audit-btn">
+          <n-button size="small" round :disabled="loading || !currentVersion?.id" @click="openAuditModal" class="ai-audit-btn">
             <template #icon>
               <n-icon style="color: #f59e0b !important;"><SparklesOutline /></n-icon>
             </template>
@@ -179,7 +179,7 @@
               </div>
 
               <!-- 6 Metric Scores - Circular Progress -->
-              <n-card :bordered="false" style="margin-bottom: 16px; background: rgba(248, 250, 255, 0.4); padding: 1rem 1.5rem;">
+              <n-card :bordered="false" class="metrics-card">
                 <div class="metrics-ring-grid">
                   <div v-for="metric in evaluationMetrics" :key="metric.key" class="metric-ring-item">
                     <n-progress
@@ -237,7 +237,7 @@
               </n-card>
 
               <!-- AI Improvement Suggestions -->
-              <n-card :bordered="false" style="background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2); margin-bottom: 16px;">
+              <n-card :bordered="false" class="ai-suggestions-card">
                 <template #header>
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -248,7 +248,7 @@
                       size="small" 
                       @click="applyAllSuggestions" 
                       :disabled="!aiSuggestions || aiSuggestions.length === 0"
-                      style="background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3);"
+                      class="apply-all-btn"
                     >
                       <template #icon>
                         <n-icon><CheckmarkDoneOutline /></n-icon>
@@ -283,7 +283,7 @@
                           Applied
                         </n-tag>
                       </div>
-                      <div style="font-size: 0.9em; color: #6b7280;">{{ suggestion.description }}</div>
+                      <div style="font-size: 0.9em; color: var(--text-secondary);">{{ suggestion.description }}</div>
                     </div>
                     <template #suffix>
                       <n-button 
@@ -379,7 +379,7 @@
                 </div>
 
                 <!-- No changes message -->
-                <div v-else style="text-align: center; padding: 2rem; color: #6b7280;">
+                <div v-else style="text-align: center; padding: 2rem; color: var(--text-secondary);">
                   <p>No changes detected between these versions.</p>
                 </div>
               </div>
@@ -586,7 +586,7 @@
                 </div>
 
                 <div v-if="selectedVoice" style="margin-top: 1.5rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
-                  <p style="margin: 0; font-size: 0.9rem; color: #6b7280;">
+                  <p style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">
                     <strong>Current Voice:</strong> {{ selectedVoice }}
                   </p>
                   <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
@@ -830,7 +830,7 @@
     <n-modal v-model:show="showAIImproveModal" preset="card" :style="{ width: '90%', maxWidth: '1200px' }" title="✨ AI Improve Section" :bordered="false">
       <div v-if="!aiSuggestion" class="ai-improve-request">
         <div class="ai-context-info">
-          <h4 style="margin: 0 0 0.5rem 0; color: #1f2937;">Improving: {{ aiImprovingSection?.label }}</h4>
+          <h4 style="margin: 0 0 0.5rem 0; color: var(--text-primary);">Improving: {{ aiImprovingSection?.label }}</h4>
           <p class="text-muted" style="margin: 0; font-size: 0.85rem; line-height: 1.6;">
             <strong>Prompt:</strong> {{ currentPromptMetadata.name }}<br>
             <strong>Purpose:</strong> {{ currentPromptMetadata.purpose }}<br>
@@ -849,7 +849,7 @@
         </div>
 
         <div class="quick-suggestions">
-          <span class="quick-label" style="font-size: 0.85rem; color: #6b7280; font-weight: 500;">Quick suggestions:</span>
+          <span class="quick-label" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Quick suggestions:</span>
           <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;">
             <n-tag
               v-for="suggestion in getQuickSuggestions(aiImprovingSection?.key)"
@@ -865,14 +865,14 @@
         </div>
 
         <div class="current-content-preview" style="margin-top: 1.5rem;">
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #6b7280;">Current Content:</label>
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-secondary);">Current Content:</label>
           <pre style="background: rgba(248, 250, 255, 0.8); padding: 1rem; border-radius: 8px; font-size: 0.8rem; line-height: 1.5; max-height: 200px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(148, 163, 184, 0.18);">{{ currentVersion?.content[aiImprovingSection?.key] || '(empty)' }}</pre>
         </div>
       </div>
 
       <div v-else class="ai-improve-result">
         <div class="result-header" style="margin-bottom: 1rem;">
-          <h4 style="margin: 0 0 0.25rem 0; color: #1f2937;">✨ AI Improved Version</h4>
+          <h4 style="margin: 0 0 0.25rem 0; color: var(--text-primary);">✨ AI Improved Version</h4>
           <p class="text-muted" style="margin: 0; font-size: 0.85rem;">Review the changes and accept or reject:</p>
         </div>
 
@@ -897,7 +897,7 @@
         </div>
 
         <div v-if="aiChanges.length > 0" class="changes-list" style="margin-top: 1rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
-          <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #1f2937;">Changes Made:</h5>
+          <h5 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-primary);">Changes Made:</h5>
           <ul style="margin: 0; padding-left: 1.5rem; font-size: 0.85rem; line-height: 1.6;">
             <li v-for="(change, idx) in aiChanges" :key="idx">{{ change }}</li>
           </ul>
@@ -937,26 +937,26 @@
         <!-- Progress View (while processing) -->
         <div v-if="applyAllIsProcessing" class="apply-all-progress">
           <div style="margin-bottom: 1rem;">
-            <p style="margin: 0; color: #6b7280; font-size: 0.95rem;">
+            <p style="margin: 0; color: var(--text-secondary); font-size: 0.95rem;">
               Please wait while we generate AI improvements for each section...
             </p>
           </div>
 
-          <div class="progress-log" style="background: rgba(248, 250, 255, 0.6); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.18);">
+          <div class="progress-log">
             <div 
               v-for="(item, idx) in applyAllProgress" 
               :key="idx"
               :style="{
                 padding: '0.5rem 0',
                 borderBottom: idx < applyAllProgress.length - 1 ? '1px solid rgba(148, 163, 184, 0.1)' : 'none',
-                color: item.type === 'error' ? '#ef4444' : item.type === 'success' ? '#10b981' : item.type === 'working' ? '#3b82f6' : '#6b7280'
+                color: item.type === 'error' ? '#ef4444' : item.type === 'success' ? '#10b981' : item.type === 'working' ? '#3b82f6' : 'var(--text-secondary)'
               }"
             >
               <div style="display: flex; align-items: center; gap: 0.5rem;">
                 <n-spin v-if="item.type === 'working'" size="small" />
                 <n-icon v-else-if="item.type === 'success'" size="18" color="#10b981"><CheckmarkCircleOutline /></n-icon>
                 <n-icon v-else-if="item.type === 'error'" size="18" color="#ef4444"><CloseCircleOutline /></n-icon>
-                <n-icon v-else size="18" color="#6b7280"><InformationCircleOutline /></n-icon>
+                <n-icon v-else size="18" :color="isDark ? '#94a3b8' : '#6b7280'"><InformationCircleOutline /></n-icon>
                 <span style="font-size: 0.9rem; font-weight: 500;">{{ item.message }}</span>
               </div>
             </div>
@@ -966,7 +966,7 @@
         <!-- Review View (after processing) -->
         <div v-else class="apply-all-review">
           <div style="margin-bottom: 1.5rem;">
-            <p style="margin: 0; color: #6b7280; font-size: 0.95rem;">
+            <p style="margin: 0; color: var(--text-secondary); font-size: 0.95rem;">
               Review all {{ applyAllResults.length }} AI-generated improvements below. You can accept all changes or cancel.
             </p>
           </div>
@@ -979,11 +979,11 @@
               style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18);"
             >
               <div style="margin-bottom: 0.75rem;">
-                <h4 style="margin: 0 0 0.25rem 0; color: #1f2937; font-size: 1rem;">
+          <h4 style="margin: 0 0 0.25rem 0; color: var(--text-primary); font-size: 1rem;">
                   {{ result.section.label }}
                   <span class="changed-badge" style="margin-left: 0.5rem; font-size: 0.75rem; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; padding: 0.25rem 0.5rem; border-radius: 4px;">{{ result.suggestion.priority }}</span>
                 </h4>
-                <p style="margin: 0; color: #6b7280; font-size: 0.85rem;">{{ result.suggestion.description }}</p>
+                <p style="margin: 0; color: var(--text-secondary); font-size: 0.85rem;">{{ result.suggestion.description }}</p>
               </div>
 
               <div class="diff-text" style="background: rgba(248, 250, 255, 0.4); padding: 1rem; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.18); font-family: monospace; font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap;">
@@ -1005,7 +1005,7 @@
       <template #footer>
         <!-- Processing Footer -->
         <div v-if="applyAllIsProcessing" class="modal-footer" style="display: flex; justify-content: center; align-items: center;">
-          <span style="color: #6b7280; font-size: 0.9rem;">
+          <span style="color: var(--text-secondary); font-size: 0.9rem;">
             <n-spin size="small" style="margin-right: 0.5rem;" />
             Processing {{ applyAllProgress.filter(p => p.type === 'success').length }} of {{ aiSuggestions?.length || 0 }} sections...
           </span>
@@ -1013,7 +1013,7 @@
         
         <!-- Review Footer -->
         <div v-else class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="color: #6b7280; font-size: 0.9rem;">{{ applyAllResults.length }} improvements ready to apply</span>
+          <span style="color: var(--text-secondary); font-size: 0.9rem;">{{ applyAllResults.length }} improvements ready to apply</span>
           <div style="display: flex; gap: 0.75rem;">
             <n-button @click="cancelAllImprovements">Cancel All</n-button>
             <n-button type="success" @click="acceptAllImprovements">
@@ -1038,12 +1038,12 @@
       :mask-closable="false"
     >
       <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-        <p style="margin: 0; color: #6b7280; font-size: 0.9rem;">
+        <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
           Answer these questions to help GPT-5 provide a comprehensive evaluation of your prompt:
         </p>
 
         <div>
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
             1. What specific problem are you trying to solve with this prompt version?
           </label>
           <n-input
@@ -1055,7 +1055,7 @@
         </div>
 
         <div>
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
             2. What's the target lead profile?
           </label>
           <n-input
@@ -1067,7 +1067,7 @@
         </div>
 
         <div>
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
             3. What's the primary conversion goal?
           </label>
           <n-input
@@ -1079,7 +1079,7 @@
         </div>
 
         <div>
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
             4. Are there any known issues from previous versions?
           </label>
           <n-input
@@ -1091,7 +1091,7 @@
         </div>
 
         <div>
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
             5. What tone/personality are you aiming for?
           </label>
           <n-input
@@ -1103,7 +1103,7 @@
         </div>
 
         <div>
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #1f2937;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--text-primary);">
             6. Any specific objections or edge cases this needs to handle?
           </label>
           <n-input
@@ -1143,9 +1143,9 @@
           <!-- Overall Score -->
           <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 12px;">
             <h2 style="margin: 0 0 0.5rem 0; font-size: 3rem; font-weight: 700; color: #4f46e5;">
-              {{ auditResults.score }}<span style="font-size: 1.5rem; color: #6b7280;">/100</span>
+            {{ auditResults.score }}<span style="font-size: 1.5rem; color: var(--text-secondary);">/100</span>
             </h2>
-            <p style="margin: 0; color: #6b7280; font-size: 0.9rem;">
+          <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
               {{ auditResults.score >= 90 ? '🎉 Excellent!' : auditResults.score >= 75 ? '✅ Good' : auditResults.score >= 60 ? '⚠️ Needs Improvement' : '🚨 Major Issues' }}
             </p>
           </div>
@@ -1206,7 +1206,7 @@
                     >
                       {{ rec.priority.toUpperCase() }}
                     </span>
-                    <span style="margin-left: 0.5rem; font-weight: 500; color: #1f2937;">{{ rec.section }}</span>
+                    <span style="margin-left: 0.5rem; font-weight: 500; color: var(--text-primary);">{{ rec.section }}</span>
                   </div>
                   <n-button size="small" type="primary" @click="applyAuditRecommendation(rec)">
                     <template #icon>
@@ -1216,7 +1216,7 @@
                   </n-button>
                 </div>
                 <p style="margin: 0 0 0.5rem 0; color: #ef4444; font-size: 0.9rem;"><strong>Issue:</strong> {{ rec.issue }}</p>
-                <p style="margin: 0 0 0.5rem 0; color: #6b7280; font-size: 0.85rem;"><strong>Why:</strong> {{ rec.reasoning }}</p>
+                <p style="margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.85rem;"><strong>Why:</strong> {{ rec.reasoning }}</p>
                 <div style="margin-top: 0.75rem;">
                   <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; font-weight: 600; color: #10b981;">Suggested Changes:</p>
                   <div class="diff-text">
@@ -4188,10 +4188,10 @@ function handleBeforeUnload(e) {
 }
 
 .meta-card {
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface);
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  box-shadow: 0 10px 25px -22px rgba(15, 23, 42, 0.16);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
   padding: 0.55rem 0.6rem;
   display: flex;
   flex-direction: column;
@@ -4241,7 +4241,7 @@ function handleBeforeUnload(e) {
   justify-content: space-between;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-secondary);
 }
 
 .meta-title-wrap {
@@ -4272,7 +4272,7 @@ function handleBeforeUnload(e) {
   border: none;
   background: transparent;
   font-size: 0.75rem;
-  color: #64748b;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0.25rem;
   border-radius: 6px;
@@ -4288,7 +4288,7 @@ function handleBeforeUnload(e) {
 }
 
 .meta-action:not(:disabled):hover {
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--nav-hover);
 }
 
 .meta-list-container {
@@ -4306,12 +4306,12 @@ function handleBeforeUnload(e) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
-  color: #6366f1;
+  color: var(--color-primary-600);
   padding: 0;
 }
 
@@ -4321,8 +4321,8 @@ function handleBeforeUnload(e) {
 }
 
 .scroll-arrow:not(:disabled):hover {
-  background: rgba(99, 102, 241, 0.08);
-  border-color: rgba(99, 102, 241, 0.3);
+  background: var(--nav-hover);
+  border-color: rgba(99, 102, 241, 0.35);
 }
 
 
@@ -4374,12 +4374,12 @@ function handleBeforeUnload(e) {
 
 .meta-item {
   flex-shrink: 0;
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 0.45rem 1.1rem;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface);
   font-size: 0.62rem;
-  color: #1f2937;
+  color: var(--text-primary);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -4390,7 +4390,7 @@ function handleBeforeUnload(e) {
   width: 180px;
   height: 60px;
   scroll-snap-align: start;
-  box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.22);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -4439,7 +4439,7 @@ function handleBeforeUnload(e) {
 
 .rings-tooltip-calls {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-weight: normal;
 }
 
@@ -4471,19 +4471,19 @@ function handleBeforeUnload(e) {
 
 .legend-value {
   font-weight: 600;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 0.8rem;
 }
 
 
 .meta-item.active {
   border-color: rgba(99, 102, 241, 0.65);
-  background: rgba(99, 102, 241, 0.15);
+  background: var(--nav-selected);
 }
 
 .meta-item:hover {
   border-color: rgba(99, 102, 241, 0.55);
-  background: rgba(99, 102, 241, 0.1);
+  background: var(--nav-hover);
 }
 
 .meta-item:not(.version) {
@@ -4505,7 +4505,7 @@ function handleBeforeUnload(e) {
 
 .meta-item-sub {
   grid-area: summary;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 0.58rem;
   white-space: nowrap;
   overflow: hidden;
@@ -4520,7 +4520,7 @@ function handleBeforeUnload(e) {
   margin-top: 4px;
   font-size: 0.55rem;
   font-weight: 500;
-  color: #4f46e5;
+  color: var(--color-primary-600);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4539,13 +4539,13 @@ function handleBeforeUnload(e) {
   font-weight: 700;
   font-size: 0.9rem;
   min-width: 0;
-  color: #1e293b;
+  color: var(--text-primary);
   margin-bottom: 0.1rem;
 }
 
 .meta-date {
   font-size: 0.62rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
@@ -4588,14 +4588,72 @@ function handleBeforeUnload(e) {
 .editor-card {
   border-radius: 14px;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.22);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
   gap: 0.8rem;
 }
 
 .editor-card :deep(.n-tabs-nav) {
   padding-left: 0;
   margin-left: -10px;
+}
+
+.metrics-card {
+  margin-bottom: 16px;
+  padding: 1rem 1.5rem;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.ai-suggestions-card {
+  margin-bottom: 16px;
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+}
+
+:root[data-theme='dark'] .ai-suggestions-card {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(139, 92, 246, 0.35);
+}
+
+.ai-audit-btn {
+  background: rgba(139, 92, 246, 0.12);
+  color: #5b21b6;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.ai-audit-btn:disabled {
+  opacity: 0.6;
+}
+
+:root[data-theme='dark'] .ai-audit-btn {
+  background: rgba(99, 102, 241, 0.28);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
+.apply-all-btn {
+  background: rgba(139, 92, 246, 0.12);
+  color: #5b21b6;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.apply-all-btn:disabled {
+  opacity: 0.6;
+}
+
+:root[data-theme='dark'] .apply-all-btn {
+  background: rgba(99, 102, 241, 0.28);
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
+.progress-log {
+  background: var(--surface-muted);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
 }
 
 .compact-toolbar {
@@ -4635,7 +4693,7 @@ function handleBeforeUnload(e) {
   align-items: center;
   gap: 0.4rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   font-size: 0.78rem;
 }
 
@@ -4740,7 +4798,7 @@ function handleBeforeUnload(e) {
   margin: 0 0 0.5rem 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .variables-content {
@@ -4758,13 +4816,13 @@ function handleBeforeUnload(e) {
 .variables-section h3 {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .variables-section .text-muted {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -4782,7 +4840,7 @@ function handleBeforeUnload(e) {
 .variable-category h4 {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #4b5563;
+  color: var(--text-secondary);
   margin: 0 0 0.5rem 0;
 }
 
@@ -4797,8 +4855,8 @@ function handleBeforeUnload(e) {
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(248, 250, 255, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
   transition: all 160ms ease;
@@ -4830,7 +4888,7 @@ function handleBeforeUnload(e) {
 
 .variable-desc {
   font-size: 0.68rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .empty-state {
@@ -4846,19 +4904,19 @@ function handleBeforeUnload(e) {
 .preview-section-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0 0 0.5rem 0;
 }
 
 .preview-section-content {
-  background: rgba(248, 250, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 0.75rem;
   font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   line-height: 1.5;
-  color: #1f2937;
+  color: var(--text-primary);
   white-space: pre-wrap;
   margin: 0;
 }
@@ -4926,8 +4984,8 @@ function handleBeforeUnload(e) {
   margin-left: 0.5rem;
   font-size: 0.65rem;
   font-weight: 500;
-  color: #6b7280;
-  background: rgba(107, 114, 128, 0.1);
+  color: var(--text-secondary);
+  background: rgba(107, 114, 128, 0.12);
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
 }
@@ -4955,8 +5013,8 @@ function handleBeforeUnload(e) {
 }
 
 .diff-text {
-  background: rgba(248, 250, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 0.75rem;
   font-family: 'Inter', sans-serif;
@@ -4982,7 +5040,7 @@ function handleBeforeUnload(e) {
 }
 
 .diff-unchanged {
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .guide-content {
@@ -4996,7 +5054,7 @@ function handleBeforeUnload(e) {
 
 .guide-purpose {
   margin-bottom: 1rem;
-  color: #4b5563;
+  color: var(--text-secondary);
 }
 
 .guide-subsection {
@@ -5013,21 +5071,21 @@ function handleBeforeUnload(e) {
 .guide-example-header h4 {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .guide-subsection h4 {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   margin-bottom: 0.5rem;
 }
 
 .guide-subsection ul {
   margin: 0;
   padding-left: 1.5rem;
-  color: #4b5563;
+  color: var(--text-secondary);
 }
 
 .guide-subsection li {
@@ -5035,14 +5093,14 @@ function handleBeforeUnload(e) {
 }
 
 .guide-example {
-  background: rgba(248, 250, 255, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 0.75rem;
   font-family: 'Fira Code', monospace;
   font-size: 0.72rem;
   line-height: 1.5;
-  color: #1f2937;
+  color: var(--text-primary);
   overflow-x: auto;
   white-space: pre-wrap;
 }
@@ -5134,19 +5192,19 @@ function handleBeforeUnload(e) {
   transform: translate(-50%, -50%);
   font-size: 1.1rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
   margin-top: -10px;
 }
 
 .metric-ring-suffix {
   font-size: 0.7rem;
   font-weight: 500;
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .metric-ring-label {
   font-size: 0.75rem;
-  color: #64748b;
+  color: var(--text-secondary);
   font-weight: 500;
   text-align: center;
   max-width: 120px;
@@ -5162,7 +5220,7 @@ function handleBeforeUnload(e) {
 .metric-suffix {
   font-size: 0.8rem;
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--text-secondary);
   margin-left: 2px;
 }
 
