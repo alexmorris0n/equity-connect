@@ -232,13 +232,13 @@ async function handleSignOut() {
 .admin-shell {
   height: 100vh;
   overflow: hidden;
-  background: linear-gradient(180deg, #f6f7fb 0%, #f1f2f8 100%);
+  background: var(--background-gradient);
 }
 
 .notion-sider {
-  background: rgba(245, 246, 252, 0.9);
+  background: var(--sidebar-background);
   backdrop-filter: blur(18px);
-  border-right: 1px solid rgba(148, 163, 184, 0.25);
+  border-right: 1px solid var(--sidebar-border);
   position: relative;
   height: 100vh;
   overflow-y: auto;
@@ -283,12 +283,12 @@ async function handleSignOut() {
   left: 0;
   right: 0;
   padding: 0.75rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  border-top: 1px solid var(--sidebar-border);
   display: flex;
   align-items: center;
   gap: 0.75rem;
   justify-content: center;
-  background: rgba(245, 246, 252, 0.9);
+  background: var(--sidebar-background);
 }
 
 .workspace-brand {
@@ -304,7 +304,7 @@ async function handleSignOut() {
 }
 
 .workspace-brand:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--nav-hover);
 }
 
 .workspace-brand.is-collapsed {
@@ -336,12 +336,12 @@ async function handleSignOut() {
 
 .workspace-name {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   display: block;
 }
 
 .workspace-sub {
-  color: #4b5563;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -350,17 +350,17 @@ async function handleSignOut() {
   transition: background 160ms ease, color 160ms ease;
   padding: 0.55rem 0.75rem;
   font-weight: 500;
-  color: #4b5563;
+  color: var(--text-secondary);
   justify-content: flex-start;
 }
 
 .nav-menu :deep(.n-menu-item-content:hover) {
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--nav-hover);
 }
 
 .nav-menu :deep(.n-menu-item-content--selected) {
-  background: rgba(99, 102, 241, 0.14) !important;
-  color: #3730a3;
+  background: var(--nav-selected) !important;
+  color: var(--color-primary-600);
 }
 
 .nav-menu :deep(.n-menu-item-content--selected .n-menu-item-content__icon) {
@@ -387,13 +387,13 @@ async function handleSignOut() {
 }
 
 .user-profile:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--nav-hover);
 }
 
 .user-role-only {
   font-size: 0.9rem;
   font-weight: 500;
-  color: #4b5563;
+  color: var(--text-secondary);
 }
 
 .user-summary {
@@ -406,11 +406,11 @@ async function handleSignOut() {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: rgba(99, 102, 241, 0.2);
+  background: var(--avatar-bg);
   display: grid;
   place-items: center;
   font-weight: 600;
-  color: #3730a3;
+  color: var(--avatar-color);
   flex-shrink: 0;
   overflow: hidden;
   position: relative;
@@ -428,12 +428,12 @@ async function handleSignOut() {
 .user-name {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .user-role {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .main-canvas {
@@ -449,8 +449,9 @@ async function handleSignOut() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 1px solid var(--header-border);
   backdrop-filter: blur(12px);
+  background: var(--surface-sidebar);
   flex-shrink: 0;
 }
 
@@ -458,7 +459,7 @@ async function handleSignOut() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   white-space: nowrap;
   padding-left: 1.5rem;
@@ -469,7 +470,7 @@ async function handleSignOut() {
 }
 
 .crumb.active {
-  color: #1f2937;
+  color: var(--text-primary);
   font-weight: 600;
 }
 

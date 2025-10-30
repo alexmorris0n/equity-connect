@@ -175,8 +175,8 @@
             <label>Email Notifications</label>
             <n-switch 
               v-model:value="profileData.emailNotifications"
-              :loading="loading"
-              @update:value="updatePreferences"
+              :loading="preferenceBusy"
+              @update:value="handleEmailNotifications"
             />
           </div>
 
@@ -185,8 +185,8 @@
             <n-select 
               v-model:value="profileData.theme"
               :options="themeOptions"
-              :loading="loading"
-              @update:value="updatePreferences"
+              :loading="preferenceBusy"
+              @update:value="handleThemeChange"
             />
           </div>
         </div>
@@ -251,6 +251,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useTheme } from '@/composables/useTheme'
 import { supabase } from '@/lib/supabase'
 import { 
   NButton, 
@@ -273,6 +274,7 @@ import {
 } from '@vicons/ionicons5'
 
 const { user, broker, isAdmin, isBroker } = useAuth()
+const { themeMode, setTheme, loadingPreferences: themeLoading } = useTheme()
 const message = useMessage()
 
 // Calendar integration states
@@ -287,7 +289,7 @@ const profileData = reactive({
   avatarUrl: '',
   twoFactorEnabled: false,
   emailNotifications: true,
-  theme: 'light',
+  theme: themeMode.value || 'light',
   createdAt: null
 })
 
@@ -296,6 +298,7 @@ const loading = ref(false)
 const saving = ref(false)
 const showPasswordModal = ref(false)
 const changingPassword = ref(false)
+const preferenceBusy = computed(() => loading.value || themeLoading.value)
 
 // Password form
 const passwordForm = reactive({
@@ -329,6 +332,7 @@ const initials = computed(() => {
 })
 
 // Theme options
+const THEME_VALUES = ['light', 'dark', 'auto']
 const themeOptions = [
   { label: 'Light', value: 'light' },
   { label: 'Dark', value: 'dark' },
@@ -356,6 +360,54 @@ const passwordRules = {
   ]
 }
 
+async function loadPreferenceRecord() {
+  if (!user.value) return
+
+  try {
+    const { data, error } = await supabase
+      .from('user_preferences')
+      .select('theme, email_notifications')
+      .eq('user_id', user.value.id)
+      .maybeSingle()
+
+    if (error) {
+      throw error
+    }
+
+    if (typeof data?.email_notifications === 'boolean') {
+      profileData.emailNotifications = data.email_notifications
+    }
+
+    const fallbackTheme = THEME_VALUES.includes(profileData.theme)
+      ? profileData.theme
+      : (themeMode.value || 'light')
+
+    const resolvedTheme = data?.theme && THEME_VALUES.includes(data.theme)
+      ? data.theme
+      : fallbackTheme
+
+    profileData.theme = resolvedTheme
+
+    await setTheme(resolvedTheme, {
+      persist: false,
+      emailNotifications: profileData.emailNotifications
+    })
+  } catch (error) {
+    console.error('Error loading user preferences:', error)
+
+    const fallbackTheme = THEME_VALUES.includes(profileData.theme)
+      ? profileData.theme
+      : (themeMode.value || 'light')
+
+    profileData.theme = fallbackTheme
+
+    await setTheme(fallbackTheme, {
+      persist: false,
+      emailNotifications: profileData.emailNotifications
+    }).catch(() => {})
+  }
+}
+
 // Load profile data
 async function loadProfile() {
   loading.value = true
@@ -372,8 +424,12 @@ async function loadProfile() {
       profileData.avatarUrl = metadata.avatar_url || ''
       profileData.twoFactorEnabled = metadata.two_factor_enabled || false
       profileData.emailNotifications = metadata.email_notifications !== false
-      profileData.theme = metadata.theme || 'light'
-      
+      profileData.theme = metadata.theme && THEME_VALUES.includes(metadata.theme)
+        ? metadata.theme
+        : (themeMode.value || 'light')
+
+      await loadPreferenceRecord()
+
       // Store original data for change detection
       originalData.value = JSON.parse(JSON.stringify(profileData))
     }
@@ -436,21 +492,87 @@ async function updateProfile() {
   }
 }
 
-// Update preferences
-async function updatePreferences() {
+async function handleEmailNotifications(value) {
+  const previous = profileData.emailNotifications
+  profileData.emailNotifications = value
+
+  if (!user.value) {
+    message.error('You must be signed in to update preferences')
+    profileData.emailNotifications = previous
+    return
+  }
+
   try {
-    const updates = {
-      user_metadata: {
-        email_notifications: profileData.emailNotifications,
-        theme: profileData.theme
-      }
+    const payload = {
+      user_id: user.value.id,
+      email_notifications: profileData.emailNotifications,
+      theme: profileData.theme,
+      updated_at: new Date().toISOString()
     }
 
-    await supabase.auth.updateUser(updates)
-    message.success('Preferences updated')
+    const { error } = await supabase
+      .from('user_preferences')
+      .upsert(payload, { onConflict: 'user_id' })
+
+    if (error) {
+      throw error
+    }
+
+    await supabase.auth.updateUser({
+      data: {
+        email_notifications: profileData.emailNotifications
+      }
+    })
+
+    originalData.value = JSON.parse(JSON.stringify(profileData))
+    message.success(`Email notifications ${profileData.emailNotifications ? 'enabled' : 'disabled'}`)
   } catch (error) {
-    console.error('Error updating preferences:', error)
-    message.error('Failed to update preferences')
+    console.error('Error updating email notifications:', error)
+    profileData.emailNotifications = previous
+    message.error('Failed to update email notification preference')
+  }
+}
+
+async function handleThemeChange(value) {
+  if (!THEME_VALUES.includes(value)) {
+    return
+  }
+
+  if (!user.value) {
+    message.error('You must be signed in to change theme')
+    profileData.theme = themeMode.value || 'light'
+    return
+  }
+
+  const previousTheme = profileData.theme
+  profileData.theme = value
+
+  try {
+    await setTheme(value, {
+      emailNotifications: profileData.emailNotifications
+    })
+
+    await supabase.auth.updateUser({
+      data: {
+        theme: value,
+        email_notifications: profileData.emailNotifications
+      }
+    })
+
+    originalData.value = JSON.parse(JSON.stringify(profileData))
+
+    const label = themeOptions.find(option => option.value === value)?.label || 'Theme'
+    message.success(`${label} theme applied`)
+  } catch (error) {
+    console.error('Error updating theme preference:', error)
+    profileData.theme = previousTheme
+
+    await setTheme(previousTheme, {
+      persist: false,
+      emailNotifications: profileData.emailNotifications
+    }).catch(() => {})
+
+    message.error('Failed to update theme preference')
   }
 }
 
@@ -713,7 +835,7 @@ onMounted(() => {
   height: 80px;
   border-radius: 50%;
   overflow: hidden;
-  background: rgba(99, 102, 241, 0.1);
+  background: var(--avatar-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -728,7 +850,7 @@ onMounted(() => {
 .avatar-placeholder {
   font-size: 2rem;
   font-weight: 600;
-  color: #6366f1;
+  color: var(--color-primary-600);
 }
 
 .avatar-actions {
@@ -742,7 +864,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background: #f9fafb;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
 }
 
@@ -755,12 +878,12 @@ onMounted(() => {
 .status-label {
   font-size: 1rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .status-detail {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   text-transform: capitalize;
 }
 

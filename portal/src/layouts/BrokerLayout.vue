@@ -130,12 +130,12 @@ async function handleSignOut() {
 }
 
 .nav-item:hover {
-  background: var(--bg-tertiary);
+  background: var(--nav-hover);
 }
 
 .nav-item.active {
-  background: #eff6ff;
-  color: var(--primary);
+  background: var(--nav-selected);
+  color: var(--color-primary-600);
 }
 
 .nav-item .icon {

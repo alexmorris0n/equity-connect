@@ -22,7 +22,7 @@
                   cy="125"
                   :r="100 - (idx * 15)"
                   fill="none"
-                  stroke="rgba(0,0,0,0.06)"
+                  :stroke="ringTrackColor"
                   stroke-width="12"
                 />
                 <circle
@@ -38,7 +38,7 @@
                   transform="rotate(-90 125 125)"
                 />
               </g>
-              <text x="125" y="133" text-anchor="middle" font-size="36" fill="#1f2937" font-weight="700">
+              <text x="125" y="133" text-anchor="middle" font-size="36" :fill="textPrimary" font-weight="700">
                 {{ aiPerformance.overallScore }}
               </text>
             </svg>
@@ -75,7 +75,7 @@
                 :stroke-width="12"
                 :show-indicator="false"
                 :color="bookingRingColor"
-                :rail-color="'rgba(148, 163, 184, 0.18)'"
+                :rail-color="progressRailColor"
                 :style="{ width: '160px', height: '160px' }"
               />
               <div class="calls-ring-center">
@@ -235,9 +235,36 @@
 import { reactive, computed, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { SparklesOutline, CallOutline, PieChartOutline, TrendingUpOutline } from '@vicons/ionicons5'
+import { useTheme } from '@/composables/useTheme'
 
 const numberFormatter = new Intl.NumberFormat('en-US')
 const formatNumber = (value) => numberFormatter.format(Number(value) || 0)
+
+const { isDark } = useTheme()
+const textPrimary = computed(() => (isDark.value ? '#e2e8f0' : '#1f2937'))
+const ringTrackColor = computed(() => (isDark.value ? 'rgba(148, 163, 184, 0.3)' : 'rgba(15, 23, 42, 0.08)'))
+const progressRailColor = computed(() => (isDark.value ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.18)'))
+
+const segmentPalettes = computed(() => ({
+  booked: {
+    color: isDark.value ? '#818cf8' : '#4f46e5',
+    bar: isDark.value
+      ? 'linear-gradient(135deg, #6366f1, #4338ca)'
+      : 'linear-gradient(135deg, #60a5fa, #4f46e5)'
+  },
+  followUps: {
+    color: isDark.value ? '#fbbf24' : '#f97316',
+    bar: isDark.value
+      ? 'linear-gradient(135deg, #fbbf24, #f97316)'
+      : 'linear-gradient(135deg, #f97316, #facc15)'
+  },
+  otherCalls: {
+    color: isDark.value ? '#475569' : '#cbd5f5',
+    bar: isDark.value
+      ? 'linear-gradient(135deg, #475569, #1f2937)'
+      : 'linear-gradient(135deg, #cbd5f5, #e2e8f0)'
+  }
+}))
 
 function getColorWithIntensity(baseHue, score) {
   if (score === null || score === undefined || Number.isNaN(score)) {
@@ -271,7 +298,8 @@ function formatDateLabel(dateString) {
 
 const outcomeGradient = computed(() => {
   if (!callMetrics.totalCalls || !callSegments.value.length) {
-    return 'conic-gradient(#e2e8f0 0 100%)'
+    const fallback = isDark.value ? '#27334a' : '#e2e8f0'
+    return `conic-gradient(${fallback} 0 100%)`
   }
 
   const total = callMetrics.totalCalls
@@ -367,24 +395,26 @@ const callSegments = computed(() => {
   const total = callMetrics.totalCalls
   if (!total) return []
 
+  const palette = segmentPalettes.value
+
   const rawSegments = [
     {
       label: 'Booked',
       value: callMetrics.bookings,
-      color: '#4f46e5',
-      barColor: 'linear-gradient(135deg, #60a5fa, #4f46e5)'
+      color: palette.booked.color,
+      barColor: palette.booked.bar
     },
     {
       label: 'Follow Ups',
       value: callMetrics.followUps,
-      color: '#f97316',
-      barColor: 'linear-gradient(135deg, #f97316, #facc15)'
+      color: palette.followUps.color,
+      barColor: palette.followUps.bar
     },
     {
       label: 'Other Calls',
       value: callMetrics.otherCalls,
-      color: '#cbd5f5',
-      barColor: 'linear-gradient(135deg, #cbd5f5, #e2e8f0)'
+      color: palette.otherCalls.color,
+      barColor: palette.otherCalls.bar
     }
   ]
 
@@ -561,8 +591,9 @@ async function loadCallMetrics() {
   gap: 0.6rem;
   padding: 1.1rem !important;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 18px 46px -30px rgba(79, 70, 229, 0.28);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
   aspect-ratio: 1 / 1;
   width: 100%;
   justify-content: space-between;
@@ -578,7 +609,7 @@ async function loadCallMetrics() {
   align-items: center;
   gap: 0.75rem;
   font-weight: 600;
-  color: #4b5563;
+  color: var(--text-secondary);
   font-size: 0.82rem;
 }
 
@@ -596,27 +627,27 @@ async function loadCallMetrics() {
 }
 
 .accent-primary {
-  background: rgba(99, 102, 241, 0.12);
-  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--color-primary-600);
 }
 
 .accent-sky {
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba(14, 165, 233, 0.18);
   color: #0ea5e9;
 }
 
 .accent-amber {
-  background: rgba(245, 158, 11, 0.12);
+  background: rgba(245, 158, 11, 0.22);
   color: #f59e0b;
 }
 
 .accent-mint {
-  background: rgba(16, 185, 129, 0.14);
+  background: rgba(16, 185, 129, 0.22);
   color: #10b981;
 }
 
 .accent-violet {
-  background: rgba(139, 92, 246, 0.12);
+  background: rgba(139, 92, 246, 0.2);
   color: #8b5cf6;
 }
 
@@ -630,13 +661,13 @@ async function loadCallMetrics() {
 .stat-value {
   font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   text-align: center;
 }
 
 .stat-subtitle {
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .stat-metric :deep(.n-tag) {
@@ -652,18 +683,19 @@ async function loadCallMetrics() {
 .activity-card {
   min-height: 100%;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.96) !important;
-  box-shadow: 0 18px 46px -32px rgba(15, 23, 42, 0.22) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft) !important;
 }
 
 .ai-performance-card,
 .calls-card,
 .outcome-card,
 .trend-card {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface);
   border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow: 0 20px 44px -30px rgba(79, 70, 229, 0.26);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
   padding: 1.25rem 1rem;
   display: flex;
   flex-direction: column;
@@ -681,7 +713,7 @@ async function loadCallMetrics() {
   width: 100%;
   font-weight: 600;
   font-size: 0.95rem;
-  color: #334155;
+  color: var(--text-secondary);
 }
 
 .calls-heading {
@@ -693,12 +725,12 @@ async function loadCallMetrics() {
 .calls-title {
   font-size: 1.05rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 .calls-timeframe {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -715,12 +747,12 @@ async function loadCallMetrics() {
 .ai-performance-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 .ai-performance-timeframe {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -773,18 +805,18 @@ async function loadCallMetrics() {
 .ai-performance-legend .legend-label {
   flex: 1;
   font-weight: 500;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .ai-performance-legend .legend-value {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   font-size: 0.8rem;
 }
 
 .pipeline-total {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .pipeline-list {
@@ -804,7 +836,7 @@ async function loadCallMetrics() {
   align-items: center;
   justify-content: space-between;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
   font-size: 0.82rem;
 }
 
@@ -830,8 +862,8 @@ table {
 }
 
 thead tr {
-  background: rgba(99, 102, 241, 0.08);
-  color: #4338ca;
+  background: var(--nav-hover);
+  color: var(--color-primary-600);
 }
 
 th {
@@ -851,7 +883,7 @@ tbody tr:hover {
 
 td {
   padding: 0.75rem;
-  color: #1f2937;
+  color: var(--text-primary);
   vertical-align: middle;
 }
 
@@ -863,12 +895,12 @@ td {
 
 .broker-name .name {
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .broker-name .company {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .activity-list {
@@ -889,13 +921,13 @@ td {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: rgba(99, 102, 241, 0.12);
-  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--color-primary-600);
   flex-shrink: 0;
 }
 
 .activity-icon.broker {
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba(14, 165, 233, 0.18);
   color: #0ea5e9;
 }
 
@@ -905,17 +937,17 @@ td {
 
 .activity-title {
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .activity-subtitle {
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .activity-time {
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--text-tertiary);
 }
 
 .calls-body {
@@ -958,7 +990,7 @@ td {
 .calls-ring-value {
   font-size: 3rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
   display: flex;
   align-items: flex-end;
   gap: 0.15rem;
@@ -966,14 +998,14 @@ td {
 
 .calls-ring-label {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .calls-ring-percent {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
   line-height: 1.2;
 }
 
@@ -985,25 +1017,27 @@ td {
 }
 
 .calls-stat {
-  background: rgba(148, 163, 184, 0.08);
+  background: var(--surface-muted);
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   align-items: flex-start;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-label {
   font-size: 0.72rem;
-  color: #64748b;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 1rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .stat-value.success {
@@ -1026,7 +1060,7 @@ td {
   max-width: 320px;
   height: 16px;
   border-radius: 999px;
-  background: rgba(226, 232, 240, 0.6);
+  background: var(--surface-muted);
   overflow: hidden;
   display: flex;
 }
@@ -1048,7 +1082,7 @@ td {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.75rem;
-  color: #475569;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -1060,16 +1094,16 @@ td {
 
 .legend-value {
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .outcome-card,
 .trend-card {
   min-height: 100%;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow: 0 20px 44px -30px rgba(79, 70, 229, 0.26);
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
   padding: 1.25rem 1rem;
   display: flex;
   flex-direction: column;
@@ -1086,7 +1120,7 @@ td {
   width: 100%;
   font-weight: 600;
   font-size: 0.95rem;
-  color: #334155;
+  color: var(--text-secondary);
 }
 
 .outcome-heading,
@@ -1100,13 +1134,13 @@ td {
 .trend-title {
   font-size: 1.05rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--text-primary);
 }
 
 .outcome-timeframe,
 .trend-timeframe {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -1128,7 +1162,7 @@ td {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 0 14px rgba(255, 255, 255, 0.95);
+  box-shadow: inset 0 0 0 14px var(--surface);
 }
 
 .outcome-center {
@@ -1143,12 +1177,12 @@ td {
 .outcome-total {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .outcome-label {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -1191,7 +1225,7 @@ td {
   display: flex;
   justify-content: space-between;
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .trend-stats {
@@ -1202,24 +1236,26 @@ td {
 }
 
 .trend-stat {
-  background: rgba(226, 232, 240, 0.4);
+  background: var(--surface-muted);
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   align-items: flex-start;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .trend-stat .stat-value {
   font-size: 1rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .trend-stat .stat-sub {
   font-size: 0.7rem;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .trend-area {

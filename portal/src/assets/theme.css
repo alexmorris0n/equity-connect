@@ -6,6 +6,7 @@
   --text-primary: #111827;
   --text-secondary: #4b5563;
   --text-muted: #6b7280;
+  --text-tertiary: #9ca3af;
   --text-inverse: #ffffff;
   --heading-weight: 600;
   --body-weight: 400;
@@ -36,12 +37,17 @@
   --surface-alt: rgba(255, 255, 255, 0.65);
   --surface-elevated: #ffffff;
   --surface-sidebar: rgba(255, 255, 255, 0.85);
+  --sidebar-background: rgba(245, 246, 252, 0.92);
   --backdrop: rgba(15, 23, 42, 0.45);
 
   /* Borders & Shadows */
   --border-color: #e2e8f0;
   --border-strong: #d0d7e8;
   --divider-subtle: rgba(148, 163, 184, 0.25);
+  --sidebar-border: rgba(148, 163, 184, 0.25);
+  --header-border: rgba(148, 163, 184, 0.18);
+  --nav-hover: rgba(99, 102, 241, 0.08);
+  --nav-selected: rgba(99, 102, 241, 0.14);
   --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 18px 40px rgba(79, 70, 229, 0.08);
   --shadow-lg: 0 28px 60px rgba(79, 70, 229, 0.12);
@@ -72,10 +78,64 @@
   --button-height: 42px;
   --card-padding: 1.25rem;
   --card-gap: 1.125rem;
+
+  /* Helper aliases */
+  --bg-primary: var(--surface);
+  --bg-secondary: var(--surface-muted);
+  --bg-tertiary: var(--surface-alt);
+  --border: var(--border-color);
+  --primary: var(--color-primary-600);
+  --avatar-bg: rgba(99, 102, 241, 0.2);
+  --avatar-color: #3730a3;
 }
 
 @supports (backdrop-filter: blur(16px)) {
   :root {
     --surface-sidebar: rgba(255, 255, 255, 0.72);
+    --sidebar-background: rgba(245, 246, 252, 0.85);
+  }
+
+  :root[data-theme='dark'] {
+    --surface-sidebar: rgba(17, 28, 52, 0.78);
   }
 }
+
+:root[data-theme='dark'] {
+  --text-primary: #e2e8f0;
+  --text-secondary: #cbd5f5;
+  --text-muted: #94a3b8;
+  --text-tertiary: #7484a2;
+  --text-inverse: #0b1220;
+
+  --background: #0b1220;
+  --background-gradient: linear-gradient(180deg, rgba(12, 19, 35, 1) 0%, rgba(10, 17, 32, 1) 55%, rgba(9, 14, 27, 1) 100%);
+  --surface: #111c34;
+  --surface-muted: #16213d;
+  --surface-alt: rgba(17, 28, 52, 0.68);
+  --surface-elevated: #1a2645;
+  --surface-sidebar: rgba(17, 28, 52, 0.85);
+  --sidebar-background: rgba(17, 28, 52, 0.82);
+  --backdrop: rgba(5, 8, 20, 0.72);
+
+  --border-color: #1e293b;
+  --border-strong: #334155;
+  --divider-subtle: rgba(99, 102, 241, 0.22);
+  --sidebar-border: rgba(99, 102, 241, 0.18);
+  --header-border: rgba(99, 102, 241, 0.16);
+  --nav-hover: rgba(99, 102, 241, 0.18);
+  --nav-selected: rgba(99, 102, 241, 0.32);
+
+  --shadow-sm: 0 8px 24px rgba(2, 6, 23, 0.45);
+  --shadow-md: 0 24px 60px rgba(15, 23, 42, 0.48);
+  --shadow-lg: 0 40px 80px rgba(15, 23, 42, 0.6);
+  --shadow-soft: 0 24px 50px rgba(2, 6, 23, 0.42);
+
+  --avatar-bg: rgba(79, 70, 229, 0.28);
+  --avatar-color: #e0e7ff;
+
+  --bg-primary: var(--surface);
+  --bg-secondary: var(--surface-muted);
+  --bg-tertiary: rgba(30, 41, 59, 0.65);
+  --border: var(--border-color);
+}
+
