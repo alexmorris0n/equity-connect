@@ -93,6 +93,38 @@ const tools = [
     }
   },
   {
+    name: 'cancel_appointment',
+    description: 'Cancel an existing appointment with a broker. Removes the Nylas calendar event and notifies all participants.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        }
+      },
+      required: ['lead_id']
+    }
+  },
+  {
+    name: 'reschedule_appointment',
+    description: 'Reschedule an existing appointment to a new time. Updates the Nylas calendar event and sends updated invites to all participants.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        },
+        new_scheduled_for: {
+          type: 'string',
+          description: 'New appointment date/time in ISO 8601 format (e.g., "2025-10-22T14:00:00Z")'
+        }
+      },
+      required: ['lead_id', 'new_scheduled_for']
+    }
+  },
+  {
     name: 'update_lead_info',
     description: 'Update lead contact information in the database. Used to collect or correct phone, email, name, address, etc.',
     inputSchema: {
@@ -306,6 +338,99 @@ async function executeTool(name, args) {
             {
               type: 'text',
               text: `❌ Appointment booking failed: ${error.message}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+    
+    case 'cancel_appointment': {
+      app.log.info({ lead_id: args.lead_id }, '🗑️ Canceling appointment');
+      
+      try {
+        const response = await fetch(`${BRIDGE_URL}/api/tools/cancel_appointment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+          },
+          body: JSON.stringify(args)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          app.log.info('✅ Appointment cancelled');
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ Appointment Cancelled Successfully!\n\n` +
+                      `👤 Lead ID: ${args.lead_id}\n` +
+                      `📅 Original Time: ${result.cancelled_appointment?.scheduled_for ? new Date(result.cancelled_appointment.scheduled_for).toLocaleString() : 'N/A'}\n` +
+                      `🏢 Broker: ${result.cancelled_appointment?.broker_name || 'N/A'}\n` +
+                      `💬 ${result.message}`
+              }
+            ]
+          };
+        } else {
+          throw new Error(result.error || 'Appointment cancellation failed');
+        }
+      } catch (error) {
+        app.log.error({ error }, '❌ Appointment cancellation error');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Appointment cancellation failed: ${error.message}`
+            }
+          ],
+          isError: true
+        };
+      }
+    }
+    
+    case 'reschedule_appointment': {
+      app.log.info({ lead_id: args.lead_id, new_time: args.new_scheduled_for }, '📅 Rescheduling appointment');
+      
+      try {
+        const response = await fetch(`${BRIDGE_URL}/api/tools/reschedule_appointment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+          },
+          body: JSON.stringify(args)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          app.log.info('✅ Appointment rescheduled');
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `✅ Appointment Rescheduled Successfully!\n\n` +
+                      `👤 Lead ID: ${args.lead_id}\n` +
+                      `📅 Old Time: ${result.old_scheduled_for ? new Date(result.old_scheduled_for).toLocaleString() : 'N/A'}\n` +
+                      `📅 New Time: ${new Date(args.new_scheduled_for).toLocaleString()}\n` +
+                      `📧 Calendar invite sent: ${result.calendar_invite_sent ? 'Yes' : 'No (email missing)'}\n` +
+                      `💬 ${result.message}`
+              }
+            ]
+          };
+        } else {
+          throw new Error(result.error || 'Appointment rescheduling failed');
+        }
+      } catch (error) {
+        app.log.error({ error }, '❌ Appointment rescheduling error');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Appointment rescheduling failed: ${error.message}`
             }
           ],
           isError: true

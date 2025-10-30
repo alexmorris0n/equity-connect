@@ -102,13 +102,14 @@ export const bookAppointmentTool = realtimeTool({
       logger.info(`✅ Nylas event created: ${nylasEventId}`);
       
       // Log interaction to Supabase
-      await sb.from('interactions').insert({
+      const { error: interactionError } = await sb.from('interactions').insert({
         lead_id,
         broker_id,
         type: 'appointment',
         direction: 'outbound',
         content: `Appointment scheduled for ${appointmentDate.toLocaleString('en-US')}`,
         outcome: 'appointment_booked',
+        scheduled_for: scheduled_for, // Store appointment time in top-level column for calendar display
         metadata: {
           nylas_event_id: nylasEventId,
           scheduled_for,
@@ -118,8 +119,15 @@ export const bookAppointmentTool = realtimeTool({
         created_at: new Date().toISOString()
       });
       
+      if (interactionError) {
+        logger.error('❌ Failed to save appointment interaction:', interactionError);
+        throw new Error(`Failed to save appointment: ${interactionError.message}`);
+      }
+      
+      logger.info('✅ Appointment interaction saved');
+      
       // Update lead status
-      await sb
+      const { error: leadUpdateError } = await sb
         .from('leads')
         .update({ 
           status: 'appointment_set',
@@ -127,8 +135,13 @@ export const bookAppointmentTool = realtimeTool({
         })
         .eq('id', lead_id);
       
+      if (leadUpdateError) {
+        logger.error('❌ Failed to update lead status:', leadUpdateError);
+        // Don't throw - this is non-critical
+      }
+      
       // Create billing event
-      await sb
+      const { error: billingError } = await sb
         .from('billing_events')
         .insert({
           broker_id,
@@ -142,6 +155,11 @@ export const bookAppointmentTool = realtimeTool({
           },
           created_at: new Date().toISOString()
         });
+      
+      if (billingError) {
+        logger.error('❌ Failed to create billing event:', billingError);
+        // Don't throw - this is non-critical, can be added manually
+      }
       
       const duration = Date.now() - startTime;
       logger.info(`✅ Appointment booked successfully in ${duration}ms`);

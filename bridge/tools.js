@@ -220,6 +220,42 @@ const toolDefinitions = [
   },
   {
     type: 'function',
+    name: 'cancel_appointment',
+    description: 'Cancel an existing appointment. Removes calendar event from broker\'s calendar and notifies all participants.',
+    parameters: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        }
+      },
+      required: ['lead_id'],
+      additionalProperties: false
+    }
+  },
+  {
+    type: 'function',
+    name: 'reschedule_appointment',
+    description: 'Reschedule an existing appointment to a new time. Updates calendar event and sends updated invites to all participants.',
+    parameters: {
+      type: 'object',
+      properties: {
+        lead_id: {
+          type: 'string',
+          description: 'Lead UUID'
+        },
+        new_scheduled_for: {
+          type: 'string',
+          description: 'New appointment date/time in ISO 8601 format (e.g., "2025-10-22T14:00:00Z")'
+        }
+      },
+      required: ['lead_id', 'new_scheduled_for'],
+      additionalProperties: false
+    }
+  },
+  {
+    type: 'function',
     name: 'assign_tracking_number',
     description: 'Assign the current SignalWire number to this lead/broker pair for call tracking. CALL THIS IMMEDIATELY AFTER booking an appointment. This allows us to track all future calls between broker and lead for billing verification.',
     parameters: {
@@ -1394,6 +1430,344 @@ async function searchKnowledge({ question }) {
 }
 
 /**
+ * Tool Handler: Cancel Appointment
+ * Cancel an existing appointment by removing the Nylas calendar event
+ */
+async function cancelAppointment({ lead_id }) {
+  const sb = initSupabase();
+  const startTime = Date.now();
+  
+  try {
+    console.log('🗑️ Canceling appointment for lead:', lead_id);
+    
+    // Find most recent appointment for this lead
+    const { data: appointment, error: appointmentError } = await sb
+      .from('interactions')
+      .select('*')
+      .eq('lead_id', lead_id)
+      .eq('type', 'appointment')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (appointmentError || !appointment) {
+      console.error('❌ No appointment found:', appointmentError);
+      return {
+        success: false,
+        error: 'No appointment found',
+        message: 'I couldn\'t find an existing appointment to cancel. Would you like to book a new one instead?'
+      };
+    }
+    
+    // Check if already cancelled
+    if (appointment.outcome === 'cancelled') {
+      return {
+        success: false,
+        error: 'Already cancelled',
+        message: 'This appointment has already been cancelled.'
+      };
+    }
+    
+    const nylasEventId = appointment.metadata?.nylas_event_id;
+    const brokerId = appointment.broker_id;
+    
+    if (!nylasEventId) {
+      console.error('❌ No Nylas event ID found');
+      return {
+        success: false,
+        error: 'Missing event ID',
+        message: 'Unable to cancel appointment - missing calendar event reference.'
+      };
+    }
+    
+    // Get broker's Nylas grant ID
+    const { data: broker, error: brokerError } = await sb
+      .from('brokers')
+      .select('contact_name, nylas_grant_id')
+      .eq('id', brokerId)
+      .single();
+    
+    if (brokerError || !broker || !broker.nylas_grant_id) {
+      console.error('❌ Broker or Nylas grant not found:', brokerError);
+      return {
+        success: false,
+        error: 'Calendar not connected',
+        message: 'Unable to cancel appointment - broker calendar not connected.'
+      };
+    }
+    
+    // Delete event via Nylas API
+    const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
+    const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
+    const deleteUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events/${nylasEventId}?calendar_id=primary`;
+    
+    const response = await fetch(deleteUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Nylas delete failed:', response.status, errorText);
+      return {
+        success: false,
+        error: `Failed to cancel calendar event: ${response.status}`,
+        message: 'Unable to cancel appointment. Please try again or contact us directly.'
+      };
+    }
+    
+    console.log(`✅ Nylas event cancelled: ${nylasEventId}`);
+    
+    // Update interaction record
+    await sb
+      .from('interactions')
+      .update({
+        outcome: 'cancelled',
+        metadata: {
+          ...appointment.metadata,
+          cancelled_at: new Date().toISOString()
+        }
+      })
+      .eq('id', appointment.id);
+    
+    // Create cancellation record
+    await sb.from('interactions').insert({
+      lead_id,
+      broker_id: brokerId,
+      type: 'note',
+      direction: 'inbound',
+      content: 'Appointment cancelled by lead',
+      outcome: 'cancelled',
+      metadata: {
+        original_appointment_id: appointment.id,
+        original_scheduled_for: appointment.scheduled_for,
+        cancelled_via: 'barbara_ai'
+      },
+      created_at: new Date().toISOString()
+    });
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Appointment cancelled successfully in ${duration}ms`);
+    
+    return {
+      success: true,
+      cancelled_appointment: {
+        scheduled_for: appointment.scheduled_for,
+        broker_name: broker.contact_name
+      },
+      message: `Appointment cancelled successfully. ${broker.contact_name} has been notified and the event has been removed from the calendar.`
+    };
+    
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`❌ Cancellation failed after ${duration}ms:`, err);
+    return {
+      success: false,
+      error: err.message,
+      message: 'Unable to cancel appointment. Please try again or contact us directly.'
+    };
+  }
+}
+
+/**
+ * Tool Handler: Reschedule Appointment
+ * Update an existing appointment to a new time via Nylas
+ */
+async function rescheduleAppointment({ lead_id, new_scheduled_for }) {
+  const sb = initSupabase();
+  const startTime = Date.now();
+  const fetch = require('node-fetch');
+  
+  try {
+    console.log('📅 Rescheduling appointment for lead:', lead_id, 'to', new_scheduled_for);
+    
+    // Find most recent appointment for this lead
+    const { data: appointment, error: appointmentError } = await sb
+      .from('interactions')
+      .select('*')
+      .eq('lead_id', lead_id)
+      .eq('type', 'appointment')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (appointmentError || !appointment) {
+      console.error('❌ No appointment found:', appointmentError);
+      return {
+        success: false,
+        error: 'No appointment found',
+        message: 'I couldn\'t find an existing appointment to reschedule. Would you like to book a new one instead?'
+      };
+    }
+    
+    // Check if cancelled
+    if (appointment.outcome === 'cancelled') {
+      return {
+        success: false,
+        error: 'Appointment cancelled',
+        message: 'This appointment has been cancelled. Would you like to book a new appointment instead?'
+      };
+    }
+    
+    const nylasEventId = appointment.metadata?.nylas_event_id;
+    const brokerId = appointment.broker_id;
+    const oldScheduledFor = appointment.scheduled_for;
+    
+    if (!nylasEventId) {
+      console.error('❌ No Nylas event ID found');
+      return {
+        success: false,
+        error: 'Missing event ID',
+        message: 'Unable to reschedule appointment - missing calendar event reference.'
+      };
+    }
+    
+    // Get broker info
+    const { data: broker, error: brokerError } = await sb
+      .from('brokers')
+      .select('contact_name, email, nylas_grant_id')
+      .eq('id', brokerId)
+      .single();
+    
+    if (brokerError || !broker || !broker.nylas_grant_id) {
+      console.error('❌ Broker or Nylas grant not found:', brokerError);
+      return {
+        success: false,
+        error: 'Calendar not connected',
+        message: 'Unable to reschedule appointment - broker calendar not connected.'
+      };
+    }
+    
+    // Get lead info
+    const { data: lead } = await sb
+      .from('leads')
+      .select('first_name, last_name, primary_phone, primary_email')
+      .eq('id', lead_id)
+      .single();
+    
+    if (!lead) {
+      return {
+        success: false,
+        error: 'Lead not found',
+        message: 'Unable to reschedule appointment - lead not found.'
+      };
+    }
+    
+    const leadName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Lead';
+    const leadEmail = lead.primary_email || null;
+    
+    // Parse new time to Unix timestamps
+    const newAppointmentDate = new Date(new_scheduled_for);
+    const newStartUnix = Math.floor(newAppointmentDate.getTime() / 1000);
+    const newEndUnix = newStartUnix + 3600; // 1 hour
+    
+    // Update event via Nylas API
+    const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
+    const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
+    const updateUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events/${nylasEventId}?calendar_id=primary`;
+    
+    const body = {
+      title: `Reverse Mortgage Consultation - ${leadName}`,
+      description: [
+        `Lead: ${leadName}`,
+        `Phone: ${lead.primary_phone || 'N/A'}`,
+        `Email: ${leadEmail || 'N/A'}`,
+        '',
+        `Notes: ${appointment.metadata?.notes || 'None'}`,
+        '',
+        'This appointment was rescheduled by Barbara AI Assistant.'
+      ].join('\n'),
+      when: {
+        start_time: newStartUnix,
+        end_time: newEndUnix
+      },
+      participants: leadEmail ? [
+        { name: broker.contact_name, email: broker.email },
+        { name: leadName, email: leadEmail }
+      ] : [
+        { name: broker.contact_name, email: broker.email }
+      ]
+    };
+    
+    const response = await fetch(updateUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Nylas update failed:', response.status, errorText);
+      return {
+        success: false,
+        error: `Failed to update calendar event: ${response.status}`,
+        message: 'Unable to reschedule appointment. Please try again or contact us directly.'
+      };
+    }
+    
+    console.log(`✅ Nylas event rescheduled: ${nylasEventId}`);
+    
+    // Update interaction record
+    await sb
+      .from('interactions')
+      .update({
+        scheduled_for: new_scheduled_for,
+        metadata: {
+          ...appointment.metadata,
+          rescheduled_at: new Date().toISOString(),
+          original_scheduled_for: oldScheduledFor
+        }
+      })
+      .eq('id', appointment.id);
+    
+    // Create reschedule record
+    await sb.from('interactions').insert({
+      lead_id,
+      broker_id: brokerId,
+      type: 'note',
+      direction: 'inbound',
+      content: `Appointment rescheduled from ${new Date(oldScheduledFor || '').toLocaleString('en-US')} to ${newAppointmentDate.toLocaleString('en-US')}`,
+      outcome: 'appointment_rescheduled',
+      metadata: {
+        original_appointment_id: appointment.id,
+        old_scheduled_for: oldScheduledFor,
+        new_scheduled_for: new_scheduled_for,
+        rescheduled_via: 'barbara_ai'
+      },
+      created_at: new Date().toISOString()
+    });
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Appointment rescheduled successfully in ${duration}ms`);
+    
+    return {
+      success: true,
+      old_scheduled_for: oldScheduledFor,
+      new_scheduled_for: new_scheduled_for,
+      calendar_invite_sent: !!leadEmail,
+      message: leadEmail
+        ? `Appointment rescheduled successfully to ${newAppointmentDate.toLocaleString('en-US')}. Updated calendar invites sent to you and ${broker.contact_name}.`
+        : `Appointment rescheduled successfully to ${newAppointmentDate.toLocaleString('en-US')}. ${broker.contact_name} has been notified.`
+    };
+    
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`❌ Reschedule failed after ${duration}ms:`, err);
+    return {
+      success: false,
+      error: err.message,
+      message: 'Unable to reschedule appointment. Please try again or contact us directly.'
+    };
+  }
+}
+
+/**
  * Execute tool based on function name
  */
 async function executeTool(functionName, args) {
@@ -1410,6 +1784,10 @@ async function executeTool(functionName, args) {
       return await checkBrokerAvailability(args);
     case 'book_appointment':
       return await bookAppointment(args);
+    case 'cancel_appointment':
+      return await cancelAppointment(args);
+    case 'reschedule_appointment':
+      return await rescheduleAppointment(args);
     case 'assign_tracking_number':
       return await assignTrackingNumber(args);
     case 'save_interaction':

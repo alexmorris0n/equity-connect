@@ -5,6 +5,8 @@ import {
   findBrokerByTerritoryTool,
   checkBrokerAvailabilityTool,
   bookAppointmentTool,
+  cancelAppointmentTool,
+  rescheduleAppointmentTool,
   assignTrackingNumberTool,
   searchKnowledgeTool
 } from '../tools/business/index.js';
@@ -43,6 +45,8 @@ export const smsToolExecutors: Record<string, ToolExecutor> = {
   find_broker_by_territory: wrapToolExecution(findBrokerByTerritoryTool),
   check_broker_availability: wrapToolExecution(checkBrokerAvailabilityTool),
   book_appointment: wrapToolExecution(bookAppointmentTool),
+  cancel_appointment: wrapToolExecution(cancelAppointmentTool),
+  reschedule_appointment: wrapToolExecution(rescheduleAppointmentTool),
   assign_tracking_number: wrapToolExecution(assignTrackingNumberTool),
   search_knowledge: wrapToolExecution(searchKnowledgeTool)
 };
@@ -157,6 +161,35 @@ export const smsToolDefinitions: ToolDefinition[] = [
           notes: { type: 'string', nullable: true }
         },
         required: ['broker_id', 'lead_id', 'scheduled_for']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_appointment',
+      description: 'Cancel an existing appointment. Removes calendar event from broker\'s calendar and notifies all participants.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lead_id: { type: 'string', description: 'Lead UUID' }
+        },
+        required: ['lead_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reschedule_appointment',
+      description: 'Reschedule an existing appointment to a new time. Updates calendar event and sends updated invites to all participants.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lead_id: { type: 'string', description: 'Lead UUID' },
+          new_scheduled_for: { type: 'string', description: 'New appointment date/time in ISO 8601 format (e.g., "2025-10-22T14:00:00Z")' }
+        },
+        required: ['lead_id', 'new_scheduled_for']
       }
     }
   },

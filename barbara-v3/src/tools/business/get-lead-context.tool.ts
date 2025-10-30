@@ -97,7 +97,9 @@ export const getLeadContextTool = realtimeTool({
           age: lead.age,
           owner_occupied: lead.owner_occupied,
           status: lead.status,
-          qualified: isQualified
+          qualified: isQualified,
+          assigned_persona: lead.assigned_persona,
+          persona_heritage: lead.persona_heritage
         },
         last_call: {
           money_purpose: lastCallContext.money_purpose || null,

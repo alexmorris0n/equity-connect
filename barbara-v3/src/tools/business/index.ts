@@ -14,6 +14,8 @@ export { checkBrokerAvailabilityTool } from './check-broker-availability.tool.js
 
 // Appointments
 export { bookAppointmentTool } from './book-appointment.tool.js';
+export { cancelAppointmentTool } from './cancel-appointment.tool.js';
+export { rescheduleAppointmentTool } from './reschedule-appointment.tool.js';
 export { assignTrackingNumberTool } from './assign-tracking-number.tool.js';
 export { 
   sendAppointmentConfirmationTool, 

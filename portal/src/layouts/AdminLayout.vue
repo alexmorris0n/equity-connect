@@ -10,15 +10,22 @@
       :class="['notion-sider', { 'is-collapsed': sidebarCollapsed }]"
     >
       <div class="sider-inner">
-        <div class="workspace-brand" @click="sidebarCollapsed = !sidebarCollapsed">
-          <div class="workspace-icon">
-            <n-icon size="20"><AppsOutline /></n-icon>
-          </div>
-          <transition name="fade">
-            <div v-if="!sidebarCollapsed" class="workspace-meta">
-              <span class="workspace-sub">BARBARA</span>
-            </div>
-          </transition>
+        <div
+          :class="['workspace-brand', { 'is-collapsed': sidebarCollapsed }]"
+          @click="sidebarCollapsed = !sidebarCollapsed"
+        >
+          <img
+            v-if="!sidebarCollapsed"
+            :src="barbaraLogo"
+            alt="Barbara Logo"
+            class="workspace-logo"
+          />
+          <img
+            v-else
+            :src="barbaraLogoCompact"
+            alt="Barbara Logo"
+            class="workspace-logo workspace-logo--collapsed"
+          />
         </div>
 
         <n-menu
@@ -84,14 +91,16 @@ import {
   ChevronBackOutline,
   FlashOutline,
   HelpCircleOutline,
-  AppsOutline,
   GridOutline,
   DocumentTextOutline,
   PeopleOutline,
   SparklesOutline,
   PulseOutline,
-  BriefcaseOutline
+  BriefcaseOutline,
+  CalendarOutline
 } from '@vicons/ionicons5'
+import barbaraLogo from '@/assets/barbara-logo.svg'
+import barbaraLogoCompact from '@/assets/barbara-logo-compact.svg'
 
 const route = useRoute()
 const router = useRouter()
@@ -125,6 +134,12 @@ const menuOptions = [
     to: '/admin/leads'
   },
   {
+    key: 'appointments',
+    label: 'Appointments',
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(CalendarOutline) }),
+    to: '/admin/appointments'
+  },
+  {
     key: 'analytics',
     label: 'System Metrics',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(PulseOutline) }),
@@ -138,6 +153,7 @@ const routeKeyMap = {
   BrokerManagement: 'brokers',
   AllLeads: 'leads',
   LeadDetail: 'leads', // Lead Detail should highlight Leads
+  AdminAppointments: 'appointments',
   SystemAnalytics: 'analytics',
   UserProfile: 'profile'
 }
@@ -150,6 +166,7 @@ const pageTitle = computed(() => {
     prompts: 'Prompts',
     brokers: 'Brokers',
     leads: 'Leads',
+    appointments: 'Appointments',
     analytics: 'System Metrics',
     profile: 'User Profile'
   }
@@ -277,15 +294,33 @@ async function handleSignOut() {
 .workspace-brand {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.65rem;
+  padding: 11px 0.65rem;
   border-radius: 14px;
   cursor: pointer;
   transition: background 160ms ease;
+  height: 50px;
 }
 
 .workspace-brand:hover {
   background: rgba(99, 102, 241, 0.08);
+}
+
+.workspace-brand.is-collapsed {
+  padding-right: 0.35rem;
+  padding-left: 0.35rem;
+}
+
+.workspace-logo {
+  max-width: 160px;
+  height: 100%;
+  transition: transform 180ms ease, filter 180ms ease;
+  display: block;
+}
+
+.workspace-logo--collapsed {
+  max-width: 72px;
 }
 
 .workspace-icon {

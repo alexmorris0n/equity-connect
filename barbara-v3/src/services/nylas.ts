@@ -251,3 +251,104 @@ export async function createCalendarEvent(
   return data.data?.id;
 }
 
+/**
+ * Cancel a calendar event via Nylas
+ * 
+ * @param grantId - Nylas grant ID for the broker
+ * @param eventId - Nylas event ID to cancel
+ * @returns True on success
+ */
+export async function cancelCalendarEvent(
+  grantId: string,
+  eventId: string
+): Promise<boolean> {
+  if (!NYLAS_API_KEY) {
+    throw new Error('NYLAS_API_KEY not configured');
+  }
+
+  const url = `${NYLAS_API_URL}/v3/grants/${grantId}/events/${eventId}?calendar_id=primary`;
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${NYLAS_API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error(`Nylas delete event failed: ${response.status} ${errorText}`);
+    throw new Error(`Failed to cancel calendar event: ${response.status}`);
+  }
+
+  logger.info(`✅ Nylas event deleted: ${eventId}`);
+  return true;
+}
+
+/**
+ * Update a calendar event via Nylas
+ * 
+ * @param grantId - Nylas grant ID for the broker
+ * @param eventId - Nylas event ID to update
+ * @param eventData - Event details to update
+ * @returns True on success
+ */
+export async function updateCalendarEvent(
+  grantId: string,
+  eventId: string,
+  eventData: {
+    title?: string;
+    description?: string;
+    startTime?: number;  // Unix timestamp (seconds)
+    endTime?: number;    // Unix timestamp (seconds)
+    participants?: Array<{ name: string; email: string }>;
+  }
+): Promise<boolean> {
+  if (!NYLAS_API_KEY) {
+    throw new Error('NYLAS_API_KEY not configured');
+  }
+
+  const url = `${NYLAS_API_URL}/v3/grants/${grantId}/events/${eventId}?calendar_id=primary`;
+
+  // Build update body with only provided fields
+  const body: any = {};
+  
+  if (eventData.title !== undefined) {
+    body.title = eventData.title;
+  }
+  
+  if (eventData.description !== undefined) {
+    body.description = eventData.description;
+  }
+  
+  if (eventData.startTime !== undefined && eventData.endTime !== undefined) {
+    body.when = {
+      start_time: eventData.startTime,
+      end_time: eventData.endTime
+    };
+  }
+  
+  if (eventData.participants !== undefined) {
+    body.participants = eventData.participants;
+  }
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${NYLAS_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error(`Nylas update event failed: ${response.status} ${errorText}`);
+    throw new Error(`Failed to update calendar event: ${response.status}`);
+  }
+
+  logger.info(`✅ Nylas event updated: ${eventId}`);
+  return true;
+}
+

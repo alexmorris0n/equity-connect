@@ -212,14 +212,16 @@ Main Prompt + Outbound Addendum
 
 ## 🔗 TOOL CALL REFERENCE
 
-### Available Tools (7 Total)
+### Available Tools (9 Total)
 1. **get_lead_context** - Lookup lead by phone
 2. **search_knowledge** - Search 80-chunk KB
 3. **check_consent_dnc** - Verify calling permissions
 4. **update_lead_info** - Save data during call
 5. **check_broker_availability** - Calendar lookup
 6. **book_appointment** - Schedule + create billing event
-7. **save_interaction** - Log transcript, outcome, metadata
+7. **cancel_appointment** - Cancel existing appointment
+8. **reschedule_appointment** - Move appointment to new time
+9. **save_interaction** - Log transcript, outcome, metadata
 
 ### Tool Call Pattern
 ```javascript

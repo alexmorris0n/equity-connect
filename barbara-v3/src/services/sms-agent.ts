@@ -118,12 +118,14 @@ export async function processInboundSms({ from, to, body, messageSid }: ProcessS
   // 4. Build conversation history
   const history = await fetchSmsConversation(leadId, SMS_CONFIG.maxHistory);
 
-  const personaInstructions = buildSarahInstructions({
+  const personaInstructions = await buildSarahInstructions({
     leadFirstName: leadContext?.lead?.first_name,
     leadLastName: leadContext?.lead?.last_name,
     city: leadContext?.lead?.property_city,
     brokerName: leadContext?.broker?.name,
-    brokerCompany: leadContext?.broker?.company
+    brokerCompany: leadContext?.broker?.company,
+    assignedPersona: leadContext?.lead?.assigned_persona,
+    personaHeritage: leadContext?.lead?.persona_heritage
   });
 
   const messages: ChatMessage[] = [

@@ -258,17 +258,53 @@
                   </div>
                 </template>
                 <n-list class="suggestions-list">
-                  <n-list-item v-for="(suggestion, idx) in aiSuggestions" :key="idx" class="suggestion-item">
+                  <n-list-item 
+                    v-for="(suggestion, idx) in aiSuggestions" 
+                    :key="idx" 
+                    class="suggestion-item"
+                    :style="appliedSuggestions.has(mapSuggestionSectionToKey(suggestion.section)) ? { opacity: 0.6 } : {}"
+                  >
                     <template #prefix>
                       <n-badge :value="suggestion.priority" :type="getPriorityType(suggestion.priority)" class="suggestion-badge" />
                     </template>
                     <div style="text-align: left; flex: 1;">
-                      <div style="font-weight: 500; margin-bottom: 4px;">{{ suggestion.title }}</div>
+                      <div style="font-weight: 500; margin-bottom: 4px;">
+                        {{ suggestion.title }}
+                        <n-tag 
+                          v-if="appliedSuggestions.has(mapSuggestionSectionToKey(suggestion.section))" 
+                          size="small" 
+                          type="success" 
+                          :bordered="false"
+                          style="margin-left: 0.5rem;"
+                        >
+                          <template #icon>
+                            <n-icon><CheckmarkCircleOutline /></n-icon>
+                          </template>
+                          Applied
+                        </n-tag>
+                      </div>
                       <div style="font-size: 0.9em; color: #6b7280;">{{ suggestion.description }}</div>
                     </div>
                     <template #suffix>
-                      <n-button size="small" tertiary @click="applySuggestion(suggestion)">
+                      <n-button 
+                        v-if="!appliedSuggestions.has(mapSuggestionSectionToKey(suggestion.section))"
+                        size="small" 
+                        tertiary 
+                        @click="applySuggestion(suggestion)"
+                      >
                         Apply
+                      </n-button>
+                      <n-button 
+                        v-else
+                        size="small" 
+                        tertiary 
+                        type="success"
+                        disabled
+                      >
+                        <template #icon>
+                          <n-icon><CheckmarkOutline /></n-icon>
+                        </template>
+                        Applied
                       </n-button>
                     </template>
                   </n-list-item>
@@ -292,6 +328,89 @@
                     </template>
                     Edit Prompt
                   </n-button>
+                </template>
+              </n-empty>
+            </div>
+          </n-tab-pane>
+
+          <n-tab-pane name="changes" tab="Changes">
+            <div v-if="currentVersion" class="changes-container">
+              <!-- Version Comparison Header -->
+              <n-alert type="info" style="margin-bottom: 1.5rem;" :bordered="false">
+                <template #icon>
+                  <n-icon><SwapHorizontalOutline /></n-icon>
+                </template>
+                <div style="font-size: 0.95rem;">
+                  <strong>{{ currentVersion.is_draft ? 'Draft' : '' }} Version {{ currentVersion.version_number }}</strong>
+                  <span v-if="baseVersionForDiff"> - Comparing against Version {{ baseVersionForDiff.version_number }}{{ baseVersionForDiff.is_active ? ' (Active)' : '' }}</span>
+                  <span v-else> - No comparison available (first version or no active version)</span>
+                </div>
+              </n-alert>
+
+              <!-- Diff Content -->
+              <div v-if="baseVersionForDiff" class="diff-content-tab">
+                <!-- Summary of changes -->
+                <n-alert type="default" style="margin-bottom: 1rem;" :bordered="false">
+                  <div style="font-size: 0.9rem;">
+                    <strong>{{ sectionsWithChanges.length }}</strong> section{{ sectionsWithChanges.length === 1 ? '' : 's' }} modified
+                    <span v-if="sectionsWithChanges.length === 0"> - No changes detected</span>
+                  </div>
+                </n-alert>
+
+                <!-- Only show sections with changes -->
+                <div v-if="sectionsWithChanges.length > 0">
+                  <div class="diff-section-tab" v-for="section in sectionsWithChanges" :key="section.key">
+                    <h4 class="preview-section-title">
+                      {{ section.label }}
+                      <span class="changed-badge">Modified</span>
+                    </h4>
+                    <div class="diff-text">
+                      <span
+                        v-for="(part, index) in getSectionDiff(section.key)"
+                        :key="index"
+                        :class="{
+                          'diff-added': part.added,
+                          'diff-removed': part.removed,
+                          'diff-unchanged': !part.added && !part.removed
+                        }"
+                      >{{ part.value }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- No changes message -->
+                <div v-else style="text-align: center; padding: 2rem; color: #6b7280;">
+                  <p>No changes detected between these versions.</p>
+                </div>
+              </div>
+
+              <!-- No Comparison Available -->
+              <div v-else class="no-comparison-state">
+                <n-empty size="large">
+                  <template #default>
+                    <div class="empty-content">
+                      <h3>No Comparison Available</h3>
+                      <p v-if="!activeVersion">This is the first version - there's no active version to compare against.</p>
+                      <p v-else>Showing all content (no diff available).</p>
+                    </div>
+                  </template>
+                </n-empty>
+
+                <!-- Show full content if no comparison -->
+                <div class="preview-content" style="margin-top: 1.5rem;">
+                  <div class="preview-section" v-for="section in promptSections" :key="section.key">
+                    <h4 class="preview-section-title">{{ section.label }}</h4>
+                    <pre class="preview-section-content">{{ currentVersion?.content[section.key] || '(empty)' }}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- No Version Selected -->
+            <div v-else class="empty-state">
+              <n-empty>
+                <template #default>
+                  <p>Select a version to view changes</p>
                 </template>
               </n-empty>
             </div>
@@ -528,16 +647,19 @@
             </div>
           </n-tab-pane>
 
-          <n-tab-pane name="tools" tab="Tools">
+          <n-tab-pane name="tools" tab="Available Tools">
             <div class="variables-content">
               <div class="variables-section">
-                <h3>Available Tools</h3>
-                <p class="text-muted">Click a tool to add it to the Tools section:</p>
+                <h3>🛠️ All Standard Tools (Auto-Available)</h3>
+                <n-alert type="info" style="margin-bottom: 1.5rem;">
+                  <strong>Note:</strong> All tools below are automatically available to Barbara at runtime. 
+                  You don't need to list them in your prompts anymore. Barbara intelligently selects the right tool based on the conversation context.
+                </n-alert>
                 
                 <div class="variable-category">
                   <h4>Lead Management</h4>
                   <div class="variable-grid">
-                    <div v-for="tool in availableTools.lead" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                    <div v-for="tool in availableTools.lead" :key="tool.key" class="variable-item-readonly">
                       <span class="variable-name">{{ tool.name }}</span>
                       <span class="variable-desc">{{ tool.desc }}</span>
                     </div>
@@ -547,7 +669,7 @@
                 <div class="variable-category">
                   <h4>Knowledge Base</h4>
                   <div class="variable-grid">
-                    <div v-for="tool in availableTools.knowledge" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                    <div v-for="tool in availableTools.knowledge" :key="tool.key" class="variable-item-readonly">
                       <span class="variable-name">{{ tool.name }}</span>
                       <span class="variable-desc">{{ tool.desc }}</span>
                     </div>
@@ -557,7 +679,7 @@
                 <div class="variable-category">
                   <h4>Broker & Territory</h4>
                   <div class="variable-grid">
-                    <div v-for="tool in availableTools.broker" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                    <div v-for="tool in availableTools.broker" :key="tool.key" class="variable-item-readonly">
                       <span class="variable-name">{{ tool.name }}</span>
                       <span class="variable-desc">{{ tool.desc }}</span>
                     </div>
@@ -567,7 +689,7 @@
                 <div class="variable-category">
                   <h4>Appointments</h4>
                   <div class="variable-grid">
-                    <div v-for="tool in availableTools.appointment" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                    <div v-for="tool in availableTools.appointment" :key="tool.key" class="variable-item-readonly">
                       <span class="variable-name">{{ tool.name }}</span>
                       <span class="variable-desc">{{ tool.desc }}</span>
                     </div>
@@ -577,7 +699,7 @@
                 <div class="variable-category">
                   <h4>Call Tracking</h4>
                   <div class="variable-grid">
-                    <div v-for="tool in availableTools.tracking" :key="tool.key" class="variable-item" @click="insertToolIntoPrompt(tool)">
+                    <div v-for="tool in availableTools.tracking" :key="tool.key" class="variable-item-readonly">
                       <span class="variable-name">{{ tool.name }}</span>
                       <span class="variable-desc">{{ tool.desc }}</span>
                     </div>
@@ -797,6 +919,110 @@
             </template>
             Accept Changes
           </n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <!-- Apply All Review Modal -->
+    <n-modal 
+      v-model:show="showApplyAllModal" 
+      preset="card" 
+      :style="{ width: '90%', maxWidth: '1200px' }" 
+      :title="applyAllIsProcessing ? '⏳ Generating AI Improvements...' : '✨ Review All AI Improvements'" 
+      :bordered="false"
+      :closable="!applyAllIsProcessing"
+      :mask-closable="false"
+    >
+      <n-scrollbar style="max-height: 70vh;">
+        <!-- Progress View (while processing) -->
+        <div v-if="applyAllIsProcessing" class="apply-all-progress">
+          <div style="margin-bottom: 1rem;">
+            <p style="margin: 0; color: #6b7280; font-size: 0.95rem;">
+              Please wait while we generate AI improvements for each section...
+            </p>
+          </div>
+
+          <div class="progress-log" style="background: rgba(248, 250, 255, 0.6); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.18);">
+            <div 
+              v-for="(item, idx) in applyAllProgress" 
+              :key="idx"
+              :style="{
+                padding: '0.5rem 0',
+                borderBottom: idx < applyAllProgress.length - 1 ? '1px solid rgba(148, 163, 184, 0.1)' : 'none',
+                color: item.type === 'error' ? '#ef4444' : item.type === 'success' ? '#10b981' : item.type === 'working' ? '#3b82f6' : '#6b7280'
+              }"
+            >
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <n-spin v-if="item.type === 'working'" size="small" />
+                <n-icon v-else-if="item.type === 'success'" size="18" color="#10b981"><CheckmarkCircleOutline /></n-icon>
+                <n-icon v-else-if="item.type === 'error'" size="18" color="#ef4444"><CloseCircleOutline /></n-icon>
+                <n-icon v-else size="18" color="#6b7280"><InformationCircleOutline /></n-icon>
+                <span style="font-size: 0.9rem; font-weight: 500;">{{ item.message }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Review View (after processing) -->
+        <div v-else class="apply-all-review">
+          <div style="margin-bottom: 1.5rem;">
+            <p style="margin: 0; color: #6b7280; font-size: 0.95rem;">
+              Review all {{ applyAllResults.length }} AI-generated improvements below. You can accept all changes or cancel.
+            </p>
+          </div>
+
+          <div class="diff-sections">
+            <div 
+              v-for="(result, idx) in applyAllResults" 
+              :key="idx" 
+              class="diff-section"
+              style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18);"
+            >
+              <div style="margin-bottom: 0.75rem;">
+                <h4 style="margin: 0 0 0.25rem 0; color: #1f2937; font-size: 1rem;">
+                  {{ result.section.label }}
+                  <span class="changed-badge" style="margin-left: 0.5rem; font-size: 0.75rem; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; padding: 0.25rem 0.5rem; border-radius: 4px;">{{ result.suggestion.priority }}</span>
+                </h4>
+                <p style="margin: 0; color: #6b7280; font-size: 0.85rem;">{{ result.suggestion.description }}</p>
+              </div>
+
+              <div class="diff-text" style="background: rgba(248, 250, 255, 0.4); padding: 1rem; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.18); font-family: monospace; font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap;">
+                <span
+                  v-for="(part, partIdx) in result.diff"
+                  :key="partIdx"
+                  :class="{
+                    'diff-added': part.added,
+                    'diff-removed': part.removed,
+                    'diff-unchanged': !part.added && !part.removed
+                  }"
+                >{{ part.value }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+
+      <template #footer>
+        <!-- Processing Footer -->
+        <div v-if="applyAllIsProcessing" class="modal-footer" style="display: flex; justify-content: center; align-items: center;">
+          <span style="color: #6b7280; font-size: 0.9rem;">
+            <n-spin size="small" style="margin-right: 0.5rem;" />
+            Processing {{ applyAllProgress.filter(p => p.type === 'success').length }} of {{ aiSuggestions?.length || 0 }} sections...
+          </span>
+        </div>
+        
+        <!-- Review Footer -->
+        <div v-else class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #6b7280; font-size: 0.9rem;">{{ applyAllResults.length }} improvements ready to apply</span>
+          <div style="display: flex; gap: 0.75rem;">
+            <n-button @click="cancelAllImprovements">Cancel All</n-button>
+            <n-button type="success" @click="acceptAllImprovements">
+              <template #icon>
+                <n-icon><CheckmarkDoneOutline /></n-icon>
+              </template>
+              Accept All Changes
+            </n-button>
+          </div>
         </div>
       </template>
     </n-modal>
@@ -1087,7 +1313,8 @@ import {
   NProgress,
   NList,
   NListItem,
-  NBadge
+  NBadge,
+  NSpin
 } from 'naive-ui'
 import {
   RefreshOutline,
@@ -1149,6 +1376,13 @@ const aiSuggestion = ref('')
 const aiChanges = ref([])
 const aiDiff = ref([])
 const aiIsLoading = ref(false)
+
+// AI Improve All feature (batch review)
+const showApplyAllModal = ref(false)
+const applyAllResults = ref([]) // Array of { section, suggestion, aiContent, diff }
+const applyAllProgress = ref([]) // Array of progress messages
+const applyAllIsProcessing = ref(false) // True while generating, false when showing review
+const appliedSuggestions = ref(new Set()) // Track which suggestions have been applied (by section key)
 
 // AI Audit feature
 const showAuditQuestionsModal = ref(false)
@@ -1239,6 +1473,8 @@ const availableTools = {
   ],
   appointment: [
     { key: 'book_appointment', name: 'book_appointment', desc: 'Book an appointment with the broker after checking availability. Creates calendar event and auto-sends invite to lead email.' },
+    { key: 'cancel_appointment', name: 'cancel_appointment', desc: 'Cancel an existing appointment. Removes calendar event from broker\'s calendar and notifies all participants.' },
+    { key: 'reschedule_appointment', name: 'reschedule_appointment', desc: 'Reschedule an existing appointment to a new time. Updates calendar event and sends updated invites to all participants.' },
     { key: 'assign_tracking_number', name: 'assign_tracking_number', desc: 'Assign the current SignalWire number to this lead/broker pair for call tracking. Should be called immediately after booking an appointment.' }
   ],
   tracking: [
@@ -1321,7 +1557,6 @@ const promptSections = [
   { key: 'personality', label: 'Personality & Tone', required: true, placeholder: 'Voice, style, warmth, brevity (2-3 sentences per turn)...' },
   { key: 'context', label: 'Context', required: false, placeholder: 'Relevant background, caller data, previous call notes...' },
   { key: 'pronunciation', label: 'Reference Pronunciations', required: false, placeholder: 'Phonetic guidance for tricky words or names...' },
-  { key: 'tools', label: 'Tools', required: false, placeholder: 'List functions/APIs the agent may call and when to use them...' },
   { key: 'instructions', label: 'Instructions & Rules', required: true, placeholder: 'Behavior guardrails, dos/donts, escalation triggers...' },
   { key: 'conversation_flow', label: 'Conversation Flow', required: false, placeholder: 'Outline conversation states, transitions, and exit criteria...' },
   { key: 'output_format', label: 'Output Format', required: false, placeholder: 'Structured output requirements (JSON schema, message format)...' },
@@ -1447,33 +1682,6 @@ How to respond:
 - Use appropriate tools
 - Confirm outcome
 Exit when: Issue resolved or escalated`
-  },
-  {
-    key: 'tools',
-    title: 'Tools',
-    purpose: 'Define when/how to invoke functions',
-    keyPoints: [
-      'Tool alignment check – Ensure tools in prompt match available tools',
-      'Preambles – What to say BEFORE calling the tool',
-      'Proactive vs Confirmation – Define per-tool behavior',
-      'When to use / When NOT to use'
-    ],
-    example: `## General Rules
-- When calling a tool, do not ask for user confirmation (be proactive)
-- EXCEPTION: For destructive actions (refunds, cancellations), confirm first
-
-## lookup_account(email_or_phone)
-**When to use:** Verifying identity or viewing account details
-**When NOT to use:** User is clearly anonymous with general questions
-**Preamble sample phrases:**
-- "Let me pull up your account now"
-- "I'm looking up your account using [email/phone]"
-
-## check_outage(address)
-**When to use:** User reports connectivity issues
-**When NOT to use:** Question is billing-only
-**Preamble sample phrases:**
-- "I'll check for any outages at [address] right now"`
   },
   {
     key: 'safety',
@@ -1639,6 +1847,65 @@ const activePrompt = computed(() => {
   return prompts.value.find(p => p.id === activePromptId.value) || null
 })
 
+// Base version for diff comparison (the version we're comparing current version against)
+const baseVersionForDiff = computed(() => {
+  if (!currentVersion.value) return null
+  
+  // If this is a draft, compare against the active version
+  if (currentVersion.value.is_draft && activeVersion.value) {
+    return activeVersion.value
+  }
+  
+  // If this is not the active version, compare against the active version
+  if (!currentVersion.value.is_active && activeVersion.value) {
+    return activeVersion.value
+  }
+  
+  // If this IS the active version, compare against the previous version
+  if (currentVersion.value.is_active && versions.value.length > 1) {
+    // Find the version just before this one
+    const currentIndex = versions.value.findIndex(v => v.id === currentVersion.value.id)
+    // Check if there's a next version in the array (versions are sorted descending by version_number)
+    if (currentIndex >= 0 && currentIndex < versions.value.length - 1) {
+      return versions.value[currentIndex + 1] // Get the previous version number
+    }
+  }
+  
+  // No comparison available
+  return null
+})
+
+// Get only sections that have changes
+const sectionsWithChanges = computed(() => {
+  if (!baseVersionForDiff.value || !currentVersion.value) return []
+  
+  return promptSections.filter(section => {
+    const oldContent = baseVersionForDiff.value.content[section.key] || ''
+    const newContent = currentVersion.value.content[section.key] || ''
+    return oldContent !== newContent
+  })
+})
+
+// Check if a section has changes
+const hasChangesInSection = (sectionKey) => {
+  if (!baseVersionForDiff.value || !currentVersion.value) return false
+  
+  const oldContent = baseVersionForDiff.value.content[sectionKey] || ''
+  const newContent = currentVersion.value.content[sectionKey] || ''
+  
+  return oldContent !== newContent
+}
+
+// Get diff for a specific section
+const getSectionDiff = (sectionKey) => {
+  if (!baseVersionForDiff.value || !currentVersion.value) return []
+  
+  const oldContent = baseVersionForDiff.value.content[sectionKey] || ''
+  const newContent = currentVersion.value.content[sectionKey] || ''
+  
+  return Diff.diffWords(oldContent, newContent)
+}
+
 // Helper functions
 const getScoreClass = (score) => {
   if (score >= 8) return 'score-good'
@@ -1676,29 +1943,228 @@ const formatRelativeTime = (timestamp) => {
   return date.toLocaleDateString()
 }
 
+// Map suggestion section names to actual section keys
+const mapSuggestionSectionToKey = (suggestionSection) => {
+  const mapping = {
+    'role_objective': 'role',
+    'personality_tone': 'personality',
+    'instructions_rules': 'instructions',
+    'conversation_flow': 'conversation_flow',
+    'tools': 'tools',
+    'context': 'context',
+    'pronunciation': 'pronunciation',
+    'output_format': 'output_format',
+    'safety': 'safety'
+  }
+  return mapping[suggestionSection] || suggestionSection
+}
+
 // Apply suggestion to prompt
 const applySuggestion = async (suggestion) => {
-  // Open the relevant section in Editor tab
-  activeTab.value = 'editor'
-  expandedSections.value = [suggestion.section]
+  // Map suggestion section to actual section key
+  const sectionKey = mapSuggestionSectionToKey(suggestion.section)
+  
+  // Find the section object
+  const section = promptSections.find(s => s.key === sectionKey)
+  if (!section) {
+    window.$message?.error(`Section not found: ${suggestion.section}`)
+    return
+  }
+  
+  // Open AI Improve modal for this section
+  openAIImprove(section)
+  
+  // Pre-fill the user request with the suggestion description
+  aiUserRequest.value = suggestion.description
+  
+  // Auto-run the AI improvement
+  nextTick(() => {
+    runAIImprove()
+  })
   
   // Show notification
-  window.$message?.info(`Opening ${suggestion.section.replace(/_/g, ' ')} section. Review and apply the suggestion.`)
+  window.$message?.info(`Applying suggestion: ${suggestion.title}`)
 }
 
 // Apply all suggestions at once
 const applyAllSuggestions = async () => {
-  if (!aiSuggestions.value || aiSuggestions.value.length === 0) return
+  console.log('🔵 applyAllSuggestions called', { suggestionCount: aiSuggestions.value?.length })
   
-  // Switch to Editor tab
+  if (!aiSuggestions.value || aiSuggestions.value.length === 0) {
+    console.warn('No suggestions to apply')
+    return
+  }
+  
+  try {
+    // Reset state
+    applyAllResults.value = []
+    applyAllProgress.value = []
+    applyAllIsProcessing.value = true
+    
+    // Open modal immediately
+    showApplyAllModal.value = true
+    
+    const totalCount = aiSuggestions.value.length
+    applyAllProgress.value.push({
+      type: 'info',
+      message: `Starting to generate ${totalCount} AI improvements...`,
+      timestamp: new Date()
+    })
+    
+    // Generate AI improvements for each suggestion
+    for (let i = 0; i < aiSuggestions.value.length; i++) {
+      const suggestion = aiSuggestions.value[i]
+      console.log(`🔧 Processing suggestion ${i + 1}/${aiSuggestions.value.length}:`, suggestion.title)
+      
+      // Map suggestion section to actual section key
+      const sectionKey = mapSuggestionSectionToKey(suggestion.section)
+      const section = promptSections.find(s => s.key === sectionKey)
+      
+      if (!section) {
+        console.warn(`Section not found for suggestion: ${suggestion.section}`)
+        applyAllProgress.value.push({
+          type: 'error',
+          message: `❌ Section not found: ${suggestion.section}`,
+          timestamp: new Date()
+        })
+        continue
+      }
+      
+      // Add "working on" message
+      applyAllProgress.value.push({
+        type: 'working',
+        message: `Working on ${section.label}...`,
+        section: section.label,
+        timestamp: new Date()
+      })
+      
+      // Set up the AI improvement
+      aiImprovingSection.value = section
+      aiUserRequest.value = suggestion.description
+      
+      // Run AI improvement and collect the result
+      try {
+        console.log(`⏳ Running AI improvement for: ${section.label}`)
+        await runAIImprove()
+        console.log(`✅ AI improvement completed for: ${section.label}`, { hasSuggestion: !!aiSuggestion.value })
+        
+        // If successful, save the result for review
+        if (aiSuggestion.value) {
+          const oldText = currentVersion.value.content[section.key] || ''
+          const newText = aiSuggestion.value || ''
+          const diff = Diff.diffWords(oldText, newText)
+          
+          applyAllResults.value.push({
+            section: section,
+            suggestion: suggestion,
+            aiContent: aiSuggestion.value,
+            diff: diff,
+            oldContent: oldText
+          })
+          
+          // Add "complete" message
+          applyAllProgress.value.push({
+            type: 'success',
+            message: `✓ ${section.label} complete`,
+            section: section.label,
+            timestamp: new Date()
+          })
+          
+          console.log(`📦 Added result for ${section.label}. Total results: ${applyAllResults.value.length}`)
+        } else {
+          console.warn(`No AI suggestion generated for ${section.label}`)
+          applyAllProgress.value.push({
+            type: 'error',
+            message: `❌ Failed to generate improvement for ${section.label}`,
+            section: section.label,
+            timestamp: new Date()
+          })
+        }
+      } catch (error) {
+        console.error(`❌ Failed to generate improvement for ${section.label}:`, error)
+        applyAllProgress.value.push({
+          type: 'error',
+          message: `❌ Error improving ${section.label}: ${error.message}`,
+          section: section.label,
+          timestamp: new Date()
+        })
+      }
+    }
+    
+    console.log(`🎉 Finished processing. Total results: ${applyAllResults.value.length}`)
+    
+    // Add completion message
+    applyAllProgress.value.push({
+      type: 'success',
+      message: `🎉 Finished! Generated ${applyAllResults.value.length} improvements.`,
+      timestamp: new Date()
+    })
+    
+    // Switch from processing to review mode
+    applyAllIsProcessing.value = false
+    
+    // If no results, show error
+    if (applyAllResults.value.length === 0) {
+      console.error('No results to show')
+      window.$message?.error(`Failed to generate improvements. Please try again or apply them individually.`)
+      showApplyAllModal.value = false
+    }
+  } catch (error) {
+    console.error('❌ Error in applyAllSuggestions:', error)
+    window.$message?.error(`Error: ${error.message}`)
+    applyAllIsProcessing.value = false
+    showApplyAllModal.value = false
+  }
+}
+
+// Accept all improvements from the batch review
+const acceptAllImprovements = async () => {
+  let appliedCount = 0
+  
+  // Apply each improvement to the content
+  applyAllResults.value.forEach(result => {
+    currentVersion.value.content[result.section.key] = result.aiContent
+    
+    // Mark this suggestion as applied
+    appliedSuggestions.value.add(result.section.key)
+    
+    appliedCount++
+  })
+  
+  // Save applied suggestions to database
+  try {
+    const appliedArray = Array.from(appliedSuggestions.value)
+    const { error: updateError } = await supabase
+      .from('prompt_versions')
+      .update({ applied_suggestions: appliedArray })
+      .eq('id', currentVersion.value.id)
+    
+    if (updateError) {
+      console.error('Failed to save applied suggestions:', updateError)
+    }
+  } catch (error) {
+    console.error('Error updating applied suggestions:', error)
+  }
+  
+  // Update the UI
+  nextTick(() => {
+    populateContentEditableDivs()
+    markAsChanged()
+  })
+  
+  // Close modal and switch to editor
+  showApplyAllModal.value = false
+  applyAllResults.value = []
   activeTab.value = 'editor'
   
-  // Expand all relevant sections
-  const sectionsToExpand = [...new Set(aiSuggestions.value.map(s => s.section))]
-  expandedSections.value = sectionsToExpand
-  
-  // Show notification
-  window.$message?.success(`Opened ${sectionsToExpand.length} sections with ${aiSuggestions.value.length} suggestions. Review and save when ready.`)
+  window.$message?.success(`Successfully applied all ${appliedCount} improvements! Review and save when ready.`)
+}
+
+// Cancel all improvements
+const cancelAllImprovements = () => {
+  showApplyAllModal.value = false
+  applyAllResults.value = []
+  window.$message?.info('Cancelled all improvements')
 }
 
 // Fetch evaluation data for current prompt version
@@ -1709,6 +2175,8 @@ const fetchEvaluationData = async () => {
     currentVersionId: currentVersion.value?.id,
     activePromptCallType: activePrompt.value?.call_type
   })
+  
+  // Note: We don't clear appliedSuggestions here - they persist from the database
   
   if (!currentVersion.value || !activePrompt.value) {
     console.log('⚠️ Missing version or prompt, skipping evaluation fetch')
@@ -2296,6 +2764,15 @@ async function loadVersion(versionId) {
     if (fetchError) throw fetchError
 
     currentVersion.value = data
+    
+    // Load applied suggestions from database
+    appliedSuggestions.value.clear()
+    if (data.applied_suggestions && Array.isArray(data.applied_suggestions)) {
+      data.applied_suggestions.forEach(sectionKey => {
+        appliedSuggestions.value.add(sectionKey)
+      })
+    }
+    
     // await loadPerformance(versionId) // TODO: Enable when performance table exists
     await nextTick()
     
@@ -2785,11 +3262,29 @@ Provide the improved "${aiImprovingSection.value.label}" content now (no metadat
   }
 }
 
-function acceptAISuggestion() {
+async function acceptAISuggestion() {
   if (!aiSuggestion.value || !aiImprovingSection.value) return
   
   // Update the current version content
   currentVersion.value.content[aiImprovingSection.value.key] = aiSuggestion.value
+  
+  // Mark this suggestion as applied
+  appliedSuggestions.value.add(aiImprovingSection.value.key)
+  
+  // Save applied suggestions to database
+  try {
+    const appliedArray = Array.from(appliedSuggestions.value)
+    const { error: updateError } = await supabase
+      .from('prompt_versions')
+      .update({ applied_suggestions: appliedArray })
+      .eq('id', currentVersion.value.id)
+    
+    if (updateError) {
+      console.error('Failed to save applied suggestions:', updateError)
+    }
+  } catch (error) {
+    console.error('Error updating applied suggestions:', error)
+  }
   
   // Update the textarea
   nextTick(() => {
@@ -4314,6 +4809,18 @@ function handleBeforeUnload(e) {
   border-color: rgba(99, 102, 241, 0.45);
 }
 
+.variable-item-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248, 250, 255, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  cursor: default;
+  opacity: 0.85;
+}
+
 .variable-name {
   font-family: 'Fira Code', monospace;
   font-size: 0.72rem;
@@ -4413,6 +4920,38 @@ function handleBeforeUnload(e) {
   background: rgba(251, 191, 36, 0.15);
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
+}
+
+.unchanged-badge {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.1);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.diff-content-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.diff-section-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.diff-section-tab:last-child {
+  border-bottom: none;
+}
+
+.changes-container {
+  padding: 0.5rem 0;
 }
 
 .diff-text {
