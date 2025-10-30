@@ -109,11 +109,15 @@ const router = createRouter({
   ]
 })
 
-// Navigation guard - simplified to prevent infinite loops
-router.beforeEach((to, from, next) => {
-  const { isAuthenticated, isAdmin, isBroker } = useAuth()
+// Navigation guard with proper auth state waiting
+router.beforeEach(async (to, from, next) => {
+  const { isAuthenticated, isAdmin, isBroker, loading, checkAuth } = useAuth()
 
-  // Allow navigation, check auth status directly without waiting
+  // Wait for auth to be loaded if it's still loading
+  if (loading.value) {
+    await checkAuth()
+  }
+
   if (to.meta.requiresAuth && !isAuthenticated.value) {
     next('/login')
   } else if (to.path === '/login' && isAuthenticated.value) {
