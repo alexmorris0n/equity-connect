@@ -676,9 +676,16 @@ const signalwireStatusText = computed(() => {
 
 // Service status helpers
 const getServiceStatus = (service) => {
+  if (!service) return 'Unknown';
   if (service.error) return 'Error';
-  if (service.status === 'running' || service.deployed || service.healthy) return 'Running';
-  if (service.status) return service.status;
+  
+  // Handle case where status might be an object (shouldn't happen, but defensive)
+  const status = typeof service.status === 'string' ? service.status : 
+                 (service.status?.deployment?.status || service.status?.build?.status || 'Unknown');
+  
+  if (status === 'running' || service.deployed || service.healthy) return 'Running';
+  if (status === 'COMPLETED' && service.deploymentStatus === 'COMPLETED') return 'Running';
+  if (status && typeof status === 'string') return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
   return 'Unknown';
 };
 

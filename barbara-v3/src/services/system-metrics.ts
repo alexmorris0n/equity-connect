@@ -496,8 +496,16 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
       }
     );
 
+    if (!response.ok) {
+      throw new Error(`Northflank API returned ${response.status}: ${response.statusText}`);
+    }
+
     const data: any = await response.json();
     const services: any[] = data.data?.services || [];
+    
+    if (!services || services.length === 0) {
+      console.warn('No Northflank services found in response:', data);
+    }
     
     const servicesWithStatus = await Promise.all(
       services.map(async (service: any) => {
@@ -516,17 +524,84 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
           const serviceData: any = await statusResponse.json();
           const serviceInfo = serviceData.data;
           
+          // Debug: Log the actual API response structure (remove after debugging)
+          console.log(`Northflank service ${service.name || service.id} API response:`, JSON.stringify(serviceInfo, null, 2));
+          
+          // Northflank API returns build and deployment status separately
+          const buildStatus = serviceInfo.build?.status || 'UNKNOWN';
+          const deploymentStatus = serviceInfo.deployment?.status || 'UNKNOWN';
+          const deploymentReason = serviceInfo.deployment?.reason || '';
+          
+          // Check for actual runtime status (service.status field)
+          const runtimeStatus = serviceInfo.status || serviceInfo.deployment?.status;
+          const healthStatus = serviceInfo.health || serviceInfo.healthStatus;
+          const instances = serviceInfo.deployment?.instances || serviceInfo.replicas || 0;
+          const runningInstances = serviceInfo.deployment?.runningInstances || instances;
+          
+          // Determine overall status - prioritize runtime status over deployment status
+          let overallStatus = 'unknown';
+          let operational = false;
+          
+          // First check runtime status if available
+          if (runtimeStatus) {
+            if (runtimeStatus === 'running' || runtimeStatus === 'RUNNING') {
+              overallStatus = 'running';
+              operational = true;
+            } else if (runtimeStatus === 'stopped' || runtimeStatus === 'STOPPED') {
+              overallStatus = 'stopped';
+              operational = false;
+            } else if (runtimeStatus === 'suspended' || runtimeStatus === 'SUSPENDED') {
+              overallStatus = 'suspended';
+              operational = false;
+            } else if (runtimeStatus === 'failed' || runtimeStatus === 'FAILED') {
+              overallStatus = 'error';
+              operational = false;
+            }
+          }
+          
+          // Fallback to deployment status if runtime status not available
+          if (overallStatus === 'unknown') {
+            if (deploymentStatus === 'COMPLETED' && (deploymentReason === 'DEPLOYING' || runningInstances > 0)) {
+              overallStatus = 'running';
+              operational = true;
+            } else if (deploymentStatus === 'COMPLETED') {
+              overallStatus = 'running';
+              operational = true;
+            } else if (deploymentStatus === 'FAILED') {
+              overallStatus = 'error';
+              operational = false;
+            } else if (buildStatus === 'FAILED') {
+              overallStatus = 'error';
+              operational = false;
+            }
+          }
+          
+          // Health check override
+          if (healthStatus === 'unhealthy' || healthStatus === 'UNHEALTHY') {
+            overallStatus = 'degraded';
+            operational = false;
+          } else if (healthStatus === 'healthy' || healthStatus === 'HEALTHY') {
+            if (overallStatus === 'unknown') {
+              overallStatus = 'running';
+              operational = true;
+            }
+          }
+          
           return {
-            name: serviceInfo.name,
-            id: serviceInfo.id,
-            status: serviceInfo.status,
-            health: serviceInfo.health,
-            running: serviceInfo.status === 'running',
-            replicas: serviceInfo.replicas,
-            lastDeployed: serviceInfo.updatedAt,
-            region: serviceInfo.region,
-            operational: serviceInfo.status === 'running',
-            platform: 'northflank'
+            name: serviceInfo.name || service.name,
+            id: serviceInfo.id || service.id,
+            status: overallStatus,
+            health: healthStatus || (operational ? 'healthy' : 'unhealthy'),
+            running: operational,
+            replicas: instances,
+            runningReplicas: runningInstances,
+            lastDeployed: serviceInfo.deployment?.lastTransitionTime || serviceInfo.updatedAt,
+            region: serviceInfo.region || 'europe-west',
+            operational: operational,
+            platform: 'northflank',
+            buildStatus: buildStatus,
+            deploymentStatus: deploymentStatus,
+            runtimeStatus: runtimeStatus
           };
         } catch (err: any) {
           return {
