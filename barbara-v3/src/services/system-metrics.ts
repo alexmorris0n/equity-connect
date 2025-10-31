@@ -178,76 +178,151 @@ async function getGeminiStatus(): Promise<PlatformStatus> {
 }
 
 /**
- * Fetch SignalWire status
+ * Fetch SignalWire status from RSS feed
  */
 async function getSignalWireStatus(): Promise<PlatformStatus> {
   try {
-    const response = await fetch('https://status.signalwire.com/api/v2/status.json', {
-      signal: AbortSignal.timeout(5000)
+    const response = await fetch('https://status.signalwire.com/history.rss', {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        'Accept': 'application/rss+xml, application/xml, text/xml'
+      }
     });
 
     if (!response.ok) {
-      throw new Error(`SignalWire status API returned ${response.status}: ${response.statusText}`);
+      throw new Error(`SignalWire RSS returned ${response.status}: ${response.statusText}`);
     }
 
-    const statusData: any = await response.json();
-    const components: any[] = statusData.components || [];
-
+    const xmlText = await response.text();
+    
+    // Parse RSS XML to find active incidents
+    // Extract items and check if latest status is "Resolved"
+    const itemPattern = /<item>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>[\s\S]*?<description><!\[CDATA\[(.*?)\]\]><\/description>[\s\S]*?<pubDate>(.*?)<\/pubDate>/g;
+    
     const services: ServiceStatus[] = [];
+    let hasActiveIncidents = false;
+    let activeIncidents: any[] = [];
+    
+    let match;
+    while ((match = itemPattern.exec(xmlText)) !== null) {
+      const title = match[1];
+      const description = match[2];
+      const pubDate = match[3];
+      
+      // Check the latest status in the description
+      // Look for status patterns: "Resolved", "Monitoring", "Identified", "Investigating"
+      const statusPattern = /(Resolved|Monitoring|Identified|Investigating|In Progress|Scheduled)/gi;
+      const statusMatches = description.match(statusPattern);
+      
+      // If no status found or latest status is not "Resolved", consider it active
+      // Latest status is typically at the start of the description
+      const latestStatus = statusMatches ? statusMatches[0] : '';
+      const isResolved = latestStatus.toLowerCase() === 'resolved' || 
+                        description.trim().toLowerCase().startsWith('resolved');
+      
+      if (!isResolved) {
+        hasActiveIncidents = true;
+        activeIncidents.push({ title, description, pubDate });
+      }
+    }
 
-    // Add overall status
-    services.push({
-      name: 'SignalWire Platform',
-      status: statusData.status?.indicator || 'unknown',
-      description: statusData.status?.description || 'SignalWire Services',
-      statusPage: 'https://status.signalwire.com',
-      operational: statusData.status?.indicator === 'none',
-      platform: 'signalwire'
-    });
-
-    // Find Voice component
-    const voiceComponent = components.find((c: any) => 
-      c.name.toLowerCase().includes('voice') || 
-      c.name.toLowerCase().includes('calling')
+    // Extract service types from incidents
+    const voiceIncidents = activeIncidents.filter(i => 
+      i.title.toLowerCase().includes('[voice]') || 
+      i.title.toLowerCase().includes('voice') ||
+      i.description.toLowerCase().includes('voice') ||
+      i.description.toLowerCase().includes('calling')
+    );
+    
+    const messagingIncidents = activeIncidents.filter(i => 
+      i.title.toLowerCase().includes('[messaging]') || 
+      i.title.toLowerCase().includes('messaging') ||
+      i.title.toLowerCase().includes('sms') ||
+      i.title.toLowerCase().includes('10dlc')
+    );
+    
+    const aiIncidents = activeIncidents.filter(i => 
+      i.title.toLowerCase().includes('[ai]') || 
+      i.title.toLowerCase().includes('ai') ||
+      i.title.toLowerCase().includes('speech recognition')
+    );
+    
+    const apiIncidents = activeIncidents.filter(i => 
+      i.title.toLowerCase().includes('[api]') || 
+      i.title.toLowerCase().includes('api') ||
+      i.title.toLowerCase().includes('dashboard')
     );
 
-    if (voiceComponent) {
+    // Add overall platform status
+    services.push({
+      name: 'SignalWire Platform',
+      status: hasActiveIncidents ? 'degraded' : 'operational',
+      description: hasActiveIncidents 
+        ? `${activeIncidents.length} active incident(s)` 
+        : 'All systems operational',
+      statusPage: 'https://status.signalwire.com',
+      operational: !hasActiveIncidents,
+      platform: 'signalwire',
+      activeIncidents: activeIncidents.length
+    });
+
+    // Add Voice service
+    services.push({
+      name: 'Voice / Calling',
+      status: voiceIncidents.length > 0 ? 'degraded' : 'operational',
+      description: voiceIncidents.length > 0 
+        ? voiceIncidents[0].title.replace(/\[Voice\]\s*-\s*/i, '')
+        : 'Voice calling services operational',
+      operational: voiceIncidents.length === 0,
+      platform: 'signalwire',
+      activeIncidents: voiceIncidents.length
+    });
+
+    // Add Messaging service
+    services.push({
+      name: 'Messaging / SMS',
+      status: messagingIncidents.length > 0 ? 'degraded' : 'operational',
+      description: messagingIncidents.length > 0 
+        ? messagingIncidents[0].title.replace(/\[Messaging\]\s*/i, '')
+        : 'Messaging services operational',
+      operational: messagingIncidents.length === 0,
+      platform: 'signalwire',
+      activeIncidents: messagingIncidents.length
+    });
+
+    // Add AI service
+    if (aiIncidents.length > 0) {
       services.push({
-        name: voiceComponent.name,
-        status: voiceComponent.status,
-        description: voiceComponent.description || 'Voice calling services',
-        operational: voiceComponent.status === 'operational',
-        lastUpdated: voiceComponent.updated_at,
-        platform: 'signalwire'
+        name: 'AI Services',
+        status: 'degraded',
+        description: aiIncidents[0].title.replace(/\[AI\]\s*/i, ''),
+        operational: false,
+        platform: 'signalwire',
+        activeIncidents: aiIncidents.length
       });
     }
 
-    // Find Stream component
-    const streamComponent = components.find((c: any) =>
-      c.name.toLowerCase().includes('stream') ||
-      c.name.toLowerCase().includes('websocket')
-    );
-
-    if (streamComponent) {
+    // Add API service if there are incidents
+    if (apiIncidents.length > 0) {
       services.push({
-        name: streamComponent.name,
-        status: streamComponent.status,
-        description: streamComponent.description || 'Media streaming',
-        operational: streamComponent.status === 'operational',
-        lastUpdated: streamComponent.updated_at,
-        platform: 'signalwire'
+        name: 'API / Dashboard',
+        status: 'degraded',
+        description: apiIncidents[0].title.replace(/\[API\]\s*/i, '').replace(/\[Dashboard\/API\]\s*/i, ''),
+        operational: false,
+        platform: 'signalwire',
+        activeIncidents: apiIncidents.length
       });
     }
 
     return {
       available: true,
-      overallStatus: statusData.status?.indicator === 'none' ? 'operational' : statusData.status?.indicator,
+      overallStatus: hasActiveIncidents ? 'degraded' : 'operational',
       services,
       lastChecked: new Date().toISOString()
     };
 
   } catch (error: any) {
-    console.error('SignalWire status API error:', error.message);
+    console.error('SignalWire RSS error:', error.message);
     return {
       available: false,
       error: error.message,
@@ -255,10 +330,11 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
         name: 'SignalWire Platform',
         status: 'unknown',
         description: 'Unable to fetch status',
-        error: error.message,
+        statusPage: 'https://status.signalwire.com',
         operational: false,
         platform: 'signalwire'
-      }]
+      }],
+      lastChecked: new Date().toISOString()
     };
   }
 }
