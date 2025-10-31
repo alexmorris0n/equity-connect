@@ -320,7 +320,17 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
           signal: AbortSignal.timeout(5000)
         });
 
+        if (!response.ok) {
+          throw new Error(`Fly.io API returned ${response.status}: ${response.statusText}`);
+        }
+
         const data: any = await response.json();
+
+        // Check for GraphQL errors
+        if (data.errors) {
+          console.error(`Fly.io GraphQL errors for ${appName}:`, data.errors);
+          throw new Error(data.errors[0]?.message || 'GraphQL error');
+        }
 
         if (data.data?.app) {
           const app = data.data.app;
@@ -338,6 +348,8 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
             region: app.allocation?.region,
             platform: 'fly.io'
           });
+        } else {
+          console.warn(`Fly.io app ${appName} not found in response:`, data);
         }
       } catch (appError: any) {
         console.error(`Error fetching Fly.io app ${appName}:`, appError.message);
