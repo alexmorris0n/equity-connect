@@ -186,6 +186,10 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       signal: AbortSignal.timeout(5000)
     });
 
+    if (!response.ok) {
+      throw new Error(`SignalWire status API returned ${response.status}: ${response.statusText}`);
+    }
+
     const statusData: any = await response.json();
     const components: any[] = statusData.components || [];
 
@@ -243,6 +247,7 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
     };
 
   } catch (error: any) {
+    console.error('SignalWire status API error:', error.message);
     return {
       available: false,
       error: error.message,
