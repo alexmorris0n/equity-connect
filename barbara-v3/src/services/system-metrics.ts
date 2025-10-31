@@ -300,11 +300,6 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
                   id
                   region
                   state
-                  config {
-                    image {
-                      id
-                    }
-                  }
                 }
               }
             }
