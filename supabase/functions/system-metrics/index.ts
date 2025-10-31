@@ -1,6 +1,8 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+
 /**
- * System Metrics Service
- * Fetches deployment status from Fly.io, Northflank, and third-party dependencies
+ * System Metrics Edge Function
+ * Monitors Fly.io, Northflank, OpenAI, Gemini, SignalWire
  */
 
 interface ServiceStatus {
@@ -21,21 +23,21 @@ interface PlatformStatus {
   lastChecked?: string;
 }
 
-/**
- * Fetch OpenAI status (including Realtime API)
- */
+// Fetch OpenAI status
 async function getOpenAIStatus(): Promise<PlatformStatus> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch('https://status.openai.com/api/v2/status.json', {
-      signal: AbortSignal.timeout(5000)
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     const statusData: any = await response.json();
     const components: any[] = statusData.components || [];
-
     const services: ServiceStatus[] = [];
 
-    // Add overall status
     services.push({
       name: 'OpenAI Platform',
       status: statusData.status?.indicator || 'unknown',
@@ -45,7 +47,6 @@ async function getOpenAIStatus(): Promise<PlatformStatus> {
       platform: 'openai'
     });
 
-    // Find Realtime API
     const realtimeAPI = components.find((c: any) => 
       c.name.toLowerCase().includes('realtime') || 
       c.name.toLowerCase().includes('real-time')
@@ -62,7 +63,6 @@ async function getOpenAIStatus(): Promise<PlatformStatus> {
       });
     }
 
-    // Find Chat API
     const chatAPI = components.find((c: any) => 
       c.name.toLowerCase().includes('chat') || 
       c.name.toLowerCase().includes('api')
@@ -102,18 +102,19 @@ async function getOpenAIStatus(): Promise<PlatformStatus> {
   }
 }
 
-/**
- * Fetch Google Gemini status
- */
+// Fetch Gemini status
 async function getGeminiStatus(): Promise<PlatformStatus> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch('https://status.cloud.google.com/incidents.json', {
-      signal: AbortSignal.timeout(5000)
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     const incidents: any[] = (await response.json() as any[]) || [];
     
-    // Filter for AI/Gemini related services
     const aiIncidents = incidents.filter((incident: any) => {
       const text = (incident.service_name + ' ' + incident.external_desc).toLowerCase();
       return text.includes('gemini') || 
@@ -138,7 +139,6 @@ async function getGeminiStatus(): Promise<PlatformStatus> {
       platform: 'gemini'
     });
 
-    // Add incident details
     if (activeIncidents.length > 0) {
       activeIncidents.slice(0, 3).forEach((incident: any) => {
         services.push({
@@ -177,25 +177,25 @@ async function getGeminiStatus(): Promise<PlatformStatus> {
   }
 }
 
-/**
- * Fetch SignalWire status from RSS feed
- */
+// Fetch SignalWire status from RSS
 async function getSignalWireStatus(): Promise<PlatformStatus> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch('https://status.signalwire.com/history.rss', {
-      signal: AbortSignal.timeout(5000),
+      signal: controller.signal,
       headers: {
         'Accept': 'application/rss+xml, application/xml, text/xml'
       }
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`SignalWire RSS returned ${response.status}: ${response.statusText}`);
     }
 
     const xmlText = await response.text();
-    
-    // Parse RSS XML to find active incidents
     const itemPattern = /<item>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>[\s\S]*?<content:encoded><!\[CDATA\[(.*?)\]\]><\/content:encoded>[\s\S]*?<pubDate>(.*?)<\/pubDate>/g;
     
     const services: ServiceStatus[] = [];
@@ -226,7 +226,6 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       }
     }
 
-    // Extract service types from incidents
     const voiceIncidents = activeIncidents.filter(i => 
       i.title.toLowerCase().includes('[voice]') || 
       i.title.toLowerCase().includes('voice') ||
@@ -253,7 +252,6 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       i.title.toLowerCase().includes('dashboard')
     );
 
-    // Add overall platform status
     services.push({
       name: 'SignalWire Platform',
       status: hasActiveIncidents ? 'degraded' : 'operational',
@@ -266,7 +264,6 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       activeIncidents: activeIncidents.length
     });
 
-    // Add Voice service
     services.push({
       name: 'Voice / Calling',
       status: voiceIncidents.length > 0 ? 'degraded' : 'operational',
@@ -278,7 +275,6 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       activeIncidents: voiceIncidents.length
     });
 
-    // Add Messaging service
     services.push({
       name: 'Messaging / SMS',
       status: messagingIncidents.length > 0 ? 'degraded' : 'operational',
@@ -290,7 +286,6 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       activeIncidents: messagingIncidents.length
     });
 
-    // Add AI service
     if (aiIncidents.length > 0) {
       services.push({
         name: 'AI Services',
@@ -302,7 +297,6 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
       });
     }
 
-    // Add API service if there are incidents
     if (apiIncidents.length > 0) {
       services.push({
         name: 'API / Dashboard',
@@ -339,11 +333,9 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
   }
 }
 
-/**
- * Fetch Fly.io app status
- */
+// Fetch Fly.io status
 async function getFlyioStatus(): Promise<PlatformStatus> {
-  const FLY_API_TOKEN = process.env.FLY_API_TOKEN;
+  const FLY_API_TOKEN = Deno.env.get('FLY_API_TOKEN');
   
   if (!FLY_API_TOKEN) {
     return {
@@ -385,6 +377,9 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
           }
         `;
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
         const response = await fetch('https://api.fly.io/graphql', {
           method: 'POST',
           headers: {
@@ -395,8 +390,9 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
             query,
             variables: { appName }
           }),
-          signal: AbortSignal.timeout(5000)
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`Fly.io API returned ${response.status}: ${response.statusText}`);
@@ -460,12 +456,10 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
   }
 }
 
-/**
- * Fetch Northflank project status
- */
+// Fetch Northflank status
 async function getNorthflankStatus(): Promise<PlatformStatus> {
-  const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN;
-  const NORTHFLANK_PROJECT_ID = process.env.NORTHFLANK_PROJECT_ID;
+  const NORTHFLANK_API_TOKEN = Deno.env.get('NORTHFLANK_API_TOKEN');
+  const NORTHFLANK_PROJECT_ID = Deno.env.get('NORTHFLANK_PROJECT_ID');
   
   if (!NORTHFLANK_API_TOKEN || !NORTHFLANK_PROJECT_ID) {
     return {
@@ -476,6 +470,9 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     const response = await fetch(
       `https://api.northflank.com/v1/projects/${NORTHFLANK_PROJECT_ID}/services`,
       {
@@ -483,9 +480,10 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
           'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
           'Content-Type': 'application/json'
         },
-        signal: AbortSignal.timeout(5000)
+        signal: controller.signal
       }
     );
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`Northflank API returned ${response.status}: ${response.statusText}`);
@@ -497,6 +495,9 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
     const servicesWithStatus = await Promise.all(
       services.map(async (service: any) => {
         try {
+          const statusController = new AbortController();
+          const statusTimeoutId = setTimeout(() => statusController.abort(), 5000);
+
           const statusResponse = await fetch(
             `https://api.northflank.com/v1/projects/${NORTHFLANK_PROJECT_ID}/services/${service.id}`,
             {
@@ -504,9 +505,10 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
                 'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
                 'Content-Type': 'application/json'
               },
-              signal: AbortSignal.timeout(5000)
+              signal: statusController.signal
             }
           );
+          clearTimeout(statusTimeoutId);
 
           const serviceData: any = await statusResponse.json();
           const serviceInfo = serviceData.data;
@@ -610,10 +612,8 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
   }
 }
 
-/**
- * Get comprehensive system metrics
- */
-export async function getSystemMetrics() {
+// Get comprehensive system metrics
+async function getSystemMetrics() {
   try {
     const [openai, gemini, signalwire, flyio, northflank] = await Promise.all([
       getOpenAIStatus(),
@@ -696,4 +696,66 @@ export async function getSystemMetrics() {
     };
   }
 }
+
+// Edge Function handler
+Deno.serve(async (req: Request) => {
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+    });
+  }
+
+  // Only allow GET
+  if (req.method !== 'GET') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      {
+        status: 405,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  }
+
+  try {
+    const metrics = await getSystemMetrics();
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        metrics: metrics
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  } catch (error: any) {
+    console.error('Error getting system metrics:', error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message
+      }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
+  }
+});
 

@@ -514,11 +514,15 @@ const fetchMetrics = async () => {
   try {
     error.value = null;
     
-    // Get metrics URL from environment (Vercel) or fallback to bridge URL
-    const metricsUrl = import.meta.env.VITE_METRICS_URL || 
-                      (import.meta.env.VITE_BRIDGE_URL ? `${import.meta.env.VITE_BRIDGE_URL}/api/system-metrics` : 'http://localhost:8080/api/system-metrics');
+    // Use Supabase Edge Function
+    const metricsUrl = import.meta.env.VITE_METRICS_URL || 'https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/system-metrics';
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14bnFmd3VodnVyYWpyZ29lZnlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzU3OTAsImV4cCI6MjA3NTQ1MTc5MH0.QMoZAjIKkB05Vr9nM1FKbC2ke5RTvfv6zrSDU0QMuN4';
     
-    const response = await fetch(metricsUrl);
+    const response = await fetch(metricsUrl, {
+      headers: {
+        'Authorization': `Bearer ${anonKey}`
+      }
+    });
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
