@@ -785,75 +785,81 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
-.profile-card {
+/* Dark mode profile cards */
+:root[data-theme='dark'] .profile-card {
   border-radius: 12px;
   background: rgba(17, 24, 39, 0.6) !important;
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
-.profile-card label {
+:root[data-theme='dark'] .profile-card label {
   color: white !important;
 }
 
-.profile-card :deep(.n-card-header) {
+:root[data-theme='dark'] .profile-card :deep(.n-card-header) {
   color: var(--text-inverse);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.profile-card :deep(.n-card__content) {
+:root[data-theme='dark'] .profile-card :deep(.n-card__content) {
   color: var(--text-inverse);
 }
 
-.profile-card :deep(.n-card__footer) {
+:root[data-theme='dark'] .profile-card :deep(.n-card__footer) {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.profile-card :deep(.n-form-item-label__text),
-.profile-card :deep(.n-input__input),
-.profile-card :deep(.n-input__input-el),
-.profile-card :deep(.n-base-selection-label),
-.profile-card :deep(.n-base-selection-placeholder),
-.profile-card :deep(.n-base-selection-input__content),
-.profile-card :deep(input),
-.profile-card :deep(label) {
+:root[data-theme='dark'] .profile-card :deep(.n-form-item-label__text),
+:root[data-theme='dark'] .profile-card :deep(.n-input__input),
+:root[data-theme='dark'] .profile-card :deep(.n-input__input-el),
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection-label),
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection-placeholder),
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection-input__content),
+:root[data-theme='dark'] .profile-card :deep(input),
+:root[data-theme='dark'] .profile-card :deep(label) {
   color: var(--text-inverse) !important;
 }
 
-.profile-card :deep(.n-input),
-.profile-card :deep(.n-input__input-el),
-.profile-card :deep(.n-base-selection),
-.profile-card :deep(.n-base-selection-input) {
+:root[data-theme='dark'] .profile-card :deep(.n-input),
+:root[data-theme='dark'] .profile-card :deep(.n-input__input-el),
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection),
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection-input) {
   background-color: rgba(0, 0, 0, 0.3) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: white !important;
 }
 
-.profile-card :deep(.n-input--disabled) {
+:root[data-theme='dark'] .profile-card :deep(.n-input--disabled) {
   background-color: rgba(0, 0, 0, 0.5) !important;
   opacity: 0.7;
 }
 
-.profile-card :deep(.n-input--disabled .n-input__input-el) {
+:root[data-theme='dark'] .profile-card :deep(.n-input--disabled .n-input__input-el) {
   color: rgba(255, 255, 255, 0.6) !important;
   -webkit-text-fill-color: rgba(255, 255, 255, 0.6) !important;
 }
 
-.profile-card :deep(.n-input .n-input__input-el) {
+:root[data-theme='dark'] .profile-card :deep(.n-input .n-input__input-el) {
   color: white !important;
   -webkit-text-fill-color: white !important;
 }
 
-.profile-card :deep(.n-base-selection .n-base-selection-label) {
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection .n-base-selection-label) {
   color: white !important;
 }
 
-.profile-card :deep(.n-base-selection-label__render-label) {
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection-label__render-label) {
   color: white !important;
 }
 
-.profile-card :deep(.n-base-selection-input__content) {
+:root[data-theme='dark'] .profile-card :deep(.n-base-selection-input__content) {
   color: white !important;
+}
+
+/* Light mode profile cards - use default Naive UI styling */
+:root[data-theme='light'] .profile-card {
+  border-radius: 12px;
 }
 
 .profile-section {
