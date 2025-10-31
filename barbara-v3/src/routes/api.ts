@@ -5,6 +5,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { placeOutboundCall } from '../services/signalwire.js';
+import { getSystemMetrics } from '../services/system-metrics.js';
 import { logger } from '../utils/logger.js';
 
 interface TriggerCallBody {
@@ -167,6 +168,28 @@ export async function apiRoutes(fastify: FastifyInstance) {
       service: 'barbara-v3-api',
       timestamp: new Date().toISOString()
     });
+  });
+
+  /**
+   * GET /api/system-metrics
+   * System metrics for monitoring dashboard
+   * Returns status of OpenAI, Gemini, SignalWire, Fly.io, Northflank
+   */
+  fastify.get('/api/system-metrics', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const metrics = await getSystemMetrics();
+      
+      return reply.send({
+        success: true,
+        metrics: metrics
+      });
+    } catch (error: any) {
+      logger.error('Error getting system metrics:', error);
+      return reply.code(500).send({
+        success: false,
+        error: error.message
+      });
+    }
   });
 }
 

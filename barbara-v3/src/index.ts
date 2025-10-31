@@ -13,6 +13,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import formbody from '@fastify/formbody';
+import cors from '@fastify/cors';
 import type { RealtimeAgentConfiguration } from '@openai/agents/realtime';
 import { OPENAI_API_KEY, SERVER_CONFIG, AGENT_CONFIG } from './config.js';
 import { allTools } from './tools/index.js';
@@ -45,6 +46,10 @@ async function createServer() {
   });
 
   // Register plugins
+  await fastify.register(cors, {
+    origin: true, // Allow all origins in development (configure for production)
+    credentials: true
+  });
   await fastify.register(formbody);
   await fastify.register(websocket);
 
