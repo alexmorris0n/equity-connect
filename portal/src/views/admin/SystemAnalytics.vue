@@ -514,10 +514,11 @@ const fetchMetrics = async () => {
   try {
     error.value = null;
     
-    // Get bridge URL from environment or default
-    const bridgeUrl = import.meta.env.VITE_BRIDGE_URL || 'http://localhost:8080';
+    // Get metrics URL from environment (Vercel) or fallback to bridge URL
+    const metricsUrl = import.meta.env.VITE_METRICS_URL || 
+                      (import.meta.env.VITE_BRIDGE_URL ? `${import.meta.env.VITE_BRIDGE_URL}/api/system-metrics` : 'http://localhost:8080/api/system-metrics');
     
-    const response = await fetch(`${bridgeUrl}/api/system-metrics`);
+    const response = await fetch(metricsUrl);
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
