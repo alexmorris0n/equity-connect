@@ -295,13 +295,17 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
                 createdAt
                 status
               }
-              allocation {
-                idPrefix
-                region
-                status
-                healthy
-                privateIP
-                createdAt
+              machines {
+                nodes {
+                  id
+                  region
+                  state
+                  config {
+                    image {
+                      id
+                    }
+                  }
+                }
               }
             }
           }
@@ -334,6 +338,9 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
 
         if (data.data?.app) {
           const app = data.data.app;
+          const machines = app.machines?.nodes || [];
+          const firstMachine = machines[0];
+          const runningMachines = machines.filter((m: any) => m.state === 'started');
           
           apps.push({
             name: app.name,
@@ -344,8 +351,10 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
             version: app.currentRelease?.version,
             lastDeployed: app.currentRelease?.createdAt,
             releaseStatus: app.currentRelease?.status,
-            healthy: app.allocation?.healthy || false,
-            region: app.allocation?.region,
+            healthy: runningMachines.length > 0,
+            region: firstMachine?.region,
+            machinesCount: machines.length,
+            runningMachines: runningMachines.length,
             platform: 'fly.io'
           });
         } else {
@@ -486,7 +495,10 @@ export async function getSystemMetrics() {
     ];
 
     const healthyCount = allServices.filter((s: any) => 
-      s.status === 'running' || s.healthy === true || s.deployed === true
+      s.status === 'running' || 
+      s.healthy === true || 
+      s.deployed === true ||
+      (s.runningMachines && s.runningMachines > 0)
     ).length;
 
     const totalCount = allServices.length;
