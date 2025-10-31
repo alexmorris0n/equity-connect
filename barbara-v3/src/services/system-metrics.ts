@@ -327,7 +327,7 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
 
         // Check for GraphQL errors
         if (data.errors) {
-          console.error(`Fly.io GraphQL errors for ${appName}:`, data.errors);
+          console.error(`Fly.io GraphQL error for ${appName}:`, data.errors[0]?.message || 'GraphQL error');
           throw new Error(data.errors[0]?.message || 'GraphQL error');
         }
 
@@ -352,11 +352,12 @@ async function getFlyioStatus(): Promise<PlatformStatus> {
             runningMachines: runningMachines.length,
             platform: 'fly.io'
           });
-        } else {
-          console.warn(`Fly.io app ${appName} not found in response:`, data);
         }
       } catch (appError: any) {
-        console.error(`Error fetching Fly.io app ${appName}:`, appError.message);
+        // Only log actual errors, not expected failures
+        if (!appError.message.includes('not found')) {
+          console.error(`Fly.io app ${appName} error:`, appError.message);
+        }
         apps.push({
           name: appName,
           status: 'error',
