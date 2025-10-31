@@ -4772,13 +4772,14 @@ function handleBeforeUnload(e) {
 
 .notion-textarea {
   width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 0.5rem;
   font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   line-height: 1.6;
-  background: rgba(248, 250, 255, 0.82);
+  background: rgba(0, 0, 0, 0.3);
+  color: white;
   transition: border 160ms ease, box-shadow 160ms ease;
   box-sizing: border-box;
   min-height: 60px;
@@ -4795,7 +4796,7 @@ function handleBeforeUnload(e) {
 
 .notion-textarea:empty:before {
   content: attr(data-placeholder);
-  color: #9ca3af;
+  color: rgba(255, 255, 255, 0.5);
   pointer-events: none;
 }
 
@@ -4803,6 +4804,7 @@ function handleBeforeUnload(e) {
   outline: none;
   border-color: rgba(99, 102, 241, 0.65);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .metrics-wrapper {
@@ -5333,5 +5335,54 @@ function handleBeforeUnload(e) {
   color: var(--text-secondary);
   line-height: 1.6;
   margin: 0;
+}
+
+/* Dark Mode Overrides for AI Analysis and Modals */
+:deep(.n-card) {
+  background: rgba(17, 24, 39, 0.6) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+:deep(.n-card-header) {
+  color: white !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+:deep(.n-card__content) {
+  color: white !important;
+}
+
+:deep(.n-collapse) {
+  background: transparent !important;
+}
+
+:deep(.n-collapse-item) {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+:deep(.n-collapse-item__header) {
+  color: white !important;
+  background: transparent !important;
+}
+
+:deep(.n-list) {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+:deep(.n-list-item) {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+:deep(.n-modal .n-card) {
+  background: rgba(17, 24, 39, 0.95) !important;
+}
+
+:deep(.n-divider) {
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 </style>
