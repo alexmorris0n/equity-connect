@@ -99,8 +99,8 @@ import {
   BriefcaseOutline,
   CalendarOutline
 } from '@vicons/ionicons5'
-import barbaraLogo from '@/assets/barbara-logo.svg'
-import barbaraLogoCompact from '@/assets/barbara-logo-compact.svg'
+import barbaraLogo from '@/assets/barbara-logo-dark.svg'
+import barbaraLogoCompact from '@/assets/barbara-logo-compact-dark.svg'
 
 const route = useRoute()
 const router = useRouter()
@@ -313,14 +313,14 @@ async function handleSignOut() {
 }
 
 .workspace-logo {
-  max-width: 160px;
+  max-width: 180px;
   height: 100%;
   transition: transform 180ms ease, filter 180ms ease;
   display: block;
 }
 
 .workspace-logo--collapsed {
-  max-width: 72px;
+  max-width: 80px;
 }
 
 .workspace-icon {

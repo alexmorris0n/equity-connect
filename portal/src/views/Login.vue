@@ -2,7 +2,7 @@
   <div class="login-shell">
     <n-card class="login-card" size="huge" :bordered="false">
         <div class="card-header">
-          <img src="@/assets/barbara-logo.svg" alt="Barbara" class="card-logo" />
+          <img src="@/assets/barbara-logo-dark.svg" alt="Barbara" class="card-logo" />
         </div>
 
         <n-form @submit.prevent="handleLogin" :model="formState" size="large" ref="formRef">
@@ -92,10 +92,11 @@ async function handleLogin() {
   width: 100%;
   max-width: 520px;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(12px);
   box-shadow: 0 32px 60px -24px rgba(15, 23, 42, 0.45);
   padding: clamp(1.4rem, 4vw, 2rem);
-  color: var(--text-primary);
+  color: var(--text-inverse);
 }
 
 .login-card :deep(.n-card__content) {

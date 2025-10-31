@@ -197,6 +197,7 @@
     <n-modal v-model:show="showPasswordModal">
       <n-card
         style="width: 400px"
+        class="password-modal-card"
         title="Change Password"
         :bordered="false"
         size="huge"
@@ -769,12 +770,12 @@ onMounted(() => {
 .profile-header h1 {
   font-size: 2rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-inverse);
   margin-bottom: 0.5rem;
 }
 
 .profile-header p {
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 1rem;
 }
 
@@ -786,12 +787,83 @@ onMounted(() => {
 
 .profile-card {
   border-radius: 12px;
+  background: rgba(17, 24, 39, 0.6) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.profile-card label {
+  color: white !important;
+}
+
+.profile-card :deep(.n-card-header) {
+  color: var(--text-inverse);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.profile-card :deep(.n-card__content) {
+  color: var(--text-inverse);
+}
+
+.profile-card :deep(.n-card__footer) {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.profile-card :deep(.n-form-item-label__text),
+.profile-card :deep(.n-input__input),
+.profile-card :deep(.n-input__input-el),
+.profile-card :deep(.n-base-selection-label),
+.profile-card :deep(.n-base-selection-placeholder),
+.profile-card :deep(.n-base-selection-input__content),
+.profile-card :deep(input),
+.profile-card :deep(label) {
+  color: var(--text-inverse) !important;
+}
+
+.profile-card :deep(.n-input),
+.profile-card :deep(.n-input__input-el),
+.profile-card :deep(.n-base-selection),
+.profile-card :deep(.n-base-selection-input) {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+.profile-card :deep(.n-input--disabled) {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  opacity: 0.7;
+}
+
+.profile-card :deep(.n-input--disabled .n-input__input-el) {
+  color: rgba(255, 255, 255, 0.6) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.profile-card :deep(.n-input .n-input__input-el) {
+  color: white !important;
+  -webkit-text-fill-color: white !important;
+}
+
+.profile-card :deep(.n-base-selection .n-base-selection-label) {
+  color: white !important;
+}
+
+.profile-card :deep(.n-base-selection-label__render-label) {
+  color: white !important;
+}
+
+.profile-card :deep(.n-base-selection-input__content) {
+  color: white !important;
 }
 
 .profile-section {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.profile-section label {
+  color: white !important;
 }
 
 .profile-item {
@@ -802,13 +874,13 @@ onMounted(() => {
 
 .profile-item label {
   font-weight: 500;
-  color: var(--text-primary);
+  color: white !important;
   font-size: 0.9rem;
 }
 
 .help-text {
   font-size: 0.8rem;
-  color: var(--text-tertiary);
+  color: rgba(255, 255, 255, 0.6);
   margin-top: 0.25rem;
 }
 
@@ -821,7 +893,7 @@ onMounted(() => {
 
 .security-label {
   font-size: 0.9rem;
-  color: var(--text-secondary);
+  color: var(--text-inverse);
 }
 
 .avatar-section {
@@ -835,7 +907,8 @@ onMounted(() => {
   height: 80px;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--avatar-bg);
+  background: rgba(99, 102, 241, 0.2);
+  border: 2px solid rgba(99, 102, 241, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -850,7 +923,7 @@ onMounted(() => {
 .avatar-placeholder {
   font-size: 2rem;
   font-weight: 600;
-  color: var(--color-primary-600);
+  color: rgb(99, 102, 241);
 }
 
 .avatar-actions {
@@ -864,8 +937,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background: var(--surface-muted);
-  border: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
 }
 
@@ -878,12 +951,12 @@ onMounted(() => {
 .status-label {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-inverse);
 }
 
 .status-detail {
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.7);
   text-transform: capitalize;
 }
 
@@ -903,6 +976,42 @@ onMounted(() => {
   display: flex;
   gap: 0.75rem;
   justify-content: flex-end;
+}
+
+.password-modal-card {
+  background: rgba(17, 24, 39, 0.95) !important;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.password-modal-card :deep(.n-card-header) {
+  color: var(--text-inverse);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.password-modal-card :deep(.n-card__content) {
+  color: var(--text-inverse);
+}
+
+.password-modal-card :deep(.n-form-item-label),
+.password-modal-card :deep(.n-form-item-label__text),
+.password-modal-card :deep(.n-input__input),
+.password-modal-card :deep(.n-input__input-el),
+.password-modal-card :deep(input),
+.password-modal-card :deep(label) {
+  color: var(--text-inverse) !important;
+}
+
+.password-modal-card :deep(.n-input),
+.password-modal-card :deep(.n-input__input-el) {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+.password-modal-card :deep(.n-input .n-input__input-el) {
+  color: white !important;
+  -webkit-text-fill-color: white !important;
 }
 
 @media (max-width: 768px) {

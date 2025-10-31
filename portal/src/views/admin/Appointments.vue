@@ -310,10 +310,11 @@ onMounted(() => {
 }
 
 .meta-card {
-  background: white;
+  background: var(--surface);
   border-radius: 8px;
   padding: 1rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--border-color);
 }
 
 .meta-header {
@@ -335,18 +336,60 @@ onMounted(() => {
 .meta-title {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .meta-count {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .calendar-card {
   min-height: 600px;
   max-width: 100%;
   overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+}
+
+.calendar-card :deep(.n-card__content) {
+  background: var(--surface) !important;
+}
+
+.calendar-card :deep(.fc-theme-standard td),
+.calendar-card :deep(.fc-theme-standard th) {
+  border-color: var(--border-color) !important;
+}
+
+.calendar-card :deep(.fc-scrollgrid),
+.calendar-card :deep(.fc-theme-standard .fc-scrollgrid) {
+  border-color: var(--border-color) !important;
+}
+
+.calendar-card :deep(.fc),
+.calendar-card :deep(.fc-view-harness),
+.calendar-card :deep(.fc-daygrid-day),
+.calendar-card :deep(.fc-timegrid-slot),
+.calendar-card :deep(.fc .fc-scrollgrid-section-body table),
+.calendar-card :deep(.fc .fc-scrollgrid-section-body td),
+.calendar-card :deep(.fc-scrollgrid-sync-table),
+.calendar-card :deep(.fc-timegrid-body),
+.calendar-card :deep(.fc-timegrid-cols table),
+.calendar-card :deep(.fc-scroller),
+.calendar-card :deep(.fc-scroller-liquid-absolute) {
+  background: #0f172a !important;
+}
+
+.calendar-card :deep(.fc-day-today) {
+  background: var(--nav-hover) !important;
+}
+
+.calendar-card :deep(.fc-timegrid-slot-label),
+.calendar-card :deep(.fc-timegrid-axis-cushion),
+.calendar-card :deep(.fc-col-header-cell-cushion),
+.calendar-card :deep(.fc-daygrid-day-number),
+.calendar-card :deep(.fc-timegrid-slot-label-cushion) {
+  color: var(--text-primary) !important;
 }
 
 @media (max-width: 768px) {
@@ -365,16 +408,42 @@ onMounted(() => {
 }
 
 .calendar-card :deep(.fc-scrollgrid) {
-  border-radius: 8px;
+  border-radius: 0 !important;
   overflow: hidden;
+}
+
+.calendar-card :deep(.fc-scrollgrid-section),
+.calendar-card :deep(.fc-scrollgrid-section-header),
+.calendar-card :deep(.fc-scrollgrid-section-body),
+.calendar-card :deep(.fc-scroller),
+.calendar-card :deep(.fc-scroller-harness) {
+  border-radius: 0 !important;
 }
 
 .calendar-card :deep(.fc-col-header-cell) {
   padding: 0.5rem;
   font-weight: 600;
-  background: #F9FAFB;
-  border-color: #E5E7EB;
+  background: var(--surface-muted) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
   font-size: 0.75rem;
+  border-radius: 0 !important;
+}
+
+.calendar-card :deep(.fc-col-header-cell.fc-day-today) {
+  background: var(--color-primary-600) !important;
+  color: var(--text-inverse) !important;
+  border-radius: 0 !important;
+}
+
+.calendar-card :deep(.fc-timegrid-axis) {
+  background: #0f172a !important;
+  border-color: var(--border-color) !important;
+  border-radius: 0 !important;
+}
+
+.calendar-card :deep(.fc-scrollgrid-section-header th) {
+  border-radius: 0 !important;
 }
 
 .calendar-card :deep(.fc-timegrid-axis) {
@@ -408,7 +477,7 @@ onMounted(() => {
 .calendar-card :deep(.fc-toolbar-title) {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .calendar-card :deep(.fc-header-toolbar) {
@@ -541,12 +610,12 @@ onMounted(() => {
 
 .detail-label {
   font-weight: 600;
-  color: #6b7280;
+  color: var(--text-secondary);
   min-width: 120px;
 }
 
 .detail-value {
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .detail-link {
