@@ -502,8 +502,8 @@ onMounted(async () => {
     loadSystemHealth()
   ])
   
-  // Refresh system health every 60 seconds
-  setInterval(loadSystemHealth, 60000)
+  // Refresh system health every 2 minutes to avoid Northflank rate limiting
+  setInterval(loadSystemHealth, 120000)
 })
 
 async function loadAIPerformance() {
@@ -665,8 +665,15 @@ async function loadSystemHealth() {
       const flyioHealthy = metrics.infrastructure?.flyio?.available && 
         (metrics.infrastructure?.flyio?.apps || []).some(a => a.healthy || a.deployed)
       
-      const northflankHealthy = metrics.infrastructure?.northflank?.available &&
-        (metrics.infrastructure?.northflank?.services || []).some(s => s.operational || s.running)
+      // For Northflank, check if rate limited (error contains "429" or "Too Many")
+      const northflankRateLimited = metrics.infrastructure?.northflank?.error?.includes('429') || 
+        metrics.infrastructure?.northflank?.error?.includes('Too Many')
+      
+      const northflankHealthy = northflankRateLimited ? true : // Treat rate limit as healthy (just slowed down)
+        (metrics.infrastructure?.northflank?.available &&
+        (metrics.infrastructure?.northflank?.services || []).some(s => s.operational || s.running))
+      
+      const northflankDegraded = northflankRateLimited // Show as degraded if rate limited
       
       const openaiHealthy = metrics.dependencies?.openai?.overallStatus === 'operational' || 
         metrics.dependencies?.openai?.overallStatus === 'none'
@@ -715,9 +722,9 @@ async function loadSystemHealth() {
         { 
           label: 'Northflank (n8n)', 
           healthy: northflankHealthy, 
-          degraded: false,
-          color: getHealthColor(northflankHealthy),
-          statusText: northflankHealthy ? 'Running' : 'Down'
+          degraded: northflankDegraded,
+          color: getHealthColor(northflankHealthy, northflankDegraded),
+          statusText: northflankRateLimited ? 'Rate Limited' : (northflankHealthy ? 'Running' : 'Down')
         },
         { 
           label: 'Google Gemini', 

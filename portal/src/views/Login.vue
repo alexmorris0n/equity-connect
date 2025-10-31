@@ -2,7 +2,7 @@
   <div class="login-shell">
     <n-card class="login-card" size="huge" :bordered="false">
         <div class="card-header">
-          <img src="@/assets/barbara-logo-dark.svg" alt="Barbara" class="card-logo" />
+          <img :src="logoSrc" alt="Barbara" class="card-logo" />
         </div>
 
         <n-form @submit.prevent="handleLogin" :model="formState" size="large" ref="formRef">
@@ -45,13 +45,20 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useTheme } from '@/composables/useTheme'
 import { NButton, NForm, NFormItem, NInput, NAlert, NCard } from 'naive-ui'
+import barbaraLogoDark from '@/assets/barbara-logo-dark.svg'
+import barbaraLogoLight from '@/assets/barbara-logo-light.svg'
 
 const router = useRouter()
 const { signIn, isAdmin } = useAuth()
+const { isDark } = useTheme()
+
+// Switch logo based on theme
+const logoSrc = computed(() => isDark.value ? barbaraLogoDark : barbaraLogoLight)
 
 const formRef = ref(null)
 const formState = reactive({

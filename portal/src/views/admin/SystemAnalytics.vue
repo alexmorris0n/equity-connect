@@ -514,7 +514,7 @@ const error = ref(null);
 const metrics = ref(null);
 const refreshing = ref(false);
 const autoRefresh = ref(true);
-const refreshInterval = ref(30000); // 30 seconds
+const refreshInterval = ref(120000); // 120 seconds (2 minutes)
 let refreshTimer = null;
 
 // Fetch metrics from backend

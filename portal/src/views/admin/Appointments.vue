@@ -366,8 +366,8 @@ onMounted(() => {
   border-color: var(--border-color) !important;
 }
 
-.calendar-card :deep(.fc),
 /* Dark mode calendar backgrounds */
+:root[data-theme='dark'] .calendar-card :deep(.fc),
 :root[data-theme='dark'] .calendar-card :deep(.fc-view-harness),
 :root[data-theme='dark'] .calendar-card :deep(.fc-daygrid-day),
 :root[data-theme='dark'] .calendar-card :deep(.fc-timegrid-slot),
@@ -382,6 +382,7 @@ onMounted(() => {
 }
 
 /* Light mode calendar backgrounds */
+:root[data-theme='light'] .calendar-card :deep(.fc),
 :root[data-theme='light'] .calendar-card :deep(.fc-view-harness),
 :root[data-theme='light'] .calendar-card :deep(.fc-daygrid-day),
 :root[data-theme='light'] .calendar-card :deep(.fc-timegrid-slot),

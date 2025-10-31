@@ -5338,19 +5338,25 @@ function handleBeforeUnload(e) {
 }
 
 /* Dark Mode Overrides for AI Analysis and Modals */
-:deep(.n-card) {
+/* Dark mode n-card styling */
+:root[data-theme='dark'] :deep(.n-card) {
   background: rgba(17, 24, 39, 0.6) !important;
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
-:deep(.n-card-header) {
+:root[data-theme='dark'] :deep(.n-card-header) {
   color: white !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
-:deep(.n-card__content) {
+:root[data-theme='dark'] :deep(.n-card__content) {
   color: white !important;
+}
+
+/* Light mode n-card styling - use Naive UI defaults */
+:root[data-theme='light'] :deep(.n-card) {
+  background: var(--surface) !important;
 }
 
 :deep(.n-collapse) {

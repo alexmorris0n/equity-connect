@@ -78,6 +78,7 @@
 import { h, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useTheme } from '@/composables/useTheme'
 import {
   NLayout,
   NLayoutSider,
@@ -99,11 +100,18 @@ import {
   BriefcaseOutline,
   CalendarOutline
 } from '@vicons/ionicons5'
-import barbaraLogo from '@/assets/barbara-logo-dark.svg'
-import barbaraLogoCompact from '@/assets/barbara-logo-compact-dark.svg'
+import barbaraLogoDark from '@/assets/barbara-logo-dark.svg'
+import barbaraLogoCompactDark from '@/assets/barbara-logo-compact-dark.svg'
+import barbaraLogoLight from '@/assets/barbara-logo-light.svg'
+import barbaraLogoCompactLight from '@/assets/barbara-logo-compact-light.svg'
 
 const route = useRoute()
 const router = useRouter()
+const { isDark } = useTheme()
+
+// Switch logo based on theme
+const barbaraLogo = computed(() => isDark.value ? barbaraLogoDark : barbaraLogoLight)
+const barbaraLogoCompact = computed(() => isDark.value ? barbaraLogoCompactDark : barbaraLogoCompactLight)
 const { user, broker, signOut } = useAuth()
 
 const sidebarCollapsed = ref(false)
