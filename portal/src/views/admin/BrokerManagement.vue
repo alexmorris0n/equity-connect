@@ -212,9 +212,9 @@ onMounted(() => {
 }
 
 .broker-card {
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
   padding: 1.5rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -225,8 +225,8 @@ onMounted(() => {
 
 .broker-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-  border-color: #6366f1;
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-600);
 }
 
 .card-status {
@@ -287,7 +287,7 @@ onMounted(() => {
 .broker-info h3 {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0 0 0.25rem 0;
   white-space: nowrap;
   overflow: hidden;
@@ -296,7 +296,7 @@ onMounted(() => {
 
 .broker-info .company {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -309,7 +309,7 @@ onMounted(() => {
   gap: 0.75rem;
   margin-bottom: 1.5rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .info-row {
@@ -319,14 +319,14 @@ onMounted(() => {
 }
 
 .info-icon {
-  color: #6366f1;
+  color: var(--color-primary-600);
   font-size: 1.125rem;
   flex-shrink: 0;
 }
 
 .info-text {
   font-size: 0.875rem;
-  color: #374151;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -342,14 +342,14 @@ onMounted(() => {
   flex: 1;
   text-align: center;
   padding: 0.35rem;
-  background: #f9fafb;
+  background: var(--surface-muted);
   border-radius: 8px;
 }
 
 .stat-label {
   display: block;
   font-size: 0.65rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin-bottom: 0.1rem;
 }
 
@@ -357,7 +357,7 @@ onMounted(() => {
   display: block;
   font-size: 0.85rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .empty-state {

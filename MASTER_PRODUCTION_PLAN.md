@@ -213,6 +213,33 @@ equity-connect/ (Git Monorepo)
 - ✅ Custom scrollbar styling matching Naive UI
 - ✅ All changes committed and deployed to production
 
+**Dark Mode UI Implementation (OCTOBER 31):**
+- ✅ **Login Page Dark Mode** - Complete dark theme with glass morphism effect
+  - Dark card background (rgba 17, 24, 39, 0.85) with backdrop blur
+  - Dark logo variants (barbara-logo-dark.svg, barbara-logo-compact-dark.svg)
+  - Light text for visibility on dark backgrounds
+  - Maintains full-screen gradient background
+- ✅ **User Profile Dark Mode** - Comprehensive dark styling
+  - Dark profile cards with glass effect and light borders
+  - All form labels and input text in white for readability
+  - Dark input backgrounds with proper contrast
+  - Password modal dark themed
+  - Calendar integration cards styled for dark mode
+- ✅ **Appointments Calendar Dark Mode** - Fixed background bleed issues
+  - Removed white background showing through rounded corners
+  - Dark scroller backgrounds (fc-scroller, fc-scroller-liquid-absolute)
+  - Calendar grid elements properly styled for dark theme
+  - Removed border-radius from problem areas to eliminate white gaps
+- ✅ **Sidebar Logo Improvements** - Better branding visibility
+  - Increased logo size: 160px → 180px (expanded), 72px → 80px (collapsed)
+  - Dark logo variants for all sidebar states
+  - Logo files organized in /logos directory
+- ✅ **Theme System Verification** - Auto mode properly listens to OS
+  - Uses window.matchMedia('prefers-color-scheme: dark')
+  - Real-time listener for system theme changes
+  - Proper integration with Supabase user preferences
+- ✅ All dark mode changes committed and pushed to production
+
 **Next Steps:**
 - [ ] Add more detailed analytics and reporting
 - [ ] Implement data export functionality
@@ -1145,13 +1172,19 @@ GROUP BY campaign_archetype;
 - ✅ DNC registry integration
 - ✅ Call outcome tracking
 - **Status:** ✅ **PRODUCTION READY - Barbara V3 + SignalWire operational**
-- **SMS Coordinator Persona ("Sarah") — NEW**
-  - Continuity persona used in cold email campaigns now anchors SMS outreach. Barbara handles live calls, Sarah handles asynchronous texts so leads perceive a coordinated human team.
+- **SMS Coordinator Persona ("Sarah") — WAITING ON 10DLC APPROVAL**
+  - **Status:** ⏳ 10DLC registration delayed - used registered agent address (blacklisted by carrier)
+  - **Issue:** SignalWire 10DLC campaign approval held up 3-4 days due to using registered agent business address instead of actual operating address
+  - **Resolution:** Resubmitted with correct business address, awaiting carrier approval
+  - **Expected:** Approval within 24-48 hours, then SMS bridge operational
+  - **Architecture Ready:** SMS handler built and tested, waiting only on 10DLC approval
+  - Continuity persona used in cold email campaigns will anchor SMS outreach. Barbara handles live calls, Sarah handles asynchronous texts so leads perceive a coordinated human team.
   - **Missed-call follow-up:** "Hi John, this is Sarah from Walter's office. The team let me know they couldn't reach you earlier – that's totally fine. What's a good time for a callback? Or happy to answer any questions here." Sends automatically when Barbara's call goes unanswered.
   - **Pre-appointment soft confirmation:** "Hi John, it's Sarah. Just confirming your appointment with Walter tomorrow at 2pm. Make sure you have your property tax bill handy – but if you can't find it, totally fine, we can work with that. Looking forward to it!"
   - **Post-booking thank-you / FAQ check-in:** "Thanks again for booking with Walter. Do you have any questions before we meet? Happy to help here." Keeps the conversation warm and catches objections early.
   - **Failed booking or call fallback:** If Barbara can't secure a time on voice, Sarah continues the conversation via SMS, re-running `check_broker_availability` → `book_appointment` and, once confirmed, `assign_tracking_number` directly from text.
   - **Conversation memory requirements:** SMS handler must persist per-lead context (phone, prior messages, tool calls) so Sarah replies in-thread, references earlier touchpoints, and respects STOP/HELP compliance while logging outcomes via `save_interaction`.
+  - **Lesson Learned:** Always use actual operating address for 10DLC registration, not registered agent address (often flagged as commercial mail forwarding service)
 
 **9. Appointment Booking** ⭐ **PRODUCTION READY** (COMPLETE)
 - ✅ Nylas calendar integration (replaced Cal.com)

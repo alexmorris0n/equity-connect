@@ -9,45 +9,47 @@
           <span class="meta-count">({{ filteredLeads.length }})</span>
         </div>
       </header>
+      
+      <n-input 
+        v-model:value="searchQuery" 
+        placeholder="Search name, address, city, or ZIP..." 
+        clearable
+        size="medium"
+        style="margin-top: 0.75rem;"
+      >
+        <template #prefix>
+          <n-icon><SearchOutline /></n-icon>
+        </template>
+      </n-input>
+
       <n-space :size="12" style="margin-top: 0.75rem;">
-        <n-input 
-          v-model:value="searchQuery" 
-          placeholder="Search name, address, city, or ZIP..." 
+        <n-select
+          v-model:value="statusFilter"
+          placeholder="Status"
           clearable
+          multiple
+          :options="statusOptions"
           size="small"
-          style="min-width: 200px;"
-        >
-          <template #prefix>
-            <n-icon><SearchOutline /></n-icon>
-          </template>
-        </n-input>
-                 <n-select
-                   v-model:value="statusFilter"
-                   placeholder="Status"
-                   clearable
-                   multiple
-                   :options="statusOptions"
-                   size="small"
-                   style="min-width: 140px;"
-                 />
-                 <n-select
-                   v-model:value="campaignStatusFilter"
-                   placeholder="Campaign Status"
-                   clearable
-                   multiple
-                   :options="campaignStatusOptions"
-                   size="small"
-                   style="min-width: 160px;"
-                 />
-                 <n-select
-                   v-model:value="brokerFilter"
-                   placeholder="Broker"
-                   clearable
-                   multiple
-                   :options="brokerOptions"
-                   size="small"
-                   style="min-width: 140px;"
-                 />
+          style="min-width: 140px;"
+        />
+        <n-select
+          v-model:value="campaignStatusFilter"
+          placeholder="Campaign Status"
+          clearable
+          multiple
+          :options="campaignStatusOptions"
+          size="small"
+          style="min-width: 160px;"
+        />
+        <n-select
+          v-model:value="brokerFilter"
+          placeholder="Broker"
+          clearable
+          multiple
+          :options="brokerOptions"
+          size="small"
+          style="min-width: 140px;"
+        />
       </n-space>
     </section>
 
@@ -572,10 +574,10 @@ onUnmounted(() => {
 }
 
 .meta-card {
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface);
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  box-shadow: 0 10px 25px -22px rgba(15, 23, 42, 0.16);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
   padding: 0.75rem;
 }
 
@@ -583,10 +585,10 @@ onUnmounted(() => {
   display: flex;
   gap: 12px;
   padding: 12px 0.75rem;
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--nav-hover);
   border-radius: 18px 18px 0 0;
   font-weight: 600;
-  color: #4f46e5;
+  color: var(--color-primary-600);
   font-size: 0.875rem;
 }
 
@@ -603,7 +605,7 @@ onUnmounted(() => {
 }
 
 .th-cell.sortable:hover {
-  background-color: rgba(99, 102, 241, 0.08);
+  background-color: var(--nav-selected);
 }
 
 .sort-icon {
@@ -625,7 +627,7 @@ onUnmounted(() => {
   justify-content: space-between;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 
 .meta-title-wrap {
@@ -651,15 +653,15 @@ onUnmounted(() => {
 
 .meta-count {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .editor-card {
   border-radius: 18px;
   padding: 0;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.22);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
 }
 
 .editor-card :deep(.n-card__content) {
@@ -671,7 +673,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  color: #6366f1;
+  color: var(--color-primary-600);
   font-size: 0.875rem;
 }
 
@@ -713,19 +715,20 @@ onUnmounted(() => {
   padding: 12px 0.75rem;
   cursor: pointer;
   transition: background 0.15s;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
 }
 
 .table-row:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--nav-hover);
 }
 
 .table-row.striped {
-  background: rgba(248, 250, 252, 0.5);
+  background: var(--surface-muted);
 }
 
 .table-row.striped:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--nav-hover);
 }
 
 .td-cell {
@@ -770,23 +773,23 @@ onUnmounted(() => {
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background: #6366f1;
-  color: white;
+  background: var(--color-primary-600);
+  color: var(--text-inverse);
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  box-shadow: var(--shadow-md);
   transition: all 0.3s ease;
   z-index: 9999 !important;
   pointer-events: auto !important;
 }
 
 .scroll-to-top:hover {
-  background: #4f46e5;
+  background: var(--color-primary-700);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+  box-shadow: var(--shadow-lg);
 }
 
 .scroll-to-top:active {
@@ -804,9 +807,9 @@ onUnmounted(() => {
 /* Filter inputs styling */
 .meta-card :deep(.n-input),
 .meta-card :deep(.n-base-selection) {
-  border: 1px solid rgba(148, 163, 184, 0.32);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  background: rgba(248, 250, 255, 0.82);
+  background: var(--surface);
   transition: border 160ms ease, box-shadow 160ms ease;
 }
 

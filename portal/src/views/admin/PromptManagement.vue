@@ -4516,15 +4516,21 @@ function handleBeforeUnload(e) {
 
 .meta-badge {
   display: inline-block;
-  padding: 2px 0;
+  padding: 2px 6px;
   margin-top: 4px;
   font-size: 0.55rem;
   font-weight: 500;
-  color: var(--color-primary-600);
+  color: var(--text-inverse);
+  background: rgba(99, 102, 241, 0.16);
+  border-radius: 999px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+}
+
+:root[data-theme='dark'] .meta-badge {
+  background: rgba(129, 140, 248, 0.28);
 }
 
 .meta-item:not(.version) .meta-item-sub {
@@ -4680,6 +4686,23 @@ function handleBeforeUnload(e) {
 
 .compact-toolbar :deep(.n-button:disabled) {
   border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+/* Force white text on enabled primary/info buttons */
+.compact-toolbar :deep(.n-button.n-button--primary-type:not(.n-button--disabled)),
+.compact-toolbar :deep(.n-button.n-button--info-type:not(.n-button--disabled)),
+.prompt-workspace :deep(.n-button.n-button--primary-type:not(.n-button--disabled)),
+.prompt-workspace :deep(.n-button.n-button--info-type:not(.n-button--disabled)) {
+  --n-text-color: var(--text-inverse);
+  --n-icon-color: var(--text-inverse);
+}
+
+/* Dark mode: lighter disabled buttons */
+:root[data-theme='dark'] .compact-toolbar :deep(.n-button.n-button--disabled) {
+  --n-color: rgba(99, 102, 241, 0.24);
+  --n-border: rgba(99, 102, 241, 0.28);
+  --n-text-color: rgba(203, 213, 245, 0.85);
+  --n-icon-color: rgba(203, 213, 245, 0.85);
 }
 
 .editor-sections {
