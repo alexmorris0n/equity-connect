@@ -5,6 +5,7 @@ const user = ref(null)
 const broker = ref(null)
 const loading = ref(false)
 let initialized = false
+let initPromise = null
 
 export function useAuth() {
   const isAuthenticated = computed(() => !!user.value)
@@ -96,17 +97,31 @@ export function useAuth() {
     return { error }
   }
 
+  // Wait for initial auth check to complete
+  async function waitForInit() {
+    if (initPromise) {
+      await initPromise
+    }
+    return true
+  }
+
   // Initialize only once
   if (!initialized) {
     initialized = true
     
-    // Check for existing session without async wait
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        user.value = session.user
-        checkAuth()
+    // Create initialization promise that resolves when session is loaded
+    initPromise = (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (session?.user) {
+          user.value = session.user
+          await checkAuth()
+        }
+      } catch (error) {
+        console.error('Initial auth check failed:', error)
       }
-    })
+    })()
     
     // Listen for auth changes
     supabase.auth.onAuthStateChange((event, session) => {
@@ -132,7 +147,8 @@ export function useAuth() {
     isBroker,
     signIn,
     signOut,
-    checkAuth
+    checkAuth,
+    waitForInit
   }
 }
 

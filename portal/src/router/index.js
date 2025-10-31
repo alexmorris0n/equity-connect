@@ -111,12 +111,10 @@ const router = createRouter({
 
 // Navigation guard with proper auth state waiting
 router.beforeEach(async (to, from, next) => {
-  const { isAuthenticated, isAdmin, isBroker, loading, checkAuth } = useAuth()
+  const { isAuthenticated, isAdmin, isBroker, waitForInit } = useAuth()
 
-  // Wait for auth to be loaded if it's still loading
-  if (loading.value) {
-    await checkAuth()
-  }
+  // Wait for initial auth check to complete (critical for page refreshes)
+  await waitForInit()
 
   if (to.meta.requiresAuth && !isAuthenticated.value) {
     next('/login')
