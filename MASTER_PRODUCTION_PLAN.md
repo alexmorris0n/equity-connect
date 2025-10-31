@@ -9,7 +9,14 @@
 
 ## 🎯 System Overview
 
+**Barbara LLC (Wyoming)** - Registered October 30, 2025
+
 Equity Connect is an AI-powered lead generation and nurturing platform for reverse mortgage brokers. The system uses AI agents to autonomously pull qualified property leads, enrich them with contact data, and manage compliant multi-channel outreach campaigns.
+
+**Production Domains:**
+- **barbarapro.com** - Marketing landing page
+- **app.barbarapro.com** - Admin portal and broker interface
+- **Vercel Development:** https://equity-connect.vercel.app
 
 **Key Innovation:** Model Context Protocol (MCP) architecture enables one AI agent to orchestrate 4+ external services, replacing 135 deterministic workflow nodes with 13 intelligent nodes.
 
@@ -1257,9 +1264,14 @@ GROUP BY campaign_archetype;
 - Improve subject lines and call-to-action effectiveness
 - A/B test different copy variations
 
-**2. Portal Vercel Deployment** ⭐ **HIGH PRIORITY** 
-- Deploy portal to Vercel
-- Implement post-deployment features:
+**2. Portal Vercel Deployment** ✅ **COMPLETE**
+- ✅ Portal deployed to Vercel (https://equity-connect.vercel.app)
+- ✅ Auto-deploy configured on `portal/**` changes
+- ✅ Environment variables configured
+- ✅ Production domain: **app.barbarapro.com** (portal/admin interface)
+- ✅ Landing page domain: **barbarapro.com** (marketing site)
+- ✅ Business registered: **Barbara LLC (Wyoming)** - October 30, 2025
+- [ ] Implement post-deployment features:
   - Detailed analytics and reporting
   - Data export functionality (CSV, PDF)
   - Real-time notifications and alerts
