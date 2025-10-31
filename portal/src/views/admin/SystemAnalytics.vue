@@ -85,7 +85,7 @@
 
       <div class="dependencies-grid">
         <!-- OpenAI Section -->
-        <n-card title="OpenAI Services" class="platform-card dependencies-card" :bordered="false">
+        <n-card title="OpenAI Services" class="platform-card dependencies-card" :bordered="false" :style="cardStyle">
           <template #header-extra>
             <n-tag :type="openaiStatusType" size="small">
               {{ openaiStatusText }}
@@ -150,7 +150,7 @@
         </n-card>
 
         <!-- Gemini Section -->
-        <n-card title="Google Gemini" class="platform-card dependencies-card" :bordered="false">
+        <n-card title="Google Gemini" class="platform-card dependencies-card" :bordered="false" :style="cardStyle">
           <template #header-extra>
             <n-tag :type="geminiStatusType" size="small">
               {{ geminiStatusText }}
@@ -211,7 +211,7 @@
         </n-card>
 
         <!-- SignalWire Section -->
-        <n-card title="SignalWire" class="platform-card dependencies-card" :bordered="false">
+        <n-card title="SignalWire" class="platform-card dependencies-card" :bordered="false" :style="cardStyle">
           <template #header-extra>
             <n-tag :type="signalwireStatusType" size="small">
               {{ signalwireStatusText }}
@@ -286,7 +286,7 @@
       <div class="platforms-grid">
         
         <!-- Fly.io Section -->
-        <n-card title="Fly.io Deployments" class="platform-card" :bordered="false">
+        <n-card title="Fly.io Deployments" class="platform-card" :bordered="false" :style="cardStyle">
           <template #header-extra>
             <n-tag :type="flyioStatusType" size="small">
               {{ flyioStatusText }}
@@ -362,7 +362,7 @@
         </n-card>
 
         <!-- Northflank Section -->
-        <n-card title="Northflank Services" class="platform-card" :bordered="false">
+        <n-card title="Northflank Services" class="platform-card" :bordered="false" :style="cardStyle">
           <template #header-extra>
             <n-tag :type="northflankStatusType" size="small">
               {{ northflankStatusText }}
@@ -460,6 +460,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { 
   NCard, NAlert, NSpin, NProgress, NTag, NButton, NIcon, NEmpty, NSwitch 
 } from 'naive-ui';
+import { useTheme } from '@/composables/useTheme';
 import { 
   CheckmarkCircleOutline,
   WarningOutline,
@@ -479,6 +480,25 @@ import {
   WifiOutline,
   CodeOutline
 } from '@vicons/ionicons5';
+
+// Theme
+const { isDark } = useTheme();
+
+// Card style for dark mode
+const cardStyle = computed(() => {
+  if (isDark.value) {
+    return {
+      '--n-color': 'rgba(255, 255, 255, 0.05)',
+      '--n-color-modal': 'rgba(255, 255, 255, 0.08)',
+      '--n-color-border': 'rgba(255, 255, 255, 0.08)'
+    };
+  }
+  return {
+    '--n-color': '#ffffff',
+    '--n-color-modal': '#ffffff',
+    '--n-color-border': 'rgba(0, 0, 0, 0.05)'
+  };
+});
 
 // State
 const loading = ref(true);
@@ -887,14 +907,28 @@ onUnmounted(() => {
 .service-item {
   padding: 16px;
   border-radius: 8px;
-  background: var(--card-color);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;
+}
+
+/* Dark mode specific */
+:root[data-theme='dark'] .service-item {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Light mode specific */
+:root[data-theme='light'] .service-item {
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .service-item:hover {
   border-color: var(--primary-color);
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme='light'] .service-item:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
@@ -991,6 +1025,14 @@ onUnmounted(() => {
 
 .dependencies-card {
   border: 2px solid var(--border-color);
+}
+
+/* Card theme overrides */
+/* Card colors are now handled via inline styles from cardStyle computed property */
+
+.dependencies-card :deep(.n-card__content),
+.platform-card :deep(.n-card__content) {
+  background: transparent;
 }
 
 .dependencies-card:hover {

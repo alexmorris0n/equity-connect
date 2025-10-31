@@ -259,15 +259,233 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
 }
 
 /**
+ * Fetch Fly.io app status
+ */
+async function getFlyioStatus(): Promise<PlatformStatus> {
+  const FLY_API_TOKEN = process.env.FLY_API_TOKEN;
+  
+  if (!FLY_API_TOKEN) {
+    return {
+      available: false,
+      error: 'FLY_API_TOKEN not configured',
+      apps: []
+    };
+  }
+
+  try {
+    // Apps to monitor (only barbara-v3, original bridge is deprecated)
+    const appNames = ['barbara-v3-voice'];
+    const apps: any[] = [];
+
+    for (const appName of appNames) {
+      try {
+        // GraphQL query to get app status
+        const query = `
+          query($appName: String!) {
+            app(name: $appName) {
+              name
+              status
+              deployed
+              hostname
+              organization {
+                name
+              }
+              currentRelease {
+                version
+                createdAt
+                status
+              }
+              allocation {
+                idPrefix
+                region
+                status
+                healthy
+                privateIP
+                createdAt
+              }
+            }
+          }
+        `;
+
+        const response = await fetch('https://api.fly.io/graphql', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${FLY_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            query,
+            variables: { appName }
+          }),
+          signal: AbortSignal.timeout(5000)
+        });
+
+        const data: any = await response.json();
+
+        if (data.data?.app) {
+          const app = data.data.app;
+          
+          apps.push({
+            name: app.name,
+            status: app.status,
+            deployed: app.deployed,
+            hostname: app.hostname,
+            organization: app.organization?.name,
+            version: app.currentRelease?.version,
+            lastDeployed: app.currentRelease?.createdAt,
+            releaseStatus: app.currentRelease?.status,
+            healthy: app.allocation?.healthy || false,
+            region: app.allocation?.region,
+            platform: 'fly.io'
+          });
+        }
+      } catch (appError: any) {
+        console.error(`Error fetching Fly.io app ${appName}:`, appError.message);
+        apps.push({
+          name: appName,
+          status: 'error',
+          error: appError.message,
+          platform: 'fly.io'
+        });
+      }
+    }
+
+    return {
+      available: true,
+      apps,
+      lastChecked: new Date().toISOString()
+    };
+
+  } catch (error: any) {
+    console.error('Fly.io API error:', error.message);
+    return {
+      available: false,
+      error: error.message,
+      apps: []
+    };
+  }
+}
+
+/**
+ * Fetch Northflank project status
+ */
+async function getNorthflankStatus(): Promise<PlatformStatus> {
+  const NORTHFLANK_API_TOKEN = process.env.NORTHFLANK_API_TOKEN;
+  const NORTHFLANK_PROJECT_ID = process.env.NORTHFLANK_PROJECT_ID;
+  
+  if (!NORTHFLANK_API_TOKEN || !NORTHFLANK_PROJECT_ID) {
+    return {
+      available: false,
+      error: 'NORTHFLANK_API_TOKEN or NORTHFLANK_PROJECT_ID not configured',
+      services: []
+    };
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.northflank.com/v1/projects/${NORTHFLANK_PROJECT_ID}/services`,
+      {
+        headers: {
+          'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        signal: AbortSignal.timeout(5000)
+      }
+    );
+
+    const data: any = await response.json();
+    const services: any[] = data.data?.services || [];
+    
+    const servicesWithStatus = await Promise.all(
+      services.map(async (service: any) => {
+        try {
+          const statusResponse = await fetch(
+            `https://api.northflank.com/v1/projects/${NORTHFLANK_PROJECT_ID}/services/${service.id}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${NORTHFLANK_API_TOKEN}`,
+                'Content-Type': 'application/json'
+              },
+              signal: AbortSignal.timeout(5000)
+            }
+          );
+
+          const serviceData: any = await statusResponse.json();
+          const serviceInfo = serviceData.data;
+          
+          return {
+            name: serviceInfo.name,
+            id: serviceInfo.id,
+            status: serviceInfo.status,
+            health: serviceInfo.health,
+            running: serviceInfo.status === 'running',
+            replicas: serviceInfo.replicas,
+            lastDeployed: serviceInfo.updatedAt,
+            region: serviceInfo.region,
+            operational: serviceInfo.status === 'running',
+            platform: 'northflank'
+          };
+        } catch (err: any) {
+          return {
+            name: service.name,
+            id: service.id,
+            status: 'error',
+            error: err.message,
+            operational: false,
+            platform: 'northflank'
+          };
+        }
+      })
+    );
+
+    return {
+      available: true,
+      services: servicesWithStatus,
+      lastChecked: new Date().toISOString()
+    };
+
+  } catch (error: any) {
+    console.error('Northflank API error:', error.message);
+    return {
+      available: false,
+      error: error.message,
+      services: []
+    };
+  }
+}
+
+/**
  * Get comprehensive system metrics
  */
 export async function getSystemMetrics() {
   try {
-    const [openai, gemini, signalwire] = await Promise.all([
+    const [openai, gemini, signalwire, flyio, northflank] = await Promise.all([
       getOpenAIStatus(),
       getGeminiStatus(),
-      getSignalWireStatus()
+      getSignalWireStatus(),
+      getFlyioStatus(),
+      getNorthflankStatus()
     ]);
+
+    // Calculate overall system health (your infrastructure only)
+    const allServices = [
+      ...(flyio.apps || []).map((a: any) => ({ ...a, source: 'flyio' })),
+      ...(northflank.services || []).map((s: any) => ({ ...s, source: 'northflank' }))
+    ];
+
+    const healthyCount = allServices.filter((s: any) => 
+      s.status === 'running' || s.healthy === true || s.deployed === true
+    ).length;
+
+    const totalCount = allServices.length;
+    const healthPercentage = totalCount > 0 ? Math.round((healthyCount / totalCount) * 100) : 0;
+
+    let overallStatus = 'healthy';
+    if (healthPercentage < 50) {
+      overallStatus = 'critical';
+    } else if (healthPercentage < 100) {
+      overallStatus = 'degraded';
+    }
 
     // Check third-party dependencies
     const thirdPartyIssues: string[] = [];
@@ -283,8 +501,16 @@ export async function getSystemMetrics() {
 
     return {
       overall: {
-        status: thirdPartyIssues.length > 0 ? 'degraded' : 'healthy',
+        status: overallStatus,
+        healthPercentage,
+        totalServices: totalCount,
+        healthyServices: healthyCount,
+        unhealthyServices: totalCount - healthyCount,
         thirdPartyIssues
+      },
+      infrastructure: {
+        flyio,
+        northflank
       },
       dependencies: {
         openai,
@@ -299,6 +525,10 @@ export async function getSystemMetrics() {
       overall: {
         status: 'error',
         error: error.message
+      },
+      infrastructure: {
+        flyio: { available: false, apps: [] },
+        northflank: { available: false, services: [] }
       },
       dependencies: {
         openai: { available: false, services: [] },
