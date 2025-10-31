@@ -54,6 +54,67 @@
           <n-empty v-else :description="'No data in ' + aiPerformance.timeframeLabel" size="small" />
         </div>
       </div>
+
+      <!-- System Health Card -->
+      <div class="system-health-card">
+        <div class="system-health-header">
+          <div class="stat-icon accent-mint">
+            <n-icon size="20">
+              <CheckmarkCircleOutline />
+            </n-icon>
+          </div>
+          <div class="system-health-heading">
+            <span class="system-health-title">System Health</span>
+            <span class="system-health-timeframe">Real-time</span>
+          </div>
+        </div>
+        <div class="system-health-body">
+          <div v-if="!systemHealth.loading && systemHealth.available" class="system-health-content">
+            <svg class="system-health-rings" width="200" height="200" viewBox="0 0 200 200">
+              <g v-for="(ring, idx) in systemHealth.rings" :key="idx">
+                <circle
+                  cx="100"
+                  cy="100"
+                  :r="80 - (idx * 12)"
+                  fill="none"
+                  :stroke="ringTrackColor"
+                  stroke-width="10"
+                />
+                <circle
+                  cx="100"
+                  cy="100"
+                  :r="80 - (idx * 12)"
+                  fill="none"
+                  :stroke="ring.color"
+                  stroke-width="10"
+                  stroke-linecap="round"
+                  :stroke-dasharray="`${2 * Math.PI * (80 - idx * 12)}`"
+                  :stroke-dashoffset="`${2 * Math.PI * (80 - idx * 12) * (1 - (ring.healthy ? 1 : 0))}`"
+                  transform="rotate(-90 100 100)"
+                />
+              </g>
+              <text x="100" y="105" text-anchor="middle" font-size="32" :fill="textPrimary" font-weight="700">
+                {{ systemHealth.healthyCount }}/{{ systemHealth.totalCount }}
+              </text>
+            </svg>
+
+            <div class="system-health-legend">
+              <div v-for="(ring, idx) in systemHealth.rings" :key="idx" class="legend-item">
+                <div class="legend-color" :style="{ background: ring.color }"></div>
+                <span class="legend-label">{{ ring.label }}</span>
+                <span class="legend-status" :style="{ color: ring.color }">{{ ring.statusText }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="systemHealth.loading" class="system-health-loading">
+            <n-spin size="medium" />
+          </div>
+          <div v-else class="system-health-error">
+            <n-empty description="Unable to load system health" size="small" />
+          </div>
+        </div>
+      </div>
+
       <div class="calls-card">
         <div class="calls-header">
           <div class="stat-icon accent-sky">
@@ -234,7 +295,7 @@
 <script setup>
 import { reactive, computed, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
-import { SparklesOutline, CallOutline, PieChartOutline, TrendingUpOutline } from '@vicons/ionicons5'
+import { SparklesOutline, CallOutline, PieChartOutline, TrendingUpOutline, CheckmarkCircleOutline } from '@vicons/ionicons5'
 import { useTheme } from '@/composables/useTheme'
 
 const numberFormatter = new Intl.NumberFormat('en-US')
@@ -389,6 +450,14 @@ const callMetrics = reactive({
   dailyCounts: []
 })
 
+const systemHealth = reactive({
+  loading: true,
+  available: false,
+  healthyCount: 0,
+  totalCount: 6,
+  rings: []
+})
+
 const bookingRingColor = computed(() => getColorWithIntensity(140, callMetrics.bookingRate / 10))
 
 const callSegments = computed(() => {
@@ -429,8 +498,12 @@ const callSegments = computed(() => {
 onMounted(async () => {
   await Promise.all([
     loadAIPerformance(),
-    loadCallMetrics()
+    loadCallMetrics(),
+    loadSystemHealth()
   ])
+  
+  // Refresh system health every 60 seconds
+  setInterval(loadSystemHealth, 60000)
 })
 
 async function loadAIPerformance() {
@@ -555,6 +628,122 @@ async function loadCallMetrics() {
     callMetrics.bookingRate = 0
   } finally {
     callMetrics.loading = false
+  }
+}
+
+async function loadSystemHealth() {
+  try {
+    systemHealth.loading = true
+    
+    const metricsUrl = import.meta.env.VITE_METRICS_URL || 'https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/system-metrics'
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14bnFmd3VodnVyYWpyZ29lZnlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzU3OTAsImV4cCI6MjA3NTQ1MTc5MH0.QMoZAjIKkB05Vr9nM1FKbC2ke5RTvfv6zrSDU0QMuN4'
+    
+    const response = await fetch(metricsUrl, {
+      headers: {
+        'Authorization': `Bearer ${anonKey}`
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    
+    const data = await response.json()
+    
+    if (data.success && data.metrics) {
+      const metrics = data.metrics
+      
+      // Helper function to get color based on health
+      const getHealthColor = (healthy, isDegraded = false) => {
+        if (healthy && !isDegraded) return '#10b981' // Green
+        if (healthy && isDegraded) return '#f59e0b' // Yellow/Orange (degraded but running)
+        if (!healthy) return '#ef4444' // Red
+        return '#94a3b8' // Gray for unknown
+      }
+      
+      // Check each platform's overall health
+      const flyioHealthy = metrics.infrastructure?.flyio?.available && 
+        (metrics.infrastructure?.flyio?.apps || []).some(a => a.healthy || a.deployed)
+      
+      const northflankHealthy = metrics.infrastructure?.northflank?.available &&
+        (metrics.infrastructure?.northflank?.services || []).some(s => s.operational || s.running)
+      
+      const openaiHealthy = metrics.dependencies?.openai?.overallStatus === 'operational' || 
+        metrics.dependencies?.openai?.overallStatus === 'none'
+      const openaiDegraded = metrics.dependencies?.openai?.overallStatus === 'degraded'
+      
+      const geminiHealthy = metrics.dependencies?.gemini?.overallStatus === 'operational'
+      const geminiDegraded = metrics.dependencies?.gemini?.overallStatus === 'degraded'
+      
+      const signalwireHealthy = metrics.dependencies?.signalwire?.overallStatus === 'operational' ||
+        metrics.dependencies?.signalwire?.overallStatus === 'none'
+      const signalwireDegraded = metrics.dependencies?.signalwire?.overallStatus === 'degraded'
+      
+      // Count healthy platforms - for the 6 rings displayed
+      const healthyPlatforms = [
+        flyioHealthy,
+        northflankHealthy,
+        openaiHealthy && !openaiDegraded, // Only count as fully healthy if not degraded
+        geminiHealthy && !geminiDegraded,
+        signalwireHealthy && !signalwireDegraded,
+        signalwireHealthy && !signalwireDegraded // SignalWire counts for both Voice and SMS
+      ].filter(Boolean).length
+      
+      // Create 6 rings (top 6 most important services/platforms)
+      systemHealth.rings = [
+        { 
+          label: 'OpenAI Realtime', 
+          healthy: openaiHealthy, 
+          degraded: openaiDegraded,
+          color: getHealthColor(openaiHealthy, openaiDegraded),
+          statusText: openaiHealthy ? 'Operational' : (openaiDegraded ? 'Degraded' : 'Down')
+        },
+        { 
+          label: 'SignalWire Voice', 
+          healthy: signalwireHealthy, 
+          degraded: signalwireDegraded,
+          color: getHealthColor(signalwireHealthy, signalwireDegraded),
+          statusText: signalwireHealthy ? 'Operational' : (signalwireDegraded ? 'Degraded' : 'Down')
+        },
+        { 
+          label: 'Fly.io (Barbara)', 
+          healthy: flyioHealthy, 
+          degraded: false,
+          color: getHealthColor(flyioHealthy),
+          statusText: flyioHealthy ? 'Running' : 'Down'
+        },
+        { 
+          label: 'Northflank (n8n)', 
+          healthy: northflankHealthy, 
+          degraded: false,
+          color: getHealthColor(northflankHealthy),
+          statusText: northflankHealthy ? 'Running' : 'Down'
+        },
+        { 
+          label: 'Google Gemini', 
+          healthy: geminiHealthy, 
+          degraded: geminiDegraded,
+          color: getHealthColor(geminiHealthy, geminiDegraded),
+          statusText: geminiHealthy ? 'Operational' : (geminiDegraded ? 'Degraded' : 'Down')
+        },
+        { 
+          label: 'SignalWire SMS', 
+          healthy: signalwireHealthy, 
+          degraded: signalwireDegraded,
+          color: getHealthColor(signalwireHealthy, signalwireDegraded),
+          statusText: signalwireHealthy ? 'Operational' : (signalwireDegraded ? 'Degraded' : 'Down')
+        }
+      ]
+      
+      systemHealth.healthyCount = healthyPlatforms
+      systemHealth.totalCount = 6
+      systemHealth.available = true
+    }
+  } catch (error) {
+    console.error('Error loading system health:', error)
+    systemHealth.available = false
+  } finally {
+    systemHealth.loading = false
   }
 }
 </script>
@@ -688,6 +877,7 @@ async function loadCallMetrics() {
   box-shadow: var(--shadow-soft) !important;
 }
 
+.system-health-card,
 .ai-performance-card,
 .calls-card,
 .outcome-card,
@@ -1264,6 +1454,98 @@ td {
 
 .trend-line {
   transition: stroke 0.2s ease;
+}
+
+/* System Health Card */
+.system-health-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.system-health-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.system-health-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.system-health-timeframe {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.system-health-body {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.system-health-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 0;
+}
+
+.system-health-rings {
+  display: block;
+  margin: 0 auto;
+}
+
+.system-health-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 280px;
+}
+
+.system-health-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.system-health-legend .legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.system-health-legend .legend-label {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.system-health-legend .legend-status {
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.system-health-loading,
+.system-health-error {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 @media (max-width: 768px) {
