@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** December 19, 2024  
+**Last Updated:** October 31, 2025  
 **Status:** Production Ready - Multi-Broker Scale Validated  
 **Current Phase:** Campaign Optimization + Portal Deployment + Lead Management Enhancement + Broker RLS Setup
-**Latest Updates:** 🎉 **MULTI-BROKER SCALE VALIDATION COMPLETE** - Dan Thomas broker setup complete! Both Walter Richards (CA) and Dan Thomas (Bay Area) running simultaneously with full territory isolation, phone number pool rotation, and parallel campaign operation. All core systems production-ready: Barbara V3 voice AI, OpenAI Realtime bridge, Nylas calendar integration, automated call evaluation, Vue.js prompt management portal, comprehensive lead management interface, and complete UI/UX overhaul. Ready for 10+ broker scaling with remaining tasks: campaign copy refinement, portal Vercel deployment, lead management enhancements, and broker RLS policies.
+**Latest Updates:** 🎉 **SYSTEM METRICS DASHBOARD COMPLETE** - Built comprehensive real-time monitoring system deployed as Supabase Edge Function. Monitors all critical infrastructure (Fly.io, Northflank) and AI service dependencies (OpenAI Realtime API, Google Gemini, SignalWire Voice/SMS). Removed monitoring load from barbara-v3 bridge for better performance. Added beautiful 6-ring health visualization to main dashboard showing "6/6 Operational" with color-coded status (green/yellow/red). All services monitored in real-time with 30-60 second refresh intervals.
 
 ---
 
@@ -943,7 +943,108 @@ equity-connect/ (Git Monorepo)
 - [ ] Add lead assignment workflow (territory-based routing)
 - [ ] Implement lead scoring system (AI-powered qualification)
 
-**16. Lead Detail Page Enhancements** ⭐ **PRODUCTION READY** (OCT 28, 2025)
+**16. System Metrics Dashboard** ⭐ **PRODUCTION READY** (OCT 31, 2025)
+- **Purpose:** Real-time infrastructure and service dependency monitoring with comprehensive health visualization
+- **Architecture:** Supabase Edge Function (Deno) + Vue 3 Portal Integration + API Status Aggregation
+- **Deployment:** Edge Function on Supabase global network + Vue dashboard components
+- **Status:** ✅ **PRODUCTION READY - Independent Service Deployed**
+
+**Core Features (LIVE):**
+- ✅ **Supabase Edge Function** - Independent monitoring service (removed from barbara-v3 bridge)
+  - Endpoint: `https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/system-metrics`
+  - Monitors 5 platforms: Fly.io, Northflank, OpenAI, Gemini, SignalWire
+  - Auto-scaling global edge deployment
+  - CORS-enabled for cross-origin requests
+  - 30-second average response time
+- ✅ **Infrastructure Monitoring**
+  - Fly.io: barbara-v3-voice app status, machine health (2/3 running), deployment version
+  - Northflank: 5 n8n services (n8n, n8n-worker, n8n-custom-build, barbara-mcp, swarmtrace-mcp)
+  - Service status detection: Running/Stopped/Degraded/Error
+  - Replica counts and health checks
+- ✅ **AI Service Dependencies**
+  - OpenAI: Platform status + Realtime API + Chat API (critical for Barbara)
+  - Google Gemini: API status + active incident detection
+  - SignalWire: Platform + Voice/Calling + Messaging/SMS + AI Services + API/Dashboard
+  - RSS feed parsing for incident tracking
+  - Active incident categorization by service type
+- ✅ **System Analytics Page** (`/admin/system-analytics`) - Detailed service monitoring
+  - Real-time status cards for all 5 platforms
+  - Individual service breakdowns with operational status
+  - Auto-refresh every 30 seconds
+  - Dark mode theming with proper card styling
+  - Color-coded status tags (green/yellow/red)
+  - "Critical Dependency" badges for business-critical services
+- ✅ **Dashboard Health Card** - 6-ring visualization on main dashboard
+  - Concentric ring design matching AI Performance card aesthetic
+  - Color-coded rings: Green (operational), Yellow (degraded), Red (down)
+  - Center displays: "6/6" healthy services count
+  - Legend shows: Service name + real-time status text (Operational/Running/Degraded/Down)
+  - Auto-refresh every 60 seconds
+  - Positioned as 2nd card after AI Performance
+  - 6 rings represent: OpenAI Realtime, SignalWire Voice, Fly.io, Northflank, Gemini, SignalWire SMS
+
+**Implementation Details:**
+- ✅ **Status Aggregation Logic**
+  - Filters out unconfigured services from health percentage
+  - Only counts monitored services (excludes unknown/error states)
+  - Prioritizes running replica counts for Northflank (simplified detection)
+  - Handles both string and object response formats from APIs
+- ✅ **API Integration**
+  - Fly.io: GraphQL API with machine state queries
+  - Northflank: REST API with service detail endpoints (fixed status parsing)
+  - OpenAI: Public status page JSON endpoint (`status.openai.com/api/v2/status.json`)
+  - Gemini: Google Cloud incidents JSON endpoint (`status.cloud.google.com/incidents.json`)
+  - SignalWire: RSS feed parsing with HTML content extraction (`status.signalwire.com/history.rss`)
+- ✅ **Error Handling & Resilience**
+  - 5-second timeout on all external API calls
+  - Graceful degradation when services unavailable
+  - Console logging for debugging Northflank API responses
+  - Fallback status displays
+
+**Database & Secrets:**
+- ✅ Supabase Vault secrets created via SQL MCP:
+  - `FLY_API_TOKEN` - Fly.io GraphQL API access
+  - `NORTHFLANK_API_TOKEN` - Northflank REST API access
+  - `NORTHFLANK_PROJECT_ID` - n8n-with-worker project
+- ✅ Edge Function environment variables configured in Supabase Dashboard
+- ✅ Authorization via Supabase anon key (JWT verification enabled)
+
+**Key Accomplishments (OCT 31):**
+- ✅ Built and deployed Supabase Edge Function for system monitoring
+- ✅ Removed monitoring code from barbara-v3 bridge (reduced load)
+- ✅ Created comprehensive System Analytics page with real-time updates
+- ✅ Added 6-ring health visualization to main dashboard (2nd card position)
+- ✅ Fixed CORS headers for cross-origin requests (added authorization header support)
+- ✅ Implemented proper status detection for Northflank services (runningInstances > 0 = Running)
+- ✅ Added debug logging for API response troubleshooting
+- ✅ Simplified health calculation to ignore unconfigured services
+- ✅ Fixed "Critical" badge to show "Critical Dependency" (informational, not error)
+- ✅ Set environment variables via Supabase MCP using SQL vault.create_secret()
+- ✅ All changes committed and pushed to production (4 commits)
+
+**Files Created:**
+- `supabase/functions/system-metrics/index.ts` - Edge Function with monitoring logic
+- `SYSTEM_METRICS_SUPABASE_EDGE_FUNCTION.md` - Technical documentation
+- `setup-supabase-secrets.md` - Environment variable setup guide
+- `SETUP_COMPLETE.md` - Quick reference guide
+
+**Files Modified:**
+- `portal/src/views/admin/SystemAnalytics.vue` - Updated to use Supabase Edge Function endpoint
+- `portal/src/views/admin/Dashboard.vue` - Added 6-ring System Health card
+
+**Files Removed:**
+- `monitoring/` directory - Vercel version removed (switched to Supabase)
+- `barbara-v3/src/services/system-metrics.ts` - Moved to independent Edge Function
+- `barbara-v3/src/routes/api.ts` - Removed /api/system-metrics route
+
+**Next Steps:**
+- [ ] Add historical uptime tracking and trends
+- [ ] Implement alerting for service degradation (email/Slack notifications)
+- [ ] Add response time monitoring for critical services
+- [ ] Build incident history timeline
+- [ ] Add cost tracking for infrastructure services
+
+**17. Lead Detail Page Enhancements** ⭐ **PRODUCTION READY** (OCT 28, 2025)
 - **Purpose:** Advanced lead detail interface with call transcript modal, evaluation scores, and responsive design
 - **Architecture:** Vue 3 + Vite + Supabase + Naive UI + Google Maps Embed API
 - **Deployment:** Vercel (auto-deploy on `portal/**` changes)
