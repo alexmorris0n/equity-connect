@@ -126,6 +126,28 @@ app.get('/api/active-calls', async (request, reply) => {
 });
 
 /**
+ * System Metrics API
+ * Returns deployment status from Fly.io and Northflank
+ */
+app.get('/api/system-metrics', async (request, reply) => {
+  try {
+    const { getSystemMetrics } = require('./api/system-metrics');
+    const metrics = await getSystemMetrics();
+    
+    return reply.code(200).send({
+      success: true,
+      metrics: metrics
+    });
+  } catch (err) {
+    app.log.error({ err }, 'Error getting system metrics');
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
  * LaML XML Endpoint for Inbound Calls
  * SignalWire calls this when an inbound call arrives
  */
@@ -706,7 +728,9 @@ app.get('/', async (request, reply) => {
       inbound_xml: '/public/inbound-xml',
       outbound_xml: '/public/outbound-xml',
       start_call: 'POST /start-call',
-      websocket: 'ws://[host]/audiostream'
+      websocket: 'ws://[host]/audiostream',
+      active_calls: '/api/active-calls',
+      system_metrics: '/api/system-metrics'
     },
     features: [
       'Inbound PSTN calls via SignalWire',

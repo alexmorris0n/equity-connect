@@ -17,6 +17,7 @@
     "@fastify/websocket": "^10.0.1",
     "@signalwire/realtime-api": "^4.1.0",
     "@supabase/supabase-js": "^2.39.7",
+    "axios": "^1.6.5",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
     "fastify": "^4.26.0",
