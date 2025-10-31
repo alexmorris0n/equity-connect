@@ -309,6 +309,7 @@ async function handleSignOut() {
   cursor: pointer;
   transition: background 160ms ease;
   height: 50px;
+  overflow: visible;
 }
 
 .workspace-brand:hover {
@@ -325,10 +326,13 @@ async function handleSignOut() {
   height: 100%;
   transition: transform 180ms ease, filter 180ms ease;
   display: block;
+  transform: scale(1.3);
+  transform-origin: center center;
 }
 
 .workspace-logo--collapsed {
   max-width: 80px;
+  transform: scale(1.2);
 }
 
 .workspace-icon {

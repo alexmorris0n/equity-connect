@@ -868,8 +868,12 @@ onMounted(() => {
   gap: 1.5rem;
 }
 
-.profile-section label {
+:root[data-theme='dark'] .profile-section label {
   color: white !important;
+}
+
+:root[data-theme='light'] .profile-section label {
+  color: var(--text-color);
 }
 
 .profile-item {
@@ -878,15 +882,27 @@ onMounted(() => {
   gap: 0.5rem;
 }
 
-.profile-item label {
+:root[data-theme='dark'] .profile-item label {
   font-weight: 500;
   color: white !important;
   font-size: 0.9rem;
 }
 
-.help-text {
+:root[data-theme='light'] .profile-item label {
+  font-weight: 500;
+  color: var(--text-color);
+  font-size: 0.9rem;
+}
+
+:root[data-theme='dark'] .help-text {
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.6);
+  margin-top: 0.25rem;
+}
+
+:root[data-theme='light'] .help-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
   margin-top: 0.25rem;
 }
 
@@ -1008,16 +1024,22 @@ onMounted(() => {
   color: var(--text-inverse) !important;
 }
 
-.password-modal-card :deep(.n-input),
-.password-modal-card :deep(.n-input__input-el) {
+:root[data-theme='dark'] .password-modal-card :deep(.n-input),
+:root[data-theme='dark'] .password-modal-card :deep(.n-input__input-el) {
   background-color: rgba(0, 0, 0, 0.3) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: white !important;
 }
 
-.password-modal-card :deep(.n-input .n-input__input-el) {
+:root[data-theme='dark'] .password-modal-card :deep(.n-input .n-input__input-el) {
   color: white !important;
   -webkit-text-fill-color: white !important;
+}
+
+/* Light mode - use default Naive UI styling for password modal */
+:root[data-theme='light'] .password-modal-card :deep(.n-input),
+:root[data-theme='light'] .password-modal-card :deep(.n-input__input-el) {
+  color: var(--text-color);
 }
 
 @media (max-width: 768px) {

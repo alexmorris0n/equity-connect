@@ -443,6 +443,116 @@
           </div>
         </n-card>
 
+        <!-- Supabase Section -->
+        <n-card title="Supabase" class="platform-card" :bordered="false" :style="cardStyle">
+          <template #header-extra>
+            <n-tag :type="supabaseStatusType" size="small">
+              {{ supabaseStatusText }}
+            </n-tag>
+          </template>
+
+          <div v-if="!metrics?.infrastructure?.supabase?.available" class="platform-unavailable">
+            <n-alert type="warning" :show-icon="false">
+              <div class="unavailable-content">
+                <n-icon size="24"><WarningOutline /></n-icon>
+                <div>
+                  <div class="unavailable-title">Supabase monitoring unavailable</div>
+                  <div class="unavailable-text">{{ metrics?.infrastructure?.supabase?.error || 'Unable to fetch status' }}</div>
+                </div>
+              </div>
+            </n-alert>
+          </div>
+
+          <div v-else class="services-list">
+            <div 
+              v-for="service in metrics?.infrastructure?.supabase?.services" 
+              :key="service.name"
+              class="service-item"
+            >
+              <div class="service-header">
+                <div class="service-name">
+                  <n-icon size="20" class="platform-icon" style="color: #3ECF8E;"><CloudOutline /></n-icon>
+                  <span>{{ service.name }}</span>
+                </div>
+                <n-tag 
+                  :type="service.operational ? 'success' : 'error'" 
+                  size="small"
+                  :bordered="false"
+                >
+                  {{ service.status === 'operational' ? 'Operational' : service.status }}
+                </n-tag>
+              </div>
+
+              <div class="service-details">
+                <div class="detail-item">
+                  <span class="service-description">{{ service.description }}</span>
+                </div>
+              </div>
+            </div>
+
+            <n-empty 
+              v-if="!metrics?.infrastructure?.supabase?.services || metrics.infrastructure.supabase.services.length === 0"
+              description="No Supabase services data"
+              size="small"
+            />
+          </div>
+        </n-card>
+
+        <!-- Vercel Section -->
+        <n-card title="Vercel (Portal)" class="platform-card" :bordered="false" :style="cardStyle">
+          <template #header-extra>
+            <n-tag :type="vercelStatusType" size="small">
+              {{ vercelStatusText }}
+            </n-tag>
+          </template>
+
+          <div v-if="!metrics?.infrastructure?.vercel?.available" class="platform-unavailable">
+            <n-alert type="warning" :show-icon="false">
+              <div class="unavailable-content">
+                <n-icon size="24"><WarningOutline /></n-icon>
+                <div>
+                  <div class="unavailable-title">Vercel monitoring unavailable</div>
+                  <div class="unavailable-text">{{ metrics?.infrastructure?.vercel?.error || 'Unable to fetch status' }}</div>
+                </div>
+              </div>
+            </n-alert>
+          </div>
+
+          <div v-else class="services-list">
+            <div 
+              v-for="service in metrics?.infrastructure?.vercel?.services" 
+              :key="service.name"
+              class="service-item"
+            >
+              <div class="service-header">
+                <div class="service-name">
+                  <n-icon size="20" class="platform-icon"><GlobeOutline /></n-icon>
+                  <span>{{ service.name }}</span>
+                </div>
+                <n-tag 
+                  :type="service.operational ? 'success' : 'error'" 
+                  size="small"
+                  :bordered="false"
+                >
+                  {{ service.status === 'operational' ? 'Operational' : service.status }}
+                </n-tag>
+              </div>
+
+              <div class="service-details">
+                <div class="detail-item">
+                  <span class="service-description">{{ service.description }}</span>
+                </div>
+              </div>
+            </div>
+
+            <n-empty 
+              v-if="!metrics?.infrastructure?.vercel?.services || metrics.infrastructure.vercel.services.length === 0"
+              description="No Vercel services data"
+              size="small"
+            />
+          </div>
+        </n-card>
+
       </div>
 
       <!-- Auto-refresh Toggle -->
@@ -641,6 +751,34 @@ const northflankStatusText = computed(() => {
   return `${servicesCount} service${servicesCount !== 1 ? 's' : ''}`;
 });
 
+const supabaseStatusType = computed(() => {
+  if (!metrics.value?.infrastructure?.supabase?.available) return 'warning';
+  const hasIssues = metrics.value.infrastructure.supabase.services?.some(s => !s.operational);
+  if (hasIssues) return 'error';
+  return 'success';
+});
+
+const supabaseStatusText = computed(() => {
+  const status = metrics.value?.infrastructure?.supabase?.overallStatus;
+  if (status === 'operational') return 'Operational';
+  if (status === 'degraded') return 'Degraded';
+  return status || 'Unknown';
+});
+
+const vercelStatusType = computed(() => {
+  if (!metrics.value?.infrastructure?.vercel?.available) return 'warning';
+  const hasIssues = metrics.value.infrastructure.vercel.services?.some(s => !s.operational);
+  if (hasIssues) return 'error';
+  return 'success';
+});
+
+const vercelStatusText = computed(() => {
+  const status = metrics.value?.infrastructure?.vercel?.overallStatus;
+  if (status === 'operational') return 'Operational';
+  if (status === 'degraded') return 'Degraded';
+  return status || 'Unknown';
+});
+
 // AI Services status
 const openaiStatusType = computed(() => {
   if (!metrics.value?.dependencies?.openai?.available) return 'warning';
@@ -781,7 +919,7 @@ onUnmounted(() => {
 .metrics-content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 /* Health Overview Card */
@@ -883,8 +1021,8 @@ onUnmounted(() => {
 /* Platforms Grid */
 .platforms-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 16px;
 }
 
 @media (max-width: 768px) {
@@ -921,12 +1059,12 @@ onUnmounted(() => {
 .services-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .service-item {
-  padding: 16px;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-color);
   transition: all 0.2s ease;

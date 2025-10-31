@@ -38,50 +38,55 @@ async function getOpenAIStatus(): Promise<PlatformStatus> {
     const components: any[] = statusData.components || [];
     const services: ServiceStatus[] = [];
 
+    // Debug: log component names to see what's available
+    console.log('OpenAI components:', components.map(c => c.name));
+
+    // Only monitor the specific APIs we actually use
+    // Search for Realtime API (might be under different names)
+    const realtimeAPI = components.find((c: any) => {
+      const name = c.name.toLowerCase();
+      return name.includes('realtime') || 
+             name.includes('real-time') ||
+             name.includes('real time');
+    });
+    
+    // Always show Realtime API status (critical for Barbara)
     services.push({
-      name: 'OpenAI Platform',
-      status: statusData.status?.indicator || 'unknown',
-      description: statusData.status?.description || 'OpenAI Services',
-      statusPage: 'https://status.openai.com',
-      operational: statusData.status?.indicator === 'none',
-      platform: 'openai'
+      name: 'Realtime API',
+      status: realtimeAPI ? realtimeAPI.status : 'operational',
+      description: 'Barbara Voice Calls (CRITICAL)',
+      operational: realtimeAPI ? realtimeAPI.status === 'operational' : true,
+      lastUpdated: realtimeAPI?.updated_at,
+      platform: 'openai',
+      statusPage: 'https://status.openai.com'
     });
 
-    const realtimeAPI = components.find((c: any) => 
-      c.name.toLowerCase().includes('realtime') || 
-      c.name.toLowerCase().includes('real-time')
-    );
+    // Search for Chat/API components
+    const chatAPI = components.find((c: any) => {
+      const name = c.name.toLowerCase();
+      return name.includes('chat completions') ||
+             name.includes('completions') ||
+             (name.includes('api') && !name.includes('assistants'));
+    });
     
-    if (realtimeAPI) {
-      services.push({
-        name: 'Realtime API',
-        status: realtimeAPI.status,
-        description: realtimeAPI.description || 'OpenAI Realtime API',
-        operational: realtimeAPI.status === 'operational',
-        lastUpdated: realtimeAPI.updated_at,
-        platform: 'openai'
-      });
-    }
+    // Always show Chat API status
+    services.push({
+      name: 'Chat Completions',
+      status: chatAPI ? chatAPI.status : 'operational',
+      description: 'Call Evaluations (GPT-4/5)',
+      operational: chatAPI ? chatAPI.status === 'operational' : true,
+      lastUpdated: chatAPI?.updated_at,
+      platform: 'openai',
+      statusPage: 'https://status.openai.com'
+    });
 
-    const chatAPI = components.find((c: any) => 
-      c.name.toLowerCase().includes('chat') || 
-      c.name.toLowerCase().includes('api')
-    );
+    // Overall status based ONLY on the APIs we use
+    const allOperational = services.every(s => s.operational);
+    const anyDegraded = services.some(s => s.status === 'degraded');
     
-    if (chatAPI) {
-      services.push({
-        name: 'Chat API',
-        status: chatAPI.status,
-        description: chatAPI.description || 'OpenAI Chat Completions',
-        operational: chatAPI.status === 'operational',
-        lastUpdated: chatAPI.updated_at,
-        platform: 'openai'
-      });
-    }
-
     return {
       available: true,
-      overallStatus: statusData.status?.indicator === 'none' ? 'operational' : statusData.status?.indicator,
+      overallStatus: allOperational ? 'operational' : (anyDegraded ? 'degraded' : 'major_outage'),
       services,
       lastChecked: new Date().toISOString()
     };
@@ -130,9 +135,9 @@ async function getGeminiStatus(): Promise<PlatformStatus> {
     const services: ServiceStatus[] = [];
 
     services.push({
-      name: 'Gemini API',
+      name: 'Vertex AI',
       status: activeIncidents.length > 0 ? 'degraded' : 'operational',
-      description: 'Google Gemini AI API',
+      description: 'Vector Search + Gemini 2.5 Flash',
       operational: activeIncidents.length === 0,
       activeIncidents: activeIncidents.length,
       statusPage: 'https://status.cloud.google.com',
@@ -608,21 +613,198 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
   }
 }
 
+// Fetch Supabase status
+async function getSupabaseStatus(): Promise<PlatformStatus> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch('https://status.supabase.com/api/v2/status.json', {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const statusData: any = await response.json();
+    const components: any[] = statusData.components || [];
+    const services: ServiceStatus[] = [];
+
+    // Only monitor the services we actually use
+    const database = components.find((c: any) => 
+      c.name.toLowerCase().includes('database') || 
+      c.name.toLowerCase().includes('postgres')
+    );
+    
+    services.push({
+      name: 'Database',
+      status: database ? database.status : 'operational',
+      description: 'PostgreSQL + Vector Store',
+      operational: database ? database.status === 'operational' : true,
+      lastUpdated: database?.updated_at,
+      platform: 'supabase',
+      statusPage: 'https://status.supabase.com'
+    });
+
+    const auth = components.find((c: any) => 
+      c.name.toLowerCase().includes('auth')
+    );
+    
+    services.push({
+      name: 'Authentication',
+      status: auth ? auth.status : 'operational',
+      description: 'Portal Login & Sessions',
+      operational: auth ? auth.status === 'operational' : true,
+      lastUpdated: auth?.updated_at,
+      platform: 'supabase',
+      statusPage: 'https://status.supabase.com'
+    });
+
+    const edgeFunctions = components.find((c: any) => 
+      c.name.toLowerCase().includes('edge function') ||
+      c.name.toLowerCase().includes('functions')
+    );
+    
+    services.push({
+      name: 'Edge Functions',
+      status: edgeFunctions ? edgeFunctions.status : 'operational',
+      description: 'System Monitoring',
+      operational: edgeFunctions ? edgeFunctions.status === 'operational' : true,
+      lastUpdated: edgeFunctions?.updated_at,
+      platform: 'supabase',
+      statusPage: 'https://status.supabase.com'
+    });
+
+    const allOperational = services.every(s => s.operational);
+    const anyDegraded = services.some(s => s.status === 'degraded');
+    
+    return {
+      available: true,
+      overallStatus: allOperational ? 'operational' : (anyDegraded ? 'degraded' : 'major_outage'),
+      services,
+      lastChecked: new Date().toISOString()
+    };
+
+  } catch (error: any) {
+    console.error('Supabase status error:', error.message);
+    return {
+      available: false,
+      error: error.message,
+      services: [{
+        name: 'Supabase',
+        status: 'unknown',
+        description: 'Unable to fetch status',
+        statusPage: 'https://status.supabase.com',
+        operational: false,
+        platform: 'supabase'
+      }],
+      lastChecked: new Date().toISOString()
+    };
+  }
+}
+
+// Fetch Vercel status
+async function getVercelStatus(): Promise<PlatformStatus> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch('https://www.vercel-status.com/api/v2/status.json', {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    const statusData: any = await response.json();
+    const components: any[] = statusData.components || [];
+    const services: ServiceStatus[] = [];
+
+    // Monitor the services critical for portal hosting
+    const edgeNetwork = components.find((c: any) => 
+      c.name.toLowerCase().includes('edge network')
+    );
+    
+    services.push({
+      name: 'Edge Network',
+      status: edgeNetwork ? edgeNetwork.status : 'operational',
+      description: 'Portal Delivery (barbarapro.com)',
+      operational: edgeNetwork ? edgeNetwork.status === 'operational' : true,
+      lastUpdated: edgeNetwork?.updated_at,
+      platform: 'vercel',
+      statusPage: 'https://www.vercel-status.com'
+    });
+
+    const buildDeploy = components.find((c: any) => 
+      c.name.toLowerCase().includes('build') && c.name.toLowerCase().includes('deploy')
+    );
+    
+    services.push({
+      name: 'Build & Deploy',
+      status: buildDeploy ? buildDeploy.status : 'operational',
+      description: 'Auto-Deploy from Git',
+      operational: buildDeploy ? buildDeploy.status === 'operational' : true,
+      lastUpdated: buildDeploy?.updated_at,
+      platform: 'vercel',
+      statusPage: 'https://www.vercel-status.com'
+    });
+
+    const allOperational = services.every(s => s.operational);
+    const anyDegraded = services.some(s => s.status === 'degraded');
+    
+    return {
+      available: true,
+      overallStatus: allOperational ? 'operational' : (anyDegraded ? 'degraded' : 'major_outage'),
+      services,
+      lastChecked: new Date().toISOString()
+    };
+
+  } catch (error: any) {
+    console.error('Vercel status error:', error.message);
+    return {
+      available: false,
+      error: error.message,
+      services: [{
+        name: 'Vercel',
+        status: 'unknown',
+        description: 'Unable to fetch status',
+        statusPage: 'https://www.vercel-status.com',
+        operational: false,
+        platform: 'vercel'
+      }],
+      lastChecked: new Date().toISOString()
+    };
+  }
+}
+
 // Get comprehensive system metrics
 async function getSystemMetrics() {
   try {
-    const [openai, gemini, signalwire, flyio, northflank] = await Promise.all([
+    const [openai, gemini, signalwire, flyio, northflank, supabase, vercel] = await Promise.all([
       getOpenAIStatus(),
       getGeminiStatus(),
       getSignalWireStatus(),
       getFlyioStatus(),
-      getNorthflankStatus()
+      getNorthflankStatus(),
+      getSupabaseStatus(),
+      getVercelStatus()
     ]);
 
     const allServices = [
       ...(flyio.apps || []).map((a: any) => ({ ...a, source: 'flyio' })),
       ...(northflank.services || []).map((s: any) => ({ ...s, source: 'northflank' }))
     ];
+
+    // Count platforms (7 total: OpenAI, Vertex, SignalWire, Fly.io, Northflank, Supabase, Vercel)
+    const platforms = [
+      { name: 'OpenAI', healthy: openai.overallStatus === 'operational' || openai.overallStatus === 'none' },
+      { name: 'Vertex AI', healthy: gemini.overallStatus === 'operational' },
+      { name: 'SignalWire', healthy: signalwire.overallStatus === 'operational' || signalwire.overallStatus === 'none' },
+      { name: 'Fly.io', healthy: flyio.available && (flyio.apps || []).some((a: any) => a.healthy || a.deployed) },
+      { name: 'Northflank', healthy: northflank.available && (northflank.services || []).some((s: any) => s.operational || s.running) },
+      { name: 'Supabase', healthy: supabase.overallStatus === 'operational' },
+      { name: 'Vercel', healthy: vercel.overallStatus === 'operational' }
+    ];
+
+    const healthyPlatformsCount = platforms.filter(p => p.healthy).length;
+    const totalPlatformsCount = platforms.length;
+    const healthPercentage = totalPlatformsCount > 0 ? Math.round((healthyPlatformsCount / totalPlatformsCount) * 100) : 100;
 
     // Only count services that are actually monitored (not in error/unknown state due to missing config)
     const monitoredServices = allServices.filter((s: any) => 
@@ -637,7 +819,6 @@ async function getSystemMetrics() {
     ).length;
 
     const totalCount = monitoredServices.length;
-    const healthPercentage = totalCount > 0 ? Math.round((healthyCount / totalCount) * 100) : 100;
 
     let overallStatus = 'healthy';
     if (totalCount === 0) {
@@ -664,15 +845,17 @@ async function getSystemMetrics() {
       overall: {
         status: overallStatus,
         healthPercentage,
-        totalServices: allServices.length,
-        monitoredServices: totalCount,
-        healthyServices: healthyCount,
-        unhealthyServices: totalCount - healthyCount,
+        totalServices: totalPlatformsCount, // 7 platforms total
+        monitoredServices: totalPlatformsCount,
+        healthyServices: healthyPlatformsCount,
+        unhealthyServices: totalPlatformsCount - healthyPlatformsCount,
         thirdPartyIssues
       },
       infrastructure: {
         flyio,
-        northflank
+        northflank,
+        supabase,
+        vercel
       },
       dependencies: {
         openai,
@@ -690,7 +873,9 @@ async function getSystemMetrics() {
       },
       infrastructure: {
         flyio: { available: false, apps: [] },
-        northflank: { available: false, services: [] }
+        northflank: { available: false, services: [] },
+        supabase: { available: false, services: [] },
+        vercel: { available: false, services: [] }
       },
       dependencies: {
         openai: { available: false, services: [] },

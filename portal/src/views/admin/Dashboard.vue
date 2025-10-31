@@ -454,7 +454,7 @@ const systemHealth = reactive({
   loading: true,
   available: false,
   healthyCount: 0,
-  totalCount: 6,
+  totalCount: 7,
   rings: []
 })
 
@@ -686,17 +686,24 @@ async function loadSystemHealth() {
         metrics.dependencies?.signalwire?.overallStatus === 'none'
       const signalwireDegraded = metrics.dependencies?.signalwire?.overallStatus === 'degraded'
       
-      // Count healthy platforms - for the 6 rings displayed
+      const supabaseHealthy = metrics.infrastructure?.supabase?.overallStatus === 'operational'
+      const supabaseDegraded = metrics.infrastructure?.supabase?.overallStatus === 'degraded'
+      
+      const vercelHealthy = metrics.infrastructure?.vercel?.overallStatus === 'operational'
+      const vercelDegraded = metrics.infrastructure?.vercel?.overallStatus === 'degraded'
+      
+      // Count healthy platforms - for the 7 rings displayed
       const healthyPlatforms = [
         flyioHealthy,
         northflankHealthy,
-        openaiHealthy && !openaiDegraded, // Only count as fully healthy if not degraded
+        supabaseHealthy && !supabaseDegraded,
+        vercelHealthy && !vercelDegraded,
+        openaiHealthy && !openaiDegraded,
         geminiHealthy && !geminiDegraded,
-        signalwireHealthy && !signalwireDegraded,
-        signalwireHealthy && !signalwireDegraded // SignalWire counts for both Voice and SMS
+        signalwireHealthy && !signalwireDegraded
       ].filter(Boolean).length
       
-      // Create 6 rings (top 6 most important services/platforms)
+      // Create 7 rings (all critical platforms)
       systemHealth.rings = [
         { 
           label: 'OpenAI Realtime', 
@@ -704,6 +711,13 @@ async function loadSystemHealth() {
           degraded: openaiDegraded,
           color: getHealthColor(openaiHealthy, openaiDegraded),
           statusText: openaiHealthy ? 'Operational' : (openaiDegraded ? 'Degraded' : 'Down')
+        },
+        { 
+          label: 'Vertex AI', 
+          healthy: geminiHealthy, 
+          degraded: geminiDegraded,
+          color: getHealthColor(geminiHealthy, geminiDegraded),
+          statusText: geminiHealthy ? 'Operational' : (geminiDegraded ? 'Degraded' : 'Down')
         },
         { 
           label: 'SignalWire Voice', 
@@ -727,23 +741,23 @@ async function loadSystemHealth() {
           statusText: northflankRateLimited ? 'Rate Limited' : (northflankHealthy ? 'Running' : 'Down')
         },
         { 
-          label: 'Google Gemini', 
-          healthy: geminiHealthy, 
-          degraded: geminiDegraded,
-          color: getHealthColor(geminiHealthy, geminiDegraded),
-          statusText: geminiHealthy ? 'Operational' : (geminiDegraded ? 'Degraded' : 'Down')
+          label: 'Supabase', 
+          healthy: supabaseHealthy, 
+          degraded: supabaseDegraded,
+          color: getHealthColor(supabaseHealthy, supabaseDegraded),
+          statusText: supabaseHealthy ? 'Operational' : (supabaseDegraded ? 'Degraded' : 'Down')
         },
         { 
-          label: 'SignalWire SMS', 
-          healthy: signalwireHealthy, 
-          degraded: signalwireDegraded,
-          color: getHealthColor(signalwireHealthy, signalwireDegraded),
-          statusText: signalwireHealthy ? 'Operational' : (signalwireDegraded ? 'Degraded' : 'Down')
+          label: 'Vercel (Portal)', 
+          healthy: vercelHealthy, 
+          degraded: vercelDegraded,
+          color: getHealthColor(vercelHealthy, vercelDegraded),
+          statusText: vercelHealthy ? 'Operational' : (vercelDegraded ? 'Degraded' : 'Down')
         }
       ]
       
       systemHealth.healthyCount = healthyPlatforms
-      systemHealth.totalCount = 6
+      systemHealth.totalCount = 7
       systemHealth.available = true
     }
   } catch (error) {
