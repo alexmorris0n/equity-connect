@@ -196,8 +196,8 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
     const xmlText = await response.text();
     
     // Parse RSS XML to find active incidents
-    // Extract items and check if latest status is "Resolved"
-    const itemPattern = /<item>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>[\s\S]*?<description><!\[CDATA\[(.*?)\]\]><\/description>[\s\S]*?<pubDate>(.*?)<\/pubDate>/g;
+    // SignalWire uses <content:encoded> for the incident details
+    const itemPattern = /<item>[\s\S]*?<title><!\[CDATA\[(.*?)\]\]><\/title>[\s\S]*?<content:encoded><!\[CDATA\[(.*?)\]\]><\/content:encoded>[\s\S]*?<pubDate>(.*?)<\/pubDate>/g;
     
     const services: ServiceStatus[] = [];
     let hasActiveIncidents = false;
@@ -206,23 +206,28 @@ async function getSignalWireStatus(): Promise<PlatformStatus> {
     let match;
     while ((match = itemPattern.exec(xmlText)) !== null) {
       const title = match[1];
-      const description = match[2];
+      const content = match[2]; // HTML content with status updates
       const pubDate = match[3];
       
-      // Check the latest status in the description
-      // Look for status patterns: "Resolved", "Monitoring", "Identified", "Investigating"
-      const statusPattern = /(Resolved|Monitoring|Identified|Investigating|In Progress|Scheduled)/gi;
-      const statusMatches = description.match(statusPattern);
+      // Extract the first (latest) status update from the HTML content
+      // Format: <p><small>timestamp</small><br><strong>Status</strong> - description</p>
+      const firstUpdatePattern = /<p><small>.*?<\/small><br><strong>(.*?)<\/strong>/i;
+      const firstUpdateMatch = content.match(firstUpdatePattern);
       
-      // If no status found or latest status is not "Resolved", consider it active
-      // Latest status is typically at the start of the description
-      const latestStatus = statusMatches ? statusMatches[0] : '';
-      const isResolved = latestStatus.toLowerCase() === 'resolved' || 
-                        description.trim().toLowerCase().startsWith('resolved');
-      
-      if (!isResolved) {
-        hasActiveIncidents = true;
-        activeIncidents.push({ title, description, pubDate });
+      if (firstUpdateMatch) {
+        const latestStatus = firstUpdateMatch[1].trim();
+        // Consider resolved if latest status is "Resolved" or "Completed"
+        const isResolved = latestStatus.toLowerCase() === 'resolved' || 
+                          latestStatus.toLowerCase() === 'completed';
+        
+        if (!isResolved) {
+          hasActiveIncidents = true;
+          // Extract clean description from first update
+          const descMatch = content.match(/<p><small>.*?<\/small><br><strong>.*?<\/strong>\s*-\s*(.*?)<\/p>/i);
+          const description = descMatch ? descMatch[1].replace(/<[^>]*>/g, '').trim() : title;
+          
+          activeIncidents.push({ title, description, pubDate, status: latestStatus });
+        }
       }
     }
 
