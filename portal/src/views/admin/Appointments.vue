@@ -367,17 +367,32 @@ onMounted(() => {
 }
 
 .calendar-card :deep(.fc),
-.calendar-card :deep(.fc-view-harness),
-.calendar-card :deep(.fc-daygrid-day),
-.calendar-card :deep(.fc-timegrid-slot),
-.calendar-card :deep(.fc .fc-scrollgrid-section-body table),
-.calendar-card :deep(.fc .fc-scrollgrid-section-body td),
-.calendar-card :deep(.fc-scrollgrid-sync-table),
-.calendar-card :deep(.fc-timegrid-body),
-.calendar-card :deep(.fc-timegrid-cols table),
-.calendar-card :deep(.fc-scroller),
-.calendar-card :deep(.fc-scroller-liquid-absolute) {
+/* Dark mode calendar backgrounds */
+:root[data-theme='dark'] .calendar-card :deep(.fc-view-harness),
+:root[data-theme='dark'] .calendar-card :deep(.fc-daygrid-day),
+:root[data-theme='dark'] .calendar-card :deep(.fc-timegrid-slot),
+:root[data-theme='dark'] .calendar-card :deep(.fc .fc-scrollgrid-section-body table),
+:root[data-theme='dark'] .calendar-card :deep(.fc .fc-scrollgrid-section-body td),
+:root[data-theme='dark'] .calendar-card :deep(.fc-scrollgrid-sync-table),
+:root[data-theme='dark'] .calendar-card :deep(.fc-timegrid-body),
+:root[data-theme='dark'] .calendar-card :deep(.fc-timegrid-cols table),
+:root[data-theme='dark'] .calendar-card :deep(.fc-scroller),
+:root[data-theme='dark'] .calendar-card :deep(.fc-scroller-liquid-absolute) {
   background: #0f172a !important;
+}
+
+/* Light mode calendar backgrounds */
+:root[data-theme='light'] .calendar-card :deep(.fc-view-harness),
+:root[data-theme='light'] .calendar-card :deep(.fc-daygrid-day),
+:root[data-theme='light'] .calendar-card :deep(.fc-timegrid-slot),
+:root[data-theme='light'] .calendar-card :deep(.fc .fc-scrollgrid-section-body table),
+:root[data-theme='light'] .calendar-card :deep(.fc .fc-scrollgrid-section-body td),
+:root[data-theme='light'] .calendar-card :deep(.fc-scrollgrid-sync-table),
+:root[data-theme='light'] .calendar-card :deep(.fc-timegrid-body),
+:root[data-theme='light'] .calendar-card :deep(.fc-timegrid-cols table),
+:root[data-theme='light'] .calendar-card :deep(.fc-scroller),
+:root[data-theme='light'] .calendar-card :deep(.fc-scroller-liquid-absolute) {
+  background: #ffffff !important;
 }
 
 .calendar-card :deep(.fc-day-today) {
@@ -436,8 +451,14 @@ onMounted(() => {
   border-radius: 0 !important;
 }
 
-.calendar-card :deep(.fc-timegrid-axis) {
+:root[data-theme='dark'] .calendar-card :deep(.fc-timegrid-axis) {
   background: #0f172a !important;
+  border-color: var(--border-color) !important;
+  border-radius: 0 !important;
+}
+
+:root[data-theme='light'] .calendar-card :deep(.fc-timegrid-axis) {
+  background: #ffffff !important;
   border-color: var(--border-color) !important;
   border-radius: 0 !important;
 }
