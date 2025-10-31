@@ -234,12 +234,20 @@
                   </n-icon>
                   <span>{{ service.name }}</span>
                   <n-tag 
-                    v-if="service.name.toLowerCase().includes('voice') || service.name.toLowerCase().includes('call')" 
+                    v-if="(service.name.toLowerCase().includes('voice') || service.name.toLowerCase().includes('call')) && service.operational" 
+                    type="info" 
+                    size="tiny"
+                    style="margin-left: 8px;"
+                  >
+                    Critical Dependency
+                  </n-tag>
+                  <n-tag 
+                    v-if="(service.name.toLowerCase().includes('voice') || service.name.toLowerCase().includes('call')) && !service.operational" 
                     type="error" 
                     size="tiny"
                     style="margin-left: 8px;"
                   >
-                    Critical
+                    Critical - Down
                   </n-tag>
                 </div>
                 <n-tag 

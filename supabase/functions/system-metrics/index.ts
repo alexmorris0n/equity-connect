@@ -628,18 +628,26 @@ async function getSystemMetrics() {
       ...(northflank.services || []).map((s: any) => ({ ...s, source: 'northflank' }))
     ];
 
-    const healthyCount = allServices.filter((s: any) => 
+    // Only count services that are actually monitored (not in error/unknown state due to missing config)
+    const monitoredServices = allServices.filter((s: any) => 
+      s.status !== 'unknown' && !s.error
+    );
+
+    const healthyCount = monitoredServices.filter((s: any) => 
       s.status === 'running' || 
       s.healthy === true || 
       s.deployed === true ||
       (s.runningMachines && s.runningMachines > 0)
     ).length;
 
-    const totalCount = allServices.length;
-    const healthPercentage = totalCount > 0 ? Math.round((healthyCount / totalCount) * 100) : 0;
+    const totalCount = monitoredServices.length;
+    const healthPercentage = totalCount > 0 ? Math.round((healthyCount / totalCount) * 100) : 100;
 
     let overallStatus = 'healthy';
-    if (healthPercentage < 50) {
+    if (totalCount === 0) {
+      // No services monitored yet, check dependencies only
+      overallStatus = (flyio.available || northflank.available) ? 'healthy' : 'degraded';
+    } else if (healthPercentage < 50) {
       overallStatus = 'critical';
     } else if (healthPercentage < 100) {
       overallStatus = 'degraded';
@@ -660,7 +668,8 @@ async function getSystemMetrics() {
       overall: {
         status: overallStatus,
         healthPercentage,
-        totalServices: totalCount,
+        totalServices: allServices.length,
+        monitoredServices: totalCount,
         healthyServices: healthyCount,
         unhealthyServices: totalCount - healthyCount,
         thirdPartyIssues
@@ -706,7 +715,7 @@ Deno.serve(async (req: Request) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
       },
     });
   }
