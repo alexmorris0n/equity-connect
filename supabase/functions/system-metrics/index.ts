@@ -513,55 +513,52 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
           const serviceData: any = await statusResponse.json();
           const serviceInfo = serviceData.data;
           
+          // Extract status fields - handle various Northflank API response formats
           const buildStatus = serviceInfo.build?.status || 'UNKNOWN';
           const deploymentStatus = serviceInfo.deployment?.status || 'UNKNOWN';
           const deploymentReason = serviceInfo.deployment?.reason || '';
-          
-          const runtimeStatus = serviceInfo.status || serviceInfo.deployment?.status;
           const healthStatus = serviceInfo.health || serviceInfo.healthStatus;
-          const instances = serviceInfo.deployment?.instances || serviceInfo.replicas || 0;
+          const instances = serviceInfo.deployment?.instances || serviceInfo.replicas || 1;
           const runningInstances = serviceInfo.deployment?.runningInstances || instances;
           
+          console.log(`Northflank ${service.name}:`, {
+            buildStatus,
+            deploymentStatus,
+            deploymentReason,
+            healthStatus,
+            runningInstances,
+            rawStatus: serviceInfo.status
+          });
+          
+          // Determine operational status
           let overallStatus = 'unknown';
           let operational = false;
           
-          if (runtimeStatus) {
-            if (runtimeStatus === 'running' || runtimeStatus === 'RUNNING') {
-              overallStatus = 'running';
-              operational = true;
-            } else if (runtimeStatus === 'stopped' || runtimeStatus === 'STOPPED') {
-              overallStatus = 'stopped';
-              operational = false;
-            } else if (runtimeStatus === 'suspended' || runtimeStatus === 'SUSPENDED') {
-              overallStatus = 'suspended';
-              operational = false;
-            } else if (runtimeStatus === 'failed' || runtimeStatus === 'FAILED') {
-              overallStatus = 'error';
-              operational = false;
-            }
+          // Simplest check: if we have running replicas, it's operational
+          if (runningInstances > 0) {
+            overallStatus = 'running';
+            operational = true;
           }
           
-          if (overallStatus === 'unknown') {
-            if (deploymentStatus === 'COMPLETED' && (deploymentReason === 'DEPLOYING' || runningInstances > 0)) {
-              overallStatus = 'running';
-              operational = true;
-            } else if (deploymentStatus === 'COMPLETED') {
-              overallStatus = 'running';
-              operational = true;
-            } else if (deploymentStatus === 'FAILED') {
-              overallStatus = 'error';
-              operational = false;
-            } else if (buildStatus === 'FAILED') {
-              overallStatus = 'error';
-              operational = false;
-            }
-          }
-          
-          if (healthStatus === 'unhealthy' || healthStatus === 'UNHEALTHY') {
-            overallStatus = 'degraded';
+          // Check explicit deployment/build failures
+          if (deploymentStatus === 'FAILED' || buildStatus === 'FAILED') {
+            overallStatus = 'error';
             operational = false;
+          }
+          
+          // Check if stopped or suspended
+          if (deploymentStatus === 'STOPPED' || deploymentReason === 'STOPPED') {
+            overallStatus = 'stopped';
+            operational = false;
+          }
+          
+          // Health check can downgrade to degraded but service still runs
+          if (healthStatus === 'unhealthy' || healthStatus === 'UNHEALTHY') {
+            if (overallStatus === 'running') {
+              overallStatus = 'degraded';
+            }
           } else if (healthStatus === 'healthy' || healthStatus === 'HEALTHY') {
-            if (overallStatus === 'unknown') {
+            if (overallStatus === 'unknown' && runningInstances > 0) {
               overallStatus = 'running';
               operational = true;
             }
@@ -580,8 +577,7 @@ async function getNorthflankStatus(): Promise<PlatformStatus> {
             operational: operational,
             platform: 'northflank',
             buildStatus: buildStatus,
-            deploymentStatus: deploymentStatus,
-            runtimeStatus: runtimeStatus
+            deploymentStatus: deploymentStatus
           };
         } catch (err: any) {
           return {
