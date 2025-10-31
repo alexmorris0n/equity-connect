@@ -3,7 +3,7 @@
 **Last Updated:** October 31, 2025  
 **Status:** Production Ready - Multi-Broker Scale Validated  
 **Current Phase:** Campaign Optimization + Portal Deployment + Lead Management Enhancement + Broker RLS Setup
-**Latest Updates:** 🎉 **SYSTEM METRICS DASHBOARD COMPLETE** - Built comprehensive real-time monitoring system deployed as Supabase Edge Function. Monitors all critical infrastructure (Fly.io, Northflank) and AI service dependencies (OpenAI Realtime API, Google Gemini, SignalWire Voice/SMS). Removed monitoring load from barbara-v3 bridge for better performance. Added beautiful 6-ring health visualization to main dashboard showing "6/6 Operational" with color-coded status (green/yellow/red). All services monitored in real-time with 30-60 second refresh intervals.
+**Latest Updates:** 🎉 **SYSTEM METRICS DASHBOARD COMPLETE + LIGHT MODE THEMING FIXED** - Built comprehensive real-time monitoring system deployed as Supabase Edge Function. Monitors all critical infrastructure (Fly.io, Northflank) and AI service dependencies (OpenAI Realtime API, Google Gemini, SignalWire Voice/SMS). Removed monitoring load from barbara-v3 bridge for better performance. Added beautiful 6-ring health visualization to main dashboard showing "6/6 Operational" with color-coded status (green/yellow/red). Fixed all light mode theming issues across portal. Added dynamic logo switching and rate limit detection. Refresh intervals set to 2 minutes to avoid API throttling.
 
 ---
 
@@ -970,18 +970,19 @@ equity-connect/ (Git Monorepo)
 - ✅ **System Analytics Page** (`/admin/system-analytics`) - Detailed service monitoring
   - Real-time status cards for all 5 platforms
   - Individual service breakdowns with operational status
-  - Auto-refresh every 30 seconds
+  - Auto-refresh every 2 minutes (120s) to avoid rate limiting
   - Dark mode theming with proper card styling
   - Color-coded status tags (green/yellow/red)
-  - "Critical Dependency" badges for business-critical services
+  - "Critical Dependency" badges for business-critical services (blue when operational, red when down)
 - ✅ **Dashboard Health Card** - 6-ring visualization on main dashboard
   - Concentric ring design matching AI Performance card aesthetic
-  - Color-coded rings: Green (operational), Yellow (degraded), Red (down)
+  - Color-coded rings: Green (operational), Yellow (degraded/rate limited), Red (down)
   - Center displays: "6/6" healthy services count
-  - Legend shows: Service name + real-time status text (Operational/Running/Degraded/Down)
-  - Auto-refresh every 60 seconds
+  - Legend shows: Service name + real-time status text (Operational/Running/Rate Limited/Degraded/Down)
+  - Auto-refresh every 2 minutes (120s) to avoid rate limiting
   - Positioned as 2nd card after AI Performance
   - 6 rings represent: OpenAI Realtime, SignalWire Voice, Fly.io, Northflank, Gemini, SignalWire SMS
+  - Rate limit detection: Shows yellow when API throttled, not red
 
 **Implementation Details:**
 - ✅ **Status Aggregation Logic**
@@ -1020,21 +1021,34 @@ equity-connect/ (Git Monorepo)
 - ✅ Simplified health calculation to ignore unconfigured services
 - ✅ Fixed "Critical" badge to show "Critical Dependency" (informational, not error)
 - ✅ Set environment variables via Supabase MCP using SQL vault.create_secret()
-- ✅ All changes committed and pushed to production (4 commits)
+- ✅ Fixed all light mode theming issues across portal (UserProfile, PromptManagement, Appointments, Login, AdminLayout)
+- ✅ Added dynamic logo switching between dark/light versions based on system theme
+- ✅ Implemented Northflank rate limit detection (shows as yellow "Rate Limited" not red "Down")
+- ✅ Increased refresh intervals to 2 minutes (4x reduction in API calls - 30/hr vs 120/hr)
+- ✅ All changes committed and pushed to production (13 commits total)
 
 **Files Created:**
 - `supabase/functions/system-metrics/index.ts` - Edge Function with monitoring logic
 - `SYSTEM_METRICS_SUPABASE_EDGE_FUNCTION.md` - Technical documentation
 - `setup-supabase-secrets.md` - Environment variable setup guide
 - `SETUP_COMPLETE.md` - Quick reference guide
+- `DAILY_SUMMARY_OCT_31_2025.md` - Comprehensive daily work summary
+- `portal/src/assets/barbara-logo-light.svg` - Light mode full logo
+- `portal/src/assets/barbara-logo-compact-light.svg` - Light mode compact logo
 
 **Files Modified:**
-- `portal/src/views/admin/SystemAnalytics.vue` - Updated to use Supabase Edge Function endpoint
-- `portal/src/views/admin/Dashboard.vue` - Added 6-ring System Health card
+- `portal/src/views/admin/SystemAnalytics.vue` - Supabase endpoint, 2min refresh, rate limit handling
+- `portal/src/views/admin/Dashboard.vue` - 6-ring Health Card, rate limit detection, 2min refresh
+- `portal/src/views/admin/UserProfile.vue` - Theme-specific card backgrounds
+- `portal/src/views/admin/PromptManagement.vue` - Theme-specific n-card backgrounds
+- `portal/src/views/admin/Appointments.vue` - Theme-specific calendar backgrounds
+- `portal/src/layouts/AdminLayout.vue` - Dynamic logo switching (dark/light)
+- `portal/src/views/Login.vue` - Dynamic logo switching (dark/light)
+- `MASTER_PRODUCTION_PLAN.md` - Updated with Oct 31 accomplishments
 
 **Files Removed:**
-- `monitoring/` directory - Vercel version removed (switched to Supabase)
-- `barbara-v3/src/services/system-metrics.ts` - Moved to independent Edge Function
+- `monitoring/` directory (entire Vercel monitoring setup)
+- `barbara-v3/src/services/system-metrics.ts` - Moved to Edge Function
 - `barbara-v3/src/routes/api.ts` - Removed /api/system-metrics route
 
 **Next Steps:**
