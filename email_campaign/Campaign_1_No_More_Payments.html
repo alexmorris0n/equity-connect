@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign 1: No More Payments</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .email {
+            background: white;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .email-header {
+            background: #4a5568;
+            color: white;
+            padding: 15px 20px;
+            margin: -30px -30px 20px -30px;
+            border-radius: 8px 8px 0 0;
+        }
+        .email-number {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .subject-line {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #edf2f7;
+            border-left: 4px solid #4a5568;
+        }
+        .email-body {
+            color: #2d3748;
+        }
+        .signature {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 14px;
+        }
+        .variable {
+            background: #fef5e7;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        h1 {
+            color: #2d3748;
+            border-bottom: 3px solid #4a5568;
+            padding-bottom: 10px;
+        }
+        .note {
+            background: #ebf8ff;
+            border-left: 4px solid #4299e1;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Campaign 1: No More Payments</h1>
+    
+    <div class="note">
+        <strong>Target Audience:</strong> Homeowners 62+ with active mortgages, 50%+ equity<br>
+        <strong>Emotional Angle:</strong> Payment relief, financial freedom<br>
+        <strong>Key Benefit:</strong> Eliminate monthly mortgage payment completely
+    </div>
+
+    <!-- EMAIL 1 -->
+    <div class="email">
+        <div class="email-header">
+            <div class="email-number">EMAIL 1 - DAY 0</div>
+            Introduction + Value Prop
+        </div>
+        
+        <div class="subject-line">
+            Subject: <span class="variable">{{property_city}}</span> - eliminate your monthly mortgage payment
+        </div>
+        
+        <div class="email-body">
+            <p>Hi <span class="variable">{{firstName}}</span>,</p>
+
+            <p>I'm <span class="variable">{{accountSignature}}</span> with Equity Connect.</p>
+
+            <p>I work with homeowners over 62 who are still making mortgage payments.</p>
+
+            <p>Most people don't realize you can eliminate your monthly payment completely - and keep your home.</p>
+
+            <p>Your home in <span class="variable">{{property_city}}</span> is worth approximately <span class="variable">{{property_value}}</span>. Based on your equity, you could receive between <span class="variable">{{equity_50_percent}}</span> and <span class="variable">{{equity_60_percent}}</span>.</p>
+
+            <p>Then never make another mortgage payment.</p>
+
+            <p>You keep your home. No sale required. You stay right where you are.</p>
+
+            <p>This is called a reverse mortgage - a government-insured program that over 60,000 homeowners used last year.</p>
+
+            <p>We pre-qualify homeowners, then connect them with trusted specialists in their area. For <span class="variable">{{property_city}}</span>, we work with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span> (NMLS #<span class="variable">{{broker_nmls}}</span>).</p>
+
+            <p>Want to see if you qualify? Reply with your best phone number and we'll call you today to verify eligibility (takes about 5-10 minutes).</p>
+
+            <div class="signature">
+                Best,<br><br>
+                <span class="variable">{{accountSignature}}</span><br>
+                Pre-Qualification Coordinator<br>
+                Equity Connect<br><br>
+                Working with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span><br>
+                <span class="variable">{{broker_phone}}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- EMAIL 2 -->
+    <div class="email">
+        <div class="email-header">
+            <div class="email-number">EMAIL 2 - DAY 3</div>
+            Objection Handling
+        </div>
+        
+        <div class="subject-line">
+            Subject: Quick question about your <span class="variable">{{property_city}}</span> home
+        </div>
+        
+        <div class="email-body">
+            <p>Hi <span class="variable">{{firstName}}</span>,</p>
+
+            <p>Most people ask me: "What's the catch?"</p>
+
+            <p>There isn't one. Here's how it works:</p>
+
+            <p>You keep your home - no sale required<br>
+            You keep the title - your name stays on it<br>
+            Zero monthly payments - government-insured program<br>
+            Your heirs inherit any remaining equity</p>
+
+            <p>The only requirement: you must be 62 or older.</p>
+
+            <p>Here's what that looks like for your situation:</p>
+
+            <p>Current home equity: approximately <span class="variable">{{estimated_equity}}</span><br>
+            Cash you could receive: <span class="variable">{{equity_50_percent}}</span> to <span class="variable">{{equity_60_percent}}</span><br>
+            Your new monthly payment: $0</p>
+
+            <p>Most homeowners with your equity level pre-qualify easily.</p>
+
+            <p>We pre-qualify you first, then connect you with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span> to discuss your specific situation.</p>
+
+            <p>Want to verify your eligibility? Reply with your best phone number and we'll call you today (takes 5-10 minutes).</p>
+
+            <div class="signature">
+                Best,<br><br>
+                <span class="variable">{{accountSignature}}</span><br>
+                Pre-Qualification Coordinator<br>
+                Equity Connect<br><br>
+                Working with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span><br>
+                <span class="variable">{{broker_phone}}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- EMAIL 3 -->
+    <div class="email">
+        <div class="email-header">
+            <div class="email-number">EMAIL 3 - DAY 7</div>
+            Social Proof + Urgency
+        </div>
+        
+        <div class="subject-line">
+            Subject: Two <span class="variable">{{property_city}}</span> homeowners just did this
+        </div>
+        
+        <div class="email-body">
+            <p>Hi <span class="variable">{{firstName}}</span>,</p>
+
+            <p>Last month, I connected two homeowners in <span class="variable">{{property_city}}</span> with <span class="variable">{{broker_first_name}}</span>.</p>
+
+            <p>Both had homes worth around <span class="variable">{{property_value}}</span> with good equity - similar to your situation.</p>
+
+            <p>They both used a reverse mortgage to eliminate their monthly payments.</p>
+
+            <p><strong>What happened:</strong></p>
+
+            <p>A 68-year-old homeowner accessed 60% of her equity. No more payments. She's using the money for retirement income.</p>
+
+            <p>A 72-year-old homeowner accessed 55% of his equity. Zero monthly payments. He made home improvements so he can stay in his home longer.</p>
+
+            <p>They both kept their homes. They both have zero payments now.</p>
+
+            <p>This is my third message about your <span class="variable">{{property_city}}</span> home.</p>
+
+            <p>If you're interested, reply with your best phone number and we'll call you today to verify eligibility (takes 5-10 minutes).</p>
+
+            <p>Otherwise, I'll close your file.</p>
+
+            <div class="signature">
+                Best,<br><br>
+                <span class="variable">{{accountSignature}}</span><br>
+                Pre-Qualification Coordinator<br>
+                Equity Connect<br><br>
+                Working with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span><br>
+                <span class="variable">{{broker_phone}}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- EMAIL 4 -->
+    <div class="email">
+        <div class="email-header">
+            <div class="email-number">EMAIL 4 - DAY 14</div>
+            Final Offer
+        </div>
+        
+        <div class="subject-line">
+            Subject: Final message - <span class="variable">{{property_city}}</span>
+        </div>
+        
+        <div class="email-body">
+            <p>Hi <span class="variable">{{firstName}}</span>,</p>
+
+            <p>This is my last message about eliminating your monthly mortgage payment.</p>
+
+            <p>Here's your situation one more time:</p>
+
+            <p>Home value: approximately <span class="variable">{{property_value}}</span><br>
+            Your equity: approximately <span class="variable">{{estimated_equity}}</span><br>
+            Cash available to you: <span class="variable">{{equity_50_percent}}</span> to <span class="variable">{{equity_60_percent}}</span><br>
+            Monthly payment after: $0</p>
+
+            <p>Over 60,000 people did this last year. This is a government-insured program. Your home stays in your name.</p>
+
+            <p>If you want to explore this, reply with your best phone number today.</p>
+
+            <p>We'll call you within 2 hours to verify eligibility (takes 5-10 minutes).</p>
+
+            <p>If you qualify, we'll connect you with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span> to discuss your specific options.</p>
+
+            <p>If I don't hear from you by end of day, I'll close your file.</p>
+
+            <div class="signature">
+                Best,<br><br>
+                <span class="variable">{{accountSignature}}</span><br>
+                Pre-Qualification Coordinator<br>
+                Equity Connect<br><br>
+                Working with <span class="variable">{{broker_first_name}}</span> at <span class="variable">{{broker_company}}</span><br>
+                <span class="variable">{{broker_phone}}</span><br><br>
+                P.S. Most homeowners in <span class="variable">{{property_city}}</span> pre-qualify easily. The call is quick and there's no pressure.
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
