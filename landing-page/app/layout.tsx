@@ -1,13 +1,18 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Crimson_Text } from "next/font/google"
+import { Inter, Playfair_Display } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _crimsonText = Crimson_Text({
+const inter = Inter({ 
   subsets: ["latin"],
-  weight: ["400", "600"],
+  variable: "--font-sans",
+  weight: ["400", "500"],
+})
+
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["600", "700"],
   variable: "--font-serif",
 })
 
@@ -24,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${_geist.className} font-sans antialiased ${_crimsonText.variable}`}>
+      <body className={`${inter.variable} ${playfair.variable} font-sans antialiased`}>
         {children}
         <Analytics />
       </body>
