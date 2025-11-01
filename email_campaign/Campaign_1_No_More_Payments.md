@@ -27,22 +27,22 @@ You keep your home. No sale required. You stay right where you are.
 
 This is called a reverse mortgage - a government-insured program that over 60,000 homeowners used last year.
 
-We pre-qualify homeowners, then connect them with trusted specialists in their area. For {{property_city}}, we work with {{broker_first_name}} at {{broker_company}} (NMLS #{{broker_nmls}}).
+We pre-qualify homeowners, then connect them with trusted specialists in their area. For {{property_city}}, we work with {{broker_name}} (NMLS #{{broker_nmls}}).
 
 Want to see if you qualify? Reply with your best phone number and we'll call you today to verify eligibility (takes about 5-10 minutes).
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -58,10 +58,10 @@ Most people ask me: "What's the catch?"
 
 There isn't one. Here's how it works:
 
-You keep your home - no sale required  
-You keep the title - your name stays on it  
-Zero monthly payments - government-insured program  
-Your heirs inherit any remaining equity
+• You keep your home - no sale required  
+• You keep the title - your name stays on it  
+• Zero monthly payments - government-insured program  
+• Your heirs inherit any remaining equity
 
 The only requirement: you must be 62 or older.
 
@@ -73,22 +73,22 @@ Your new monthly payment: $0
 
 Most homeowners with your equity level pre-qualify easily.
 
-We pre-qualify you first, then connect you with {{broker_first_name}} at {{broker_company}} to discuss your specific situation.
+We pre-qualify you first, then connect you with {{broker_name}} to discuss your specific situation.
 
 Want to verify your eligibility? Reply with your best phone number and we'll call you today (takes 5-10 minutes).
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -100,7 +100,7 @@ Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 Hi {{firstName}},
 
-Last month, I connected two homeowners in {{property_city}} with {{broker_first_name}}.
+Last month, I connected two homeowners in {{property_city}} with {{broker_name}}.
 
 Both had homes worth around {{property_value}} with good equity - similar to your situation.
 
@@ -123,15 +123,15 @@ Otherwise, I'll close your file.
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -156,29 +156,24 @@ Over 60,000 people did this last year. This is a government-insured program. You
 
 If you want to explore this, reply with your best phone number today.
 
-We'll call you within 2 hours to verify eligibility (takes 5-10 minutes).
+We'll call you right away to verify eligibility (takes about 5 minutes).
 
-If you qualify, we'll connect you with {{broker_first_name}} at {{broker_company}} to discuss your specific options.
+If you qualify, we'll connect you with {{broker_name}} to discuss your specific options.
 
 If I don't hear from you by end of day, I'll close your file.
-
-Best,
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 P.S. Most homeowners in {{property_city}} pre-qualify easily. The call is quick and there's no pressure.
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
-
-
-

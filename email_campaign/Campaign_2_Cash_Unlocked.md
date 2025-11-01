@@ -23,29 +23,29 @@ You can access between {{equity_50_percent}} and {{equity_60_percent}} from your
 
 People use this money for:
 
-- Extra retirement income
-- Medical expenses
-- Home improvements
-- Helping family
+• Extra retirement income  
+• Medical expenses  
+• Home improvements  
+• Helping family
 
 This is called a reverse mortgage. It's federally insured and used by over 60,000 homeowners last year.
 
-We pre-qualify homeowners, then connect them with trusted specialists in their area. For {{property_city}}, we work with {{broker_first_name}} at {{broker_company}} (NMLS #{{broker_nmls}}).
+We pre-qualify homeowners, then connect them with trusted specialists in their area. For {{property_city}}, we work with {{broker_name}} (NMLS #{{broker_nmls}}).
 
 Want to see if you qualify? Reply with your best phone number and we'll call you today to verify eligibility (takes about 5-10 minutes).
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -79,22 +79,22 @@ Monthly payment: $0
 
 This is federally insured. The money is NOT taxable as income.
 
-We pre-qualify you first, then connect you with {{broker_first_name}} at {{broker_company}} to discuss your specific situation.
+We pre-qualify you first, then connect you with {{broker_name}} to discuss your specific situation.
 
 Ready to see if you qualify? Reply with your best phone number and we'll call you today (takes 5-10 minutes).
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -106,7 +106,7 @@ Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 Hi {{firstName}},
 
-Last month, I connected two homeowners in {{property_city}} with {{broker_first_name}}.
+Last month, I connected two homeowners in {{property_city}} with {{broker_name}}.
 
 Both had substantial equity - similar to your approximately {{estimated_equity}}.
 
@@ -129,15 +129,15 @@ Otherwise, I'll close your file.
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -165,29 +165,24 @@ This is a reverse mortgage - government-insured and used by over 60,000 homeowne
 
 If you want to explore your options, reply with your best phone number today.
 
-We'll call you within 2 hours to verify eligibility (takes 5-10 minutes).
+We'll call you right away to verify eligibility (takes about 5 minutes).
 
-If you qualify, we'll connect you with {{broker_first_name}} at {{broker_company}} to discuss your specific situation.
+If you qualify, we'll connect you with {{broker_name}} to discuss your specific situation.
 
 If I don't hear from you by end of day, I'll close your file.
-
-Best,
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 P.S. Most homeowners with your equity level pre-qualify easily. The call is quick and there's no pressure.
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
-
-
-

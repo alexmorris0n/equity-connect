@@ -23,13 +23,13 @@ You can access {{equity_50_percent}} to {{equity_60_percent}} without selling yo
 
 Plus:
 
-The money is NOT taxable as income  
-Your heirs still inherit any remaining equity  
-You keep the title
+• The money is NOT taxable as income  
+• Your heirs still inherit any remaining equity  
+• You keep the title
 
 This is called a reverse mortgage - backed by the FHA and used as a strategic planning tool by thousands of homeowners.
 
-We pre-qualify homeowners, then connect them with trusted specialists in their area. For {{property_city}}, we work with {{broker_first_name}} at {{broker_company}} (NMLS #{{broker_nmls}}).
+We pre-qualify homeowners, then connect them with trusted specialists in their area. For {{property_city}}, we work with {{broker_name}} (NMLS #{{broker_nmls}}).
 
 Many clients include their financial advisor in our initial conversation - we're happy to do that if it makes sense for you.
 
@@ -38,15 +38,15 @@ Want to see if you qualify? Reply with your best phone number and we'll call you
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -82,15 +82,15 @@ Want to explore these options? Reply with your best phone number and we'll call 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -108,32 +108,32 @@ This makes sense for a property like yours with approximately {{estimated_equity
 
 **What we'll cover:**
 
-Exact amount available based on your age  
-Tax implications for your situation  
-How this fits with your retirement plan  
-Comparison: Reverse mortgage vs home equity loan vs HELOC  
-Impact on inheritance and estate planning
+• Exact amount available based on your age  
+• Tax implications for your situation  
+• How this fits with your retirement plan  
+• Comparison: Reverse mortgage vs home equity loan vs HELOC  
+• Impact on inheritance and estate planning
 
 We can meet with you and your advisor together, or speak with your advisor separately if you prefer.
 
 If you don't work with a financial advisor, that's perfectly fine - we'll walk you through everything directly.
 
-We pre-qualify you first, then connect you with {{broker_first_name}} at {{broker_company}} to discuss your specific situation.
+We pre-qualify you first, then connect you with {{broker_name}} to discuss your specific situation.
 
 Ready to get started? Reply with your best phone number and we'll call you today (takes about 10 minutes).
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 
 ---
@@ -151,38 +151,33 @@ I can prepare a detailed breakdown for your {{property_city}} property:
 
 **What's included:**
 
-Your home value: approximately {{property_value}}  
-Your equity position: approximately {{estimated_equity}}  
-Money available to you: {{equity_50_percent}} to {{equity_60_percent}}  
-Tax treatment: NOT taxable as income  
-Comparison: Reverse mortgage vs other options  
-Timeline: What to expect in the process
+• Your home value: approximately {{property_value}}  
+• Your equity position: approximately {{estimated_equity}}  
+• Money available to you: {{equity_50_percent}} to {{equity_60_percent}}  
+• Tax treatment: NOT taxable as income  
+• Comparison: Reverse mortgage vs other options  
+• Timeline: What to expect in the process
 
 If you want this breakdown, reply with your best phone number today.
 
-We'll call you within 2 hours to verify eligibility (takes about 10 minutes).
+We'll call you right away to verify eligibility (takes about 5 minutes).
 
-If you qualify, we'll connect you with {{broker_first_name}} at {{broker_company}} to discuss your specific situation and prepare your detailed analysis.
+If you qualify, we'll connect you with {{broker_name}} to discuss your specific situation and prepare your detailed analysis.
 
 If I don't hear from you by end of day, I'll close your file.
-
-Best,
 
 ---
 Best,
 
-{{accountSignature}}
-Pre-Qualification Coordinator
+{{accountSignature}}  
+Pre-Qualification Coordinator  
 Equity Connect
 
-Working with {{broker_name}}
+Working with {{broker_name}}  
 NMLS #{{broker_nmls}}
 
 P.S. Most homeowners with your equity level pre-qualify easily. The call is quick and there's no pressure.
 
 ---
-Reply "STOP" to unsubscribe
+Reply "STOP" to unsubscribe  
 Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
-
-
-
