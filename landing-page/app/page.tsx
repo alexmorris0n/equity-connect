@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { UserCircle2, ArrowRight } from "lucide-react"
+import { UserCircle2, ArrowRight, Mail, CheckCircle2, Handshake } from "lucide-react"
 import { headers } from "next/headers"
 
 async function getLocationText() {
@@ -27,7 +27,7 @@ export default async function HomePage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden px-4 pt-4 pb-20 md:pt-6 md:pb-32 lg:pt-8 lg:pb-40">
         {/* Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#c5c5c1]/30 via-[#c5c5c1]/10 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#c5c5c1]/50 via-[#c5c5c1]/20 to-transparent" />
         
         {/* Logo - Top Left */}
         <div className="relative z-10 mb-18 md:mb-24 lg:mb-30">
@@ -37,7 +37,7 @@ export default async function HomePage() {
         </div>
 
         <div className="relative z-10 mx-auto max-w-5xl text-center">
-          <h1 className="text-balance font-serif text-4xl font-medium tracking-tight text-foreground md:text-5xl lg:text-6xl">
+          <h1 className="text-balance font-heading text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
             Helping {locationText ? <span className="text-primary">{locationText}</span> : ""} homeowners access their home equity
           </h1>
           <p className="mx-auto mt-8 max-w-2xl text-pretty text-lg text-muted-foreground md:text-xl md:mt-10">
@@ -58,16 +58,23 @@ export default async function HomePage() {
             <section className="px-4 py-8 md:py-12">
               <div className="mx-auto max-w-4xl">
                 <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
-                  What is Equity Connect?
+                  Who is Equity Connect?
                 </h2>
                 <div className="mt-8 space-y-4 text-left text-lg leading-relaxed text-muted-foreground max-w-[650px] mx-auto">
                   <p>
-                    We're a curated marketplace that connects one homeowner with one specialist — no bidding wars, no spam. We
-                    pre-qualify homeowners before making any connections to ensure you're a good fit.
+                    We're a connection service that helps homeowners 62+ access their home equity.
                   </p>
                   <p>
-                    We're transparent about our role: we're not lenders, we're connectors. We work exclusively with licensed,
-                    vetted reverse mortgage specialists who have proven track records in helping homeowners like you.
+                    <strong className="text-foreground">Here's what makes us different:</strong> We connect one homeowner with one specialist. Your phone won't ring off the hook with calls and texts from 50 different lenders. We never sell your information. No bidding wars, no spam. Just one trusted introduction.
+                  </p>
+                  <p>
+                    <strong className="text-foreground">How we work:</strong> We pre-qualify you first to make sure reverse mortgages are a good fit for your situation. Then we introduce you to a licensed specialist in your area.
+                  </p>
+                  <p>
+                    Every specialist we work with is carefully selected. We verify their licensing, review their track record, and ensure they meet our standards for experience and customer service. We only recommend professionals we'd trust with our own family.
+                  </p>
+                  <p>
+                    <strong className="text-foreground">What we're NOT:</strong> We're not lenders. We don't originate loans. We're connectors—the bridge between homeowners and trusted reverse mortgage professionals.
                   </p>
                 </div>
               </div>
@@ -81,13 +88,13 @@ export default async function HomePage() {
           </h2>
           <div className="mt-12 mx-auto grid gap-8 sm:grid-cols-2 md:grid-cols-3 overflow-visible">
             <div className="card-hover-wrapper mx-auto">
-              <Card className="border-2 h-full min-h-[280px] w-[250px]">
-                <CardContent className="pt-8">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-                    1
+              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px]">
+                <CardContent className="pt-4 text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto">
+                    <Mail className="h-6 w-6" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold text-foreground">Contact</h3>
-                  <p className="leading-relaxed text-muted-foreground">
+                  <p className="leading-relaxed text-muted-foreground text-left">
                     You reply to our email or reach out directly through our website
                   </p>
                 </CardContent>
@@ -95,13 +102,13 @@ export default async function HomePage() {
             </div>
 
             <div className="card-hover-wrapper mx-auto">
-              <Card className="border-2 h-full min-h-[280px] w-[250px]">
-                <CardContent className="pt-8">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-                    2
+              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px]">
+                <CardContent className="pt-4 text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto">
+                    <CheckCircle2 className="h-6 w-6" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold text-foreground">Pre-Qualify</h3>
-                  <p className="leading-relaxed text-muted-foreground">
+                  <p className="leading-relaxed text-muted-foreground text-left">
                     We verify your eligibility and answer any questions you have about the process
                   </p>
                 </CardContent>
@@ -109,13 +116,13 @@ export default async function HomePage() {
             </div>
 
             <div className="card-hover-wrapper mx-auto">
-              <Card className="border-2 h-full min-h-[280px] w-[250px]">
-                <CardContent className="pt-8">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-                    3
+              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px]">
+                <CardContent className="pt-4 text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto">
+                    <Handshake className="h-6 w-6" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold text-foreground">Connect</h3>
-                  <p className="leading-relaxed text-muted-foreground">
+                  <p className="leading-relaxed text-muted-foreground text-left">
                     We introduce you to a trusted specialist in your area who can help
                   </p>
                 </CardContent>
@@ -133,7 +140,7 @@ export default async function HomePage() {
           </h2>
           <div className="mt-12 mx-auto grid gap-6 sm:grid-cols-2 md:grid-cols-3">
             {/* Row 1 */}
-            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+            <Card className="w-[300px] sm:w-[250px] mx-auto h-full min-h-[200px]">
               <CardContent className="pt-6 text-center">
                 <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
                   <img 
@@ -148,7 +155,7 @@ export default async function HomePage() {
               </CardContent>
             </Card>
 
-            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+            <Card className="w-[300px] sm:w-[250px] mx-auto h-full min-h-[200px]">
               <CardContent className="pt-6 text-center">
                 <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
                   <img 
@@ -163,7 +170,7 @@ export default async function HomePage() {
               </CardContent>
             </Card>
 
-            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+            <Card className="w-[300px] sm:w-[250px] mx-auto h-full min-h-[200px]">
               <CardContent className="pt-6 text-center">
                 <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
                   <img 
@@ -179,7 +186,7 @@ export default async function HomePage() {
             </Card>
 
             {/* Row 2 */}
-            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+            <Card className="w-[300px] sm:w-[250px] mx-auto h-full min-h-[200px]">
               <CardContent className="pt-6 text-center">
                 <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
                   <img 
@@ -194,7 +201,7 @@ export default async function HomePage() {
               </CardContent>
             </Card>
 
-            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+            <Card className="w-[300px] sm:w-[250px] mx-auto h-full min-h-[200px]">
               <CardContent className="pt-6 text-center">
                 <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
                   <img 
@@ -209,7 +216,7 @@ export default async function HomePage() {
               </CardContent>
             </Card>
 
-            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+            <Card className="w-[300px] sm:w-[250px] mx-auto h-full min-h-[200px]">
               <CardContent className="pt-6 text-center">
                 <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
                   <img 
