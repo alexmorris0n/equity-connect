@@ -25,43 +25,53 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-background scroll-smooth">
       {/* Hero Section */}
-      <section className="relative overflow-hidden px-4 py-20 md:py-32 lg:py-40">
+      <section className="relative overflow-hidden px-4 pt-4 pb-20 md:pt-6 md:pb-32 lg:pt-8 lg:pb-40">
         {/* Gradient Background */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#c5c5c1]/30 via-[#c5c5c1]/10 to-transparent" />
+        
+        {/* Logo - Top Left */}
+        <div className="relative z-10 mb-18 md:mb-24 lg:mb-30">
+          <h2 className="text-2xl font-semibold text-foreground md:text-3xl" style={{ letterSpacing: '-0.02em' }}>
+            Equity<span className="text-primary ml-0.5">Connect</span>
+          </h2>
+        </div>
+
         <div className="relative z-10 mx-auto max-w-5xl text-center">
           <h1 className="text-balance font-serif text-4xl font-medium tracking-tight text-foreground md:text-5xl lg:text-6xl">
             Helping {locationText ? <span className="text-primary">{locationText}</span> : ""} homeowners access their home equity
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg text-muted-foreground md:text-xl">
+          <p className="mx-auto mt-8 max-w-2xl text-pretty text-lg text-muted-foreground md:text-xl md:mt-10">
             We connect qualified homeowners with trusted reverse mortgage specialists in their area
           </p>
-          <Button size="lg" className="mt-8 text-base" asChild>
-            <a href="#how-it-works">
-              Learn How It Works
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </a>
-          </Button>
-        </div>
-      </section>
-
-      {/* What We Do Section */}
-      <section className="px-4 py-8 md:py-12">
-        <div className="mx-auto max-w-4xl">
-          <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
-            What is Equity Connect?
-          </h2>
-          <div className="mt-8 space-y-4 text-center text-lg leading-relaxed text-muted-foreground">
-            <p>
-              We're a curated marketplace that connects one homeowner with one specialist — no bidding wars, no spam. We
-              pre-qualify homeowners before making any connections to ensure you're a good fit.
-            </p>
-            <p>
-              We're transparent about our role: we're not lenders, we're connectors. We work exclusively with licensed,
-              vetted reverse mortgage specialists who have proven track records in helping homeowners like you.
-            </p>
+          <div className="cta-button-wrapper mt-10 md:mt-12">
+            <Button size="lg" className="text-base" asChild>
+              <a href="#how-it-works">
+                Learn How It Works
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
           </div>
         </div>
       </section>
+
+            {/* What We Do Section */}
+            <section className="px-4 py-8 md:py-12">
+              <div className="mx-auto max-w-4xl">
+                <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+                  What is Equity Connect?
+                </h2>
+                <div className="mt-8 space-y-4 text-left text-lg leading-relaxed text-muted-foreground max-w-[650px] mx-auto">
+                  <p>
+                    We're a curated marketplace that connects one homeowner with one specialist — no bidding wars, no spam. We
+                    pre-qualify homeowners before making any connections to ensure you're a good fit.
+                  </p>
+                  <p>
+                    We're transparent about our role: we're not lenders, we're connectors. We work exclusively with licensed,
+                    vetted reverse mortgage specialists who have proven track records in helping homeowners like you.
+                  </p>
+                </div>
+              </div>
+            </section>
 
       {/* How It Works Section */}
       <section id="how-it-works" className="bg-muted/30 px-4 py-16 md:py-24">
@@ -69,42 +79,48 @@ export default async function HomePage() {
           <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
             How It Works
           </h2>
-          <div className="mt-12 grid gap-8 md:grid-cols-3">
-            <Card className="border-2">
-              <CardContent className="pt-8">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-                  1
-                </div>
-                <h3 className="mb-3 text-xl font-semibold text-foreground">Contact</h3>
-                <p className="leading-relaxed text-muted-foreground">
-                  You reply to our email or reach out directly through our website
-                </p>
-              </CardContent>
-            </Card>
+          <div className="mt-12 mx-auto grid gap-8 sm:grid-cols-2 md:grid-cols-3 overflow-visible">
+            <div className="card-hover-wrapper mx-auto">
+              <Card className="border-2 h-full min-h-[280px] w-[250px]">
+                <CardContent className="pt-8">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
+                    1
+                  </div>
+                  <h3 className="mb-3 text-xl font-semibold text-foreground">Contact</h3>
+                  <p className="leading-relaxed text-muted-foreground">
+                    You reply to our email or reach out directly through our website
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-            <Card className="border-2">
-              <CardContent className="pt-8">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-                  2
-                </div>
-                <h3 className="mb-3 text-xl font-semibold text-foreground">Pre-Qualify</h3>
-                <p className="leading-relaxed text-muted-foreground">
-                  We verify your eligibility and answer any questions you have about the process
-                </p>
-              </CardContent>
-            </Card>
+            <div className="card-hover-wrapper mx-auto">
+              <Card className="border-2 h-full min-h-[280px] w-[250px]">
+                <CardContent className="pt-8">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
+                    2
+                  </div>
+                  <h3 className="mb-3 text-xl font-semibold text-foreground">Pre-Qualify</h3>
+                  <p className="leading-relaxed text-muted-foreground">
+                    We verify your eligibility and answer any questions you have about the process
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-            <Card className="border-2">
-              <CardContent className="pt-8">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
-                  3
-                </div>
-                <h3 className="mb-3 text-xl font-semibold text-foreground">Connect</h3>
-                <p className="leading-relaxed text-muted-foreground">
-                  We introduce you to a trusted specialist in your area who can help
-                </p>
-              </CardContent>
-            </Card>
+            <div className="card-hover-wrapper mx-auto">
+              <Card className="border-2 h-full min-h-[280px] w-[250px]">
+                <CardContent className="pt-8">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground">
+                    3
+                  </div>
+                  <h3 className="mb-3 text-xl font-semibold text-foreground">Connect</h3>
+                  <p className="leading-relaxed text-muted-foreground">
+                    We introduce you to a trusted specialist in your area who can help
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </section>
@@ -115,46 +131,96 @@ export default async function HomePage() {
           <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
             Meet Your Pre-Qualification Coordinators
           </h2>
-          <div className="mt-12 grid gap-8 md:grid-cols-3">
-            <Card>
-              <CardContent className="pt-8 text-center">
-                <div className="mx-auto mb-4 flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-muted">
-                  <UserCircle2 className="h-24 w-24 text-muted-foreground" />
+          <div className="mt-12 mx-auto grid gap-6 sm:grid-cols-2 md:grid-cols-3">
+            {/* Row 1 */}
+            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                  <img 
+                    src="/LaToYa-Washington-getequityconnectcom-1759965026031.jpg" 
+                    alt="LaToYa"
+                    className="h-full w-full object-cover"
+                  />
                 </div>
-                <h3 className="mb-1 text-xl font-semibold text-foreground">Sarah Mitchell</h3>
-                <p className="mb-3 text-sm font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="leading-relaxed text-muted-foreground">
-                  Sarah has helped over 200 homeowners understand their home equity options and find the right
-                  specialist for their needs.
-                </p>
+                <h3 className="mb-1 text-lg font-semibold text-foreground">LaToYa</h3>
+                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-xs text-muted-foreground">Helping homeowners find the right equity solutions for 6+ years</p>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="pt-8 text-center">
-                <div className="mx-auto mb-4 flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-muted">
-                  <UserCircle2 className="h-24 w-24 text-muted-foreground" />
+            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                  <img 
+                    src="/Carlos-Rodriguez-getequityconnectcom-1759964928812.jpg" 
+                    alt="Carlos"
+                    className="h-full w-full object-cover"
+                  />
                 </div>
-                <h3 className="mb-1 text-xl font-semibold text-foreground">Michael Chen</h3>
-                <p className="mb-3 text-sm font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="leading-relaxed text-muted-foreground">
-                  With 8 years of experience, Michael specializes in helping homeowners navigate the pre-qualification
-                  process with clarity and care.
-                </p>
+                <h3 className="mb-1 text-lg font-semibold text-foreground">Carlos</h3>
+                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-xs text-muted-foreground">Specializes in guiding seniors through the qualification process</p>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="pt-8 text-center">
-                <div className="mx-auto mb-4 flex h-32 w-32 items-center justify-center overflow-hidden rounded-full bg-muted">
-                  <UserCircle2 className="h-24 w-24 text-muted-foreground" />
+            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                  <img 
+                    src="/Maria-Rodriguez-goequityconnectcom-1759965269908.jpg" 
+                    alt="Maria"
+                    className="h-full w-full object-cover"
+                  />
                 </div>
-                <h3 className="mb-1 text-xl font-semibold text-foreground">Jennifer Rodriguez</h3>
-                <p className="mb-3 text-sm font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="leading-relaxed text-muted-foreground">
-                  Jennifer's patient approach has made her a trusted advisor for homeowners exploring their financial
-                  options.
-                </p>
+                <h3 className="mb-1 text-lg font-semibold text-foreground">Maria</h3>
+                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-xs text-muted-foreground">Passionate about helping families access their home equity</p>
+              </CardContent>
+            </Card>
+
+            {/* Row 2 */}
+            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                  <img 
+                    src="/Rahul-Patel-goequityconnectcom-1759965395332.jpg" 
+                    alt="Rahul"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <h3 className="mb-1 text-lg font-semibold text-foreground">Rahul</h3>
+                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-xs text-muted-foreground">Dedicated to providing clear, honest guidance to homeowners</p>
+              </CardContent>
+            </Card>
+
+            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                  <img 
+                    src="/Marcus-Washington-yourequityconnectcom-1760313239600.jpg" 
+                    alt="Marcus"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <h3 className="mb-1 text-lg font-semibold text-foreground">Marcus</h3>
+                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-xs text-muted-foreground">Expert at matching homeowners with trusted specialists</p>
+              </CardContent>
+            </Card>
+
+            <Card className="w-[250px] mx-auto h-full min-h-[200px]">
+              <CardContent className="pt-6 text-center">
+                <div className="mx-auto mb-3 h-24 w-24 overflow-hidden rounded-full">
+                  <img 
+                    src="/Priya-Patel-yourequityconnectcom-1759965343156.jpg" 
+                    alt="Priya"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <h3 className="mb-1 text-lg font-semibold text-foreground">Priya</h3>
+                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-xs text-muted-foreground">Known for her patient, supportive approach with clients</p>
               </CardContent>
             </Card>
           </div>
