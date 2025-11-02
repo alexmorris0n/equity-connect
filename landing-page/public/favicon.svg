@@ -1,0 +1,11 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="64" height="64" fill="#ffffff" rx="8"/>
+  
+  <!-- E - Black -->
+  <text x="12" y="46" font-family="Inter, system-ui, sans-serif" font-size="40" font-weight="700" fill="#000000" style="letter-spacing: -0.02em">E</text>
+  
+  <!-- C - Purple -->
+  <text x="36" y="46" font-family="Inter, system-ui, sans-serif" font-size="40" font-weight="700" fill="#8b87d5" style="letter-spacing: -0.02em">C</text>
+</svg>
+

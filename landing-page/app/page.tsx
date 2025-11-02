@@ -50,17 +50,17 @@ export default async function HomePage() {
         </div>
 
         <div className="relative z-10 mx-auto max-w-5xl text-center">
-          <h1 className="text-balance font-heading text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
+          <h1 className="text-balance font-heading text-5xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
             Helping {locationText ? <span className="text-primary">{locationText}</span> : ""} homeowners access their home equity
           </h1>
-          <p className="mx-auto mt-8 max-w-2xl text-pretty text-lg text-muted-foreground md:text-xl md:mt-10">
+          <p className="mx-auto mt-8 max-w-2xl text-pretty text-xl text-muted-foreground md:text-xl md:mt-10">
             We connect qualified homeowners with trusted reverse mortgage specialists in their area
           </p>
           <div className="cta-button-wrapper mt-10 md:mt-12">
-            <Button size="lg" className="text-base" asChild>
+            <Button size="lg" className="text-lg md:text-base" asChild>
               <a href="#how-it-works">
                 Learn How It Works
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-2 h-5 w-5" />
               </a>
             </Button>
           </div>
@@ -70,10 +70,10 @@ export default async function HomePage() {
             {/* What We Do Section */}
             <section className="px-4 py-8 md:py-12">
               <div className="mx-auto max-w-4xl">
-                <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+                <h2 className="text-balance text-center font-serif text-4xl font-medium tracking-tight text-foreground md:text-4xl">
                   Who is Equity Connect?
                 </h2>
-                <div className="mt-8 space-y-4 text-left text-lg leading-relaxed text-muted-foreground max-w-[650px] mx-auto">
+                <div className="mt-8 space-y-4 text-left text-xl leading-relaxed text-muted-foreground max-w-[650px] mx-auto">
                   <p>
                     We're a connection service that helps homeowners 62+ access their home equity.
                   </p>
@@ -96,7 +96,7 @@ export default async function HomePage() {
       {/* How It Works Section */}
       <section id="how-it-works" className="bg-muted/30 px-4 py-16 md:py-24">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+          <h2 className="text-balance text-center font-serif text-4xl font-medium tracking-tight text-foreground md:text-4xl">
             How It Works
           </h2>
           <div className="mt-12 mx-auto grid gap-8 sm:grid-cols-2 md:grid-cols-3 overflow-visible">
@@ -107,7 +107,7 @@ export default async function HomePage() {
                     <Mail className="h-6 w-6" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold text-foreground">Contact</h3>
-                  <p className="leading-relaxed text-muted-foreground text-left">
+                  <p className="leading-relaxed text-muted-foreground text-left text-base">
                     You reply to our email or reach out directly through our website
                   </p>
                 </CardContent>
@@ -121,7 +121,7 @@ export default async function HomePage() {
                     <CheckCircle2 className="h-6 w-6" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold text-foreground">Pre-Qualify</h3>
-                  <p className="leading-relaxed text-muted-foreground text-left">
+                  <p className="leading-relaxed text-muted-foreground text-left text-base">
                     We verify your eligibility and answer any questions you have about the process
                   </p>
                 </CardContent>
@@ -135,7 +135,7 @@ export default async function HomePage() {
                     <Handshake className="h-6 w-6" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold text-foreground">Connect</h3>
-                  <p className="leading-relaxed text-muted-foreground text-left">
+                  <p className="leading-relaxed text-muted-foreground text-left text-base">
                     We introduce you to a trusted specialist in your area who can help
                   </p>
                 </CardContent>
@@ -148,7 +148,7 @@ export default async function HomePage() {
       {/* Meet the Coordinators Section */}
       <section className="px-4 py-16 md:py-24">
         <div className="mx-auto max-w-6xl">
-          <h2 className="text-balance text-center font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+          <h2 className="text-balance text-center font-serif text-4xl font-medium tracking-tight text-foreground md:text-4xl">
             Meet Your Pre-Qualification Coordinators
           </h2>
           <div className="mt-12 mx-auto grid gap-6 sm:grid-cols-2 md:grid-cols-3">

@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   title: "Equity Connect - Connecting Homeowners with Trusted Specialists",
   description: "We connect qualified homeowners 62+ with trusted reverse mortgage specialists in their area",
   generator: "v0.app",
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({
