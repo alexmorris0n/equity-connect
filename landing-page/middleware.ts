@@ -3,9 +3,14 @@ import { NextRequest, NextResponse } from 'next/server'
 export function middleware(request: NextRequest) {
   // CRITICAL: Vercel provides geo data via headers, not request.geo!
   // Read the headers directly:
-  const city = request.headers.get('x-vercel-ip-city') || ''
-  const region = request.headers.get('x-vercel-ip-country-region') || ''
-  const country = request.headers.get('x-vercel-ip-country') || ''
+  const rawCity = request.headers.get('x-vercel-ip-city') || ''
+  const rawRegion = request.headers.get('x-vercel-ip-country-region') || ''
+  const rawCountry = request.headers.get('x-vercel-ip-country') || ''
+  
+  // Decode URL-encoded values (e.g., "Sherman%20Oaks" -> "Sherman Oaks")
+  const city = rawCity ? decodeURIComponent(rawCity) : ''
+  const region = rawRegion ? decodeURIComponent(rawRegion) : ''
+  const country = rawCountry ? decodeURIComponent(rawCountry) : ''
   
   // Log to Vercel console for debugging
   console.log('Vercel Geo Headers:', {
@@ -16,7 +21,7 @@ export function middleware(request: NextRequest) {
   
   const response = NextResponse.next()
   
-  // Pass geo data to the page via custom headers
+  // Only pass geo data if we have it (no "not set" fallback)
   if (city) {
     response.headers.set('x-user-city', city)
   }
