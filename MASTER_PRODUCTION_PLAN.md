@@ -14,7 +14,8 @@
 Equity Connect is an AI-powered lead generation and nurturing platform for reverse mortgage brokers. The system uses AI agents to autonomously pull qualified property leads, enrich them with contact data, and manage compliant multi-channel outreach campaigns.
 
 **Production Domains:**
-- **barbarapro.com** - Marketing landing page
+- **barbarapro.com** - Broker recruitment landing page (B2B - recruiting brokers to join network)
+- **[TBD - equity-connect domain]** - Homeowner-facing geo-targeted landing page (B2C - cold email campaign destination)
 - **app.barbarapro.com** - Admin portal and broker interface
 - **Vercel Development:** https://equity-connect.vercel.app
 
@@ -1167,11 +1168,13 @@ equity-connect/ (Git Monorepo)
 - **Campaign Upload (NOVEMBER 1, 2025):** ✅ All 3 campaign archetypes successfully uploaded to Instantly.ai platform
 - **Next:** Monitor campaign performance and refine copy for improved conversion rates
 
-**18. Geo-Targeted Landing Page** ⭐ **PRODUCTION READY** (NOVEMBER 2, 2025)
-- **Purpose:** High-converting landing page for cold email campaigns with dynamic geo-targeting
+**18. Geo-Targeted Landing Page (Homeowner-Facing)** ⭐ **PRODUCTION READY** (NOVEMBER 2, 2025)
+- **Purpose:** B2C landing page for cold email campaigns targeting homeowners 62+ with dynamic geo-targeting
+- **Audience:** Qualified homeowners (not brokers) - cold email campaign destination
 - **Architecture:** Next.js 16 + Vercel Edge Middleware + TypeScript + Tailwind CSS
 - **Deployment:** Vercel (landing-page/ directory) - **LIVE**
 - **Status:** ✅ **PRODUCTION READY - Deployed with geo-targeting operational**
+- **Separate from barbarapro.com** - That site is for broker recruitment (B2B)
 
 **Core Features (LIVE):**
 - ✅ **Geo-Targeted Headlines** - Dynamic city/region detection via Vercel Edge
