@@ -1,29 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  // CRITICAL: Debug - check what's available on request object
-  console.log('Full request object keys:', Object.keys(request))
-  console.log('Geo object:', request.geo)
-  
-  // CRITICAL: Vercel provides geo data on request.geo
-  // Access it like this:
-  const city = request.geo?.city || ''
-  const region = request.geo?.region || ''
-  const country = request.geo?.country || ''
+  // CRITICAL: Vercel provides geo data via headers, not request.geo!
+  // Read the headers directly:
+  const city = request.headers.get('x-vercel-ip-city') || ''
+  const region = request.headers.get('x-vercel-ip-country-region') || ''
+  const country = request.headers.get('x-vercel-ip-country') || ''
   
   // Log to Vercel console for debugging
-  console.log('Vercel Geo Data:', {
-    city: request.geo?.city,
-    region: request.geo?.region,
-    country: request.geo?.country,
+  console.log('Vercel Geo Headers:', {
+    city,
+    region,
+    country,
   })
   
   const response = NextResponse.next()
   
-  // Set headers with actual values OR 'not set' as fallback
-  response.headers.set('x-user-city', city || 'not set')
-  response.headers.set('x-user-region', region || 'not set')
-  response.headers.set('x-user-country', country || 'not set')
+  // Pass geo data to the page via custom headers
+  if (city) {
+    response.headers.set('x-user-city', city)
+  }
+  
+  if (region) {
+    response.headers.set('x-user-region', region)
+  }
+
+  if (country) {
+    response.headers.set('x-user-country', country)
+  }
   
   return response
 }
