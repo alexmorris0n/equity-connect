@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { UserCircle2, ArrowRight, Mail, CheckCircle2, Handshake } from "lucide-react"
+import { UserCircle2, ArrowRight, Mail, CheckCircle2, Handshake, CheckCircle } from "lucide-react"
 import { headers } from "next/headers"
 
 async function getLocationText() {
@@ -63,6 +63,96 @@ export default async function HomePage() {
                 <ArrowRight className="ml-2 h-5 w-5" />
               </a>
             </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <section className="px-4 py-10 md:py-14">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-balance text-center font-heading text-3xl font-medium tracking-tight text-foreground md:text-4xl mb-8">
+            What Homeowners Are Saying
+          </h2>
+          <div className="mx-auto grid gap-4 grid-cols-2 md:grid-cols-4 max-w-5xl overflow-visible">
+            <div className="card-hover-wrapper h-full">
+              <Card className="border h-full">
+                <CardContent className="pt-4 pb-4 px-4 flex flex-col h-full">
+                  <div className="mb-2 flex gap-0.5">
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} className="text-yellow-500 text-sm">★</span>
+                    ))}
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                    "Quick process, no pressure. One specialist who really listened."
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs font-medium text-foreground">Mary S. 67</p>
+                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Beverly Hills</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="card-hover-wrapper h-full">
+              <Card className="border h-full">
+                <CardContent className="pt-4 pb-4 px-4 flex flex-col h-full">
+                  <div className="mb-2 flex gap-0.5">
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} className="text-yellow-500 text-sm">★</span>
+                    ))}
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                    "No spam calls like other services. Just one trusted person."
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs font-medium text-foreground">Robert J. 71</p>
+                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Pasadena</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="card-hover-wrapper h-full">
+              <Card className="border h-full">
+                <CardContent className="pt-4 pb-4 px-4 flex flex-col h-full">
+                  <div className="mb-2 flex gap-0.5">
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} className="text-yellow-500 text-sm">★</span>
+                    ))}
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                    "Straightforward and honest. No run-around."
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs font-medium text-foreground">Linda M. 69</p>
+                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Santa Monica</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="card-hover-wrapper h-full">
+              <Card className="border h-full">
+                <CardContent className="pt-4 pb-4 px-4 flex flex-col h-full">
+                  <div className="mb-2 flex gap-0.5">
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} className="text-yellow-500 text-sm">★</span>
+                    ))}
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                    "They pre-qualified me first. No wasted time."
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xs font-medium text-foreground">James K. 73</p>
+                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Burbank</p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </section>
@@ -371,7 +461,6 @@ export default async function HomePage() {
             </div>
 
             <div className="mt-6 text-sm text-muted-foreground">
-              <p>Barbara LLC</p>
               <p>6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048</p>
             </div>
 
