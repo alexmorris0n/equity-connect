@@ -82,14 +82,14 @@ export default async function HomePage() {
                       <span key={i} className="text-yellow-500 text-sm">★</span>
                     ))}
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                  <p className="text-sm md:text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
                     "Quick process, no pressure. One specialist who really listened."
                   </p>
                   <div className="flex items-center gap-1">
-                    <p className="text-xs font-medium text-foreground">Mary S. 67</p>
-                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                    <p className="text-sm md:text-xs font-medium text-foreground">Mary S. 67</p>
+                    <CheckCircle className="h-4 w-4 md:h-3 md:w-3 text-green-500 flex-shrink-0" />
                   </div>
-                  <p className="text-xs text-muted-foreground">Beverly Hills</p>
+                  <p className="text-sm md:text-xs text-muted-foreground">Beverly Hills</p>
                 </CardContent>
               </Card>
             </div>
@@ -102,14 +102,14 @@ export default async function HomePage() {
                       <span key={i} className="text-yellow-500 text-sm">★</span>
                     ))}
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                  <p className="text-sm md:text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
                     "No spam calls like other services. Just one trusted person."
                   </p>
                   <div className="flex items-center gap-1">
-                    <p className="text-xs font-medium text-foreground">Robert J. 71</p>
-                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                    <p className="text-sm md:text-xs font-medium text-foreground">Robert J. 71</p>
+                    <CheckCircle className="h-4 w-4 md:h-3 md:w-3 text-green-500 flex-shrink-0" />
                   </div>
-                  <p className="text-xs text-muted-foreground">Pasadena</p>
+                  <p className="text-sm md:text-xs text-muted-foreground">Pasadena</p>
                 </CardContent>
               </Card>
             </div>
@@ -122,14 +122,14 @@ export default async function HomePage() {
                       <span key={i} className="text-yellow-500 text-sm">★</span>
                     ))}
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                  <p className="text-sm md:text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
                     "Straightforward and honest. No run-around."
                   </p>
                   <div className="flex items-center gap-1">
-                    <p className="text-xs font-medium text-foreground">Linda M. 69</p>
-                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                    <p className="text-sm md:text-xs font-medium text-foreground">Linda M. 69</p>
+                    <CheckCircle className="h-4 w-4 md:h-3 md:w-3 text-green-500 flex-shrink-0" />
                   </div>
-                  <p className="text-xs text-muted-foreground">Santa Monica</p>
+                  <p className="text-sm md:text-xs text-muted-foreground">Santa Monica</p>
                 </CardContent>
               </Card>
             </div>
@@ -142,14 +142,14 @@ export default async function HomePage() {
                       <span key={i} className="text-yellow-500 text-sm">★</span>
                     ))}
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
+                  <p className="text-sm md:text-xs leading-relaxed text-muted-foreground mb-3 flex-grow">
                     "They pre-qualified me first. No wasted time."
                   </p>
                   <div className="flex items-center gap-1">
-                    <p className="text-xs font-medium text-foreground">James K. 73</p>
-                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
+                    <p className="text-sm md:text-xs font-medium text-foreground">James K. 73</p>
+                    <CheckCircle className="h-4 w-4 md:h-3 md:w-3 text-green-500 flex-shrink-0" />
                   </div>
-                  <p className="text-xs text-muted-foreground">Burbank</p>
+                  <p className="text-sm md:text-xs text-muted-foreground">Burbank</p>
                 </CardContent>
               </Card>
             </div>
@@ -163,7 +163,7 @@ export default async function HomePage() {
                 <h2 className="text-balance text-center font-heading text-4xl font-medium tracking-tight text-foreground md:text-4xl">
                   Who is Equity Connect?
                 </h2>
-                <div className="mt-8 space-y-4 text-left text-xl leading-relaxed text-muted-foreground max-w-[650px] mx-auto">
+                <div className="mt-8 space-y-4 text-left text-xl md:text-lg leading-relaxed text-muted-foreground max-w-[650px] mx-auto">
                   <p>
                     We're a connection service that helps homeowners 62+ access their home equity.
                   </p>
@@ -253,8 +253,8 @@ export default async function HomePage() {
                   />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold text-foreground">LaToYa</h3>
-                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="text-xs text-muted-foreground">Helping homeowners find the right equity solutions for 6+ years</p>
+                <p className="mb-2 text-sm md:text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-sm md:text-xs text-muted-foreground">Helping homeowners find the right equity solutions for 6+ years</p>
               </CardContent>
             </Card>
 
@@ -268,8 +268,8 @@ export default async function HomePage() {
                   />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold text-foreground">Carlos</h3>
-                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="text-xs text-muted-foreground">Specializes in guiding seniors through the qualification process</p>
+                <p className="mb-2 text-sm md:text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-sm md:text-xs text-muted-foreground">Specializes in guiding seniors through the qualification process</p>
               </CardContent>
             </Card>
 
@@ -283,8 +283,8 @@ export default async function HomePage() {
                   />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold text-foreground">Maria</h3>
-                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="text-xs text-muted-foreground">Passionate about helping families access their home equity</p>
+                <p className="mb-2 text-sm md:text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-sm md:text-xs text-muted-foreground">Passionate about helping families access their home equity</p>
               </CardContent>
             </Card>
 
@@ -299,8 +299,8 @@ export default async function HomePage() {
                   />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold text-foreground">Rahul</h3>
-                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="text-xs text-muted-foreground">Dedicated to providing clear, honest guidance to homeowners</p>
+                <p className="mb-2 text-sm md:text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-sm md:text-xs text-muted-foreground">Dedicated to providing clear, honest guidance to homeowners</p>
               </CardContent>
             </Card>
 
@@ -314,8 +314,8 @@ export default async function HomePage() {
                   />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold text-foreground">Marcus</h3>
-                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="text-xs text-muted-foreground">Expert at matching homeowners with trusted specialists</p>
+                <p className="mb-2 text-sm md:text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-sm md:text-xs text-muted-foreground">Expert at matching homeowners with trusted specialists</p>
               </CardContent>
             </Card>
 
@@ -329,8 +329,8 @@ export default async function HomePage() {
                   />
                 </div>
                 <h3 className="mb-1 text-lg font-semibold text-foreground">Priya</h3>
-                <p className="mb-2 text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
-                <p className="text-xs text-muted-foreground">Known for her patient, supportive approach with clients</p>
+                <p className="mb-2 text-sm md:text-xs font-medium text-primary">Pre-Qualification Coordinator</p>
+                <p className="text-sm md:text-xs text-muted-foreground">Known for her patient, supportive approach with clients</p>
               </CardContent>
             </Card>
           </div>
@@ -340,7 +340,7 @@ export default async function HomePage() {
       {/* FAQ Section */}
       <section className="bg-muted/30 px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl">
-          <h2 className="text-balance text-center font-heading text-3xl font-medium tracking-tight text-foreground md:text-4xl">
+          <h2 className="text-balance text-center font-heading text-4xl font-medium tracking-tight text-foreground md:text-4xl">
             Frequently Asked Questions
           </h2>
           <Accordion type="single" collapsible className="mt-12">
@@ -417,8 +417,7 @@ export default async function HomePage() {
                 Can I unsubscribe from your emails?
               </AccordionTrigger>
               <AccordionContent className="leading-relaxed text-muted-foreground">
-                Absolutely. Every email includes an unsubscribe link at the bottom. You can opt out anytime, and we'll
-                remove you from our list immediately.
+                Absolutely. Simply reply "STOP" to any of our emails, and we'll remove you from our list immediately.
               </AccordionContent>
             </AccordionItem>
 
