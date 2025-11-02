@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 1, 2025  
+**Last Updated:** November 2, 2025  
 **Status:** Production Ready - Multi-Broker Scale Validated  
-**Current Phase:** Campaign Optimization + Portal Deployment + Lead Management Enhancement + Broker RLS Setup
-**Latest Updates:** 🎉 **LEAD DETAIL DARK MODE COMPLETE + CAMPAIGNS UPLOADED TO INSTANTLY** - Fixed all dark mode styling on lead detail page (card backgrounds, text colors, timeline elements, transcript modal). All CSS variables now properly support theme switching. Campaigns successfully uploaded to Instantly.ai platform for email outreach. Ready for production campaign launch.
+**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Lead Management Enhancement
+**Latest Updates:** 🎉 **GEO-TARGETED LANDING PAGE DEPLOYED** - Production-ready landing page with dynamic geo-targeting via Vercel Edge (19 metros, 240+ cities). City normalization working (Hollywood→LA, Irvine→Orange County). Testimonial section with local social proof. Senior-friendly typography (Space Grotesk + Inter, larger mobile text). Step-numbered process cards. "EC" favicon. Purple gradient hero. Deployed to Vercel, ready for cold email campaign traffic.
 
 ---
 
@@ -1167,14 +1167,132 @@ equity-connect/ (Git Monorepo)
 - **Campaign Upload (NOVEMBER 1, 2025):** ✅ All 3 campaign archetypes successfully uploaded to Instantly.ai platform
 - **Next:** Monitor campaign performance and refine copy for improved conversion rates
 
-**18. Reply Handler + TCPA Consent** ⭐ **PRODUCTION READY** (COMPLETE)
+**18. Geo-Targeted Landing Page** ⭐ **PRODUCTION READY** (NOVEMBER 2, 2025)
+- **Purpose:** High-converting landing page for cold email campaigns with dynamic geo-targeting
+- **Architecture:** Next.js 16 + Vercel Edge Middleware + TypeScript + Tailwind CSS
+- **Deployment:** Vercel (landing-page/ directory) - **LIVE**
+- **Status:** ✅ **PRODUCTION READY - Deployed with geo-targeting operational**
+
+**Core Features (LIVE):**
+- ✅ **Geo-Targeted Headlines** - Dynamic city/region detection via Vercel Edge
+  - Reads Vercel geo headers: `x-vercel-ip-city`, `x-vercel-ip-country-region`
+  - URL decoding for proper formatting ("Sherman%20Oaks" → "Sherman Oaks")
+  - City normalization to major metro areas (19 metros, 240+ cities)
+  - Fallback hierarchy: City → Region → Generic message
+  - Examples: "Helping Los Angeles homeowners..." or "Helping California homeowners..."
+- ✅ **Regional Breakouts** - Strategic market segmentation for Southern California
+  - Los Angeles (45 neighborhoods) - Hollywood, Beverly Hills, Santa Monica, The Valley
+  - Orange County (23 cities) - Irvine, Anaheim, Newport Beach
+  - Inland Empire (22 cities) - Riverside, San Bernardino counties
+  - Ventura County (10 cities) - Thousand Oaks, Ventura, Oxnard
+  - Plus 15 other major metros: Bay Area, New York, Chicago, Miami, Phoenix, Dallas, Houston, Seattle, Boston, Philadelphia, Atlanta, San Diego, Denver, Portland, Las Vegas
+- ✅ **Compact Testimonial Section** - Immediate trust-building after hero
+  - 4 text-only testimonial cards with 5-star ratings
+  - Green verification checkmarks for authenticity
+  - Geo-targeted cities (shows local neighborhoods: Beverly Hills, Pasadena, Santa Monica, Burbank)
+  - Responsive: 2 across mobile, 4 across desktop
+  - Card hover effects matching brand aesthetic
+- ✅ **Senior-Friendly Typography** - Optimized for 62+ demographic
+  - Headlines: Space Grotesk (700 weight) - modern, professional
+  - Body text: Inter (400 regular, 500 medium) - high readability
+  - Mobile text sizes increased: text-xl body, text-sm card text
+  - Desktop optimized for normal reading
+  - Maintains visual hierarchy without overwhelming seniors
+- ✅ **Step-by-Step Process Cards** - Clear numbered sequence
+  - Small purple outline badges (1, 2, 3) in top left corners
+  - Icons: Mail → CheckCircle2 → Handshake
+  - Centered icons/headers, left-aligned body text
+  - Equal height cards with hover effects
+  - Works perfectly on mobile and desktop
+- ✅ **Brand Identity** - Professional, trustworthy design
+  - "EC" favicon (E black, C purple #8b87d5)
+  - Logo in hero: "Equity<span purple>Connect</span>" with Inter font
+  - Purple gradient background (60%/25% opacity) for visual drama
+  - Consistent purple accents throughout (buttons, highlights, badges)
+- ✅ **6 AI Coordinator Personas** - Human touch with professional bios
+  - 2-row grid (3 per row) with compact 250px cards on tablet/desktop, 300px on mobile
+  - AI-generated headshot images (small, tasteful, 96x96px)
+  - First names only (avoids duplicate last name issue)
+  - Short professional bios for each coordinator
+  - Role badges and email addresses
+
+**Technical Implementation:**
+- ✅ **Middleware** (`landing-page/middleware.ts`)
+  - Reads Vercel geo headers (x-vercel-ip-city, x-vercel-ip-country-region)
+  - URL decoding with decodeURIComponent
+  - City normalization function (240+ cities → 19 major metros)
+  - Passes geo data via custom headers (x-user-city, x-user-region)
+  - Runs on Edge by default in Next.js 16 (no explicit runtime config)
+- ✅ **Server Component** (`landing-page/app/page.tsx`)
+  - Async function reads headers() for geo data
+  - export const dynamic = 'force-dynamic' prevents caching
+  - Fallback logic: city → region → generic
+  - Responsive design with Tailwind breakpoints
+- ✅ **TypeScript Declarations** (`landing-page/types/vercel.d.ts`)
+  - Module augmentation for NextRequest.geo property
+  - Supports TypeScript compilation on Vercel
+- ✅ **Build Configuration**
+  - `.npmrc` with legacy-peer-deps=true (React 19 compatibility)
+  - Multi-domain setup ready in next.config.mjs
+  - Vercel framework preset: Next.js
+  - Root directory: landing-page
+
+**Design System:**
+- ✅ Custom CSS hover effects for cards (translateY, scale, shadow)
+- ✅ Purple gradient hero background for visual interest
+- ✅ Consistent spacing and typography throughout
+- ✅ Mobile-first responsive design (300px/250px card widths)
+- ✅ Equal height cards using flexbox
+- ✅ Lucide icons for visual clarity
+
+**Content Strategy:**
+- ✅ "Who is Equity Connect?" - Clear value proposition
+  - One homeowner, one specialist (no bidding wars)
+  - Pre-qualification first (no wasted time)
+  - Carefully vetted specialists only
+  - Transparent role (connectors, not lenders)
+- ✅ FAQ Section with 9+ questions
+  - TCPA-compliant unsubscribe language ("reply STOP")
+  - Clear eligibility requirements
+  - Process explanation
+  - Trust-building answers
+- ✅ Footer with business address (legal compliance)
+  - Removed "Barbara LLC" from display (DBA strategy)
+  - Privacy Policy and Terms & Conditions links
+
+**Key Accomplishments (NOVEMBER 2):**
+- ✅ Geo-location working via Vercel headers (not request.geo)
+- ✅ City normalization covering 19 major US metros
+- ✅ Testimonial section for immediate social proof
+- ✅ Mobile typography optimized for seniors 62+
+- ✅ Step numbers added for clear process flow
+- ✅ Favicon and brand identity established
+- ✅ All changes deployed to production (20+ commits)
+- ✅ Landing page ready for cold email campaign traffic
+
+**Deployment:**
+- ✅ Vercel project created with landing-page as root directory
+- ✅ Auto-deploy on git push to master
+- ✅ Build time: ~20 seconds
+- ✅ Production URL: https://ec-landing-page-*.vercel.app
+- ✅ Ready for custom domain mapping
+
+**Next Steps:**
+- [ ] Add phone number and email contact options (after testing conversion data)
+- [ ] Implement full geo-targeting for testimonials (separate sets per metro)
+- [ ] Connect to pre-qualification form or CRM
+- [ ] Map custom production domain
+- [ ] A/B test different hero gradients and CTAs
+- [ ] Add trust badges (BBB, licensing info if applicable)
+
+**19. Reply Handler + TCPA Consent** ⭐ **PRODUCTION READY** (COMPLETE)
 - ✅ Instantly webhook for reply detection
 - ✅ Consent form workflow (for phone calls only)
 - ✅ Database consent recording
 - ✅ Full TCPA compliance workflow operational
 - **Status:** ✅ **PRODUCTION READY - Full workflow operational**
 
-**19. Scaling Strategy (100 Brokers)**
+**20. Scaling Strategy (100 Brokers)**
 - **Territory Management:**
   - Each broker gets 45,000-50,000 properties
   - ZIP-based territory assignment
