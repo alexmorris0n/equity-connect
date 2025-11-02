@@ -1,45 +1,32 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function middleware(request: NextRequest) {
-  // Get geolocation data from Vercel Edge
-  // Try multiple ways to access geo data
-  const geo = (request as any).geo || request.geo
-  const city = geo?.city
-  const region = geo?.region  
-  const country = geo?.country
-
-  // Debug: Log full request info to see what Vercel provides
-  console.log('Request URL:', request.url)
-  console.log('Request IP:', request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'))
-  console.log('All request properties:', Object.keys(request))
-  console.log('Geo data:', { city, region, country, fullGeo: geo })
-  console.log('Has geo property:', 'geo' in request)
-  console.log('request.geo directly:', (request as any).geo)
-
-  // Create response with custom headers
-  const response = NextResponse.next()
-
-  // Pass geo data via headers
-  if (city) {
-    response.headers.set('x-user-city', city)
-  }
+export function middleware(request: NextRequest) {
+  // CRITICAL: Debug - check what's available on request object
+  console.log('Full request object keys:', Object.keys(request))
+  console.log('Geo object:', request.geo)
+  console.log('Request IP:', request.ip)
   
-  if (region) {
-    response.headers.set('x-user-region', region)
-  }
-
-  if (country) {
-    response.headers.set('x-user-country', country)
-  }
-
-  // Also log what headers we're setting
-  console.log('Setting headers:', {
-    'x-user-city': city || 'not set',
-    'x-user-region': region || 'not set',
-    'x-user-country': country || 'not set',
+  // CRITICAL: Vercel provides geo data on request.geo
+  // Access it like this:
+  const city = request.geo?.city || ''
+  const region = request.geo?.region || ''
+  const country = request.geo?.country || ''
+  
+  // Log to Vercel console for debugging
+  console.log('Vercel Geo Data:', {
+    city: request.geo?.city,
+    region: request.geo?.region,
+    country: request.geo?.country,
+    ip: request.ip
   })
-
+  
+  const response = NextResponse.next()
+  
+  // Set headers with actual values OR 'not set' as fallback
+  response.headers.set('x-user-city', city || 'not set')
+  response.headers.set('x-user-region', region || 'not set')
+  response.headers.set('x-user-country', country || 'not set')
+  
   return response
 }
 
