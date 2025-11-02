@@ -8,6 +8,17 @@ async function getLocationText() {
   const headersList = await headers()
   const city = headersList.get('x-user-city')
   const region = headersList.get('x-user-region')
+  
+  // Debug: Log all headers to see what we're receiving
+  const allHeaders: Record<string, string> = {}
+  headersList.forEach((value, key) => {
+    allHeaders[key] = value
+  })
+  console.log('Page received headers:', allHeaders)
+  console.log('Geo headers:', {
+    'x-user-city': city,
+    'x-user-region': region,
+  })
 
   // Fallback logic
   if (city) {
@@ -29,7 +40,7 @@ export default async function HomePage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden px-4 pt-4 pb-20 md:pt-6 md:pb-32 lg:pt-8 lg:pb-40">
         {/* Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#c5c5c1]/50 via-[#c5c5c1]/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#8b87d5]/20 via-[#8b87d5]/10 to-transparent" />
         
         {/* Logo - Top Left */}
         <div className="relative z-10 mb-18 md:mb-24 lg:mb-30">
