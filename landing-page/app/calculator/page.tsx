@@ -6,9 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DollarSign, Home, Calendar, CreditCard, Phone, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 
-// Force dynamic rendering to avoid SSR issues with useSearchParams
-export const dynamic = 'force-dynamic'
-
 type LeadData = {
   first_name: string
   last_name: string
@@ -29,7 +26,7 @@ type CalculationResults = {
   lineOfCredit: number
 }
 
-export default function CalculatorPage() {
+function CalculatorContent() {
   const searchParams = useSearchParams()
   const token = searchParams?.get('t') || searchParams?.get('token')
   
@@ -387,6 +384,21 @@ export default function CalculatorPage() {
         </div>
       </footer>
     </div>
+  )
+}
+
+export default function CalculatorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center">
+          <Loader2 className="h-10 w-10 md:h-12 md:w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-base md:text-lg text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CalculatorContent />
+    </Suspense>
   )
 }
 
