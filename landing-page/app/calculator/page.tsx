@@ -1,10 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DollarSign, Home, Calendar, CreditCard, Phone, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+
+// Force dynamic rendering to avoid SSR issues with useSearchParams
+export const dynamic = 'force-dynamic'
 
 type LeadData = {
   first_name: string
