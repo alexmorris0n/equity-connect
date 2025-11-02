@@ -4,7 +4,6 @@ export function middleware(request: NextRequest) {
   // CRITICAL: Debug - check what's available on request object
   console.log('Full request object keys:', Object.keys(request))
   console.log('Geo object:', request.geo)
-  console.log('Request IP:', request.ip)
   
   // CRITICAL: Vercel provides geo data on request.geo
   // Access it like this:
@@ -17,7 +16,6 @@ export function middleware(request: NextRequest) {
     city: request.geo?.city,
     region: request.geo?.region,
     country: request.geo?.country,
-    ip: request.ip
   })
   
   const response = NextResponse.next()
