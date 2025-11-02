@@ -8,8 +8,11 @@ export async function middleware(request: NextRequest) {
   const region = geo?.region
   const country = geo?.country
 
-  // Debug: Log geo data (visible in Vercel function logs)
+  // Debug: Log full request info to see what Vercel provides
+  console.log('Request URL:', request.url)
+  console.log('Request headers:', Object.fromEntries(request.headers.entries()))
   console.log('Geo data:', { city, region, country, fullGeo: geo })
+  console.log('Has geo property:', 'geo' in request)
 
   // Create response with custom headers
   const response = NextResponse.next()
