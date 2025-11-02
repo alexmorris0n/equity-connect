@@ -191,8 +191,11 @@ export default async function HomePage() {
           </h2>
           <div className="mt-12 mx-auto grid gap-8 sm:grid-cols-2 md:grid-cols-3 overflow-visible">
             <div className="card-hover-wrapper mx-auto">
-              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px]">
-                <CardContent className="pt-4 text-center">
+              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px] relative">
+                <div className="absolute top-3 left-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-primary text-primary bg-background text-xs font-bold">
+                  1
+                </div>
+                <CardContent className="pt-6 text-center">
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto">
                     <Mail className="h-6 w-6" />
                   </div>
@@ -205,8 +208,11 @@ export default async function HomePage() {
             </div>
 
             <div className="card-hover-wrapper mx-auto">
-              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px]">
-                <CardContent className="pt-4 text-center">
+              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px] relative">
+                <div className="absolute top-3 left-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-primary text-primary bg-background text-xs font-bold">
+                  2
+                </div>
+                <CardContent className="pt-6 text-center">
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto">
                     <CheckCircle2 className="h-6 w-6" />
                   </div>
@@ -219,8 +225,11 @@ export default async function HomePage() {
             </div>
 
             <div className="card-hover-wrapper mx-auto">
-              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px]">
-                <CardContent className="pt-4 text-center">
+              <Card className="border-2 h-full min-h-[280px] w-[300px] sm:w-[250px] relative">
+                <div className="absolute top-3 left-3 flex h-6 w-6 items-center justify-center rounded-full border-2 border-primary text-primary bg-background text-xs font-bold">
+                  3
+                </div>
+                <CardContent className="pt-6 text-center">
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground mx-auto">
                     <Handshake className="h-6 w-6" />
                   </div>
