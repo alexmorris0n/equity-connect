@@ -12,19 +12,150 @@ function normalizeCity(city: string): string {
     'van nuys', 'woodland hills', 'calabasas', 'malibu', 'redondo beach',
     'manhattan beach', 'hermosa beach', 'torrance', 'long beach',
     'inglewood', 'el segundo', 'playa vista', 'marina del rey',
-    'westwood', 'brentwood', 'pacific palisades', 'century city'
+    'westwood', 'brentwood', 'pacific palisades', 'century city',
+    'downey', 'norwalk', 'whittier', 'alhambra', 'arcadia', 'monrovia',
+    'pomona', 'claremont', 'northridge', 'reseda', 'granada hills',
+    'porter ranch', 'tarzana', 'valley village', 'canoga park', 'chatsworth'
   ]
   
-  if (laNeighborhoods.includes(cityLower)) {
-    return 'Los Angeles'
-  }
+  // Ventura County
+  const venturaCountyNeighborhoods = [
+    'ventura', 'oxnard', 'thousand oaks', 'simi valley', 'camarillo',
+    'moorpark', 'port hueneme', 'santa paula', 'fillmore', 'ojai'
+  ]
   
-  // Add more metro area mappings as needed
-  // New York metro
-  const nyNeighborhoods = ['brooklyn', 'queens', 'bronx', 'staten island', 'manhattan']
-  if (nyNeighborhoods.includes(cityLower)) {
-    return 'New York'
-  }
+  // Inland Empire (Riverside & San Bernardino Counties)
+  const inlandEmpireNeighborhoods = [
+    'riverside', 'corona', 'moreno valley', 'temecula', 'murrieta',
+    'san bernardino', 'fontana', 'rialto', 'rancho cucamonga', 'ontario',
+    'chino', 'chino hills', 'upland', 'redlands', 'yucaipa', 'beaumont',
+    'hemet', 'perris', 'lake elsinore', 'menifee', 'eastvale', 'jurupa valley'
+  ]
+  
+  // Orange County
+  const orangeCountyNeighborhoods = [
+    'irvine', 'anaheim', 'fullerton', 'orange', 'garden grove',
+    'huntington beach', 'newport beach', 'costa mesa', 'laguna beach',
+    'santa ana', 'mission viejo', 'lake forest', 'tustin', 'yorba linda',
+    'laguna niguel', 'san clemente', 'dana point', 'laguna hills',
+    'aliso viejo', 'seal beach', 'brea', 'placentia', 'la habra'
+  ]
+  
+  // New York metro area
+  const nyNeighborhoods = [
+    'brooklyn', 'queens', 'bronx', 'staten island', 'manhattan',
+    'yonkers', 'new rochelle', 'white plains', 'mount vernon',
+    'jersey city', 'hoboken', 'newark', 'elizabeth', 'paterson',
+    'stamford', 'norwalk', 'bridgeport', 'new haven'
+  ]
+  
+  // San Francisco / Bay Area
+  const sfNeighborhoods = [
+    'san francisco', 'oakland', 'berkeley', 'san jose', 'palo alto',
+    'mountain view', 'sunnyvale', 'santa clara', 'cupertino',
+    'fremont', 'hayward', 'san mateo', 'redwood city', 'daly city',
+    'south san francisco', 'san leandro', 'alameda', 'richmond',
+    'vallejo', 'walnut creek', 'concord', 'pleasanton', 'livermore'
+  ]
+  
+  // Chicago metro area
+  const chicagoNeighborhoods = [
+    'evanston', 'skokie', 'cicero', 'oak park', 'berwyn',
+    'naperville', 'aurora', 'joliet', 'elgin', 'waukegan',
+    'schaumburg', 'palatine', 'arlington heights', 'des plaines'
+  ]
+  
+  // Miami metro area
+  const miamiNeighborhoods = [
+    'miami beach', 'coral gables', 'hialeah', 'homestead',
+    'fort lauderdale', 'hollywood', 'pompano beach', 'boca raton',
+    'delray beach', 'west palm beach', 'boynton beach'
+  ]
+  
+  // Phoenix metro area
+  const phoenixNeighborhoods = [
+    'scottsdale', 'tempe', 'mesa', 'glendale', 'peoria',
+    'chandler', 'gilbert', 'surprise', 'avondale', 'goodyear'
+  ]
+  
+  // Dallas-Fort Worth metro area
+  const dallasNeighborhoods = [
+    'fort worth', 'arlington', 'plano', 'irving', 'garland',
+    'frisco', 'mckinney', 'carrollton', 'richardson', 'denton',
+    'allen', 'flower mound', 'lewisville', 'mesquite'
+  ]
+  
+  // Houston metro area
+  const houstonNeighborhoods = [
+    'sugar land', 'pearland', 'pasadena', 'league city',
+    'baytown', 'conroe', 'galveston', 'texas city', 'friendswood'
+  ]
+  
+  // Seattle metro area
+  const seattleNeighborhoods = [
+    'bellevue', 'tacoma', 'everett', 'kent', 'renton',
+    'spokane', 'federal way', 'kirkland', 'redmond', 'sammamish'
+  ]
+  
+  // Boston metro area
+  const bostonNeighborhoods = [
+    'cambridge', 'quincy', 'newton', 'somerville', 'brookline',
+    'waltham', 'malden', 'medford', 'framingham', 'woburn'
+  ]
+  
+  // Philadelphia metro area
+  const philadelphiaNeighborhoods = [
+    'chester', 'norristown', 'camden', 'trenton', 'wilmington'
+  ]
+  
+  // Atlanta metro area
+  const atlantaNeighborhoods = [
+    'marietta', 'roswell', 'sandy springs', 'johns creek',
+    'alpharetta', 'smyrna', 'dunwoody', 'decatur'
+  ]
+  
+  // San Diego metro area
+  const sanDiegoNeighborhoods = [
+    'chula vista', 'oceanside', 'escondido', 'carlsbad',
+    'el cajon', 'vista', 'san marcos', 'encinitas', 'la mesa'
+  ]
+  
+  // Denver metro area
+  const denverNeighborhoods = [
+    'aurora', 'lakewood', 'thornton', 'arvada', 'westminster',
+    'centennial', 'boulder', 'fort collins', 'colorado springs'
+  ]
+  
+  // Portland metro area
+  const portlandNeighborhoods = [
+    'gresham', 'hillsboro', 'beaverton', 'lake oswego', 'tigard'
+  ]
+  
+  // Las Vegas metro area
+  const lasVegasNeighborhoods = [
+    'henderson', 'north las vegas', 'paradise', 'spring valley', 'summerlin'
+  ]
+  
+  // Apply mappings
+  if (laNeighborhoods.includes(cityLower)) return 'Los Angeles'
+  if (venturaCountyNeighborhoods.includes(cityLower)) return 'Ventura County'
+  if (inlandEmpireNeighborhoods.includes(cityLower)) return 'Inland Empire'
+  if (orangeCountyNeighborhoods.includes(cityLower)) return 'Orange County'
+  if (nyNeighborhoods.includes(cityLower)) return 'New York'
+  if (sfNeighborhoods.includes(cityLower)) return 'Bay Area'
+  if (chicagoNeighborhoods.includes(cityLower)) return 'Chicago'
+  if (miamiNeighborhoods.includes(cityLower)) return 'Miami'
+  if (phoenixNeighborhoods.includes(cityLower)) return 'Phoenix'
+  if (dallasNeighborhoods.includes(cityLower)) return 'Dallas'
+  if (houstonNeighborhoods.includes(cityLower)) return 'Houston'
+  if (seattleNeighborhoods.includes(cityLower)) return 'Seattle'
+  if (bostonNeighborhoods.includes(cityLower)) return 'Boston'
+  if (philadelphiaNeighborhoods.includes(cityLower)) return 'Philadelphia'
+  if (atlantaNeighborhoods.includes(cityLower)) return 'Atlanta'
+  if (sanDiegoNeighborhoods.includes(cityLower)) return 'San Diego'
+  if (denverNeighborhoods.includes(cityLower)) return 'Denver'
+  if (portlandNeighborhoods.includes(cityLower)) return 'Portland'
+  if (lasVegasNeighborhoods.includes(cityLower)) return 'Las Vegas'
   
   // Return original city if no mapping found
   return city
