@@ -40,7 +40,7 @@ export default async function HomePage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden px-4 pt-4 pb-20 md:pt-6 md:pb-32 lg:pt-8 lg:pb-40">
         {/* Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#8b87d5]/20 via-[#8b87d5]/10 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#8b87d5]/60 via-[#8b87d5]/25 to-transparent" />
         
         {/* Logo - Top Left */}
         <div className="relative z-10 mb-18 md:mb-24 lg:mb-30">
