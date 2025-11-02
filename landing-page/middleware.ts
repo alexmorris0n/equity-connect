@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   // Get geolocation data from Vercel Edge
-  const city = request.geo?.city
-  const region = request.geo?.region
-  const country = request.geo?.country
+  const geo = request.geo
+  const city = geo?.city
+  const region = geo?.region
+  const country = geo?.country
+
+  // Debug: Log geo data (visible in Vercel function logs)
+  console.log('Geo data:', { city, region, country, fullGeo: geo })
 
   // Create response with custom headers
   const response = NextResponse.next()
@@ -23,9 +27,25 @@ export function middleware(request: NextRequest) {
     response.headers.set('x-user-country', country)
   }
 
+  // Also log what headers we're setting
+  console.log('Setting headers:', {
+    'x-user-city': city || 'not set',
+    'x-user-region': region || 'not set',
+    'x-user-country': country || 'not set',
+  })
+
   return response
 }
 
 export const config = {
-  matcher: '/:path*',
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 }
