@@ -44,7 +44,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  runtime: 'edge',
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
