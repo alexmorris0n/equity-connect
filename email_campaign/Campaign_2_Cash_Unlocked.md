@@ -143,31 +143,33 @@ Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 ---
 
 ## EMAIL 4 - DAY 14
-**Final Opportunity**
+**Final Opportunity + Calculator**
 
-**Subject:** Last message - your home equity options
+**Subject:** Your personalized equity calculator - {{property_city}}
 
 Hi {{firstName}},
 
 This is my final message about your substantial home equity.
 
-**Your property:**
+I've prepared a personalized calculator with your {{property_city}} property data:
 
-Location: {{property_city}}  
-Equity position: Strong  
-Estimated value: {{property_value}}  
-Your equity: approximately {{estimated_equity}}  
-Available to you: {{equity_50_percent}} to {{equity_60_percent}}
+**👉 View Your Equity Options:** https://equityconnectguide.com/calculator?t={{calculator_token}}
+
+This shows exactly:
+
+• Your home value: {{property_value}}  
+• Your equity: approximately {{estimated_equity}}  
+• Available to you: {{equity_50_percent}} to {{equity_60_percent}}  
+• How you can use it: Monthly income, lump sum, line of credit
 
 Since you have high equity, you have maximum flexibility in how you use it.
 
-This is a reverse mortgage - government-insured and used by over 60,000 homeowners last year.
+**Two ways to proceed:**
 
-If you want to explore your options, reply with your best phone number today.
+1. Use the calculator above to see your options, then click "Get Pre-Qualified"  
+2. Reply with your best phone number and we'll call you today
 
-We'll call you right away to verify eligibility (takes about 5 minutes).
-
-If you qualify, we'll connect you with {{broker_name}} to discuss your specific situation.
+We'll verify eligibility (takes about 5 minutes), then connect you with {{broker_name}} (NMLS #{{broker_nmls}}) to discuss your specific situation.
 
 If I don't hear from you by end of day, I'll close your file.
 

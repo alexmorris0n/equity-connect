@@ -139,15 +139,17 @@ Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 ---
 
 ## EMAIL 4 - DAY 14
-**Detailed Breakdown Offer**
+**Detailed Breakdown Offer + Calculator**
 
-**Subject:** Final message - your equity breakdown
+**Subject:** Your detailed equity breakdown - {{property_city}}
 
 Hi {{firstName}},
 
 This is my last message.
 
-I can prepare a detailed breakdown for your {{property_city}} property:
+I've prepared a personalized breakdown for your {{property_city}} property with interactive calculations:
+
+**👉 View Your Complete Analysis:** https://equityconnectguide.com/calculator?t={{calculator_token}}
 
 **What's included:**
 
@@ -155,14 +157,17 @@ I can prepare a detailed breakdown for your {{property_city}} property:
 • Your equity position: approximately {{estimated_equity}}  
 • Money available to you: {{equity_50_percent}} to {{equity_60_percent}}  
 • Tax treatment: NOT taxable as income  
-• Comparison: Reverse mortgage vs other options  
-• Timeline: What to expect in the process
+• Timeline and process overview  
+• Comparison with other options
 
-If you want this breakdown, reply with your best phone number today.
+Many of my high-equity clients share this calculator with their financial advisor before proceeding - feel free to do the same.
 
-We'll call you right away to verify eligibility (takes about 5 minutes).
+**Two ways to proceed:**
 
-If you qualify, we'll connect you with {{broker_name}} to discuss your specific situation and prepare your detailed analysis.
+1. Review the calculator above, then click "Get Pre-Qualified" to schedule  
+2. Reply with your best phone number and we'll call you today
+
+We'll verify eligibility (takes about 5 minutes), then connect you with {{broker_name}} (NMLS #{{broker_nmls}}) to discuss your specific situation and prepare your detailed analysis.
 
 If I don't hear from you by end of day, I'll close your file.
 

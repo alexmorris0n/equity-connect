@@ -137,28 +137,33 @@ Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
 ---
 
 ## EMAIL 4 - DAY 14
-**Final Offer**
+**Final Offer + Calculator**
 
-**Subject:** Final message - {{property_city}}
+**Subject:** See your personalized numbers - {{property_city}}
 
 Hi {{firstName}},
 
 This is my last message about eliminating your monthly mortgage payment.
 
-Here's your situation one more time:
+I've created a personalized calculator just for you with your {{property_city}} property data already filled in:
 
-Home value: approximately {{property_value}}  
-Your equity: approximately {{estimated_equity}}  
-Cash available to you: {{equity_50_percent}} to {{equity_60_percent}}  
-Monthly payment after: $0
+**👉 View Your Numbers:** https://equityconnectguide.com/calculator?t={{calculator_token}}
+
+This shows:
+
+• Your home value: approximately {{property_value}}  
+• Your equity: approximately {{estimated_equity}}  
+• Cash available to you: {{equity_50_percent}} to {{equity_60_percent}}  
+• Your new monthly payment: $0
 
 Over 60,000 people did this last year. This is a government-insured program. Your home stays in your name.
 
-If you want to explore this, reply with your best phone number today.
+**Two ways to proceed:**
 
-We'll call you right away to verify eligibility (takes about 5 minutes).
+1. Use the calculator above, then click "Get Pre-Qualified" to schedule a call  
+2. Reply with your best phone number and we'll call you today
 
-If you qualify, we'll connect you with {{broker_name}} to discuss your specific options.
+If you qualify, we'll connect you with {{broker_name}} (NMLS #{{broker_nmls}}) to discuss your specific options.
 
 If I don't hear from you by end of day, I'll close your file.
 
