@@ -26,8 +26,6 @@ type CalculationResults = {
   lineOfCredit: number
 }
 
-const BARBARA_NUMBER = '(650) 530-0051'
-
 function CalculatorContent() {
   const searchParams = useSearchParams()
   const token = searchParams?.get('t') || searchParams?.get('token')
@@ -356,7 +354,7 @@ function CalculatorContent() {
                   We've received your phone number. Barbara, our scheduling assistant, is calling you right away to confirm your details and get you booked with a licensed specialist.
                 </p>
                 <p className="text-sm md:text-base text-green-700 dark:text-green-300">
-                  Watch for a call from {BARBARA_NUMBER}
+                  Watch for a call from an Equity Connect number shortly.
                 </p>
               </CardContent>
             </Card>
