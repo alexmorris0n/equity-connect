@@ -48,21 +48,40 @@ export async function POST(request: NextRequest) {
     if (tokenData.lead_id) {
       const { data: leadData } = await supabase
         .from('leads')
-        .select('phone, primary_phone')
+        .select('primary_phone')
         .eq('id', tokenData.lead_id)
         .single()
 
-      // Only update if lead doesn't have a phone number
-      if (leadData && !leadData.phone && !leadData.primary_phone) {
+      // Only update if lead doesn't have a primary phone number
+      if (leadData && !leadData.primary_phone) {
         await supabase
           .from('leads')
           .update({ 
-            phone: phone,
             primary_phone: phone,
             updated_at: new Date().toISOString()
           })
           .eq('id', tokenData.lead_id)
       }
+    }
+
+    // Trigger n8n webhook to notify Barbara
+    try {
+      const webhookUrl = process.env.N8N_CALCULATOR_WEBHOOK_URL
+      if (webhookUrl) {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            phone,
+            lead_id: tokenData.lead_id,
+            submitted_at: new Date().toISOString()
+          })
+        })
+      }
+    } catch (webhookError) {
+      // Don't fail the whole request if webhook fails
+      console.error('Webhook error:', webhookError)
     }
 
     return NextResponse.json({

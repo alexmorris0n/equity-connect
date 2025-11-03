@@ -26,6 +26,8 @@ type CalculationResults = {
   lineOfCredit: number
 }
 
+const BARBARA_NUMBER = '(650) 530-0051'
+
 function CalculatorContent() {
   const searchParams = useSearchParams()
   const token = searchParams?.get('t') || searchParams?.get('token')
@@ -351,10 +353,10 @@ function CalculatorContent() {
                   </h3>
                 </div>
                 <p className="text-base md:text-lg text-green-800 dark:text-green-200 mb-3">
-                  We've received your phone number. A licensed specialist will contact you within 1-2 business days to discuss your options.
+                  We've received your phone number. Barbara, our scheduling assistant, is calling you right away to confirm your details and get you booked with a licensed specialist.
                 </p>
                 <p className="text-sm md:text-base text-green-700 dark:text-green-300">
-                  Watch for a call from {phone}
+                  Watch for a call from {BARBARA_NUMBER}
                 </p>
               </CardContent>
             </Card>
