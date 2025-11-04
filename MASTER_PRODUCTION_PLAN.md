@@ -1440,11 +1440,12 @@ GROUP BY campaign_archetype;
 - Add territory-based lead assignment workflow
 - Implement AI-powered lead scoring system
 
-**4. Instantly Persona Sync Automation** ⭐ **HIGH PRIORITY (NEW Nov 3, 2025)**
-- [ ] Build Supabase Edge Function to pull Instantly sent-email activity daily (persona + sender metadata)
-- [ ] Schedule pg_cron job (2am PT) to invoke the Edge Function via `net.http_post`
-- [ ] Backfill the past 30 days of Instantly activity to populate `leads.persona_sender_name`
-- [ ] Add monitoring/alerting for sync failures (log table + Slack notification)
+**4. Instantly Persona Sync Automation** ✅ **COMPLETE (Nov 4, 2025)**
+- ✅ Build Supabase Edge Function to pull Instantly sent-email activity daily (persona + sender metadata)
+- ✅ Schedule pg_cron job (2am PT) to invoke the Edge Function via `net.http_post`
+- ✅ Backfill the past 30 days of Instantly activity to populate `leads.persona_sender_name`
+- ✅ Add monitoring/alerting for sync failures (log table + Slack notification)
+- **Status:** ✅ **PRODUCTION READY - Edge Function deployed + cron scheduled**
 
 **5. Broker RLS Setup** ⭐ **MEDIUM PRIORITY**
 - Configure Row Level Security policies:
@@ -1498,23 +1499,14 @@ GROUP BY campaign_archetype;
 - **Status:** ✅ **PRODUCTION READY - Live and operational**
 - **Next:** Implement RLS policies (broker vs admin access) + ongoing bug fixes
 
-**11. Geo-Based Microsites + Calculator** (Phase 2 - After Stable Lead Gen)
-- **Strategy:** Vercel geo-detection + encrypted lead tokens (no ethnic profiling)
-- **City Pages:** Base domain + geo → auto-personalizes for visitor's city
-- **Interactive Calculator:** Hail mary email #4 with pre-filled equity numbers
-- **Tokens:** AES-256 encrypted, 90-day expiration, tracks visits/conversions
-- **Domain Rotation:** Flexible - works with ANY domain (add/remove as deliverability changes)
-  - Current: 15 domains from `config/SpaceshipDomains.tsv`
-  - Add new domains anytime (just point DNS to Vercel)
-  - Retire burnt domains without breaking old links (tokens still work)
-  - No subdomain wildcards needed (simpler DNS management)
-- **Cost:** $20/month (Vercel Pro for unlimited domains)
-- **ROI:** 35-50x (additional conversions from visual engagement)
-- **Documentation:** `docs/MICROSITE_ARCHITECTURE_PLAN.md`
-- **Deployment Guide:** `docs/VERCEL_MICROSITE_DEPLOYMENT.md`
-- **Migration:** `database/migrations/microsite-infrastructure.sql`
-- **Templates:** `templates/microsite/city-based-config.json`
-- **Status:** ✅ Planned, Ready to Implement
+**11. Geo-Based Microsites + Calculator** ✅ **COMPLETE (Nov 2, 2025)**
+- ✅ **Vercel geo-detection** with city/region detection via Edge Middleware
+- ✅ **City Pages:** Dynamic geo-targeted headlines (19 major metros, 240+ cities)
+- ✅ **Geo-based testimonial cards:** Shows local neighborhoods for trust-building
+- ✅ **Interactive Calculator:** Deployed and operational for email campaigns
+- **Implementation Details:** See Section 18 (Geo-Targeted Landing Page) for complete features
+- **Live URL:** https://ec-landing-page-*.vercel.app
+- **Status:** ✅ **PRODUCTION READY - Deployed November 2, 2025**
 
 ---
 
