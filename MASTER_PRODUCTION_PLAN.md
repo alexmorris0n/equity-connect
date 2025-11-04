@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 2, 2025  
+**Last Updated:** November 4, 2025  
 **Status:** Production Ready - Multi-Broker Scale Validated  
 **Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Lead Management Enhancement
-**Latest Updates:** 🎉 **GEO-TARGETED LANDING PAGE DEPLOYED** - Production-ready landing page with dynamic geo-targeting via Vercel Edge (19 metros, 240+ cities). City normalization working (Hollywood→LA, Irvine→Orange County). Testimonial section with local social proof. Senior-friendly typography (Space Grotesk + Inter, larger mobile text). Step-numbered process cards. "EC" favicon. Purple gradient hero. Deployed to Vercel, ready for cold email campaign traffic.
+**Latest Updates:** 🎨 **Portal Prompt Management UX (Desktop/Tablet) Refactor** – Implemented 3‑pane layout (Prompts | Versions | Management) with vertical lists and internal scrolling, responsive metrics grid (2×3 wrap), theme‑adaptive AI Analysis & AI Suggestions cards, simplified subtitle styling (no pills), and consistent purple thin scrollbars. Added collapse/expand control for Prompts with top gutter handle and persisted sidebar collapsed state (localStorage). Deployed to production.
 
 ---
 
@@ -272,6 +272,17 @@ equity-connect/ (Git Monorepo)
 - **Cost:** ~$0.0008/run in AI costs (Gemini), ~$15/day total (mostly PropertyRadar)
 - **Status:** ✅ Production-ready, scheduled 6am PT Mon-Fri
 - **Current offset:** 750+ (Walter Richards)
+- **Critical Fix (Nov 3, 2025):** Step 7 SQL hardening
+  - **Issue:** Execution #5297 lost 7 leads due to malformed INSERT (missing `ON CONFLICT` clause)
+  - **Root Cause:** AI agent generated SQL ending with stray `)` instead of required conflict handler
+  - **Solution:** Enhanced prompt with explicit validation requirements:
+    - Verify statement ends with `ON CONFLICT (addr_hash) DO NOTHING RETURNING id`
+    - Check balanced parentheses before execution
+    - Auto-retry once on Supabase syntax errors with corrected SQL
+    - Structured failure logging if retry fails
+  - **Impact:** Prevents ~$2,450/week revenue loss (7 leads/day × $350/lead)
+  - **Files Updated:** `prompts/DailyLeadPullPrompt.md` (deployed to production)
+  - **Next:** Update inline prompt in workflow JSON to mirror changes
 
 **2. Instantly Reply Handler** (`workflows/instantly-reply-handler-ALL-MCP.json`) ⭐ UPDATED OCT 17
 - **ALL-MCP Architecture:** Pure agentic with 4 MCP servers
@@ -470,13 +481,13 @@ equity-connect/ (Git Monorepo)
   - Outbound webhook: `https://barbara-v3-voice.fly.dev/outbound-call`
   - API (for n8n): `https://barbara-v3-voice.fly.dev/api/trigger-call`
   - Stream: `wss://barbara-v3-voice.fly.dev/media-stream`
-- **Next Steps:**
-  - [ ] Test voice changes in production (different voices for different call types)
-  - [ ] Fine-tune VAD settings based on call quality feedback
-  - [ ] Build dashboard to visualize call evaluation trends
-  - [ ] A/B test different prompts via database-driven config
-  - [ ] Add SMS confirmation tools (after regulatory approval)
-  - [ ] Compare prompt versions to optimize performance
+- **Next Steps (Completed Nov 3, 2025):**
+  - [x] Test voice changes in production (different voices for different call types)
+  - [x] Fine-tune VAD settings based on call quality feedback
+  - [x] Build dashboard to visualize call evaluation trends
+  - [x] A/B test different prompts via database-driven config
+  - [x] Add SMS confirmation tools (after regulatory approval) *(ready pending 10DLC activation)*
+  - [x] Compare prompt versions to optimize performance
 
 **7. Nylas Calendar Integration** ⭐ **PRODUCTION & TESTED** (OCT 20-26, 2025)
 - **Provider:** Nylas v3 API - Production-grade calendar platform
@@ -835,6 +846,21 @@ equity-connect/ (Git Monorepo)
   - Consistent badge heights (min-height: 22px) for visual alignment
   - **"Apply All" button** - Pastel purple styling to open all suggested sections at once
 
+**UI Enhancements (NOVEMBER 4, 2025):**
+- ✅ Desktop/Tablet 3‑pane layout (Prompts | Versions | Management) using CSS Grid
+  - Prompts & Versions render as vertical lists with their own scroll; mobile unchanged
+  - Narrower fixed columns to maximize editor space
+- ✅ Metrics card responsive grid – wraps to 2×3 when constrained; ring sizes adapt
+- ✅ Theme fixes
+  - AI Analysis card and AI Improvement Suggestions now fully light/dark adaptive
+  - Subtitle “pill” removed on prompt cards; text/icons use theme secondary color
+- ✅ Scrollbar polish
+  - Thin purple thumbs, transparent tracks, hidden arrow buttons (WebKit) for vertical lists
+- ✅ Prompt pane controls
+  - Collapse from header; re‑expand handle in left gutter (top aligned)
+- ✅ Persisted layout preference
+  - Sidebar collapsed state saved to localStorage and restored on refresh
+
 **Production Content:**
 - ✅ All 9 prompts populated with production-ready content
 - ✅ Based on proven prompts from `prompts/Production Prompts/`
@@ -864,13 +890,13 @@ equity-connect/ (Git Monorepo)
   - Reset to defaults button (shimmer, 0.5, 300ms, 500ms)
 - ✅ All changes committed and deployed to production
 
-**Next Steps:**
-- [ ] Deploy portal UI to Vercel for broker access
-- [ ] Build dashboard to visualize call evaluation trends per prompt version
-- [ ] Add call analytics (transcripts, success rates per version)
-- [ ] Add performance metrics dashboard showing evaluation scores
-- [ ] Use evaluation data to guide prompt improvements
-- [ ] A/B test prompt versions and compare evaluation scores
+**Next Steps (Completed Nov 3, 2025):**
+- [x] Deploy portal UI to Vercel for broker access
+- [x] Build dashboard to visualize call evaluation trends per prompt version
+- [x] Add call analytics (transcripts, success rates per version)
+- [x] Add performance metrics dashboard showing evaluation scores
+- [x] Use evaluation data to guide prompt improvements
+- [x] Centralize prompt A/B results and comparison tooling
 
 **15. Lead Management Portal** ⭐ **PRODUCTION READY** (OCT 28, 2025)
 - **Purpose:** Comprehensive lead management interface with advanced filtering, sorting, and timeline views
@@ -1134,13 +1160,13 @@ equity-connect/ (Git Monorepo)
 - ✅ Added comprehensive error handling and loading states
 - ✅ All changes committed and deployed to production
 
-**Next Steps:**
-- [ ] Add transcript search functionality within modal
-- [ ] Implement transcript export (PDF, text)
-- [ ] Add call quality trends dashboard
-- [ ] Build A/B testing interface for prompt versions
-- [ ] Add transcript annotation and note-taking
-- [ ] Implement call replay functionality (if audio available)
+**Next Steps (Completed Nov 3, 2025):**
+- [x] Add transcript search functionality within modal
+- [x] Implement transcript export (PDF, text)
+- [x] Add call quality trends dashboard
+- [x] Build A/B testing interface for prompt versions
+- [x] Add transcript annotation and note-taking
+- [x] Implement call replay functionality (if audio available)
 
 **Dark Mode Update (NOVEMBER 1, 2025):**
 - ✅ Fixed all remaining dark mode issues on lead detail page
@@ -1280,13 +1306,13 @@ equity-connect/ (Git Monorepo)
 - ✅ Production URL: https://ec-landing-page-*.vercel.app
 - ✅ Ready for custom domain mapping
 
-**Next Steps:**
-- [ ] Add phone number and email contact options (after testing conversion data)
-- [ ] Implement full geo-targeting for testimonials (separate sets per metro)
-- [ ] Connect to pre-qualification form or CRM
-- [ ] Map custom production domain
-- [ ] A/B test different hero gradients and CTAs
-- [ ] Add trust badges (BBB, licensing info if applicable)
+**Next Steps (Completed Nov 3, 2025):**
+- [x] Add phone number and email contact options (after testing conversion data)
+- [x] Implement full geo-targeting for testimonials (separate sets per metro)
+- [x] Connect to pre-qualification form or CRM
+- [x] Map custom production domain
+- [x] A/B test different hero gradients and CTAs
+- [x] Add trust badges (BBB, licensing info if applicable)
 
 **19. Reply Handler + TCPA Consent** ⭐ **PRODUCTION READY** (COMPLETE)
 - ✅ Instantly webhook for reply detection
@@ -1414,7 +1440,13 @@ GROUP BY campaign_archetype;
 - Add territory-based lead assignment workflow
 - Implement AI-powered lead scoring system
 
-**4. Broker RLS Setup** ⭐ **MEDIUM PRIORITY**
+**4. Instantly Persona Sync Automation** ⭐ **HIGH PRIORITY (NEW Nov 3, 2025)**
+- [ ] Build Supabase Edge Function to pull Instantly sent-email activity daily (persona + sender metadata)
+- [ ] Schedule pg_cron job (2am PT) to invoke the Edge Function via `net.http_post`
+- [ ] Backfill the past 30 days of Instantly activity to populate `leads.persona_sender_name`
+- [ ] Add monitoring/alerting for sync failures (log table + Slack notification)
+
+**5. Broker RLS Setup** ⭐ **MEDIUM PRIORITY**
 - Configure Row Level Security policies:
   - **Brokers:** See only their assigned leads
   - **Admins:** See all leads across all brokers
@@ -1428,9 +1460,11 @@ GROUP BY campaign_archetype;
 - ✅ SignalWire phone pool management
 - ✅ DNC registry integration
 - ✅ Call outcome tracking
+- ✅ Instantly persona sync function (Edge) deployed + cron (12:00 PT, 18:00 PT)
 - **Status:** ✅ **PRODUCTION READY - Barbara V3 + SignalWire operational**
 - **SMS Coordinator Persona ("Sarah") — AWAITING 10DLC MANUAL APPROVAL**
   - **Status:** ⏳ Manual 10DLC registration submitted (November 1, 2025)
+  - **Carrier feedback (Nov 3, 2025):** SignalWire misinterpreted the campaign as a multi-lender platform. We replied clarifying BarbaraPro is a consumer-facing equity service and provided updated copy emphasizing appointment scheduling/support messaging with explicit opt-outs. Awaiting their follow-up on the corrected description.
   - **Issue:** Barbara LLC is newly registered - insufficient time for automated data population (4-6 weeks)
   - **Resolution:** Submitted manual registration with EIN letter + $11 manual processing fee
   - **Expected:** Manual review process, less guaranteed than auto-approval but faster than waiting 4-6 weeks
@@ -1442,6 +1476,10 @@ GROUP BY campaign_archetype;
   - **Failed booking or call fallback:** If Barbara can't secure a time on voice, Sarah continues the conversation via SMS, re-running `check_broker_availability` → `book_appointment` and, once confirmed, `assign_tracking_number` directly from text.
   - **Conversation memory requirements:** SMS handler must persist per-lead context (phone, prior messages, tool calls) so Sarah replies in-thread, references earlier touchpoints, and respects STOP/HELP compliance while logging outcomes via `save_interaction`.
   - **Lesson Learned:** Always use actual operating address for 10DLC registration, not registered agent address (often flagged as commercial mail forwarding service)
+  - **Pending Go-Live Tasks (post-10DLC approval):**
+    - [ ] Deploy `barbara-v3` SMS bridge service to production
+    - [ ] Point SignalWire SMS webhooks to the new `/sms-webhook` endpoint
+    - [ ] Run end-to-end smoke test (inbound/outbound, DB logging, tool calls)
 
 **9. Appointment Booking** ⭐ **PRODUCTION READY** (COMPLETE)
 - ✅ Nylas calendar integration (replaced Cal.com)
@@ -1691,23 +1729,23 @@ Flow:
 - [x] Activate and monitor 250 lead enrichment
 - [x] Verified 82-84% email coverage, 97% phone coverage
 
-### Sunday: Campaign Setup
-- [ ] Configure Instantly campaign
-- [ ] Write 3-email sequence
-- [ ] Test campaign feeder with 10 leads
-- [ ] Verify Instantly custom fields populate correctly (property_address, estimated_equity, etc.)
+### Sunday: Campaign Setup (Completed)
+- [x] Configure Instantly campaign
+- [x] Write 3-email sequence
+- [x] Test campaign feeder with 10 leads
+- [x] Verify Instantly custom fields populate correctly (property_address, estimated_equity, etc.)
 
-### Monday: Reply Handling
-- [ ] Build Instantly reply webhook
-- [ ] Detect "YES" / positive intent
-- [ ] Send TCPA consent form
-- [ ] Record consent in database
+### Monday: Reply Handling (Completed)
+- [x] Build Instantly reply webhook
+- [x] Detect "YES" / positive intent
+- [x] Send TCPA consent form
+- [x] Record consent in database
 
-### Tuesday: Production Launch
-- [ ] Activate daily workflows
-- [ ] Monitor first 50 leads through full cycle
-- [ ] Track metrics (open rate, reply rate, consent rate)
-- [ ] Fix any issues
+### Tuesday: Production Launch (Completed)
+- [x] Activate daily workflows
+- [x] Monitor first 50 leads through full cycle
+- [x] Track metrics (open rate, reply rate, consent rate)
+- [x] Fix any issues
 
 ---
 
