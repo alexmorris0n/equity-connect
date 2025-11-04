@@ -1,11 +1,16 @@
 <template>
-  <div class="prompt-workspace">
+  <div class="prompt-workspace" :class="{ 'prompts-collapsed': promptsCollapsed }">
     <section class="meta-card">
       <header class="meta-header">
         <div class="meta-title-wrap">
           <n-icon size="20" class="meta-icon"><FolderOutline /></n-icon>
           <span class="meta-title">Prompts</span>
         </div>
+        <n-button class="meta-action collapse-trigger" text size="tiny" @click="promptsCollapsed = true">
+          <template #icon>
+            <n-icon><ArrowBackOutline /></n-icon>
+          </template>
+        </n-button>
       </header>
       <div class="meta-list-wrapper">
         <div class="meta-list">
@@ -28,6 +33,13 @@
         </div>
       </div>
     </section>
+
+    <!-- Expand Prompts Button (desktop only) -->
+    <n-button v-if="promptsCollapsed" class="expand-prompts-btn" quaternary circle size="small" @click="promptsCollapsed = false">
+      <template #icon>
+        <n-icon><ArrowForwardOutline /></n-icon>
+      </template>
+    </n-button>
 
     <section class="meta-card">
       <header class="meta-header">
@@ -189,7 +201,7 @@
                       :color="getMetricColorWithIntensity(metric.value, metric.key)"
                       :rail-color="'rgba(0,0,0,0.06)'"
                       :show-indicator="false"
-                      style="width: 100px; height: 100px;"
+                      class="metric-ring"
                     >
                     </n-progress>
                     <div class="metric-ring-score">{{ metric.value.toFixed(1) }}<span class="metric-ring-suffix">/10</span></div>
@@ -199,10 +211,10 @@
               </n-card>
 
               <!-- AI Analysis Section -->
-              <n-card title="AI Analysis" :bordered="false" style="margin-bottom: 24px;">
+              <n-card title="AI Analysis" :bordered="false" class="ai-analysis-card" style="margin-bottom: 24px;">
                 <n-collapse>
                   <n-collapse-item title="Strengths" name="strengths">
-                    <n-list bordered>
+                    <n-list bordered class="ai-analysis-list">
                       <n-list-item v-for="(strength, idx) in evaluationData.commonStrengths" :key="idx">
                         <template #prefix>
                           <n-icon color="#10b981"><CheckmarkCircleOutline /></n-icon>
@@ -213,7 +225,7 @@
                   </n-collapse-item>
                   
                   <n-collapse-item title="Weaknesses" name="weaknesses">
-                    <n-list bordered>
+                    <n-list bordered class="ai-analysis-list">
                       <n-list-item v-for="(weakness, idx) in evaluationData.commonWeaknesses" :key="idx">
                         <template #prefix>
                           <n-icon color="#f59e0b"><WarningOutline /></n-icon>
@@ -268,7 +280,7 @@
                       <n-badge :value="suggestion.priority" :type="getPriorityType(suggestion.priority)" class="suggestion-badge" />
                     </template>
                     <div style="text-align: left; flex: 1;">
-                      <div style="font-weight: 500; margin-bottom: 4px;">
+                      <div class="suggestion-title">
                         {{ suggestion.title }}
                         <n-tag 
                           v-if="appliedSuggestions.has(mapSuggestionSectionToKey(suggestion.section))" 
@@ -1344,7 +1356,9 @@ import {
   CheckmarkCircleOutline,
   CloseCircleOutline,
   WarningOutline,
-  BarChartOutline
+  BarChartOutline,
+  ArrowBackOutline,
+  ArrowForwardOutline
 } from '@vicons/ionicons5'
 
 const loading = ref(false)
@@ -4185,6 +4199,7 @@ function handleBeforeUnload(e) {
   padding-left: 0;
   max-width: 100%;
   min-height: 600px;
+  position: relative;
 }
 
 .meta-card {
@@ -4388,7 +4403,7 @@ function handleBeforeUnload(e) {
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
   min-width: 180px;
   width: 180px;
-  height: 60px;
+  height: 70px;
   scroll-snap-align: start;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
@@ -4516,13 +4531,13 @@ function handleBeforeUnload(e) {
 
 .meta-badge {
   display: inline-block;
-  padding: 2px 6px;
-  margin-top: 4px;
+  padding: 0; /* remove pill */
+  margin-top: 2px;
   font-size: 0.55rem;
   font-weight: 500;
   color: var(--text-inverse);
-  background: rgba(99, 102, 241, 0.16);
-  border-radius: 999px;
+  background: transparent !important; /* remove pill */
+  border-radius: 0; /* remove pill */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4530,7 +4545,7 @@ function handleBeforeUnload(e) {
 }
 
 :root[data-theme='dark'] .meta-badge {
-  background: rgba(129, 140, 248, 0.28);
+  background: transparent !important;
 }
 
 .meta-item:not(.version) .meta-item-sub {
@@ -4547,6 +4562,14 @@ function handleBeforeUnload(e) {
   min-width: 0;
   color: var(--text-primary);
   margin-bottom: 0.1rem;
+}
+
+/* Ensure prompt subtext badge and its icon are readable in both themes */
+.meta-item .meta-badge {
+  color: var(--text-secondary);
+}
+.meta-item .meta-badge :deep(.n-icon) {
+  color: var(--text-secondary);
 }
 
 .meta-date {
@@ -5197,7 +5220,7 @@ function handleBeforeUnload(e) {
 /* Metrics Ring Grid */
 .metrics-ring-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.75rem 1rem;
   padding: 0;
 }
@@ -5208,6 +5231,11 @@ function handleBeforeUnload(e) {
   align-items: center;
   gap: 0.5rem;
   position: relative;
+}
+
+.metric-ring {
+  width: 100px;
+  height: 100px;
 }
 
 .metric-ring-score {
@@ -5233,6 +5261,62 @@ function handleBeforeUnload(e) {
   font-weight: 500;
   text-align: center;
   max-width: 120px;
+}
+
+/* Allow the metrics section to adapt based on its own width */
+.metrics-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 600px) {
+  .metric-ring {
+    width: 88px;
+    height: 88px;
+  }
+  .metrics-ring-grid {
+    gap: 0.5rem 0.75rem;
+  }
+  .metric-ring-label {
+    font-size: 0.7rem;
+  }
+}
+
+/* AI Analysis dark/light adaptive styles */
+.ai-analysis-card {
+  /* inherit card theming; ensure readable text */
+  color: var(--text-primary);
+  background: var(--surface-muted) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.ai-analysis-card :deep(.n-card-header__main) {
+  color: var(--text-primary) !important;
+}
+
+.ai-analysis-card :deep(.n-card__content) {
+  background: transparent !important;
+}
+
+.ai-analysis-list :deep(.n-list-item) {
+  color: var(--text-primary) !important;
+  background: transparent !important;
+  border-color: var(--border-color) !important;
+}
+
+.ai-analysis-list :deep(.n-list) {
+  background: transparent !important;
+}
+
+.ai-analysis-card :deep(.n-collapse-item) {
+  border-color: var(--border-color) !important;
+}
+
+.ai-analysis-card :deep(.n-collapse-item__header) {
+  color: var(--text-primary) !important;
+}
+
+.ai-analysis-card :deep(.n-collapse) {
+  background: transparent !important;
 }
 
 .metric-score {
@@ -5391,4 +5475,185 @@ function handleBeforeUnload(e) {
 :deep(.n-divider) {
   background-color: rgba(255, 255, 255, 0.1) !important;
 }
+/* Responsive three-pane layout: desktop/tablet */
+@media (min-width: 768px) {
+  .prompt-workspace {
+    display: grid;
+    grid-template-columns: 195px 195px 1fr;
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+
+  .prompt-workspace.prompts-collapsed {
+    grid-template-columns: 195px 1fr;
+    padding-left: 24px; /* create a left gutter for the expand handle */
+  }
+
+  .prompt-workspace.prompts-collapsed > .meta-card:first-of-type {
+    display: none;
+  }
+
+  /* When prompts are collapsed, move editor to column 2 to fill space */
+  .prompt-workspace.prompts-collapsed .editor-pane {
+    grid-column: 2;
+  }
+
+  /* Left and middle meta cards fill height and scroll vertically */
+  .prompt-workspace > .meta-card {
+    height: calc(100vh - 180px);
+    max-height: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0.5rem 0.6rem;
+  }
+
+  /* Turn lists vertical on wider screens */
+  .meta-list {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .meta-list-wrapper {
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  /* Make list items stretch full width in vertical lists */
+  .meta-item {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 70px; /* match version card height */
+    padding: 0.4rem 0.75rem;
+  }
+
+  .meta-item.version {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    padding: 0.5rem 0.75rem;
+  }
+
+  /* Ensure editor pane occupies the right column */
+  .editor-pane {
+    grid-column: 3;
+    min-width: 320px; /* keep at least two 140px rings + gaps */
+  }
+  .editor-card {
+    min-width: 320px;
+  }
+
+  /* Narrower vertical scrollbars for Prompts/Versions in vertical layout */
+  .prompt-workspace > .meta-card { 
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: rgba(99, 102, 241, 0.5) transparent; /* Firefox: purple thumb, transparent track */
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar {
+    width: 3px; /* half the earlier 6px */
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+    display: none; /* hide up/down arrows */
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-button:start:decrement,
+  .prompt-workspace > .meta-card::-webkit-scrollbar-button:end:increment,
+  .prompt-workspace > .meta-card::-webkit-scrollbar-button:vertical:increment,
+  .prompt-workspace > .meta-card::-webkit-scrollbar-button:vertical:decrement {
+    width: 0;
+    height: 0;
+    display: none;
+    background: transparent;
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-button:single-button {
+    width: 0;
+    height: 0;
+    display: none; /* extra safety */
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.3); /* purple to match horizontal */
+    border-radius: 3px;
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.5);
+  }
+  .prompt-workspace > .meta-card::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* In case inner wrapper scrolls */
+  .prompt-workspace .meta-list-wrapper { 
+    scrollbar-width: thin; 
+    scrollbar-color: rgba(99, 102, 241, 0.5) transparent; /* Firefox */
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar { 
+    width: 3px; 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-button { 
+    width: 0; 
+    height: 0; 
+    display: none; 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-button:start:decrement,
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-button:end:increment,
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-button:vertical:increment,
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-button:vertical:decrement { 
+    width: 0; 
+    height: 0; 
+    display: none; 
+    background: transparent; 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-button:single-button { 
+    width: 0; 
+    height: 0; 
+    display: none; 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-track { 
+    background: transparent; 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-thumb { 
+    background: rgba(99, 102, 241, 0.3); /* purple to match horizontal */
+    border-radius: 3px; 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-thumb:hover { 
+    background: rgba(99, 102, 241, 0.5); 
+  }
+  .prompt-workspace .meta-list-wrapper::-webkit-scrollbar-corner { 
+    background: transparent; 
+  }
+
+  /* Collapse controls */
+  .collapse-trigger {
+    display: inline-flex;
+  }
+  .expand-prompts-btn {
+    display: none;
+  }
+  .prompt-workspace.prompts-collapsed .expand-prompts-btn {
+    position: absolute;
+    top: 8px;
+    left: 6px;
+    transform: none;
+    z-index: 20;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    pointer-events: auto;
+    width: 28px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Ensure AI suggestions text uses theme colors */
+.ai-suggestions-card { color: var(--text-primary); }
+.ai-suggestions-card :deep(.n-card-header__main) { color: var(--text-primary) !important; }
+.suggestion-title { font-weight: 500; margin-bottom: 4px; color: var(--text-primary); }
 </style>

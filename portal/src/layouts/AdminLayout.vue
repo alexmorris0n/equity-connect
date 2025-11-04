@@ -75,7 +75,7 @@
 </template>
 
 <script setup>
-import { h, computed, ref } from 'vue'
+import { h, computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useTheme } from '@/composables/useTheme'
@@ -115,6 +115,19 @@ const barbaraLogoCompact = computed(() => isDark.value ? barbaraLogoCompactDark 
 const { user, broker, signOut } = useAuth()
 
 const sidebarCollapsed = ref(false)
+
+// Restore sidebar collapsed state from localStorage
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem('ec_sidebar_collapsed')
+    if (saved !== null) sidebarCollapsed.value = saved === '1' || saved === 'true'
+  } catch (_) {}
+})
+
+// Persist on change
+watch(sidebarCollapsed, (v) => {
+  try { localStorage.setItem('ec_sidebar_collapsed', v ? '1' : '0') } catch (_) {}
+})
 
 const menuOptions = [
   {
