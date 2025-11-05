@@ -122,8 +122,9 @@ class WebRTCAudioBridge {
             // Convert to mono PCM16
             const pcm16Mono = this.toMonoPCM16(samples, channelCount, bitsPerSample);
             
-            // Resample from 16kHz (OpenAI) to 8kHz (μ-law)
-            const pcm8k = this.resampleTo8kHz(pcm16Mono, 16000);
+            // Resample from actual input rate to 8kHz (μ-law)
+            const inRate = Number(sampleRate) || 16000;
+            const pcm8k = this.resampleTo8kHz(pcm16Mono, inRate);
             
             // Process into 20ms frames (160 samples at 8kHz)
             const frames = this.frameAccumulator.addSamples(pcm8k);
@@ -246,6 +247,37 @@ class WebRTCAudioBridge {
         this.speaking = false;
         this.responseInProgress = false;
         console.log('🔊 AI finished speaking');
+
+        try {
+          // Flush any remainder from the frame accumulator and send a smoothed tail
+          if (this.frameAccumulator) {
+            const remaining = this.frameAccumulator.flush?.() || new Int16Array(0);
+            if (remaining.length > 0) {
+              // Pad to one 20ms frame (160 samples @ 8kHz)
+              const tailFrame = new Int16Array(160);
+              const copyLen = Math.min(remaining.length, 160);
+              tailFrame.set(remaining.subarray(0, copyLen), 0);
+
+              // Apply a short fade-out over the last 80 samples (10ms)
+              const FADE_SAMPLES = 80;
+              for (let i = 0; i < FADE_SAMPLES; i++) {
+                const idx = 160 - FADE_SAMPLES + i;
+                const gain = 1 - (i / (FADE_SAMPLES - 1));
+                tailFrame[idx] = (tailFrame[idx] * gain) | 0;
+              }
+
+              const muTail = this.pcm16ToMuLaw(tailFrame);
+              this.sendToSignalWire(muTail);
+            }
+
+            // Send one extra 20ms of silence to avoid a hard zero-step boundary
+            const silence = new Int16Array(160); // zeros
+            const muSilence = this.pcm16ToMuLaw(silence);
+            this.sendToSignalWire(muSilence);
+          }
+        } catch (err) {
+          console.warn('⚠️ Tail flush failed:', err?.message || err);
+        }
         break;
 
       case 'response.created':
