@@ -1,10 +1,8 @@
 /**
+ * Backup of audio-bridge-lean.js before minimal crackle fixes.
+ */
+/**
  * Audio Bridge Handler (LEAN VERSION)
- * 
- * DEPRECATED: This lean bridge is not used in production. Barbara v3 (WebRTC bridge) is
- * the active implementation. This file remains for historical reference only.
- * 
- * If this file is referenced, please switch to `audio-bridge-webrtc-new.js`.
  * 
  * Stripped down to ONLY fixes for actual reported bugs:
  * 1. Tool timeouts (10-20s) - was 2.5s
@@ -676,7 +674,7 @@ class AudioBridge {
     
     let instructions;
     let promptSource = 'unknown';
-
+    
     // Step 1: Get lead context and build variables
     let variables = {};
     let promptCallContext = {
@@ -687,10 +685,10 @@ class AudioBridge {
       has_property_data: false,
       is_qualified: false
     };
-
+    
     try {
       const promptBuildResult = await this.lookupAndBuildPrompt();
-
+      
       if (promptBuildResult && promptBuildResult.variables) {
         variables = promptBuildResult.variables;
         
@@ -711,7 +709,7 @@ class AudioBridge {
           this.brokerTimezone = promptBuildResult.broker_timezone;
           console.log(`🕐 Broker timezone set: ${this.brokerTimezone}`);
         }
-
+        
         promptCallContext = {
           context: this.callContext.context || 'inbound',
           lead_id: this.callContext.lead_id,
@@ -735,7 +733,7 @@ class AudioBridge {
       console.error('❌ Failed to lookup lead context:', err.message);
       variables = { callContext: 'inbound' };
     }
-
+    
     // Step 2: Get prompt from local Production Prompts folder
     try {
       console.log('📋 Loading prompt from Production Prompts with context:', promptCallContext);
@@ -745,11 +743,11 @@ class AudioBridge {
         this.callContext.instructions,
         variables  // Pass variables for injection INSIDE getPromptForCall
       );
-
+      
       if (!promptTemplate || promptTemplate.length === 0) {
         throw new Error('Local prompt returned empty');
       }
-
+      
       instructions = promptTemplate;  // Already injected inside getPromptForCall
       promptSource = 'local_production';
       this.promptName = determinePromptName(promptCallContext);
@@ -767,7 +765,7 @@ class AudioBridge {
       this.promptSource = promptSource;
       console.warn('⚠️ Using emergency minimal prompt');
     }
-
+    
     console.log('📋 Final prompt details:', {
       source: promptSource,
       length: instructions.length,
@@ -1447,4 +1445,5 @@ class AudioBridge {
 }
 
 module.exports = AudioBridge;
+
 
