@@ -2434,16 +2434,17 @@ const acceptAllImprovements = async () => {
     console.error('Error updating applied suggestions:', error)
   }
   
-  // Update the UI
-  nextTick(() => {
-    populateContentEditableDivs()
-    markAsChanged()
-  })
-  
-  // Close modal and switch to editor
+  // Close modal and switch to editor FIRST
   showApplyAllModal.value = false
   applyAllResults.value = []
   activeTab.value = 'editor'
+  
+  // Wait for editor tab to render, THEN update the UI
+  await nextTick()
+  await nextTick() // Double nextTick ensures editor is fully rendered
+  
+  populateContentEditableDivs()
+  markAsChanged()
   
   window.$message?.success(`Successfully applied all ${appliedCount} improvements! Review and save when ready.`)
 }

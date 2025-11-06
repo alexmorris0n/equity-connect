@@ -24,7 +24,7 @@
         -368,
         304
       ],
-      "id": "051a599e-ffee-4634-a95e-649103d7fe00",
+      "id": "b648bdd2-a935-4bee-b5a2-5f0bc3a8561b",
       "name": "Daily Trigger (6am PT)"
     },
     {
@@ -48,7 +48,7 @@
         -144,
         304
       ],
-      "id": "48f61719-778b-458f-aca2-5736842ba5cc",
+      "id": "9d0bfbdc-c533-4496-80cc-9e7da6f639ea",
       "name": "Fetch Active Brokers",
       "credentials": {
         "supabaseApi": {
@@ -69,7 +69,7 @@
         80,
         304
       ],
-      "id": "15032efd-d64d-40e5-a553-b66cb455cd14",
+      "id": "a6cdf8c0-4b2d-47f3-976e-999827f937b7",
       "name": "Loop Over Brokers"
     },
     {
@@ -82,16 +82,20 @@
         288,
         320
       ],
-      "id": "acf73729-0731-40e3-932d-36cfb356891c",
-      "name": "Prepare Broker Context"
+      "id": "94f68639-436b-48b8-98c6-ac65979ba9a1",
+      "name": "Prepare Broker Context",
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "=For each lead, build custom_variables with these EXACT formats:\n- property_address: (as-is from database)\n- property_city: (as-is from database)\n- property_value: \"$XXX,XXX\" with commas (e.g., \"$664,367\")\n- property_value_range: \"$XXXK-$XXXK\" UPPERCASE K, ±10% (e.g., \"$598K-$731K\")\n- estimated_equity: \"$XXX,XXX\" with commas (e.g., \"$549,922\")\n- equity_50_percent: \"$XXX,XXX\" equity * 0.5 with commas (e.g., \"$274,961\")\n- equity_60_percent: \"$XXX,XXX\" equity * 0.6 with commas (e.g., \"$329,953\")\n- equity_formatted_short: \"$XXXK\" UPPERCASE K (e.g., \"$550K\")\n- equity_percent: equity_pct as number (e.g., 82.77)\n- estimated_monthly_payment: \"$X,XXX\" property_value * 0.003 with commas (e.g., \"$1,993\")\n- broker_name: \"My Reverse Options\"\n- broker_nmls: \"NMLS #ML123456\"r List: {{ $json.list_id }}\n- Current Offset: {{ $json.current_offset }}\n\n---\n\n## STEP 1: Count Today's Enriched Leads\nCall Supabase execute_sql:\n```\nSELECT count_enriched_today('{{ $json.broker_id }}')\n```\nStore result as: current_count\n\n## STEP 2: Determine Pull Requirement\nStep 2a: Call calculator: `{{ $json.daily_capacity }} - current_count - {{ $json.daily_lead_surplus }}`\nStore as: needed_leads\n\nStep 2b: If needed_leads <= 0, JUMP to STEP 12\n\nStep 2c: If needed_leads > 0:\n- Call calculator: `needed_leads / 0.8`\n- Round UP to integer\n- Store as: pull_quantity\n\n## STEP 3: Pull Properties\nCall PropertyRadar:\n```json\n{\n  \"pr_method\": \"GET\",\n  \"pr_endpoint\": \"/lists/{{ $json.list_id }}/items?Start={{ $json.current_offset }}&Limit=${pull_quantity}\",\n  \"pr_body_json\": \"{}\"\n}\n```\nStore: radar_ids\n\n## STEP 4: Filter New IDs\nCall Supabase execute_sql:\n```\nSELECT * FROM filter_new_radar_ids(ARRAY['${radar_ids.join(\"','\")}'])\n```\nIf 0 results, JUMP to STEP 12\nStore: new_radar_ids\n\n## STEP 5: Purchase Properties\nCall PropertyRadar:\n```json\n{\n  \"pr_method\": \"POST\",\n  \"pr_endpoint\": \"/properties?Purchase=1\",\n  \"pr_body_json\": \"{\\\"Criteria\\\":[{\\\"name\\\":\\\"RadarID\\\",\\\"value\\\":[\\\"${new_radar_ids.join('\",\"')}\\\"]}]}\"\n}\n```\nStore: properties\n\n## STEP 6: Enrich with BatchData\nCall BatchData:\n```json\n{\n  \"bd_body_json\": \"{\\\"requests\\\":[${properties.map(p => JSON.stringify({propertyAddress:{street:p.Address,city:p.City,state:p.State,zip:p.ZipFive}})).join(',')}]}\"\n}\n```\nStore: enrichments\n\n## STEP 7: Insert to DB\nBuild INSERT with these EXACT column names:\n```\nINSERT INTO leads (\n  radar_id, first_name, last_name, primary_email, primary_phone,\n  property_address, property_city, property_state, property_zip,\n  assigned_broker_id, property_value, estimated_equity\n) VALUES\n  (actual data rows)\nON CONFLICT (addr_hash) DO NOTHING RETURNING id\n```\nCall Supabase execute_sql with the built query\n\n## STEP 8: Update Offset\nCall Supabase execute_sql:\n```\nSELECT update_broker_offset('{{ $json.broker_id }}', ${pull_quantity})\n```\n\n## STEP 9: Get Campaigns\nCall Supabase execute_sql:\n```\nSELECT archetype, instantly_campaign_id FROM campaigns WHERE active=true\n```\nStore: campaign_map\n\n## STEP 10: Get Uploadable Leads\nCall Supabase execute_sql:\n```\nSELECT id, first_name, last_name, primary_email, \n       property_address, property_city,\n       property_value, estimated_equity, \n       (estimated_equity::float / NULLIF(property_value,0) * 100) as equity_pct\nFROM leads \nWHERE assigned_broker_id='{{ $json.broker_id }}' \nAND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp\nAND campaign_status IN ('new', NULL) \nAND primary_email IS NOT NULL\n```\nIf 0, JUMP to STEP 12\nStore: uploadable_leads\n\n## STEP 11: Upload to Instantly\nGroup leads by equity_pct and call Instantly for each group.\n\nFor each lead, build custom_variables with these EXACT formats:\n- property_address: (as-is from database)\n- property_city: (as-is from database)\n- property_value: \"$XXX,XXX\" with commas (e.g., \"$664,367\")\n- property_value_range: If value >= $1M use \"$X.XM-$X.XM\" format (e.g., \"$1.1M-$1.3M\"), otherwise \"$XXXK-$XXXK\" UPPERCASE K (e.g., \"$598K-$731K\")\n- estimated_equity: \"$XXX,XXX\" with commas (e.g., \"$549,922\")\n- equity_50_percent: \"$XXX,XXX\" equity * 0.5 with commas (e.g., \"$274,961\")\n- equity_60_percent: \"$XXX,XXX\" equity * 0.6 with commas (e.g., \"$329,953\")\n- equity_formatted_short: If equity >= $1M use \"$X.XM\" format (e.g., \"$1.0M\"), otherwise \"$XXXK\" UPPERCASE K (e.g., \"$550K\")\n- equity_percent: equity_pct as number (e.g., 82.77)\n- estimated_monthly_payment: \"$X,XXX\" property_value * 0.003 with commas (e.g., \"$1,993\")\n- broker_name: \"My Reverse Options\"\n- broker_nmls: \"NMLS #ML123456\"\n\nCRITICAL: Use UPPERCASE 'K' not lowercase 'k'. Use 'M' for millions. Calculate percentages accurately.\n\nCall Instantly with leads formatted as:\n```json\n{\n  \"leads_json\": \"[{\\\"email\\\":\\\"...\\\",\\\"first_name\\\":\\\"...\\\",\\\"last_name\\\":\\\"...\\\",\\\"custom_variables\\\":{...}}]\",\n  \"campaign_id\": \"${campaign_id_from_map}\"\n}\n```\nNOTE: Use \"first_name\" and \"last_name\" with underscores, NOT camelCase.\n\n## STEP 12: Mark Uploaded\nCall Supabase execute_sql:\n```\nUPDATE leads SET campaign_status='active', added_to_campaign_at=NOW() \nWHERE assigned_broker_id='{{ $json.broker_id }}' \nAND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp\nAND campaign_status IN ('new', NULL)\n```\n\n## STEP 13: Update Surplus\nCall Supabase execute_sql:\n```\nUPDATE brokers \nSET daily_lead_surplus = GREATEST(\n  (SELECT COUNT(*) FROM leads \n   WHERE assigned_broker_id='{{ $json.broker_id }}' \n   AND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp) \n  - {{ $json.daily_capacity }}, 0\n) \nWHERE id='{{ $json.broker_id }}' \nRETURNING daily_lead_surplus\n```\n\nBEGIN EXECUTION AT STEP 1\n\n",
+        "text": "=<persona>\nYou are an intelligent lead generation orchestrator for reverse mortgage brokers. You execute multi-step workflows with precision and validate each step before proceeding.\n</persona>\n\n<critical_rules>\nREAD THESE INSTRUCTIONS THOROUGHLY BEFORE EXECUTING ANY TOOLS.\n- Execute steps 1-13 in EXACT sequential order\n- Do NOT skip any steps\n- Do NOT execute step N until step N-1 is complete\n- Validate you have required data from previous steps before proceeding\n</critical_rules>\n\n<execution_context>\n**IMPORTANT: You are processing ONE broker at a time in a loop.**\n- This workflow will be executed MULTIPLE TIMES (once per broker)\n- Each execution is INDEPENDENT and SEPARATE\n- Do NOT carry over state, assumptions, or conclusions from previous broker runs\n- ALWAYS start fresh at STEP 1 for each broker\n- Complete ALL 13 steps for THIS broker before finishing\n</execution_context>\n\n<context>\n**CURRENT BROKER (this execution only):**\nBroker: {{ $json.broker_name }} ({{ $json.broker_id }})\nDaily Capacity: {{ $json.daily_capacity }}\nCurrent Surplus: {{ $json.daily_lead_surplus }}\nPropertyRadar List: {{ $json.list_id }}\nCurrent Offset: {{ $json.current_offset }}\n</context>\n\n<workflow>\n\n## STEP 1: Count Today's Enriched\nCall execute_sql: `SELECT count_enriched_today('{{ $json.broker_id }}')`\nStore as: current_count\n\n## STEP 2: Calculate Need\nUse the Calculator tool to perform this calculation:\n`{{ $json.daily_capacity }} - current_count - {{ $json.daily_lead_surplus }}`\n\nStore result as: needed_leads\n\nExample with the current broker:\n- Daily Capacity: {{ $json.daily_capacity }}\n- Current Count (from Step 1): current_count  \n- Surplus: {{ $json.daily_lead_surplus }}\n- Calculator input: \"{{ $json.daily_capacity }} - current_count - {{ $json.daily_lead_surplus }}\"\n\nDECISION LOGIC (check this carefully):\n\n**IF needed_leads > 0:**\n  → This broker NEEDS leads today\n  → Use Calculator tool: \"needed_leads / 0.8\" \n  → Round UP the result to get pull_quantity\n  → CONTINUE to Step 3 and pull properties\n  \n**IF needed_leads <= 0:**\n  → This broker has enough (from today or surplus)\n  → SKIP to Step 12 (no pulling needed)\n\nExamples:\n- If needed_leads = 2 → PULL (2 > 0) ✅\n- If needed_leads = 3 → PULL (3 > 0) ✅\n- If needed_leads = 0 → SKIP (0 <= 0) ❌\n- If needed_leads = -1 → SKIP (-1 <= 0) ❌\n\n## STEP 3: Pull Properties\nBEFORE executing, verify you have: pull_quantity from Step 2\n\nCall PropertyRadar GET `/lists/{{ $json.list_id }}/items?Start={{ $json.current_offset }}&Limit=${pull_quantity}`\nStore: radar_ids\n\n## STEP 4: Filter New IDs\nBEFORE executing, verify you have: radar_ids from Step 3\n\nCall execute_sql: `SELECT * FROM filter_new_radar_ids(ARRAY['${radar_ids.join(\"','\")}'])`\nIf 0 results: JUMP to STEP 12\nStore: new_radar_ids\n\n## STEP 5: Purchase Properties  \nBEFORE executing, verify you have: new_radar_ids from Step 4\n\nCall PropertyRadar POST `/properties?Purchase=1`\nBody: `{\"Criteria\":[{\"name\":\"RadarID\",\"value\":[\"${new_radar_ids.join('\",\"')}\"]}]}`\nStore: properties\n\n## STEP 6: Skip Trace\nBEFORE executing, verify you have: properties from Step 5\n\nCall batch_skip_trace with properties array:\n```json\n{\n  \"properties\": [${properties.map(p => ({\n    property_address: p.Address,\n    property_city: p.City,\n    property_state: p.State,\n    property_zip: p.ZipFive,\n    firstname: p.OwnerFirstName,\n    lastname: p.OwnerLastName\n  }))}]\n}\n```\nStore: skiptrace_results\n\n## STEP 7: Insert to Database\nMerge properties + skiptrace_results (first contact record):\n- primary_email: contacts[0].emails[0].email\n- primary_phone: contacts[0].phones[0].phonenumber\n\nFor EACH lead, determine campaign_archetype using this logic:\n1. If property.isFreeAndClear = 1 (or property.TotalLoanBalance = 0):\n   → campaign_archetype = 'cash_unlocked'  // Debt-free homeowners\n   \n2. Else calculate equity_pct = (estimated_equity / property_value) * 100:\n   - If equity_pct >= 75%: campaign_archetype = 'high_equity_special'  // High equity, some mortgage\n   - Else: campaign_archetype = 'no_more_payments'  // Active mortgage, lower equity\n\nExecute INSERT using execute_sql tool:\n\nBuild a multi-row INSERT statement. For EACH lead:\n1. Get the top contact from skiptrace results (contacts[0])\n2. Extract primary_email from contacts[0].emails[0].email (or NULL if no email)\n3. Extract primary_phone from contacts[0].phones[0].phonenumber (or NULL if no phone)\n4. Determine campaign_archetype using the logic above\n5. Format as VALUES row: ('radar_id', 'first_name', 'last_name', 'email', 'phone', 'address', 'city', 'state', 'zip', 'broker_id', value, equity, 'archetype')\n\nCRITICAL SQL FORMATTING:\n- Use NULL (not 'null') for missing emails/phones\n- Use single quotes for text: 'value'\n- Use no quotes for numbers: 123456\n- Comma-separate each VALUES row\n- Example:\n```sql\nINSERT INTO leads (\n  radar_id, first_name, last_name, primary_email, primary_phone,\n  property_address, property_city, property_state, property_zip,\n  assigned_broker_id, property_value, estimated_equity, campaign_archetype\n) VALUES\n('P104FC74', 'RAYMOND', 'BRANCH', 'email@test.com', '5628418256', '509 W FAIRVIEW BLVD', 'INGLEWOOD', 'CA', '90302', '6a3c5ed5-664a-4e13-b019-99fe8db74174', 982335, 833337, 'high_equity_special'),\n('P104FC77', 'WILEY', 'BRYAN', NULL, '3104622581', '513 W ELLIS AVE', 'INGLEWOOD', 'CA', '90302', '6a3c5ed5-664a-4e13-b019-99fe8db74174', 902856, 902856, 'cash_unlocked')\nON CONFLICT (addr_hash) DO NOTHING RETURNING id\n```\n\nIMPORTANT: Ensure you provide exactly 13 values for each row, matching the 13 columns listed.\n\nNOTE: Calculator tokens are automatically generated by a database trigger when leads are inserted. No action needed.\n\n## STEP 8: Update Offset\nCall execute_sql: `SELECT update_broker_offset('{{ $json.broker_id }}', ${pull_quantity})`\n\n## STEP 9: Get Campaigns\nCall execute_sql: `SELECT archetype, instantly_campaign_id FROM campaigns WHERE active=true`\nStore: campaign_map\n\n## STEP 10: Get Uploadable Leads\nCall execute_sql:\n```sql\nSELECT l.id, l.first_name, l.last_name, l.primary_email, \n       l.property_address, l.property_city, l.property_value, l.estimated_equity,\n       (l.estimated_equity::float / NULLIF(l.property_value,0) * 100) as equity_pct,\n       l.campaign_archetype,\n       ct.token as calculator_token\nFROM leads l\nLEFT JOIN calculator_tokens ct ON l.id = ct.lead_id\nWHERE l.assigned_broker_id='{{ $json.broker_id }}' \nAND l.created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp\nAND l.campaign_status IN ('new', NULL) \nAND l.primary_email IS NOT NULL\n```\nIf 0: JUMP to STEP 12\nStore: uploadable_leads\n\n## STEP 11: Upload to Instantly\nBEFORE executing, verify you have: uploadable_leads from Step 10, campaign_map from Step 9\n\nGROUP leads by their campaign_archetype field.\nFor EACH archetype group:\n1. Find the matching instantly_campaign_id from campaign_map\n2. Format each lead JSON object with:\n   - email: use the primary_email field from database\n   - first_name: first name\n   - last_name: last name\n   - custom_variables: (object containing the fields below)\n3. Format custom_variables with:\n   - calculatorLink: \"https://equityconnect.com/calculator?t=\" + calculator_token (from Step 10)\n   - property_address: full address from lead\n   - property_city: city from lead\n   - property_value: \"$XXX,XXX\" with commas\n   - property_value_range: \"$XXXK-$XXXK\" UPPERCASE K (or \"$X.XM-$X.XM\" if >= $1M)\n   - estimated_equity: \"$XXX,XXX\" with commas\n   - equity_50_percent: equity * 0.5 with commas\n   - equity_60_percent: equity * 0.6 with commas  \n   - equity_formatted_short: \"$XXXK\" UPPERCASE K (or \"$X.XM\" if >= $1M)\n   - equity_percent: number\n   - estimated_monthly_payment: value * 0.003 with commas\n   - broker_name: \"{{ $json.broker_name }}\"\n   - broker_nmls: \"NMLS #{{ $json.broker_nmls }}\"\n   - campaign_name: the archetype name (e.g., \"high_equity_special\")\n4. Call _Instantly_HTTP ONCE per archetype group with that group's leads\n\nCRITICAL CALCULATOR LINK FORMAT:\n- ALWAYS use: \"https://equityconnect.com/calculator?t=\" + calculator_token\n- The calculator_token comes from the database query in Step 10\n- Example: \"https://equityconnect.com/calculator?t=p9o1nkjej0zz\"\n- This MUST be the FIRST variable in custom_variables\n\nCRITICAL JSON FORMAT:\nThe leads_json parameter must be a valid JSON string containing an array.\nCorrect format: \"[{\\\"email\\\":\\\"test@example.com\\\",\\\"first_name\\\":\\\"John\\\",\\\"custom_variables\\\":{\\\"calculatorLink\\\":\\\"https://equityconnect.com/calculator?t=abc123\\\"}}]\"\nDO NOT add extra brackets. The string should start with \"[\" and end with \"]\" - exactly one opening and one closing bracket.\n\nNOTE: Use \"first_name\" and \"last_name\" (underscores, not camelCase).\nEach lead should ONLY be uploaded to ONE campaign based on its campaign_archetype.\n\n## STEP 12: Mark Uploaded\nExecute UPDATE:\n```sql\nUPDATE leads SET campaign_status='active', added_to_campaign_at=NOW()\nWHERE assigned_broker_id='{{ $json.broker_id }}'\nAND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp\nAND campaign_status IN ('new', NULL)\n```\n\n## STEP 13: Update Surplus\nExecute UPDATE:\n```sql\nUPDATE brokers SET daily_lead_surplus = GREATEST(\n  (SELECT COUNT(*) FROM leads \n   WHERE assigned_broker_id='{{ $json.broker_id }}'\n   AND created_at AT TIME ZONE 'America/Los_Angeles' >= (CURRENT_DATE AT TIME ZONE 'America/Los_Angeles')::timestamp)\n  - {{ $json.daily_capacity }}, 0\n) WHERE id='{{ $json.broker_id }}' RETURNING daily_lead_surplus\n```\n\n</workflow>\n\n<execution>\nSTART AT STEP 1. Execute each step sequentially. Before calling any tool in step N, verify you have completed step N-1 and have all required data from previous steps.\n</execution>\n",
         "options": {
           "maxIterations": 20,
-          "returnIntermediateSteps": true
+          "returnIntermediateSteps": true,
+          "batching": {
+            "batchSize": 1
+          }
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -100,12 +104,12 @@
         544,
         320
       ],
-      "id": "dcf0edce-7757-4b1f-8d13-60e57ebea476",
+      "id": "28d01066-7d4c-459f-ac08-74034c1e7d9f",
       "name": "🤖 AI Controller"
     },
     {
       "parameters": {
-        "jsCode": "const output = $input.first().json;\nconst context = $('Prepare Broker Context').first().json;\n\n// Extract total token usage from intermediateSteps\nlet totalInputTokens = 0;\nlet totalOutputTokens = 0;\n\nif (output.intermediateSteps && Array.isArray(output.intermediateSteps)) {\n  output.intermediateSteps.forEach(step => {\n    const messageLog = step.action?.messageLog;\n    if (messageLog && Array.isArray(messageLog)) {\n      messageLog.forEach(msg => {\n        if (msg.kwargs?.usage_metadata) {\n          const usage = msg.kwargs.usage_metadata;\n          totalInputTokens += usage.input_tokens || 0;\n          totalOutputTokens += usage.output_tokens || 0;\n        }\n      });\n    }\n  });\n}\n\nconst tokenUsage = totalInputTokens + totalOutputTokens;\n// Gemini 2.5 Flash pricing: $0.30/M input, $2.50/M output  \nconst cost = (totalInputTokens * 0.0000003) + (totalOutputTokens * 0.0000025);\n\n// Count steps\nconst stepsExecuted = output.intermediateSteps?.length || 0;\n\n// Parse output text for metrics\nconst outputText = output.output || '';\nlet leadsUploaded = 0;\nlet leadsPulled = 0;\nlet leadsEnriched = 0;\nlet endingSurplus = 0;\n\n// Extract metrics from AI output\nconst uploadedMatch = outputText.match(/uploaded.*?(\\d+)/i);\nif (uploadedMatch) leadsUploaded = parseInt(uploadedMatch[1]);\n\nconst pulledMatch = outputText.match(/pulled.*?(\\d+)/i) || outputText.match(/(\\d+).*?pulled/i);\nif (pulledMatch) leadsPulled = parseInt(pulledMatch[1]);\n\nconst enrichedMatch = outputText.match(/enriched.*?(\\d+)/i) || outputText.match(/(\\d+).*?enriched/i);\nif (enrichedMatch) leadsEnriched = parseInt(enrichedMatch[1]);\n\nconst surplusMatch = outputText.match(/surplus.*?(\\d+)/i);\nif (surplusMatch) endingSurplus = parseInt(surplusMatch[1]);\n\n// Get starting surplus from context\nconst startingSurplus = context.daily_lead_surplus || 0;\n\n// Calculate run number for the day (simplified - use execution time)\nconst executionTime = new Date().toLocaleTimeString('en-US', { \n  timeZone: 'America/Los_Angeles',\n  hour: '2-digit', \n  minute: '2-digit',\n  hour12: false\n});\n\n// Check for errors\nconst hasError = output.error || outputText.toLowerCase().includes('failed');\nconst errorMessage = hasError ? (output.error || 'Check workflow output') : null;\n\nreturn [{\n  json: {\n    success: !hasError,\n    error: hasError,\n    error_message: errorMessage,\n    broker_id: context.broker_id,\n    broker_name: context.broker_name,\n    target: context.daily_capacity,\n    starting_surplus: startingSurplus,\n    ending_surplus: endingSurplus,\n    output: outputText,\n    steps_executed: stepsExecuted,\n    token_usage: tokenUsage,\n    input_tokens: totalInputTokens,\n    output_tokens: totalOutputTokens,\n    cost: cost,\n    leads_pulled: leadsPulled,\n    leads_enriched: leadsEnriched,\n    leads_uploaded: leadsUploaded,\n    execution_time: executionTime,\n    completed_at: new Date().toISOString()\n  }\n}];"
+        "jsCode": "const output = $input.first().json;\nconst context = $('Prepare Broker Context').first().json;\n\n// Extract total token usage from intermediateSteps\nlet totalInputTokens = 0;\nlet totalOutputTokens = 0;\n\nif (output.intermediateSteps && Array.isArray(output.intermediateSteps)) {\n  output.intermediateSteps.forEach(step => {\n    const messageLog = step.action?.messageLog;\n    if (messageLog && Array.isArray(messageLog)) {\n      messageLog.forEach(msg => {\n        if (msg.kwargs?.usage_metadata) {\n          const usage = msg.kwargs.usage_metadata;\n          totalInputTokens += usage.input_tokens || 0;\n          totalOutputTokens += usage.output_tokens || 0;\n        }\n      });\n    }\n  });\n}\n\nconst tokenUsage = totalInputTokens + totalOutputTokens;\n// Gemini 2.5 Flash pricing: $0.30/M input, $2.50/M output  \nconst cost = (totalInputTokens * 0.0000003) + (totalOutputTokens * 0.0000025);\n\n// Count steps\nconst stepsExecuted = output.intermediateSteps?.length || 0;\n\n// Parse intermediate steps for actual metrics\nlet leadsPulled = 0;\nlet leadsEnriched = 0;\nlet leadsUploaded = 0;\nlet endingSurplus = 0;\n\nconsole.log('🔍 DEBUG: Starting Parse Results');\nconsole.log('Total intermediate steps:', output.intermediateSteps?.length || 0);\n\n// FIRST: Try to extract from the AI's final text output (new structured format)\nconst outputText = output.output || '';\nconst summaryMatch = outputText.match(/FINAL SUMMARY:[\\s\\S]*?Properties pulled from PropertyRadar:\\s*(\\d+)[\\s\\S]*?Leads skip-traced \\(enriched\\):\\s*(\\d+)[\\s\\S]*?Leads uploaded to Instantly:\\s*(\\d+)[\\s\\S]*?Critical failures:\\s*(.+?)(?:\\n|$)/i);\n\nlet criticalFailures = null;\nif (summaryMatch) {\n  leadsPulled = parseInt(summaryMatch[1]) || 0;\n  leadsEnriched = parseInt(summaryMatch[2]) || 0;\n  leadsUploaded = parseInt(summaryMatch[3]) || 0;\n  const failureText = summaryMatch[4]?.trim() || 'none';\n  criticalFailures = (failureText !== 'none' && failureText !== 'None') ? failureText : null;\n  \n  console.log('✅ Extracted from FINAL SUMMARY:');\n  console.log(`  Pulled: ${leadsPulled}, Enriched: ${leadsEnriched}, Uploaded: ${leadsUploaded}`);\n  console.log(`  Failures: ${criticalFailures || 'none'}`);\n}\n\n// FALLBACK: Parse from intermediate steps if summary not found\nif (leadsPulled === 0 && leadsEnriched === 0 && leadsUploaded === 0) {\n  console.log('⚠️ No summary found, parsing intermediate steps...');\n  \n  if (output.intermediateSteps && Array.isArray(output.intermediateSteps)) {\n    output.intermediateSteps.forEach((step, index) => {\n      const toolName = step.action?.tool;\n      const observation = step.observation;\n      \n      console.log(`Step ${index}: Tool = ${toolName}`);\n      \n      // Count PropertyRadar pulls - GET /lists endpoint\n      if (toolName && toolName.includes('PropertyRadar')) {\n        const endpoint = step.action?.toolInput?.pr_endpoint || '';\n        if (endpoint.includes('/lists/') && endpoint.includes('/items')) {\n          console.log('  → Found PropertyRadar list pull');\n          try {\n            let prData = null;\n            if (Array.isArray(observation)) {\n              const text = observation[0]?.text || observation[0];\n              prData = typeof text === 'string' ? JSON.parse(text) : text;\n            } else if (typeof observation === 'string') {\n              prData = JSON.parse(observation);\n            } else {\n              prData = observation;\n            }\n            \n            if (prData?.results && Array.isArray(prData.results)) {\n              leadsPulled = prData.results.length;\n              console.log(`  ✅ Pulled ${leadsPulled} leads`);\n            }\n          } catch (e) {\n            console.log('  ❌ PropertyRadar parse error:', e.message);\n          }\n        }\n      }\n      \n      // Count skip trace results (enriched)\n      if (toolName === 'batch_skip_trace') {\n        console.log('  → Found batch_skip_trace tool');\n        try {\n          let skipTraceData = null;\n          \n          if (Array.isArray(observation) && observation[0]?.type === 'text') {\n            skipTraceData = JSON.parse(observation[0].text);\n          } else if (typeof observation === 'string') {\n            skipTraceData = JSON.parse(observation);\n          } else if (typeof observation === 'object') {\n            skipTraceData = observation;\n          }\n          \n          if (skipTraceData?.successful && Array.isArray(skipTraceData.successful)) {\n            leadsEnriched = skipTraceData.successful.length;\n            console.log(`  ✅ Enriched ${leadsEnriched} leads`);\n          } else if (skipTraceData?.stats?.successful_calls) {\n            leadsEnriched = skipTraceData.stats.successful_calls;\n            console.log(`  ✅ Enriched ${leadsEnriched} leads (from stats)`);\n          }\n        } catch (e) {\n          console.log('  ❌ Skip trace parse error:', e.message);\n        }\n      }\n      \n      // Count Instantly uploads - accumulate from all calls\n      if (toolName && toolName.includes('Instantly')) {\n        console.log('  → Found Instantly tool');\n        try {\n          let instantlyData = null;\n          \n          if (Array.isArray(observation)) {\n            instantlyData = observation[0];\n          } else {\n            instantlyData = observation;\n          }\n          \n          if (instantlyData?.leads_uploaded) {\n            leadsUploaded += instantlyData.leads_uploaded || 0;\n            console.log(`  ✅ Uploaded ${instantlyData.leads_uploaded} leads (total: ${leadsUploaded})`);\n          }\n        } catch (e) {\n          console.log('  ❌ Instantly parse error:', e.message);\n        }\n      }\n    });\n    \n    // Get ending surplus from last daily_lead_surplus update\n    const lastSteps = [...output.intermediateSteps].reverse();\n    for (const step of lastSteps) {\n      if (step.action?.tool === 'execute_sql' && \n          step.action?.toolInput?.query?.includes('daily_lead_surplus')) {\n        try {\n          if (Array.isArray(step.observation) && step.observation[0]?.type === 'text') {\n            const text = step.observation[0].text;\n            const match = text.match(/daily_lead_surplus\\\\*\":\\s*(\\d+)/);\n            if (match) {\n              endingSurplus = parseInt(match[1]);\n              console.log(`✅ Ending surplus: ${endingSurplus}`);\n              break;\n            }\n          }\n        } catch (e) {\n          // Continue searching\n        }\n      }\n    }\n  }\n}\n\n// Get starting surplus from context\nconst startingSurplus = context.daily_lead_surplus || 0;\n\n// Calculate run time\nconst executionTime = new Date().toLocaleTimeString('en-US', { \n  timeZone: 'America/Los_Angeles',\n  hour: '2-digit', \n  minute: '2-digit',\n  hour12: false\n});\n\n// Check for errors - now includes critical failures from AI summary\nconst hasError = output.error || criticalFailures !== null;\nconst errorMessage = criticalFailures || (output.error ? output.error : null);\n\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\nconsole.log('📊 FINAL METRICS:');\nconsole.log(`  Pulled: ${leadsPulled}`);\nconsole.log(`  Enriched: ${leadsEnriched}`);\nconsole.log(`  Uploaded: ${leadsUploaded}`);\nconsole.log(`  Starting Surplus: ${startingSurplus}`);\nconsole.log(`  Ending Surplus: ${endingSurplus}`);\nconsole.log(`  Tokens: ${tokenUsage}`);\nconsole.log(`  Cost: $${cost.toFixed(6)}`);\nconsole.log(`  Has Errors: ${hasError}`);\nconsole.log(`  Error Message: ${errorMessage || 'none'}`);\nconsole.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');\n\nreturn [{\n  json: {\n    success: !hasError,\n    error: hasError,\n    error_message: errorMessage,\n    broker_id: context.broker_id,\n    broker_name: context.broker_name,\n    target: context.daily_capacity,\n    starting_surplus: startingSurplus,\n    ending_surplus: endingSurplus,\n    output: outputText,\n    steps_executed: stepsExecuted,\n    token_usage: tokenUsage,\n    input_tokens: totalInputTokens,\n    output_tokens: totalOutputTokens,\n    cost: cost,\n    leads_pulled: leadsPulled,\n    leads_enriched: leadsEnriched,\n    leads_uploaded: leadsUploaded,\n    execution_time: executionTime,\n    completed_at: new Date().toISOString()\n  }\n}];\n\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -113,7 +117,7 @@
         928,
         320
       ],
-      "id": "262152b8-7f04-40d0-ba9b-1b3b9cf5af62",
+      "id": "8282e9d4-d395-49e1-8004-f0a5b64391ed",
       "name": "📊 Parse Results"
     },
     {
@@ -124,7 +128,7 @@
         1328,
         320
       ],
-      "id": "28cac211-2081-4970-ab2c-b7b80bdf0353",
+      "id": "b663e391-7ea9-4c14-8b85-8c5125923a73",
       "name": "✅ Broker Complete"
     },
     {
@@ -132,10 +136,10 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        704,
+        672,
         144
       ],
-      "id": "622b0f15-03c2-416d-b013-6c2ae6dfe742",
+      "id": "1a81d4a9-95fc-4e85-8bb3-b32032b66434",
       "name": "🎉 All Brokers Done"
     },
     {
@@ -146,7 +150,7 @@
         928,
         144
       ],
-      "id": "8bee3b42-9ae2-479a-b0a0-d528853de61b",
+      "id": "d951788a-9b4b-46c8-8fa7-c94352dddbb4",
       "name": "Error Trigger"
     },
     {
@@ -159,7 +163,7 @@
         1136,
         144
       ],
-      "id": "7f4e01cc-c86d-4af4-9e4f-8e5ec195c133",
+      "id": "512f17b5-c594-403c-9f08-e34241292b92",
       "name": "❌ Log Error"
     },
     {
@@ -171,10 +175,10 @@
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "typeVersion": 1.2,
       "position": [
-        368,
+        400,
         544
       ],
-      "id": "d42ec78b-7640-411e-aaae-cfa41770819b",
+      "id": "5086c489-78d8-4449-a707-63f4e9b426e8",
       "name": "💾 Supabase MCP1",
       "credentials": {
         "httpHeaderAuth": {
@@ -208,55 +212,15 @@
       "type": "n8n-nodes-base.httpRequestTool",
       "typeVersion": 4.2,
       "position": [
-        640,
+        672,
         544
       ],
-      "id": "576e4ea1-6a88-4691-9ac5-408812fee493",
+      "id": "6c0d2e1a-d373-4f48-8b01-bd53fef843f4",
       "name": "🏘️ PropertyRadar1",
       "credentials": {
         "httpBearerAuth": {
           "id": "81i7WbQilIMSh4E3",
           "name": "PropertyRadar"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "toolDescription": "BatchData skip-trace API. Pass ONE string parameter 'bd_body_json' containing JSON string with requests array. Example: bd_body_json=\"{\\\"requests\\\":[{\\\"propertyAddress\\\":{\\\"street\\\":\\\"123 Main St\\\",\\\"city\\\":\\\"Los Angeles\\\",\\\"state\\\":\\\"CA\\\",\\\"zip\\\":\\\"90001\\\"}}]}\". CRITICAL: Use 'street' not 'addressLine1'. BATCH multiple addresses in ONE call.",
-        "method": "POST",
-        "url": "https://api.batchdata.com/api/v1/property/skip-trace",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBearerAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.parse($fromAI('bd_body_json', '{}')) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequestTool",
-      "typeVersion": 4.2,
-      "position": [
-        768,
-        544
-      ],
-      "id": "e974bc62-7c6f-41d3-b167-2114cc97f323",
-      "name": "📊 BatchData1",
-      "credentials": {
-        "httpBearerAuth": {
-          "id": "IQkqLsv5gA6wvGnf",
-          "name": "BatchData API"
         }
       }
     },
@@ -279,9 +243,9 @@
         1328,
         144
       ],
-      "id": "c9aa48ad-3bfb-4f09-a333-5641dc79498d",
+      "id": "bc0a3377-64bd-4554-a966-ebf8716cdd48",
       "name": "Send a message",
-      "webhookId": "0ab4552c-a6b4-4eae-b5a9-aeb1a065fd0c",
+      "webhookId": "265c1ba0-3ae4-4b1d-b2ec-4cc59389aae0",
       "credentials": {
         "slackOAuth2Api": {
           "id": "PRCtEXCO4z0rjk0n",
@@ -295,9 +259,9 @@
         "select": "channel",
         "channelId": {
           "__rl": true,
-          "value": "C09FJL00SB0",
+          "value": "C09Q8RT682V",
           "mode": "list",
-          "cachedResultName": "n8n-erros"
+          "cachedResultName": "barbara"
         },
         "text": "=👔*{{ $json.broker_name }}* \n   • {{ $json.execution_time }}\n━━━━━━━━━━━━━━━━━━━━\n🏁 *STARTING SURPLUS:*\n   • {{ $json.starting_surplus }} leads\n📋 *TODAY'S TARGET:*\n   • {{ $json.target }} leads\n---------------------------\n⚙️ *TODAY'S ACTIVITY:*\n   • {{ $json.leads_pulled }} pulled \n   • {{ $json.leads_enriched }} enriched\n   • {{ $json.leads_uploaded }} uploaded \n🪙 *COST:*\n   • {{ $json.token_usage }} tokens\n   • {{ $json.cost.toFixed(6) }}($)\n---------------------------\n✅ *TOTAL TODAY:*\n   • {{ $json.leads_enriched }} enriched\n   • {{ $json.leads_uploaded }} uploaded\n💼 *ENDING SURPLUS:*\n   • {{ $json.ending_surplus }} leads",
         "otherOptions": {}
@@ -308,9 +272,9 @@
         1136,
         320
       ],
-      "id": "764d7d94-0956-4958-b8cd-95259756ef6d",
+      "id": "c49a699b-b098-467e-9d12-c7d24c5ec3f5",
       "name": "📩 Per-Broker Success",
-      "webhookId": "per-broker-success-notification",
+      "webhookId": "3294a543-5deb-4205-8231-f0737d57d370",
       "credentials": {
         "slackOAuth2Api": {
           "id": "PRCtEXCO4z0rjk0n",
@@ -324,9 +288,9 @@
         "select": "channel",
         "channelId": {
           "__rl": true,
-          "value": "C09FJL00SB0",
+          "value": "C09Q8RT682V",
           "mode": "list",
-          "cachedResultName": "n8n-erros"
+          "cachedResultName": "barbara"
         },
         "text": "=🎉 *Daily Lead Pull Complete* 🚀\n━━━━━━━━━━━━━━━━━━━━\n👔 *Brokers Processed:*\n   • {{ $json.total_brokers }} total\n   • {{ $json.brokers_success }} success\n   • {{ $json.brokers_failed }} failed\n---------------------------\n📊 *Today's Totals:*\n   • {{ $json.total_pulled }} pulled\n   • {{ $json.total_enriched }} enriched\n   • {{ $json.total_uploaded }} uploaded\n---------------------------\n💼 *Surplus:*\n   • Started: {{ $json.starting_surplus_total }}\n   • Ending: {{ $json.ending_surplus_total }}\n   • Change: {{ $json.surplus_change > 0 ? '+' : '' }}{{ $json.surplus_change }}\n---------------------------\n🪙 *Total Cost:*\n   • {{ $json.total_tokens }} tokens\n   • ${{ $json.total_cost.toFixed(6) }}\n⏱️ *Time:*\n   • {{ $now.format('h:mm A') }} PST\n",
         "otherOptions": {}
@@ -337,9 +301,9 @@
         544,
         144
       ],
-      "id": "9cb7ed14-87ba-46d1-9d1d-0b329386c4b4",
+      "id": "22a8e7a9-6fcc-484a-a3ed-64fc421ed6e8",
       "name": "🎊 All Brokers Complete",
-      "webhookId": "all-brokers-complete-notification",
+      "webhookId": "137cb06e-189e-43ba-92d2-a2f52e297470",
       "credentials": {
         "slackOAuth2Api": {
           "id": "PRCtEXCO4z0rjk0n",
@@ -352,33 +316,11 @@
       "type": "@n8n/n8n-nodes-langchain.toolCalculator",
       "typeVersion": 1,
       "position": [
-        512,
+        544,
         544
       ],
-      "id": "e94bbb55-b366-470e-9722-11d9e9118f9a",
+      "id": "2bbea193-3d52-43ab-81dc-4b3d4bb01b99",
       "name": "Calculator"
-    },
-    {
-      "parameters": {
-        "model": "google/gemini-2.5-flash",
-        "options": {
-          "temperature": 0
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
-      "typeVersion": 1,
-      "position": [
-        224,
-        544
-      ],
-      "id": "9e881c18-b63d-49a0-afe7-14f702407118",
-      "name": "Gemini 2.5 Flash",
-      "credentials": {
-        "openRouterApi": {
-          "id": "5pEBmsekpDy6GZN0",
-          "name": "OpenRouter n8n"
-        }
-      }
     },
     {
       "parameters": {
@@ -404,10 +346,10 @@
       "type": "n8n-nodes-base.httpRequestTool",
       "typeVersion": 4.2,
       "position": [
-        912,
+        944,
         544
       ],
-      "id": "e2ba39a5-3874-4c38-99e2-fe73fce494b1",
+      "id": "180a6fbd-99b1-4362-af73-7e9c7e9b337e",
       "name": "📧 Instantly HTTP",
       "credentials": {
         "instantlyApi": {
@@ -418,7 +360,55 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get all broker results from Parse Results node\nconst allBrokerResults = $('📊 Parse Results').all().map(item => item.json);\nconst totalBrokers = allBrokerResults.length;\n\n// Aggregate totals\nlet totalPulled = 0;\nlet totalEnriched = 0;\nlet totalUploaded = 0;\nlet totalTokens = 0;\nlet totalCost = 0;\nlet totalStartingSurplus = 0;\nlet totalEndingSurplus = 0;\nlet successCount = 0;\nlet errorCount = 0;\n\nallBrokerResults.forEach(broker => {\n  totalPulled += broker.leads_pulled || 0;\n  totalEnriched += broker.leads_enriched || 0;\n  totalUploaded += broker.leads_uploaded || 0;\n  totalTokens += broker.token_usage || 0;\n  totalCost += broker.cost || 0;\n  totalStartingSurplus += broker.starting_surplus || 0;\n  totalEndingSurplus += broker.ending_surplus || 0;\n  \n  if (broker.success) successCount++;\n  if (broker.error) errorCount++;\n});\n\nreturn [{\n  json: {\n    total_brokers: totalBrokers,\n    brokers_success: successCount,\n    brokers_failed: errorCount,\n    total_pulled: totalPulled,\n    total_enriched: totalEnriched,\n    total_uploaded: totalUploaded,\n    total_tokens: totalTokens,\n    total_cost: totalCost,\n    starting_surplus_total: totalStartingSurplus,\n    ending_surplus_total: totalEndingSurplus,\n    surplus_change: totalEndingSurplus - totalStartingSurplus\n  }\n}];"
+        "model": "google/gemini-2.5-flash",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        272,
+        544
+      ],
+      "id": "29720906-63b6-418c-8334-e13778acd647",
+      "name": "Gemini 2.5 Flash x",
+      "credentials": {
+        "openRouterApi": {
+          "id": "5pEBmsekpDy6GZN0",
+          "name": "OpenRouter n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://p01--swarmtrace-mcp--p95wlpxnp2z2.code.run/mcp/sse",
+        "serverTransport": "sse",
+        "authentication": "headerAuth",
+        "include": "selected",
+        "includeTools": [
+          "batch_skip_trace"
+        ],
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [
+        800,
+        544
+      ],
+      "id": "428cf72a-e28f-4475-9b1a-75dfe8a0c383",
+      "name": "🐝Swarmtrace",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vNbyLJnf6VfMxj1d",
+          "name": "Swarmtrace MCP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all broker results from Parse Results node\nconst allBrokerResults = $('📊 Parse Results').all().map(item => item.json);\nconst totalBrokers = allBrokerResults.length;\n\nconsole.log('📊 Group Results Debug:');\nconsole.log('Total broker results found:', totalBrokers);\nconsole.log('Broker results:', JSON.stringify(allBrokerResults, null, 2));\n\n// Aggregate totals\nlet totalPulled = 0;\nlet totalEnriched = 0;\nlet totalUploaded = 0;\nlet totalTokens = 0;\nlet totalCost = 0;\nlet totalStartingSurplus = 0;\nlet totalEndingSurplus = 0;\nlet successCount = 0;\nlet errorCount = 0;\n\nallBrokerResults.forEach(broker => {\n  console.log(`Processing broker: ${broker.broker_name}`);\n  console.log(`  Pulled: ${broker.leads_pulled}, Enriched: ${broker.leads_enriched}, Uploaded: ${broker.leads_uploaded}`);\n  \n  totalPulled += broker.leads_pulled || 0;\n  totalEnriched += broker.leads_enriched || 0;\n  totalUploaded += broker.leads_uploaded || 0;\n  totalTokens += broker.token_usage || 0;\n  totalCost += broker.cost || 0;\n  totalStartingSurplus += broker.starting_surplus || 0;\n  totalEndingSurplus += broker.ending_surplus || 0;\n  \n  if (broker.success) successCount++;\n  if (broker.error) errorCount++;\n});\n\nconsole.log('📊 Aggregated Totals:');\nconsole.log(`  Total Pulled: ${totalPulled}`);\nconsole.log(`  Total Enriched: ${totalEnriched}`);\nconsole.log(`  Total Uploaded: ${totalUploaded}`);\n\nreturn [{\n  json: {\n    total_brokers: totalBrokers,\n    brokers_success: successCount,\n    brokers_failed: errorCount,\n    total_pulled: totalPulled,\n    total_enriched: totalEnriched,\n    total_uploaded: totalUploaded,\n    total_tokens: totalTokens,\n    total_cost: totalCost,\n    starting_surplus_total: totalStartingSurplus,\n    ending_surplus_total: totalEndingSurplus,\n    surplus_change: totalEndingSurplus - totalStartingSurplus\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -426,8 +416,8 @@
         288,
         144
       ],
-      "id": "f2579732-581e-49ed-9161-4205c3abda3f",
-      "name": "Code in JavaScript"
+      "id": "ec4ff336-2eae-4f88-8eed-09a3b8f1827a",
+      "name": "Group Results"
     }
   ],
   "connections": {
@@ -457,7 +447,7 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Group Results",
             "type": "main",
             "index": 0
           }
@@ -564,17 +554,6 @@
         ]
       ]
     },
-    "📊 BatchData1": {
-      "ai_tool": [
-        [
-          {
-            "node": "🤖 AI Controller",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "📩 Per-Broker Success": {
       "main": [
         [
@@ -608,17 +587,6 @@
         ]
       ]
     },
-    "Gemini 2.5 Flash": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "🤖 AI Controller",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "📧 Instantly HTTP": {
       "ai_tool": [
         [
@@ -630,7 +598,29 @@
         ]
       ]
     },
-    "Code in JavaScript": {
+    "Gemini 2.5 Flash x": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🐝Swarmtrace": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 AI Controller",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Results": {
       "main": [
         [
           {
@@ -645,16 +635,16 @@
   "pinData": {
     "Daily Trigger (6am PT)": [
       {
-        "timestamp": "2025-10-16T06:00:46.012-07:00",
-        "Readable date": "October 16th 2025, 6:00:46 am",
-        "Readable time": "6:00:46 am",
-        "Day of week": "Thursday",
+        "timestamp": "2025-10-28T06:00:20.010-07:00",
+        "Readable date": "October 28th 2025, 6:00:20 am",
+        "Readable time": "6:00:20 am",
+        "Day of week": "Tuesday",
         "Year": "2025",
         "Month": "October",
-        "Day of month": "16",
+        "Day of month": "28",
         "Hour": "06",
         "Minute": "00",
-        "Second": "46",
+        "Second": "20",
         "Timezone": "America/Los_Angeles (UTC-07:00)"
       }
     ],

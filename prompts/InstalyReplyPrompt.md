@@ -115,11 +115,18 @@ Search {{ $json.reply_text }} for phone number in ANY format. People can write p
 - +1-650-530-0051 (with country code)
 - And any other variation
 
-Extract the raw phone text (whatever format they provided), then normalize it to clean 10 digits using the database function:
+Extract the raw phone text (whatever format they provided), then normalize it to clean 10 digits using the database function.
 
-Call Supabase execute_sql:
+**CRITICAL: Use the ACTUAL phone string you extracted from the reply text.**
+
+Call Supabase execute_sql with the actual phone string you found:
 ```
-SELECT normalize_phone_number('${raw_phone_from_email}') as normalized_phone
+SELECT normalize_phone_number('[insert the actual raw phone string here]') as normalized_phone
+```
+
+Example: If you extracted "650-530-0051" from the reply, call:
+```
+SELECT normalize_phone_number('650-530-0051') as normalized_phone
 ```
 
 This function will:
@@ -128,14 +135,19 @@ This function will:
 - Return exactly 10 digits: "6505300051"
 - Return NULL if invalid
 
-Store the result as: normalized_phone
+Store the result as: normalized_phone (10 digits)
 If normalized_phone is NULL, log error "Invalid phone number format" and STOP
 
+Now compute the E.164 string for calling:
+- Define e164_phone = "+1" + normalized_phone
+- Example: if normalized_phone is "6505300051" then e164_phone is "+16505300051"
+- Store this value as: e164_phone (string)
+
 **3B. Update database:**
-Call Supabase execute_sql:
+Call Supabase execute_sql using the ACTUAL normalized_phone value you received from step 3A:
 ```
 UPDATE leads SET 
-  primary_phone = '${normalized_phone}', 
+  primary_phone = '[insert the actual 10-digit normalized_phone here]', 
   status = 'qualified', 
   persona_sender_name = '{{ $json.persona_sender_name }}',
   last_reply_at = NOW() 
@@ -143,60 +155,88 @@ WHERE primary_email = '{{ $json.lead_email }}'
 RETURNING id
 ```
 
-**3C. Create Call using Barbara MCP:**
-The Barbara MCP Server is connected. Call create_outbound_call with all lead data:
+Example: If normalized_phone is "6505300051", the query should be:
+```
+UPDATE leads SET 
+  primary_phone = '6505300051', 
+  status = 'qualified', 
+  persona_sender_name = '{{ $json.persona_sender_name }}',
+  last_reply_at = NOW() 
+WHERE primary_email = '{{ $json.lead_email }}' 
+RETURNING id
+```
+
+**3C. Pause lead in Instantly campaign:**
+The Instantly MCP tool is already connected.
+Call update_lead to pause this specific lead in the campaign:
+
 ```json
 {
-  "to_phone": "+1${normalized_phone}",
-  "lead_id": "${lead_record.id}",
-  "broker_id": "${lead_record.broker_id}",
-  "lead_first_name": "${lead_record.first_name || ''}",
-  "lead_last_name": "${lead_record.last_name || ''}",
-  "lead_full_name": "${lead_record.first_name || ''} ${lead_record.last_name || ''}",
-  "lead_email": "${lead_record.primary_email || ''}",
-  "lead_phone": "${normalized_phone}",
-  "property_address": "${lead_record.property_address || ''}",
-  "property_city": "${lead_record.property_city || ''}",
-  "property_state": "${lead_record.property_state || ''}",
-  "property_zipcode": "${lead_record.property_zip || ''}",
-  "property_value": "${lead_record.property_value || '0'}",
-  "estimated_equity": "${lead_record.estimated_equity || '0'}",
-  "campaign_archetype": "${lead_record.campaign_archetype || 'direct'}",
-  "persona_assignment": "${lead_record.assigned_persona || 'general'}",
-  "persona_sender_name": "{{ $json.persona_sender_name }}",
-  "broker_company": "${lead_record.broker_company || ''}",
-  "broker_full_name": "${lead_record.broker_contact_name || ''}",
-  "broker_nmls": "${lead_record.broker_nmls || ''}",
-  "broker_phone": "${lead_record.broker_phone || ''}",
-  "qualified": true,
-  "call_context": "outbound"
+  "campaign_id": "{{ $json.campaign_id }}",
+  "email": "{{ $json.lead_email }}",
+  "status": "paused"
 }
 ```
 
 **What this does:**
-- Barbara MCP receives the call request with all lead/broker data
-- Barbara MCP calls the Bridge API at `/api/outbound-call`
-- Bridge assigns a SignalWire number from the broker's pool
-- Bridge places the outbound call via SignalWire
-- Barbara AI answers with the OpenAI Realtime voice assistant
-- Bridge dynamically selects the correct PromptLayer template based on qualification status
+- Pauses the lead in the Instantly campaign
+- Stops future nurture emails to this specific lead
+- Keeps the lead record intact (not deleted)
+- Other leads in campaign continue receiving emails
 
-**COMPLIANCE NOTE:** Barbara will introduce herself as "Hi, this is Barbara, the scheduling assistant with {{broker_company}}" using the dynamic broker variable (compliant positioning per TCPA + AI disclosure guidelines).
+NOTE: If Instantly MCP update_lead fails, log the error but continue to next step (don't stop workflow)
 
-NOTE: If Barbara MCP call fails, log the error but continue to next step (don't stop workflow)
+**3D. Create Call using Barbara MCP:**
+Call the Barbara MCP tool named `create_outbound_call` with EXACTLY these two top-level fields (no wrapper object, no extra fields):
 
-**3D. Log inbound interaction:**
-Call Supabase execute_sql:
+- `to_phone`: Use the `e164_phone` you created in step 3A. It MUST be a quoted string like "+16505300051" (do not pass a number).
+- `lead_id`: The lead ID string from step 1 (example: "a1b2c3...").
+
+Examples of VALID arguments (both values are strings, not numbers):
+```json
+{
+  "to_phone": "+16505300051",
+  "lead_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+Rules:
+- Do NOT wrap inside `call_payload` or any parent object.
+- Do NOT include any extra keys.
+- Both values must be strings (quoted). Numbers like 16505300051 are INVALID.
+
+NOTE: If the Barbara MCP call fails, log the error but continue to the next step.
+
+**3E. Log inbound interaction:**
+Call Supabase execute_sql using the ACTUAL values from previous steps:
 ```
 INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
 VALUES (
-  '${lead_record.id}',
+  '[insert the actual lead_record.id here]',
   'email_replied',
   'inbound',
   'Reply: phone provided - Barbara call scheduled',
   jsonb_build_object(
     'intent', 'phone_provided',
-    'customer_phone', '${normalized_phone}',
+    'customer_phone', '[insert the actual normalized_phone here]',
+    'campaign_id', '{{ $json.campaign_id }}',
+    'email_id', '{{ $json.reply_to_uuid }}'
+  )::jsonb,
+  NOW()
+)
+RETURNING id
+```
+
+Example: If lead_record.id is "abc-123" and normalized_phone is "6505300051":
+```
+INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
+VALUES (
+  'abc-123',
+  'email_replied',
+  'inbound',
+  'Reply: phone provided - Barbara call scheduled',
+  jsonb_build_object(
+    'intent', 'phone_provided',
+    'customer_phone', '6505300051',
     'campaign_id', '{{ $json.campaign_id }}',
     'email_id', '{{ $json.reply_to_uuid }}'
   )::jsonb,
@@ -207,7 +247,7 @@ RETURNING id
 
 NOTE: Barbara MCP and Bridge handle phone number pool assignment automatically. Bridge will assign a number from the broker's pool when placing the call.
 
-**3E. DO NOT send email reply** - Barbara will call them instead
+**3F. DO NOT send email reply** - Barbara will call them instead
 
 ---
 
@@ -219,12 +259,26 @@ Call Supabase execute_sql:
 UPDATE leads SET status = 'do_not_contact', campaign_status = 'unsubscribed', last_reply_at = NOW() WHERE primary_email = '{{ $json.lead_email }}' RETURNING id
 ```
 
-**3B. Log interaction:**
-Call Supabase execute_sql:
+**3B. Pause lead in Instantly campaign:**
+The Instantly MCP tool is already connected.
+Call update_lead to pause this specific lead in the campaign:
+
+```json
+{
+  "campaign_id": "{{ $json.campaign_id }}",
+  "email": "{{ $json.lead_email }}",
+  "status": "paused"
+}
+```
+
+NOTE: If Instantly MCP update_lead fails, log the error but continue to next step (don't stop workflow)
+
+**3C. Log interaction:**
+Call Supabase execute_sql using the ACTUAL lead_record.id from step 1:
 ```
 INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
 SELECT 
-  '${lead_record.id}',
+  '[insert the actual lead_record.id here]',
   'email_replied',
   'inbound',
   'Unsubscribe request',
@@ -237,7 +291,7 @@ SELECT
 RETURNING id
 ```
 
-**3C. DO NOT send email** - Honor request immediately
+**3D. DO NOT send email** - Honor request immediately
 
 ---
 
@@ -330,7 +384,7 @@ Using the KB results from ${kb_results}, compose an email response that answers 
 ```
 
 **CONTENT REQUIREMENTS:**
-- Address ${lead_record.first_name} by name
+- Address the lead's first name (use the actual first_name from lead_record you queried in step 1)
 - **Answer EVERY question they asked** using SPECIFIC information from KB results
 - For repayment/heirs questions: "Your heirs/family can sell the property to repay the loan and keep any remaining equity"
 - For hospice/nursing home questions: "You need to maintain the home as your primary residence. If you move to a nursing facility permanently (typically 12+ months), the loan becomes due"
@@ -360,7 +414,7 @@ Using the KB results from ${kb_results}, compose an email response that answers 
 - Use blank <p></p> tag before phone request
 - Ask: "What's the best phone number to reach you?"
 - Use blank <p></p> tag before signature
-- Sign: "Best,<br>${lead_record.persona_sender_name || 'Equity Connect Team'}"
+- Sign: "Best,<br>[insert actual persona_sender_name from lead_record or use 'Equity Connect Team']"
 
 Store the composed email as: email_body
 
@@ -379,11 +433,11 @@ Call reply_to_email with this exact JSON structure:
 ```
 
 **3F. Log inbound interaction:**
-Call Supabase execute_sql:
+Call Supabase execute_sql using the ACTUAL lead_record.id from step 1:
 ```
 INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
 VALUES (
-  '${lead_record.id}',
+  '[insert the actual lead_record.id here]',
   'email_replied',
   'inbound',
   'Reply: multiple questions asked',
@@ -418,7 +472,7 @@ NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is av
 - NO plain text formatting
 
 **CONTENT REQUIREMENTS:**
-- Thank ${lead_record.first_name} for their interest
+- Thank the lead's first name for their interest (use the actual first_name from lead_record you queried in step 1)
 - Mention Barbara ONCE: "Barbara, our scheduling assistant"
 - Explain purpose: "give you a quick call to answer any basic questions and help connect you with a licensed specialist"
 - Keep under 80 words total
@@ -427,7 +481,7 @@ NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is av
 - Use blank <p></p> tag before phone request
 - Ask: "What's the best phone number to reach you?"
 - Use blank <p></p> tag before signature
-- Sign: "Best,<br>${lead_record.persona_sender_name || 'Equity Connect Team'}"
+- Sign: "Best,<br>[insert actual persona_sender_name from lead_record or use 'Equity Connect Team']"
 
 Store the composed email as: email_body
 
@@ -445,11 +499,11 @@ Call reply_to_email with this exact JSON structure:
 ```
 
 **3C. Log inbound interaction:**
-Call Supabase execute_sql:
+Call Supabase execute_sql using the ACTUAL lead_record.id from step 1:
 ```
 INSERT INTO interactions (lead_id, type, direction, content, metadata, created_at) 
 VALUES (
-  '${lead_record.id}',
+  '[insert the actual lead_record.id here]',
   'email_replied',
   'inbound',
   'Reply: expressed interest',
@@ -471,8 +525,8 @@ NOTE: Simplified logging to avoid MCP JSON parsing issues. Full reply text is av
 
 **CRITICAL CHECKPOINT:**
 Before proceeding to STEP 3.X, verify you have completed ALL required steps for the intent:
-- PHONE_PROVIDED: 5 steps (extract and normalize phone, update DB, create Barbara MCP call, log interaction, NO email)
-- UNSUBSCRIBE: 3 steps (update DB, log interaction, NO email)
+- PHONE_PROVIDED: 6 steps (extract and normalize phone, update DB, pause in Instantly, create Barbara MCP call, log interaction, NO email)
+- UNSUBSCRIBE: 4 steps (update DB, pause in Instantly, log interaction, NO email)
 - QUESTION: 7 steps (identify questions, determine topics, KB search, compose email, send email, log inbound, update DB)
 - INTEREST: 4 steps (compose email, send email, log inbound, update DB)
 
@@ -484,7 +538,7 @@ If you have NOT completed all steps, GO BACK and complete them now.
 
 **After completing intent-specific actions, ALWAYS log the email event for engagement tracking:**
 
-Call Supabase execute_sql:
+Call Supabase execute_sql using the ACTUAL values from previous steps:
 ```sql
 INSERT INTO email_events (
   lead_id,
@@ -498,16 +552,16 @@ INSERT INTO email_events (
   metadata,
   created_at
 ) VALUES (
-  '${lead_record.id}',
-  '${lead_record.broker_id}',
+  '[insert the actual lead_record.id here]',
+  '[insert the actual lead_record.broker_id here]',
   'replied',
   '{{ $json.subject }}',
   '{{ $json.sender_account }}',
-  '${lead_record.campaign_archetype}',
+  '[insert the actual lead_record.campaign_archetype here]',
   '{{ $json.persona_sender_name }}',
   $escape${{ $json.reply_text }}$escape$,
   jsonb_build_object(
-    'intent', '${intent}',
+    'intent', '[insert the actual intent you classified in step 2 here]',
     'campaign_id', '{{ $json.campaign_id }}',
     'reply_to_uuid', '{{ $json.reply_to_uuid }}'
   ),
@@ -610,7 +664,8 @@ BEGIN EXECUTION AT STEP 1 AND COMPLETE ALL STEPS FOR THE CLASSIFIED INTENT.
 DO NOT STOP UNTIL YOU HAVE:
 1. Queried the database (STEP 1)
 2. Classified the intent (STEP 2)
-3. Executed ALL substeps for that intent (STEP 3A through 3E/3G, including phone check/assignment)
-4. Returned the summary (STEP 4)
+3. Executed ALL substeps for that intent (STEP 3A through 3F/3G, including Instantly pause for PHONE_PROVIDED/UNSUBSCRIBE)
+4. Logged the email event (STEP 3.X - universal for all intents)
+5. Returned the summary (STEP 4)
 
 START NOW.

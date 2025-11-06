@@ -21,7 +21,6 @@ export const updateLeadInfoTool = realtimeTool({
     property_address: z.string().nullish().describe('Full property address'),
     age: z.number().nullish().describe('Lead age'),
     property_value: z.number().nullish().describe('Estimated property value in dollars'),
-    mortgage_balance: z.number().nullish().describe('Remaining mortgage balance in dollars (0 if paid off)'),
     owner_occupied: z.boolean().nullish().describe('Whether property is owner-occupied primary residence')
   }),
   execute: async ({ lead_id, ...updates }) => {
@@ -33,12 +32,8 @@ export const updateLeadInfoTool = realtimeTool({
       // Build update object
       const updateData: any = { ...updates };
       
-      // Calculate equity if we have property value
-      if (updates.property_value !== undefined && updates.property_value !== null) {
-        const mortgage = updates.mortgage_balance || 0;
-        updateData.estimated_equity = updates.property_value - mortgage;
-        logger.info(`💰 Calculated equity: $${updateData.estimated_equity.toLocaleString()}`);
-      }
+      // Note: Equity calculation removed - mortgage_balance column doesn't exist
+      // Equity should be calculated from external data sources (PropertyRadar, etc.)
       
       // Update timestamps
       updateData.updated_at = new Date().toISOString();
@@ -66,8 +61,7 @@ export const updateLeadInfoTool = realtimeTool({
       return JSON.stringify({
         success: true,
         message: `Lead information updated successfully.`,
-        updated_fields: updatedFields,
-        estimated_equity: updateData.estimated_equity || data.estimated_equity
+        updated_fields: updatedFields
       });
       
     } catch (error: any) {

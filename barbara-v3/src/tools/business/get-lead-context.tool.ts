@@ -92,7 +92,6 @@ export const getLeadContextTool = realtimeTool({
           property_state: lead.property_state,
           property_zip: lead.property_zip,
           property_value: lead.property_value,
-          mortgage_balance: lead.mortgage_balance,
           estimated_equity: lead.estimated_equity,
           age: lead.age,
           owner_occupied: lead.owner_occupied,

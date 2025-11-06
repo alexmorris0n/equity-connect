@@ -425,6 +425,21 @@ export async function streamingRoute(
 
       session.on('agent_tool_end', (context, agent, tool, result, details) => {
         logger.event('✅', 'Tool call completed', details);
+        
+        // Capture lead_id and broker_id when get_lead_context succeeds
+        const toolName = (details as any)?.name || (details as any)?.toolCall?.name || tool?.name;
+        if (toolName === 'get_lead_context' && result) {
+          try {
+            const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+            if (parsed.found && parsed.lead_id) {
+              leadId = parsed.lead_id;
+              brokerId = parsed.broker_id || brokerId;
+              logger.info(`✅ Captured lead context: lead_id=${leadId}, broker_id=${brokerId}`);
+            }
+          } catch (err) {
+            logger.warn('Failed to parse get_lead_context result:', err);
+          }
+        }
       });
 
       // Handle errors
