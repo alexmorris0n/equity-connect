@@ -2,8 +2,8 @@
 
 **Last Updated:** November 6, 2025  
 **Status:** Production Ready - Multi-Broker Scale Validated  
-**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Barbara Prompt System V1
-**Latest Updates:** 🎙️ **Barbara Voice Prompt System Complete Overhaul (Nov 6, 2025)** – Rebuilt all voice prompts from scratch following OpenAI Realtime best practices. Created 5 clean v1 prompts (inbound-qualified/unqualified/unknown, outbound-warm/cold) replacing 400+ line scripts with conversational 100-line prompts. Added 3-tier inbound caller detection, call screening logic (Google/Apple), 10DLC text consent flow, post-booking commitment strategy, and anti-bloat AI constraints. Upgraded from deprecated `gpt-4o-realtime-preview` to stable `gpt-realtime` model. Fixed E.164 phone auto-population, Barbara name lookup issues, and portal alphabetical sorting. Deployed to production with immediate call quality improvements.
+**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Barbara Prompt System V2
+**Latest Updates:** 🎙️ **Barbara Voice Prompt Loop Fix + Field-Tested Format (Nov 6, 2025 Evening)** – Fixed critical conversation looping issues by switching from OpenAI Cookbook's verbose Goal/Exit/Next format to field-tested action-oriented markdown structure. All 5 prompts updated to v6/v7 with: SAY-ONCE guards (prevent greeting repetition), Q&A hard loops (always ask "Anything else?" in same turn), security verification transition, KB fallback improvements (general answer THEN broker redirect), push-back handling (acknowledge + vary response), and reduced first name overuse. Fixed appointment time rounding in bridge (clean 15-min intervals: 11:00, 11:15 vs weird 11:12, 11:27). Updated Portal AI helpers to recommend proven production format over theoretical cookbook patterns. Removed awkward equity statement that created conversation gaps. **Key Learning:** Simple action bullets with arrows (→) outperform abstract state-based structures in production.
 
 ---
 
@@ -583,6 +583,56 @@ equity-connect/ (Git Monorepo)
 - ✅ Backfilled 130 leads with E.164 phone numbers
 
 **Status:** ✅ **PRODUCTION READY - Immediate Quality Improvement Verified**
+
+**PROMPT ITERATION V2 - Loop Fix + Production Format (NOVEMBER 6, 2025 EVENING):**
+- **Problem Identified:** Prompts created following OpenAI Cookbook format (Goal/Exit/Next) caused conversation loops and awkward pauses
+- **Issues Found:**
+  - Barbara repeating opening line 3-4 times ("What brought you to call today?")
+  - Going silent after answering questions (not asking "Anything else?")
+  - Repeating same answer when user pushed back (sounded combative)
+  - Awkward equity statement with no clear response expected
+  - Overusing first name in every sentence (felt forced)
+  - Appointment times at odd intervals (11:12, 12:27 instead of 11:00, 11:15)
+- **Root Cause Analysis:**
+  - OpenAI Cookbook's verbose "Goal/Exit/Next" format too abstract for realtime voice
+  - Original markdown prompts (v3.1) that worked well were simpler and action-oriented
+  - AI follows concrete "say X → do Y" bullets better than policy-style instructions
+- **Solution - Return to Proven Format:**
+  - Abandoned Goal/Exit/Next structure after production testing showed poor performance
+  - Converted all 5 prompts back to action-oriented markdown style with:
+    - **Step Transitions at top** - Shows natural flow with arrows (→)
+    - **SAY-ONCE guards** - Explicit "don't repeat greeting/purpose" instructions
+    - **Opening exit phrases** - Lists exact phrases that mean opening is complete ("I have questions", "wanted to ask", etc.)
+    - **Q&A Hard Loop** - MUST ask "Anything else?" in same turn after every answer
+    - **Push-back handling** - Acknowledge ("I hear you"), VARY response, add detail, stay warm
+    - **Security verification transition** - "Before we dive in, let me make sure I have the right information..."
+    - **Removed equity statement** - Awkward fact with no question, created conversation gaps
+    - **Reduced first name usage** - Greeting only, not every sentence
+    - **Non-answer handling** - If user says "okay"/"hi"/"thank you" (not real answers), just "mm-hmm" and wait
+    - **Silence ladder** - 2s micro-utterance, 5s reprompt, 12s advance
+    - **Better KB fallback** - General answer FIRST, then "but broker can give absolute answer"
+- **Bridge Code Fix:**
+  - Fixed `findFreeSlots()` to round starting time to clean 15-minute intervals
+  - Appointment times now: 11:00, 11:15, 11:30, 11:45 (instead of 11:12, 11:27, 11:42)
+- **Portal AI Helper Updates:**
+  - Updated AI Improve system prompt to recommend action bullets with arrows (not Goal/Exit/Next)
+  - Updated AI Audit system prompt with same guidance
+  - Updated conversation_flow section guidelines to show proven production format
+  - Updated quick suggestions to recommend Step Transitions and SAY-ONCE guards
+  - Added warning: "DO NOT use Goal/Exit/Next format (tested poorly in production)"
+- **Production Results:**
+  - v1: Opening line loop (repeated 3 times)
+  - v2: Fixed opening loop with Goal/Exit/Next format
+  - v3: Added stricter Q&A follow-up rules
+  - v4: Converted to action-oriented markdown format
+  - v5: Added paced greeting, better KB fallback, push-back handling
+  - v6/v7: Security verification transition, removed equity statement, reduced name usage
+- **Key Learning:** "Simple action bullets with arrows (→) outperform abstract state-based Goal/Exit/Next structures in production" - OpenAI Cookbook provides good theory, but field-tested format wins
+- **Files Modified:**
+  - Database: All 5 prompts updated (inbound-qualified v7, others v6)
+  - `bridge/tools.js` - Appointment time rounding fix
+  - `portal/src/views/admin/PromptManagement.vue` - AI helper instructions updated
+- **Status:** ✅ **Deployed to Production - Conversation flow stable, no more loops**
 
 **7. Nylas Calendar Integration** ⭐ **PRODUCTION & TESTED** (OCT 20-26, 2025)
 - **Provider:** Nylas v3 API - Production-grade calendar platform
