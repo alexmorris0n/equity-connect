@@ -26,7 +26,7 @@ Supabase, Nylas, Vertex AI, SignalWire MFA
 
 - **Runtime:** Node.js 20 + TypeScript
 - **Framework:** Fastify + WebSocket
-- **AI:** OpenAI Realtime API (gpt-4o-realtime-preview)
+- **AI:** OpenAI Realtime API (gpt-realtime)
 - **Telephony:** SignalWire Compatibility API (cXML)
 - **Transport:** `@openai/agents` + SignalWire Transport Layer
 - **Audio:** g711_ulaw (8kHz) or pcm16 (24kHz)
@@ -108,7 +108,7 @@ fly secrets set KEY=value --app barbara-v3-voice
 **Optional:**
 - `LOG_LEVEL` - `debug` | `info` | `error` (default: `info`)
 - `AUDIO_FORMAT` - `g711_ulaw` | `pcm16` (default: `g711_ulaw`)
-- `OPENAI_REALTIME_MODEL` - Model name (default: `gpt-4o-realtime-preview`)
+- `OPENAI_REALTIME_MODEL` - Model name (default: `gpt-realtime`)
 
 ---
 
