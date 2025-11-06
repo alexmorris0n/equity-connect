@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 4, 2025  
+**Last Updated:** November 6, 2025  
 **Status:** Production Ready - Multi-Broker Scale Validated  
-**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Lead Management Enhancement
-**Latest Updates:** 🎨 **Portal Prompt Management UX (Desktop/Tablet) Refactor** – Implemented 3‑pane layout (Prompts | Versions | Management) with vertical lists and internal scrolling, responsive metrics grid (2×3 wrap), theme‑adaptive AI Analysis & AI Suggestions cards, simplified subtitle styling (no pills), and consistent purple thin scrollbars. Added collapse/expand control for Prompts with top gutter handle and persisted sidebar collapsed state (localStorage). Deployed to production.
+**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Barbara Prompt System V1
+**Latest Updates:** 🎙️ **Barbara Voice Prompt System Complete Overhaul (Nov 6, 2025)** – Rebuilt all voice prompts from scratch following OpenAI Realtime best practices. Created 5 clean v1 prompts (inbound-qualified/unqualified/unknown, outbound-warm/cold) replacing 400+ line scripts with conversational 100-line prompts. Added 3-tier inbound caller detection, call screening logic (Google/Apple), 10DLC text consent flow, post-booking commitment strategy, and anti-bloat AI constraints. Upgraded from deprecated `gpt-4o-realtime-preview` to stable `gpt-realtime` model. Fixed E.164 phone auto-population, Barbara name lookup issues, and portal alphabetical sorting. Deployed to production with immediate call quality improvements.
 
 ---
 
@@ -397,7 +397,7 @@ equity-connect/ (Git Monorepo)
   - `KNOWLEDGE_BASE_TIMEOUT_FIX.md` - KB search optimization (Oct 22)
   - `bridge/README.md` - Technical details
 
-**6. Barbara V3 - Production Voice AI** ⭐ **FULLY OPERATIONAL + CALL EVALUATION + DYNAMIC VOICE/VAD** (OCT 25-27, 2025)
+**6. Barbara V3 - Production Voice AI** ⭐ **FULLY OPERATIONAL + PROMPT SYSTEM V1 OVERHAUL** (OCT 25-27, 2025 + NOV 6, 2025)
 - **Architecture:** SignalWire cXML + OpenAI Realtime API + OpenAI Agents SDK
 - **Deployment:** Fly.io (2 machines for HA) + GitHub Actions (git-based auto-deploys)
 - **Repository:** `barbara-v3/` - Standalone TypeScript service
@@ -488,6 +488,101 @@ equity-connect/ (Git Monorepo)
   - [x] A/B test different prompts via database-driven config
   - [x] Add SMS confirmation tools (after regulatory approval) *(ready pending 10DLC activation)*
   - [x] Compare prompt versions to optimize performance
+
+**MAJOR UPDATE - Prompt System V1 Complete Overhaul (NOVEMBER 6, 2025):**
+- **Problem Identified:** Barbara was speaking like a telemarketing script, not giving callers a chance to talk, repeating questions, and making up names when callers weren't in system
+- **Root Cause:** Old prompts (v9/v13) were 400+ lines with "re-evaluation loops" and complex state machines created by AI features that added bloat instead of clarity
+- **Solution:** Complete rebuild from scratch following OpenAI Realtime API best practices
+
+**What Was Accomplished:**
+
+✅ **5 New Conversational Prompts (v1)** - Replaced all bloated old prompts
+- `inbound-qualified` - Known lead, already qualified (greet by name, verify identity, book)
+- `inbound-unqualified` - Known lead, not qualified (collect missing info naturally during conversation)
+- `inbound-unknown` - Cold caller not in system (ask for name first, don't make up names)
+- `outbound-warm` - Callback to known lead who requested contact
+- `outbound-cold` - Cold outreach to unknown prospect
+
+✅ **Key Prompt Improvements:**
+- **Conversational, not scripted** - 1-2 sentences per turn, then STOP
+- **VARIETY rule** - Rotates phrasing naturally to prevent robotic repetition
+- **Sample phrases** - Barbara copies exact natural language from examples
+- **Bullets over paragraphs** - Clear, scannable structure (OpenAI best practice)
+- **Under 100 lines each** (vs 400+ before) - Focused and clear
+- **No template variables** - Uses actual tool data, not fake {{leadFirstName}} syntax
+- **Complete booking flow** - Morning/afternoon preference → Nylas availability → commitment
+
+✅ **Advanced Features Added:**
+- **3-tier inbound system** - Distinguishes qualified/unqualified/unknown callers
+- **Call screening logic** - Handles Google Call Screen, Apple call screening, voicemail detection
+- **10DLC text consent** - Asks permission to send reminders via text (compliance requirement)
+- **Post-booking commitment strategy** - Saves broker's number, checks for conflicts, gets reminder consent
+- **Voicemail handling** - Professional messages with clear callback instructions
+
+✅ **Phone Number & Lead Lookup Fixes:**
+- **E.164 auto-population trigger** - Database trigger automatically sets `primary_phone_e164` from `primary_phone`
+- **Backfilled 130 existing leads** - All leads now have both phone columns populated
+- **Enhanced phone lookup** - Searches both E.164 and 10-digit formats with pattern matching
+- **Pre-injection for outbound calls** - Barbara v3 automatically fetches full lead context using `leadId` and injects it as system message (no more "made up names")
+- **Inbound caller detection** - Uses phone lookup to determine if caller is in system before selecting prompt
+
+✅ **Model Upgrade - Critical Production Issue Resolved:**
+- **Old model:** `gpt-4o-realtime-preview` ❌ (retired September 1, 2025 - could stop working any time!)
+- **New model:** `gpt-realtime` ✅ (stable, GA since August 28, 2025)
+- **Updated in 4 locations:** fly.toml, config.ts, env.example, README.md
+- **Deployed to Fly.io** - Both machines updated with new secret, auto-redeployed
+- **New features unlocked:** Better stability, improved voice quality, MCP server support, image input, SIP calling
+
+✅ **AI Feature Anti-Bloat Constraints:**
+- **Problem:** AI Improve, AI Audit, and AI Cleanup were making prompts MORE complex (adding 50+ rules, nested structures, expanding to 400+ lines)
+- **Solution:** Added strict constraints to all 3 AI features:
+  - **50-line maximum** per section (enforced)
+  - **SIMPLIFY and CONDENSE** - Must make prompts shorter, not longer
+  - **If adding, must REMOVE** - Stay under limit by removing redundancy
+  - **Distilled OpenAI Realtime best practices** - 8 core principles built into AI system prompts
+  - **Reduced AI system prompts** - From 73 lines to 24 lines (faster responses, better output)
+- **Per-Section AI Improve** (gpt-5-mini) - 24-line focused prompt with anti-bloat
+- **AI Cleanup** (gpt-5-mini) - Enforces 50-line max, removes duplicates
+- **Overall AI Audit** (gpt-5) - Each recommendation must be under 50 lines
+
+✅ **Portal UX Improvements:**
+- **Markdown helper toolbar** - Buttons for bullets, numbers, bold, headers (no more manual markdown typing!)
+- **Alphabetical sorting** - Fixed dual-sort bug (prompts now stay A-Z sorted)
+- **Deleted redundant prompts** - Removed `transfer`, `callback`, `fallback` (logic now in each prompt or hardcoded)
+- **Hardcoded flexible fallback** - Safe emergency prompt if Supabase fails (handles any call type)
+
+✅ **Production Testing Results:**
+- **Call quality:** "ok the call went waaaay better now" - User feedback after v1 deployment
+- **No more script-reading** - Barbara sounds natural and conversational
+- **No more repetition** - VARIETY rule working perfectly
+- **No more made-up names** - Pre-injection for outbound, smart detection for inbound
+- **Proper caller handling** - Asks for name when caller unknown, uses name when known
+
+**Files Created/Modified (23 total commits):**
+- `prompts/Production Prompts/v1/barbara-inbound-qualified-v1.json`
+- `prompts/Production Prompts/v1/barbara-inbound-unqualified-v1.json`
+- `prompts/Production Prompts/v1/barbara-inbound-unknown-v1.json`
+- `prompts/Production Prompts/v1/barbara-outbound-warm-v1.json`
+- `prompts/Production Prompts/v1/barbara-outbound-cold-v1.json`
+- `barbara-v3/src/services/prompts.ts` - 3-tier inbound logic, outbound warm/cold detection, hardcoded fallback
+- `barbara-v3/src/routes/streaming.ts` - Auto lead context pre-injection for outbound calls
+- `barbara-v3/fly.toml` - Upgraded to `gpt-realtime`
+- `barbara-v3/src/config.ts` - Upgraded to `gpt-realtime`
+- `barbara-v3/env.example` - Upgraded to `gpt-realtime`
+- `barbara-v3/README.md` - Upgraded to `gpt-realtime`
+- `database/migrations/20251106_auto_populate_e164.sql` - E.164 trigger + backfill
+- `portal/src/views/admin/PromptManagement.vue` - Markdown toolbar, alphabetical sort fix, AI anti-bloat
+- `INBOUND_UNKNOWN_CALLER_FEATURE.md` - Documentation for 3-tier system
+
+**Supabase Changes:**
+- ✅ Deleted 21 old prompt versions (v1-v13 bloated prompts)
+- ✅ Deleted 3 redundant prompts (`transfer`, `callback`, `fallback`)
+- ✅ Inserted 5 new v1 prompts (all sections under 100 lines)
+- ✅ Updated `prompts_call_type_check` constraint (removed deleted types)
+- ✅ Created E.164 auto-population trigger
+- ✅ Backfilled 130 leads with E.164 phone numbers
+
+**Status:** ✅ **PRODUCTION READY - Immediate Quality Improvement Verified**
 
 **7. Nylas Calendar Integration** ⭐ **PRODUCTION & TESTED** (OCT 20-26, 2025)
 - **Provider:** Nylas v3 API - Production-grade calendar platform
