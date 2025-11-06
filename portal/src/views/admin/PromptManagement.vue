@@ -2939,30 +2939,14 @@ async function loadVersions() {
   loading.value = true
   error.value = ''
   try {
-    // Load ALL prompts (not just base prompts)
-    const { data: allPrompts, error: promptsError } = await supabase
-      .from('prompts')
-      .select('id, name, call_type, purpose, goal, is_base_prompt')
-      .eq('is_active', true)
-      .order('created_at', { ascending: true })
+    // NOTE: Do NOT reload prompts here - they're already loaded and sorted by loadPrompts()
+    // Just use the existing prompts.value array (which is already sorted alphabetically)
 
-    if (promptsError) throw promptsError
-
-    if (!allPrompts || allPrompts.length === 0) {
-      throw new Error('No prompts found. Create a prompt to get started.')
+    // Use the currently selected prompt, or default to first one (alphabetically)
+    const targetPromptId = activePromptId.value || (prompts.value.length > 0 ? prompts.value[0].id : null)
+    if (!targetPromptId) {
+      throw new Error('No prompts available')
     }
-
-    // Update prompts list
-    prompts.value = allPrompts.map(p => ({
-      id: p.id,
-      name: p.name,
-      call_type: p.call_type,
-      purpose: p.purpose,
-      goal: p.goal
-    }))
-
-    // Use the currently selected prompt, or default to first one
-    const targetPromptId = activePromptId.value || allPrompts[0].id
     activePromptId.value = targetPromptId
 
     // Load versions for the active prompt
