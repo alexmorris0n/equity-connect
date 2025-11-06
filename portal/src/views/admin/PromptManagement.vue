@@ -4536,9 +4536,13 @@ async function loadPrompts() {
     
     console.log('📦 Raw prompts data:', data)
     
-    // Sort alphabetically by name (A-Z)
+    // Sort alphabetically by name (A-Z) - force lowercase comparison for consistency
     prompts.value = (data || []).sort((a, b) => {
-      return (a.name || '').localeCompare(b.name || '')
+      const nameA = (a.name || '').toLowerCase()
+      const nameB = (b.name || '').toLowerCase()
+      if (nameA < nameB) return -1
+      if (nameA > nameB) return 1
+      return 0
     })
     
     console.log('✅ Loaded prompts:', prompts.value.length, prompts.value)
