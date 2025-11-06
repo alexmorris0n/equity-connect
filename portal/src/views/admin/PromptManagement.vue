@@ -3284,20 +3284,53 @@ Example format:
 1. **Rule Name**: Explanation
 2. **Another Rule**: Explanation"`,
 
-    conversation_flow: `CONVERSATION FLOW GUIDELINES:
-- Step-by-step dialogue structure
-- Use section headers in ALL CAPS (GREETING & PURPOSE:, QUALIFICATION GATE:, etc.)
-- Use arrows (→) for dialogue examples
-- Include what to say at each step
-- Add transition phrases between sections
-- Show tool usage inline ("→ check_broker_availability (filler: 'One moment...')")
-- Include re-evaluation loops if needed
-- Natural progression from greeting → qualification → booking → closing
-- Loop guard: Do not re‑ask identical questions; one brief re‑prompt max, then summarize and progress.
-Example:
-"GREETING:
-→ 'Hi {{leadFirstName}}, this is Barbara with Equity Connect. How are you today?'
-→ Brief rapport building"`,
+    conversation_flow: `CONVERSATION FLOW GUIDELINES (PROVEN IN PRODUCTION):
+**USE SIMPLE ACTION FORMAT with arrows (→) - this works better than Goal/Exit/Next:**
+
+# Step Transitions (at top - shows natural progression)
+- After Greeting → Purpose: "what brought you to call?"
+- After Purpose → Verify: verify email, property, phone
+- After Verify → Q&A: "what questions do you have?"
+- After Q&A → Booking: "want to set up a time?"
+- During Tool Latency: rotate fillers
+
+# Opening (PACED - One Question at a Time)
+- "Equity Connect, this is Barbara. Hi {{leadFirstName}}, how are you?"
+- (call get_lead_context tool)
+- WAIT for their answer
+- THEN: "What brought you to call today?"
+- If they say "I have questions" / "wanted to ask" → Opening COMPLETE, move to Verify
+- Brief acknowledgment: "Got it"
+- SAY-ONCE: Don\'t repeat greeting or purpose lines
+
+# Verify Contact (Add Security Transition)
+- "Before we dive in, let me make sure I have the right information pulled up for you..."
+- Verify email → property → phone
+- update_lead_info if needed
+- Then → Q&A
+
+# Q&A (HARD LOOP - CRITICAL)
+- Answer question (1-2 sentences)
+- IMMEDIATELY in SAME turn: "Anything else?" or "What else?"
+- MANDATORY - never skip this follow-up
+- If user pushes back: Acknowledge ("I hear you"), VARY response, add detail
+- Exit only on explicit: "no", "that\'s it", "I\'m good"
+
+**CRITICAL RULES:**
+- Use arrows (→) to show flow naturally
+- Action bullets with example phrases (AI copies these exactly)
+- SAY-ONCE guards prevent loops
+- Hard loops need explicit exit phrases
+- One question per turn - WAIT for answer before next question
+
+**DO NOT use verbose Goal/Exit/Next format (tested poorly):**
+## Section
+- Goal: Abstract description
+- Exit when: Vague condition
+- Next: Proceed to...
+(AI gets confused with this format - use simple action bullets instead!)
+
+Reference: Field-tested production format`,
 
     output_format: `OUTPUT FORMAT GUIDELINES:
 - Specify response format requirements
@@ -3349,10 +3382,10 @@ function getQuickSuggestions(sectionKey) {
       'Add edge case handling'
     ],
     conversation_flow: [
-      'Expand greeting section',
-      'Add smoother transitions',
-      'Improve booking flow',
-      'Add more natural dialogue'
+      'Add Step Transitions section at top',
+      'Use arrows (→) to show flow between sections',
+      'Add SAY-ONCE guards to prevent repeating',
+      'Add security transition before verification'
     ],
     tools: [
       'Add tool usage examples',
@@ -3412,7 +3445,7 @@ ${currentVersion.value.content[aiImprovingSection.value.key] || '(empty)'}
 
 USER REQUEST: ${aiUserRequest.value}
 
-REALTIME API BEST PRACTICES (from OpenAI):
+REALTIME API BEST PRACTICES (Field-Tested):
 - Bullets over paragraphs (clear bullets outperform long text)
 - Guide with sample phrases (model copies exact phrases)
 - 2-3 sentences per turn MAX
@@ -3421,6 +3454,43 @@ REALTIME API BEST PRACTICES (from OpenAI):
 - Convert numbers to words ("sixty-two" not "62")
 - Tool latency fillers ("one moment...", "let me check...")
 - Natural micro-utterances ("mm-hmm", "got it", soft breath)
+
+CONVERSATION FLOW STRUCTURE (PROVEN FORMAT):
+Use SIMPLE ACTION BULLETS with arrow flow (→) - this works better than verbose Goal/Exit/Next:
+
+# Step Transitions (at top)
+- After Greeting → Purpose: "what brought you to call?"
+- After Purpose → Verify: verify email, property, phone
+- After Verify → Q&A: "what questions do you have?"
+- After Q&A → Booking: "want to set up a time?"
+
+# Opening (PACED)
+- "Equity Connect, this is Barbara. Hi [FirstName], how are you?"
+- (call get_lead_context tool)
+- WAIT for answer
+- THEN: "What brought you to call today?"
+- If "I have questions" → Opening COMPLETE, move to Verify
+- Brief: "Got it"
+- SAY-ONCE: Don\'t repeat greeting/purpose
+
+# Verify Contact (Security Transition)
+- "Before we dive in, let me make sure I have the right information..."
+- Email → Property → Phone
+- Then → Q&A
+
+# Q&A (HARD LOOP)
+- Answer + "Anything else?" in SAME turn (mandatory)
+- If pushed: Acknowledge, VARY response
+- Until explicit "no"
+
+KEY RULES:
+- Use arrows (→) to show flow, not verbose "Next: Proceed to..."
+- Action-oriented bullets, not abstract goals
+- Explicit phrase examples (AI copies these)
+- SAY-ONCE guards to prevent loops
+- Hard loops with clear exit phrases ("no", "that\'s it")
+
+Reference: Based on production testing, not just cookbook theory
 
 CONSTRAINTS (CRITICAL - ENFORCE THESE):
 1. MAXIMUM 50 LINES total
@@ -3432,7 +3502,8 @@ CONSTRAINTS (CRITICAL - ENFORCE THESE):
 7. Keep all unrelated parts of the section intact - only change what the user requested
 8. If adding content, REMOVE other content to stay under 50 lines
 9. Return the FULL section with your modifications (preserve everything the user didn't ask to change)
-10. Focus on clarity and actionability`
+10. Focus on clarity and actionability
+11. **FOR CONVERSATION_FLOW: Use state-based format with Goal/Exit/Next - DO NOT create bullet lists without exit conditions**`
 
     // Call OpenAI API with GPT-5 (best for prompt refinement)
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -3487,10 +3558,20 @@ CONSTRAINTS (CRITICAL - ENFORCE THESE):
 }
 
 async function acceptAISuggestion() {
-  if (!aiSuggestion.value || !aiImprovingSection.value) return
+  console.log('🟢 acceptAISuggestion called', {
+    hasAiSuggestion: !!aiSuggestion.value,
+    improvingSection: aiImprovingSection.value?.key,
+    currentContent: currentVersion.value?.content[aiImprovingSection.value?.key]?.substring(0, 50) + '...'
+  })
+  
+  if (!aiSuggestion.value || !aiImprovingSection.value) {
+    console.error('❌ Missing aiSuggestion or aiImprovingSection')
+    return
+  }
   
   // Update the current version content
   currentVersion.value.content[aiImprovingSection.value.key] = aiSuggestion.value
+  console.log('✅ Updated content for section:', aiImprovingSection.value.key)
   
   // Mark this suggestion as applied
   appliedSuggestions.value.add(aiImprovingSection.value.key)
@@ -3505,16 +3586,19 @@ async function acceptAISuggestion() {
     
     if (updateError) {
       console.error('Failed to save applied suggestions:', updateError)
+    } else {
+      console.log('✅ Saved applied suggestions to DB')
     }
   } catch (error) {
     console.error('Error updating applied suggestions:', error)
   }
   
   // Update the textarea
-  nextTick(() => {
-    populateContentEditableDivs()
-    markAsChanged()
-  })
+  console.log('🔄 Updating UI via populateContentEditableDivs and markAsChanged')
+  await nextTick()
+  populateContentEditableDivs()
+  markAsChanged()
+  console.log('✅ UI updated, hasChanges:', hasChanges.value)
   
   // Close modal
   closeAIImprove()
@@ -3595,7 +3679,7 @@ CONTEXT FROM USER:
 FULL PROMPT CONTENT:
 ${fullPromptContent}
 
-REALTIME API BEST PRACTICES (from OpenAI):
+REALTIME API BEST PRACTICES (Field-Tested):
 - Bullets over paragraphs (clear bullets outperform long text)
 - Guide with sample phrases (model copies exact phrases)
 - 2-3 sentences per turn MAX
@@ -3604,6 +3688,30 @@ REALTIME API BEST PRACTICES (from OpenAI):
 - Convert numbers to words ("sixty-two" not "62")
 - Tool latency fillers ("one moment...", "let me check...")
 - Natural micro-utterances ("mm-hmm", "got it", soft breath)
+
+CONVERSATION FLOW STRUCTURE (PROVEN IN PRODUCTION):
+Use SIMPLE ACTION BULLETS with arrow flow (→):
+- Step Transitions section at top showing progression
+- Action bullets with example phrases
+- Arrows (→) to show natural flow
+- SAY-ONCE guards to prevent loops
+- Hard loops with explicit exit phrases
+
+DO NOT use verbose Goal/Exit/Next format (causes confusion):
+## Section
+- Goal: Abstract description
+- Exit when: Vague condition
+(This format tested poorly - AI gets confused!)
+
+DO use concise action format (works great):
+# Opening (PACED)
+- "Hi [FirstName], how are you?"
+- WAIT for answer
+- THEN: "What brought you to call?"
+- If "I have questions" → move to Q&A
+- SAY-ONCE: Don\'t repeat
+
+Reference: Field-tested production format, not just theory
 
 EVALUATION CRITERIA:
 1. Brevity and clarity (shorter is better)

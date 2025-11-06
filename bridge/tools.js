@@ -680,7 +680,13 @@ function findFreeSlots(startMs, endMs, busyTimes, durationMs, timezone) {
   // Sort busy times by start time
   busyTimes.sort((a, b) => a.start - b.start);
   
-  let currentTime = startMs;
+  // Round starting time to next clean 15-minute interval (00, 15, 30, 45)
+  const startDate = new Date(startMs);
+  const minutes = startDate.getMinutes();
+  const roundedMinutes = Math.ceil(minutes / 15) * 15;
+  startDate.setMinutes(roundedMinutes, 0, 0); // Set to clean interval, zero out seconds/ms
+  
+  let currentTime = startDate.getTime();
   
   for (const busy of busyTimes) {
     // If there's a gap before this busy time
