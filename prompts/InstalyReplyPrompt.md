@@ -80,14 +80,23 @@ LIMIT 1
 ```
 
 **CRITICAL - Parse the Supabase Response:**
-The Supabase execute_sql tool returns data wrapped in complex XML tags. You MUST use the Code Tool to extract clean data.
+After execute_sql finishes, you will receive a RESULT/OBSERVATION containing the data. You MUST call the Code Tool to parse it.
 
-Immediately after the execute_sql call above, call the tool named `Code Tool`:
+DO NOT pass the SQL query you sent - pass the RESULT you received back!
+
+Call the tool named `Code Tool` with:
 ```json
 {
-  "response": "[paste the ENTIRE text response from execute_sql here]"
+  "query": "[paste the OBSERVATION/RESULT text you received from execute_sql - NOT the query you sent]"
 }
 ```
+
+Example of what to pass (the text RETURNED by Supabase):
+```
+"[{\"id\":\"abc-123\",\"first_name\":\"John\"}]"
+```
+
+NOT the SQL query you sent!
 
 This will return clean JSON like:
 ```json
