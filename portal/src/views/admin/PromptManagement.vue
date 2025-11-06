@@ -1452,22 +1452,22 @@
             </div>
           </div>
         </n-scrollbar>
-
-        <template #footer>
-          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: var(--text-secondary); font-size: 0.9rem;">{{ cleanupResults.length }} sections changed</span>
-            <div style="display: flex; gap: 0.75rem;">
-              <n-button @click="cancelCleanup">Cancel</n-button>
-              <n-button type="success" @click="acceptAllCleanupChanges">
-                <template #icon>
-                  <n-icon><CheckmarkDoneOutline /></n-icon>
-                </template>
-                Accept All Cleanup Changes
-              </n-button>
-            </div>
-          </div>
-        </template>
       </div>
+
+      <template #footer>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: var(--text-secondary); font-size: 0.9rem;">{{ cleanupResults.length }} sections changed</span>
+          <div style="display: flex; gap: 0.75rem;">
+            <n-button @click="cancelCleanup" :disabled="cleanupIsProcessing">Cancel</n-button>
+            <n-button type="success" @click="acceptAllCleanupChanges" :disabled="cleanupIsProcessing || cleanupResults.length === 0">
+              <template #icon>
+                <n-icon><CheckmarkDoneOutline /></n-icon>
+              </template>
+              Accept All Cleanup Changes
+            </n-button>
+          </div>
+        </div>
+      </template>
     </n-modal>
   </div>
 </template>
