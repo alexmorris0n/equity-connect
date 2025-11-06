@@ -155,11 +155,29 @@ Call update_lead to pause this specific lead in the campaign:
 
 NOTE: If Instantly MCP update_lead fails, log the error but continue to next step (don't stop workflow)
 
+**CRITICAL - Parsing Supabase Responses:**
+Supabase execute_sql returns data wrapped in untrusted-data tags. You MUST extract the actual values correctly.
+
+Example Supabase response:
+```
+<untrusted-data-abc123>
+[{"id":"07f26a19-e9dc-422c-b61d-030e3c7971bb","first_name":"Testy"}]
+</untrusted-data-abc123>
+```
+
+To extract the lead_id from Step 1:
+1. Look inside the <untrusted-data-...> tags
+2. Find the JSON array: `[{...}]`
+3. Get the first object's `id` field value
+4. The value is ALREADY a string - use it directly (don't add extra quotes)
+
+Example: If you see `"id":"abc-123"`, then lead_id = `"abc-123"` (NOT `"\"abc-123\""`)
+
 **3D. Create Call using Barbara MCP:**
 Call the Barbara MCP tool named `create_outbound_call` with EXACTLY these two required fields:
 
 - `to_phone`: Use `$json.e164_phone` (string like "+16505300051"). It MUST be quoted (not a number).
-- `lead_id`: Use the lead ID string from the Step 1 query result (lead_record.id).
+- `lead_id`: Extract from the Supabase response in Step 1 (the `id` field from the lead record).
 
 **IMPORTANT:** The Bridge will automatically look up all lead info (name, city, property value, etc.) during the call using the `get_lead_context` tool. You do NOT need to pass this information from here.
 
