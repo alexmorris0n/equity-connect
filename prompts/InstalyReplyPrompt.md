@@ -79,9 +79,9 @@ LIMIT 1
 ```
 
 **CRITICAL - Parse the Supabase Response:**
-The Supabase execute_sql tool returns data wrapped in complex XML tags. You MUST use the parse_supabase_response tool to extract clean data.
+The Supabase execute_sql tool returns data wrapped in complex XML tags. You MUST use the Code Tool to extract clean data.
 
-Immediately after the execute_sql call above, call the `parse_supabase_response` tool:
+Immediately after the execute_sql call above, call the tool named `Code Tool`:
 ```json
 {
   "response": "[paste the ENTIRE text response from execute_sql here]"
