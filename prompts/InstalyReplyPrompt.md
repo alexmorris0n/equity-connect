@@ -98,6 +98,18 @@ Example of what to pass (the text RETURNED by Supabase):
 
 NOT the SQL query you sent!
 
+Example interaction:
+```
+Thought: Need to fetch the lead record
+Action: execute_sql {"query":"SELECT ..."}
+Observation: "[{\"id\":\"07f26a19-e9dc-422c-b61d-030e3c7971bb\",\"first_name\":\"Testy\"}]"
+Thought: Parse the observation from execute_sql
+Action: Code Tool {"query":"[{\"id\":\"07f26a19-e9dc-422c-b61d-030e3c7971bb\",\"first_name\":\"Testy\"}]"}
+Observation: "{\"id\":\"07f26a19-e9dc-422c-b61d-030e3c7971bb\",\"first_name\":\"Testy\"}"
+```
+
+Never call the Code Tool before you have an observation. Always copy the exact observation text into the `query` field.
+
 This will return clean JSON like:
 ```json
 {
