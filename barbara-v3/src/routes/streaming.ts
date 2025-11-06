@@ -19,6 +19,7 @@ import type { StreamingOptions } from '../types/index.js';
 import { AGENT_CONFIG, SERVER_CONFIG } from '../config.js';
 import { getInstructionsForCallType } from '../services/prompts.js';
 import { setCurrentSessionId, setTranscript, clearTranscript, setPromptMetadata, getCurrentPromptMetadata } from '../services/transcript-store.js';
+import { getSupabaseClient } from '../services/supabase.js';
 
 export async function streamingRoute(
   fastify: FastifyInstance,
@@ -368,7 +369,54 @@ export async function streamingRoute(
           
           logger.info(`📞 Lead phone number for lookup: ${leadPhone}`);
           
-          // Inject lead phone context as system message
+          let contextText = '';
+          
+          // If we have lead_id (outbound calls from MCP), pre-fetch lead context
+          if (leadId) {
+            logger.info(`🔍 Pre-fetching lead context for lead_id: ${leadId}`);
+            
+            try {
+              const sb = getSupabaseClient();
+              const { data: lead, error: leadError } = await sb
+                .from('leads')
+                .select('*, brokers!assigned_broker_id(*)')
+                .eq('id', leadId)
+                .single();
+              
+              if (!leadError && lead) {
+                const broker = lead.brokers;
+                const isQualified = ['qualified', 'appointment_set', 'showed', 'application', 'funded'].includes(lead.status);
+                
+                logger.info(`✅ Lead found: ${lead.first_name} ${lead.last_name} (${lead.status})`);
+                
+                // Build rich context message
+                contextText = `[SYSTEM] Lead Information:
+- Name: ${lead.first_name} ${lead.last_name}
+- Phone: ${leadPhone}
+- Email: ${lead.primary_email || 'Not provided'}
+- Status: ${lead.status}
+- Qualified: ${isQualified ? 'Yes' : 'No'}
+${lead.property_city && lead.property_state ? `- Location: ${lead.property_city}, ${lead.property_state}` : ''}
+${lead.property_value ? `- Property Value: $${Number(lead.property_value).toLocaleString()}` : ''}
+${lead.estimated_equity ? `- Estimated Equity: $${Number(lead.estimated_equity).toLocaleString()}` : ''}
+${lead.age ? `- Age: ${lead.age}` : ''}
+${broker ? `- Assigned Broker: ${broker.contact_name || broker.company_name}` : ''}
+
+This information is already available - do NOT call get_lead_context tool.`;
+              } else {
+                logger.warn(`⚠️ Lead not found for lead_id: ${leadId}, falling back to phone lookup`);
+                contextText = `[SYSTEM] The lead's phone number is: ${leadPhone}. Call get_lead_context tool with this phone number to retrieve lead information.`;
+              }
+            } catch (error: any) {
+              logger.error(`❌ Error pre-fetching lead context:`, error);
+              contextText = `[SYSTEM] The lead's phone number is: ${leadPhone}. Call get_lead_context tool with this phone number to retrieve lead information.`;
+            }
+          } else {
+            // No lead_id (inbound calls) - instruct Barbara to call the tool
+            contextText = `[SYSTEM] The lead's phone number is: ${leadPhone}. Call get_lead_context tool with this phone number to retrieve lead information.`;
+          }
+          
+          // Inject context as system message
           const systemMessage: RealtimeClientMessage = {
             type: 'conversation.item.create',
             item: {
@@ -376,7 +424,7 @@ export async function streamingRoute(
               role: 'system',
               content: [{
                 type: 'input_text',
-                text: `[SYSTEM] The lead's phone number is: ${leadPhone}. When using get_lead_context tool, pass this exact phone number.`
+                text: contextText
               }]
             }
           } as any;

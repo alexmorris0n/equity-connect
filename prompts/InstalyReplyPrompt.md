@@ -87,7 +87,7 @@ Store result as: lead_record
 
 Analyze {{ $json.reply_text }} to determine intent (check in this order):
 
-**1. PHONE_PROVIDED** - Contains 10-digit phone number (XXX-XXX-XXXX, (XXX) XXX-XXXX, etc.)
+**1. PHONE_PROVIDED** - If `$json.phone_provided` is true (preferred). Otherwise, contains a valid 10-digit phone (XXX-XXX-XXXX, (XXX) XXX-XXXX, etc.)
 
 **2. UNSUBSCRIBE** - Contains: "unsubscribe", "remove me", "stop emailing", "opt out", "not interested"
 
@@ -105,46 +105,15 @@ Store as: intent
 
 ### IF PHONE_PROVIDED:
 
-**3A. Extract and normalize phone number:**
-Search {{ $json.reply_text }} for phone number in ANY format. People can write phone numbers many ways:
-- 650 530 0051 (spaces)
-- 650.530.0051 (dots)
-- 650-530-0051 (dashes)
-- (650) 530-0051 (parentheses)
-- 6505300051 (no formatting)
-- +1-650-530-0051 (with country code)
-- And any other variation
+**3A. Phone values from previous node (do not recompute):**
+- Use `$json.normalized_phone` (10 digits) and `$json.e164_phone` (string like "+16505300051") from the "📦 Extract Webhook Data" node.
+- If either value is missing, do NOT call Barbara. Proceed with other intents (ask for number or answer by email).
+- Keep both values available for the following steps.
 
-Extract the raw phone text (whatever format they provided), then normalize it to clean 10 digits using the database function.
+**3B. Update database using Supabase (NOT Barbara MCP):**
+**CRITICAL:** Use the Supabase MCP `execute_sql` tool to update the database. Do NOT use Barbara MCP `update_lead_info` - that tool is only for Barbara to use during live calls.
 
-**CRITICAL: Use the ACTUAL phone string you extracted from the reply text.**
-
-Call Supabase execute_sql with the actual phone string you found:
-```
-SELECT normalize_phone_number('[insert the actual raw phone string here]') as normalized_phone
-```
-
-Example: If you extracted "650-530-0051" from the reply, call:
-```
-SELECT normalize_phone_number('650-530-0051') as normalized_phone
-```
-
-This function will:
-- Remove all non-digit characters (spaces, dashes, dots, parentheses, etc.)
-- Strip the leading "1" if it's an 11-digit US number
-- Return exactly 10 digits: "6505300051"
-- Return NULL if invalid
-
-Store the result as: normalized_phone (10 digits)
-If normalized_phone is NULL, log error "Invalid phone number format" and STOP
-
-Now compute the E.164 string for calling:
-- Define e164_phone = "+1" + normalized_phone
-- Example: if normalized_phone is "6505300051" then e164_phone is "+16505300051"
-- Store this value as: e164_phone (string)
-
-**3B. Update database:**
-Call Supabase execute_sql using the ACTUAL normalized_phone value you received from step 3A:
+Call Supabase execute_sql using the ACTUAL `$json.normalized_phone` value you already have:
 ```
 UPDATE leads SET 
   primary_phone = '[insert the actual 10-digit normalized_phone here]', 
@@ -155,7 +124,7 @@ WHERE primary_email = '{{ $json.lead_email }}'
 RETURNING id
 ```
 
-Example: If normalized_phone is "6505300051", the query should be:
+Example: If `$json.normalized_phone` is "6505300051", the query should be:
 ```
 UPDATE leads SET 
   primary_phone = '6505300051', 
@@ -187,21 +156,24 @@ Call update_lead to pause this specific lead in the campaign:
 NOTE: If Instantly MCP update_lead fails, log the error but continue to next step (don't stop workflow)
 
 **3D. Create Call using Barbara MCP:**
-Call the Barbara MCP tool named `create_outbound_call` with EXACTLY these two top-level fields (no wrapper object, no extra fields):
+Call the Barbara MCP tool named `create_outbound_call` with EXACTLY these two required fields:
 
-- `to_phone`: Use the `e164_phone` you created in step 3A. It MUST be a quoted string like "+16505300051" (do not pass a number).
-- `lead_id`: The lead ID string from step 1 (example: "a1b2c3...").
+- `to_phone`: Use `$json.e164_phone` (string like "+16505300051"). It MUST be quoted (not a number).
+- `lead_id`: Use the lead ID string from the Step 1 query result (lead_record.id).
 
-Examples of VALID arguments (both values are strings, not numbers):
+**IMPORTANT:** The Bridge will automatically look up all lead info (name, city, property value, etc.) during the call using the `get_lead_context` tool. You do NOT need to pass this information from here.
+
+Example of VALID arguments:
 ```json
 {
   "to_phone": "+16505300051",
-  "lead_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "lead_id": "07f26a19-e9dc-422c-b61d-030e3c7971bb"
 }
 ```
+
 Rules:
-- Do NOT wrap inside `call_payload` or any parent object.
-- Do NOT include any extra keys.
+- Do NOT wrap inside `call_payload` or any parent object - these are TOP-LEVEL fields.
+- Do NOT include extra fields like lead_first_name, property_city, etc. - the Bridge fetches these during the call.
 - Both values must be strings (quoted). Numbers like 16505300051 are INVALID.
 
 NOTE: If the Barbara MCP call fails, log the error but continue to the next step.
