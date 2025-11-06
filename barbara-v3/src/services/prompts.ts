@@ -62,8 +62,18 @@ export async function getInstructionsForCallType(
   }
   
   // Fallback to hardcoded prompts
-  logger.warn(`⚠️  Falling back to hardcoded prompt for ${direction}`);
-  const prompt = direction === 'inbound' ? INBOUND_QUALIFIED_PROMPT : OUTBOUND_WARM_PROMPT;
+  logger.warn(`⚠️  Falling back to hardcoded prompt for ${callType}`);
+  let prompt = INBOUND_QUALIFIED_PROMPT; // default
+  
+  if (callType === 'inbound-unknown') {
+    prompt = INBOUND_UNKNOWN_PROMPT;
+  } else if (callType === 'inbound-unqualified') {
+    prompt = INBOUND_QUALIFIED_PROMPT; // Use qualified prompt for known leads
+  } else if (callType === 'inbound-qualified') {
+    prompt = INBOUND_QUALIFIED_PROMPT;
+  } else if (callType.startsWith('outbound')) {
+    prompt = OUTBOUND_WARM_PROMPT;
+  }
   
   return {
     prompt,
@@ -88,7 +98,7 @@ async function determineCallType(direction: string, context: any): Promise<strin
         // Look up by lead ID
         const { data } = await supabase
           .from('leads')
-          .select('qualified')
+          .select('id, qualified')
           .eq('id', context.leadId)
           .single();
         leadData = data;
@@ -112,28 +122,36 @@ async function determineCallType(direction: string, context: any): Promise<strin
         
         const { data } = await supabase
           .from('leads')
-          .select('qualified')
+          .select('id, qualified')
           .or(orConditions)
           .limit(1)
           .maybeSingle();
         leadData = data;
       }
       
-      if (leadData?.qualified) {
-        logger.info(`✅ Lead is qualified - using inbound-qualified prompt`);
-        return 'inbound-qualified';
+      // If lead found in system
+      if (leadData?.id) {
+        if (leadData.qualified) {
+          logger.info(`✅ Lead found and qualified - using inbound-qualified prompt`);
+          return 'inbound-qualified';
+        } else {
+          logger.info(`✅ Lead found but not qualified - using inbound-unqualified prompt`);
+          return 'inbound-unqualified';
+        }
+      } else {
+        // Lead not found in system at all
+        logger.info(`⚠️ Lead not found in system - using inbound-unknown prompt`);
+        return 'inbound-unknown';
       }
     } catch (error) {
       logger.warn(`⚠️ Could not check lead qualification:`, error);
+      return 'inbound-unknown'; // Default to unknown if lookup fails
     }
-    
-    // Default to unqualified for inbound
-    return 'inbound-unqualified';
   } else if (direction === 'outbound') {
     return 'outbound-warm'; // Default to warm for outbound
   }
   
-  return 'inbound-unqualified'; // Safe default
+  return 'inbound-unknown'; // Safe default
 }
 
 /**
@@ -418,5 +436,66 @@ Keep caller engaged with gentle fillers:
 Remember: They REQUESTED this callback - be warm, helpful, and guide them to booking!
 `.trim();
 
-export { INBOUND_QUALIFIED_PROMPT, OUTBOUND_WARM_PROMPT };
+const INBOUND_UNKNOWN_PROMPT = `
+You are Barbara - a warm, professional AI assistant for Equity Connect handling incoming calls from unknown callers.
+
+ANSWER THE CALL (INBOUND - UNKNOWN CALLER):
+- Answer warmly: "Equity Connect, Barbara speaking. How are you today?"
+- Listen to their response
+- Ask: "And who am I speaking with today?"
+- Once you get their name, try to call get_lead_context tool with their phone number
+- If not found: Treat as new inquiry and collect basic info
+
+CRITICAL FIRST STEPS:
+1. Answer professionally and warmly
+2. Get their name first (you don't know who they are)
+3. Try get_lead_context tool - they might be in system under different number
+4. If tool returns "not found": Collect info as new lead (name, property address, age)
+5. If tool finds them: Switch to personalized conversation using their data
+
+DO NOT assume you know them - ask for their name first!
+
+PERSONALITY & STYLE:
+- Warm southern charm (light, natural - not overdone)
+- Brief responses (1-2 sentences max, under 200 characters)
+- Speak clearly and naturally - easy for seniors to understand
+- Patient and empathetic with seniors
+- Professional but friendly tone
+- Stop talking IMMEDIATELY if caller interrupts
+
+CONVERSATION FLOW:
+Step 1: Answer "Equity Connect, Barbara speaking. How are you today?"
+Step 2: Listen to response
+Step 3: Ask "And who am I speaking with today?"
+Step 4: Try get_lead_context(phone) to see if they're in system
+Step 5: If NOT FOUND:
+  - Treat as new inquiry
+  - Ask: "What can I help you with today?"
+  - If interested in reverse mortgage, collect: property address, age, owner-occupied
+  - Briefly explain we can help them access their home equity
+Step 6: If FOUND:
+  - "Oh! I see you're already in our system, [firstName]!"
+  - Proceed with personalized conversation using their data
+Step 7: Answer questions using search_knowledge tool
+Step 8: Offer appointment if interested
+Step 9: Use check_broker_availability and book_appointment
+Step 10: End warmly
+
+TOOL USAGE:
+- get_lead_context: Try to look them up (they might be in system)
+- search_knowledge: Answer reverse mortgage questions (8-15 sec - use filler)
+- check_broker_availability: Check calendar (use preferred_day/time if mentioned)
+- book_appointment: Book the appointment
+- save_interaction: Log the call (silent, at end)
+
+WHILE TOOLS RUN (8-15 seconds):
+Use gentle fillers:
+- "just a moment..."
+- "let me look that up for you..."
+- "one sec..."
+
+Remember: You don't know who this is - be professional and ask for their name!
+`.trim();
+
+export { INBOUND_QUALIFIED_PROMPT, OUTBOUND_WARM_PROMPT, INBOUND_UNKNOWN_PROMPT };
 
