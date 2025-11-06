@@ -256,17 +256,31 @@
                       <n-icon size="20" color="#8b5cf6"><SparklesOutline /></n-icon>
                       <span>AI Improvement Suggestions</span>
                     </div>
-                    <n-button 
-                      size="small" 
-                      @click="applyAllSuggestions" 
-                      :disabled="!aiSuggestions || aiSuggestions.length === 0"
-                      class="apply-all-btn"
-                    >
-                      <template #icon>
-                        <n-icon><CheckmarkDoneOutline /></n-icon>
-                      </template>
-                      Apply All
-                    </n-button>
+                    <div style="display: flex; gap: 0.5rem;">
+                      <n-button 
+                        size="small" 
+                        type="warning"
+                        @click="runPromptCleanup"
+                        :disabled="!currentVersion"
+                        class="cleanup-btn"
+                      >
+                        <template #icon>
+                          <n-icon><RefreshOutline /></n-icon>
+                        </template>
+                        Clean Up Prompt
+                      </n-button>
+                      <n-button 
+                        size="small" 
+                        @click="applyAllSuggestions" 
+                        :disabled="!aiSuggestions || aiSuggestions.length === 0"
+                        class="apply-all-btn"
+                      >
+                        <template #icon>
+                          <n-icon><CheckmarkDoneOutline /></n-icon>
+                        </template>
+                        Apply All
+                      </n-button>
+                    </div>
                   </div>
                 </template>
                 <n-list class="suggestions-list">
@@ -1314,6 +1328,146 @@
           </n-button>
         </div>
       </template>
+    </n-modal>
+
+    <!-- Cleanup Modal -->
+    <n-modal v-model:show="showCleanupModal" preset="card" :style="{ width: '90%', maxWidth: '1200px' }" title="🧹 Cleanup Prompt" :bordered="false">
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <p style="margin: 0; color: var(--text-secondary); font-size: 0.9rem;">
+          This modal allows you to clean up the prompt by removing duplicate sentences and standardizing phrasing.
+        </p>
+        <n-button type="primary" @click="runPromptCleanup" :loading="cleanupIsProcessing">
+          <template #icon>
+            <n-icon><RefreshOutline /></n-icon>
+          </template>
+          Run Cleanup
+        </n-button>
+        <n-button type="secondary" @click="acceptAllCleanupChanges" :disabled="cleanupIsProcessing">
+          <template #icon>
+            <n-icon><CheckmarkDoneOutline /></n-icon>
+          </template>
+          Accept All Changes
+        </n-button>
+        <n-button type="error" @click="cancelCleanup" :disabled="cleanupIsProcessing">
+          <template #icon>
+            <n-icon><CloseOutline /></n-icon>
+          </template>
+          Cancel
+        </n-button>
+      </div>
+      <div v-if="cleanupIsProcessing" class="progress-log">
+        <div 
+          v-for="(item, idx) in cleanupProgress" 
+          :key="idx"
+          :style="{
+            padding: '0.5rem 0',
+            borderBottom: idx < cleanupProgress.length - 1 ? '1px solid rgba(148, 163, 184, 0.1)' : 'none',
+            color: item.type === 'error' ? '#ef4444' : item.type === 'success' ? '#10b981' : item.type === 'working' ? '#3b82f6' : 'var(--text-secondary)'
+          }"
+        >
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <n-spin v-if="item.type === 'working'" size="small" />
+            <n-icon v-else-if="item.type === 'success'" size="18" color="#10b981"><CheckmarkCircleOutline /></n-icon>
+            <n-icon v-else-if="item.type === 'error'" size="18" color="#ef4444"><CloseCircleOutline /></n-icon>
+            <n-icon v-else size="18" :color="isDark ? '#94a3b8' : '#6b7280'"><InformationCircleOutline /></n-icon>
+            <span style="font-size: 0.9rem; font-weight: 500;">{{ item.message }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="cleanupResults.length > 0" class="diff-sections">
+        <div 
+          v-for="(result, idx) in cleanupResults" 
+          :key="idx" 
+          class="diff-section"
+          style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid rgba(148, 163, 184, 0.18);"
+        >
+          <div style="margin-bottom: 0.75rem;">
+            <h4 style="margin: 0 0 0.25rem 0; color: var(--text-primary); font-size: 1rem;">
+              {{ result.section.label }}
+              <span class="changed-badge" style="margin-left: 0.5rem; font-size: 0.75rem; background: rgba(139, 92, 246, 0.12); color: #8b5cf6; padding: 0.25rem 0.5rem; border-radius: 4px;">{{ result.suggestion.priority }}</span>
+            </h4>
+            <p style="margin: 0; color: var(--text-secondary); font-size: 0.85rem;">{{ result.suggestion.description }}</p>
+          </div>
+
+          <div class="diff-text" style="background: rgba(248, 250, 255, 0.4); padding: 1rem; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.18); font-family: monospace; font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap;">
+            <span
+              v-for="(part, partIdx) in result.diff"
+              :key="partIdx"
+              :class="{
+                'diff-added': part.added,
+                'diff-removed': part.removed,
+                'diff-unchanged': !part.added && !part.removed
+              }"
+            >{{ part.value }}</span>
+          </div>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- Cleanup Review Modal -->
+    <n-modal 
+      v-model:show="showCleanupModal" 
+      preset="card" 
+      :style="{ width: '90%', maxWidth: '1200px' }" 
+      :title="cleanupIsProcessing ? '🧹 Cleaning Prompt…' : '🧼 Review Cleanup Changes'" 
+      :bordered="false"
+      :closable="!cleanupIsProcessing"
+      :mask-closable="false"
+    >
+      <div v-if="cleanupIsProcessing" style="display:flex; justify-content:center; align-items:center; min-height: 160px; color: var(--text-secondary);">
+        <n-spin size="small" style="margin-right: 0.5rem;" />
+        Processing cleanup across sections…
+      </div>
+
+      <div v-else>
+        <n-scrollbar style="max-height: calc(85vh - 180px);">
+          <div v-if="cleanupProgress.length" style="margin-bottom: 1rem;">
+            <div v-for="(p, i) in cleanupProgress" :key="i" style="font-size: 0.85rem; color: var(--text-secondary);">
+              {{ p.message }}
+            </div>
+          </div>
+
+          <div v-if="cleanupResults.length === 0" style="color: var(--text-secondary);">No cleanup changes were generated.</div>
+
+          <div v-else>
+            <div 
+              v-for="(result, idx) in cleanupResults" 
+              :key="idx" 
+              style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;"
+            >
+              <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <div style="font-weight: 600; color: var(--text-primary);">{{ result.section.label }}</div>
+              </div>
+              <div class="diff-text">
+                <span
+                  v-for="(part, partIdx) in result.diff"
+                  :key="partIdx"
+                  :class="{
+                    'diff-added': part.added,
+                    'diff-removed': part.removed,
+                    'diff-unchanged': !part.added && !part.removed
+                  }"
+                >{{ part.value }}</span>
+              </div>
+            </div>
+          </div>
+        </n-scrollbar>
+
+        <template #footer>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-secondary); font-size: 0.9rem;">{{ cleanupResults.length }} sections changed</span>
+            <div style="display: flex; gap: 0.75rem;">
+              <n-button @click="cancelCleanup">Cancel</n-button>
+              <n-button type="success" @click="acceptAllCleanupChanges">
+                <template #icon>
+                  <n-icon><CheckmarkDoneOutline /></n-icon>
+                </template>
+                Accept All Cleanup Changes
+              </n-button>
+            </div>
+          </div>
+        </template>
+      </div>
     </n-modal>
   </div>
 </template>
@@ -3166,6 +3320,7 @@ Keep it simple, bullet format.`,
 - Compliance requirements
 - What NOT to do
 - When to transfer/escalate
+- Non‑repetition policy: Never ask the same question verbatim more than once; after one re‑prompt, summarize and move forward or escalate.
 Example format:
 "CRITICAL RULES:
 1. **Rule Name**: Explanation
@@ -3180,6 +3335,7 @@ Example format:
 - Show tool usage inline ("→ check_broker_availability (filler: 'One moment...')")
 - Include re-evaluation loops if needed
 - Natural progression from greeting → qualification → booking → closing
+- Loop guard: Do not re‑ask identical questions; one brief re‑prompt max, then summarize and progress.
 Example:
 "GREETING:
 → 'Hi {{leadFirstName}}, this is Barbara with Equity Connect. How are you today?'
@@ -3310,6 +3466,9 @@ SECTION: ${aiImprovingSection.value.label} (${aiImprovingSection.value.key})
 CURRENT CONTENT:
 ${currentVersion.value.content[aiImprovingSection.value.key] || '(empty)'}
 
+OTHER SECTIONS SNAPSHOT (read-only; avoid duplicating any lines from these):
+${getOtherSectionsSnapshot(aiImprovingSection.value.key)}
+
 USER REQUEST: ${aiUserRequest.value}
 
 SECTION-SPECIFIC GUIDELINES:
@@ -3319,18 +3478,17 @@ CRITICAL GUARDRAILS:
 ⚠️ You are ONLY improving the "${aiImprovingSection.value.label}" section
 ⚠️ Do NOT add metadata like "Name:", "Call Type:", "Purpose:", "Goal:", "SECTION:"
 ⚠️ Do NOT include section headers or other sections
-⚠️ Do NOT add explanatory text before or after the content
 ⚠️ Return ONLY the improved content for this specific section
+⚠️ Do NOT duplicate sentences that already appear in OTHER SECTIONS SNAPSHOT. If similar content exists elsewhere, keep it in one place and remove repetition here.
 
 REQUIREMENTS:
 1. Follow OpenAI Realtime API best practices (ultra-brief <200 chars, interrupt-friendly, numbers as words, tool fillers, micro-utterances)
 2. Match the prompt's purpose (${currentPromptMetadata.value.purpose})
 3. Align with the goal (${currentPromptMetadata.value.goal})
 4. Preserve line breaks and formatting (bullets -, numbers 1., arrows →, ALL CAPS headers)
-5. Use {{variableName}} syntax for template variables
+5. Preserve all {{variableName}} exactly
 6. Return ONLY the section content - nothing else
-
-Provide the improved "${aiImprovingSection.value.label}" content now (no metadata, no headers, just the content):`
+7. For 'conversation_flow' and 'instructions', ensure a clear non‑repetition policy (no repeated questions; one re‑prompt max, then summarize/advance).`
 
     // Call OpenAI API with GPT-5 (best for prompt refinement)
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -4383,6 +4541,142 @@ function handleBeforeUnload(e) {
     e.returnValue = '' // Required for Chrome
     return '' // Required for some browsers
   }
+}
+
+// Build a compact snapshot of all other sections to avoid duplication when improving a single section
+function getOtherSectionsSnapshot(excludeKey) {
+  if (!currentVersion.value || !currentVersion.value.content) return '(no context)'
+  const maxChars = 600
+  return promptSections
+    .filter(s => s.key !== excludeKey)
+    .map(s => {
+      const text = (currentVersion.value.content[s.key] || '').slice(0, maxChars)
+      return `### ${s.label} (${s.key})\n${text || '(empty)'}\n`
+    })
+    .join('\n')
+}
+
+// Add Cleanup flow state
+const showCleanupModal = ref(false)
+const cleanupIsProcessing = ref(false)
+const cleanupResults = ref([])
+const cleanupProgress = ref([])
+
+// Generate a cleaned-up version of each section with de-duplication and policy insertion
+const runPromptCleanup = async () => {
+  if (!currentVersion.value) return
+  cleanupResults.value = []
+  cleanupProgress.value = []
+  cleanupIsProcessing.value = true
+  showCleanupModal.value = true
+
+  try {
+    const fullPromptContent = Object.entries(currentVersion.value.content)
+      .map(([key, value]) => `### ${key.toUpperCase()}\n${value || '(empty)'}`)
+      .join('\n\n')
+
+    for (let i = 0; i < promptSections.length; i++) {
+      const section = promptSections[i]
+      const oldText = currentVersion.value.content[section.key] || ''
+
+      cleanupProgress.value.push({
+        type: 'working',
+        message: `Cleaning ${section.label}...`,
+        section: section.label,
+        timestamp: new Date()
+      })
+
+      const cleanupPrompt = `You are a prompt cleanup assistant. Using the FULL PROMPT below, return a cleaned version of ONLY the section requested.
+GOALS:
+- Remove duplicate sentences/lines across sections (keep content in the most appropriate section).
+- Standardize contact-detail phrasing (phone/email) to one canonical line and reuse consistently.
+- Insert/ensure a clear non‑repetition policy in 'INSTRUCTIONS' and 'CONVERSATION_FLOW' (no repeated questions; one re‑prompt max, then summarize/advance).
+- Keep tone, variables {{likeThis}}, and formatting (bullets, numbers, arrows) intact.
+
+RETURN FORMAT:
+- Return ONLY the cleaned content for the section ${section.label} (${section.key}). No headers, no extra text.
+
+FULL PROMPT CONTEXT:
+${fullPromptContent}
+
+SECTION TO CLEAN: ${section.label} (${section.key})
+CURRENT SECTION CONTENT:
+${oldText}`
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-5-mini',
+          messages: [
+            { role: 'system', content: 'You return ONLY the cleaned section content. Preserve formatting and variables exactly. No explanations.' },
+            { role: 'user', content: cleanupPrompt }
+          ],
+          max_completion_tokens: 4000
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('OpenAI Cleanup Error:', errorData)
+        cleanupProgress.value.push({
+          type: 'error',
+          message: `❌ Error cleaning ${section.label}: ${response.status}`,
+          section: section.label,
+          timestamp: new Date()
+        })
+        continue
+      }
+
+      const data = await response.json()
+      const cleaned = data.choices[0].message.content || ''
+
+      const diff = Diff.diffWords(oldText, cleaned)
+      cleanupResults.value.push({ section, aiContent: cleaned, diff, oldContent: oldText })
+
+      cleanupProgress.value.push({
+        type: 'success',
+        message: `✓ ${section.label} cleaned`,
+        section: section.label,
+        timestamp: new Date()
+      })
+    }
+
+    cleanupIsProcessing.value = false
+    if (cleanupResults.value.length === 0) {
+      showCleanupModal.value = false
+      window.$message?.warning('No cleanup changes were generated.')
+    }
+  } catch (error) {
+    console.error('❌ Cleanup error:', error)
+    cleanupIsProcessing.value = false
+    showCleanupModal.value = false
+    window.$message?.error('Failed to run cleanup. Please try again.')
+  }
+}
+
+const acceptAllCleanupChanges = async () => {
+  let applied = 0
+  cleanupResults.value.forEach(result => {
+    currentVersion.value.content[result.section.key] = result.aiContent
+    applied++
+  })
+  nextTick(() => {
+    populateContentEditableDivs()
+    markAsChanged()
+  })
+  showCleanupModal.value = false
+  window.$message?.success(`Applied ${applied} cleanup change${applied === 1 ? '' : 's'}. Don't forget to save.`)
+}
+
+const cancelCleanup = () => {
+  showCleanupModal.value = false
+  cleanupIsProcessing.value = false
+  cleanupResults.value = []
+  cleanupProgress.value = []
 }
 </script>
 
