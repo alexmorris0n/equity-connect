@@ -1,0 +1,28 @@
+name: Deploy ElevenLabs Webhook
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'elevenlabs-webhook/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Fly.io
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Deploy to Fly.io
+        run: flyctl deploy --config elevenlabs-webhook/fly.toml --dockerfile elevenlabs-webhook/Dockerfile --remote-only
+        working-directory: elevenlabs-webhook
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
