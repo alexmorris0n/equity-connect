@@ -1799,6 +1799,14 @@ const aiSuggestions = computed(() => {
   if (!evaluationData.value) return []
   
   const suggestions = []
+  const seen = new Set() // dedupe by title|section
+  const add = (priority, title, description, section) => {
+    const key = `${title}|${section}`
+    if (seen.has(key)) return
+    suggestions.push({ priority, title, description, section })
+    seen.add(key)
+  }
+
   const metrics = {
     opening_effectiveness: evaluationData.value.avgOpeningEffectiveness || 0,
     property_discussion_quality: evaluationData.value.avgPropertyDiscussionQuality || 0,
@@ -1808,75 +1816,152 @@ const aiSuggestions = computed(() => {
     overall_call_flow: evaluationData.value.avgOverallCallFlow || 0
   }
   
-  // Suggest improvements for metrics scoring below 7
+  // Metric-driven suggestions (threshold < 7)
   if (metrics.opening_effectiveness < 7) {
-    suggestions.push({
-      priority: metrics.opening_effectiveness < 5 ? 'High' : 'Medium',
-      title: 'Improve Opening Effectiveness',
-      description: 'Focus on warmer greetings, faster rapport building, and confirming the lead\'s name early',
-      section: 'role_objective'
-    })
+    add(
+      metrics.opening_effectiveness < 5 ? 'High' : 'Medium',
+      'Improve Opening Effectiveness',
+      "Focus on warmer greetings, faster rapport building, and confirming the lead's name early",
+      'role_objective'
+    )
   }
   
   if (metrics.property_discussion_quality < 7) {
-    suggestions.push({
-      priority: metrics.property_discussion_quality < 5 ? 'High' : 'Medium',
-      title: 'Enhance Property Discussion Quality',
-      description: 'Add more targeted questions about property details and equity calculations',
-      section: 'instructions_rules'
-    })
+    add(
+      metrics.property_discussion_quality < 5 ? 'High' : 'Medium',
+      'Enhance Property Discussion Quality',
+      'Add more targeted questions about property details and equity calculations',
+      'instructions_rules'
+    )
   }
   
   if (metrics.objection_handling < 7) {
-    suggestions.push({
-      priority: metrics.objection_handling < 5 ? 'High' : 'Medium',
-      title: 'Strengthen Objection Handling',
-      description: 'Include techniques for reframing concerns and addressing common objections',
-      section: 'conversation_flow'
-    })
+    add(
+      metrics.objection_handling < 5 ? 'High' : 'Medium',
+      'Strengthen Objection Handling',
+      'Include techniques for reframing concerns and addressing common objections',
+      'conversation_flow'
+    )
   }
   
   if (metrics.booking_attempt_quality < 7) {
-    suggestions.push({
-      priority: metrics.booking_attempt_quality < 5 ? 'High' : 'Medium',
-      title: 'Improve Booking Attempts',
-      description: 'Make appointment requests clearer, more confident, and tied to value proposition',
-      section: 'conversation_flow'
-    })
+    add(
+      metrics.booking_attempt_quality < 5 ? 'High' : 'Medium',
+      'Improve Booking Attempts',
+      'Make appointment requests clearer, more confident, and tied to value proposition',
+      'conversation_flow'
+    )
   }
   
   if (metrics.tone_consistency < 7) {
-    suggestions.push({
-      priority: 'Medium',
-      title: 'Maintain Tone Consistency',
-      description: 'Review personality guidelines to ensure conversational and empathetic tone throughout',
-      section: 'personality_tone'
-    })
+    add(
+      'Medium',
+      'Maintain Tone Consistency',
+      'Review personality guidelines to ensure conversational and empathetic tone throughout',
+      'personality_tone'
+    )
   }
   
   if (metrics.overall_call_flow < 7) {
-    suggestions.push({
-      priority: metrics.overall_call_flow < 5 ? 'High' : 'Medium',
-      title: 'Optimize Call Flow',
-      description: 'Improve logical progression and pacing through better conversation structure',
-      section: 'conversation_flow'
+    add(
+      metrics.overall_call_flow < 5 ? 'High' : 'Medium',
+      'Optimize Call Flow',
+      'Improve logical progression and pacing through better conversation structure',
+      'conversation_flow'
+    )
+  }
+
+  // Map common weaknesses to targeted suggestions
+  if (evaluationData.value.commonWeaknesses && evaluationData.value.commonWeaknesses.length > 0) {
+    evaluationData.value.commonWeaknesses.forEach((weak) => {
+      const w = weak.toLowerCase()
+      if (w.includes('repeat') || w.includes('repetition') || w.includes('loop')) {
+        add(
+          'High',
+          'Eliminate Prompt Repetition',
+          'Rewrite repeated prompts; add a "no-repeat" guard and state checks to avoid asking the same question twice.',
+          'instructions_rules'
+        )
+      }
+      if (w.includes('objection')) {
+        add(
+          'High',
+          'Add Objection Handling Patterns',
+          'Introduce concise templates for common objections and guidelines to answer before deferring.',
+          'conversation_flow'
+        )
+      }
+      if (w.includes('booking') || w.includes('close') || w.includes('tie-down')) {
+        add(
+          'High',
+          'Tighten Booking Requests',
+          'Offer two specific times, add a clear next-step close, and use gentle tie‑downs.',
+          'conversation_flow'
+        )
+      }
+      if (w.includes("caller") && w.includes('name')) {
+        add(
+          'Medium',
+          'Confirm Caller Identity Early',
+          "Add an early identity confirmation step (name + callback number) before account details.",
+          'conversation_flow'
+        )
+      }
+      if (w.includes('inconsistent') && (w.includes('phone') || w.includes('email'))) {
+        add(
+          'High',
+          'Standardize Contact Detail Lines',
+          'Provide one consistent phrasing for phone/email capture and reuse it verbatim across sections.',
+          'output_format'
+        )
+      }
     })
   }
-  
-  // Add suggestions from common weaknesses
-  if (evaluationData.value.commonWeaknesses && evaluationData.value.commonWeaknesses.length > 0) {
-    const topWeakness = evaluationData.value.commonWeaknesses[0]
-    if (topWeakness.toLowerCase().includes('rapport')) {
-      suggestions.push({
-        priority: 'High',
-        title: 'Build Stronger Rapport',
-        description: 'Add empathetic responses and active listening cues based on AI analysis',
-        section: 'personality_tone'
-      })
-    }
+
+  // Map red flags directly to high‑priority suggestions (show first)
+  if (evaluationData.value.redFlags && evaluationData.value.redFlags.length > 0) {
+    evaluationData.value.redFlags.forEach((flag) => {
+      const f = flag.toLowerCase()
+      if (f.includes('script loop') || f.includes('repetition') || f.includes('repeat')) {
+        add(
+          'High',
+          'Fix Script Loop / Repetition',
+          'Remove duplicated lines and add an explicit loop‑guard policy; ensure state prevents re-asking prior questions.',
+          'conversation_flow'
+        )
+        // Also add a rule-level improvement so the policy is explicit
+        add(
+          'High',
+          'Add Non‑Repetition Policy',
+          'Add a clear instruction: "Never repeat the same sentence verbatim; summarize once and move forward."',
+          'instructions_rules'
+        )
+      }
+      if (f.includes('inconsistent contact') || (f.includes('inconsistent') && (f.includes('phone') || f.includes('email')))) {
+        add(
+          'High',
+          'Unify Contact Detail Phrasing',
+          'Define a single canonical phone/email line and reference it everywhere to avoid drift.',
+          'output_format'
+        )
+      }
+      if (f.includes('deferral') || f.includes('defer') || f.includes('broker')) {
+        add(
+          'High',
+          'Answer Basics Before Deferring',
+          'Add guidance to attempt concise answers to basic consumer questions before escalating to a broker.',
+          'instructions_rules'
+        )
+      }
+    })
   }
+
+  // Sort with High first, then Medium, then others
+  const rank = (p) => (p === 'High' ? 0 : p === 'Medium' ? 1 : 2)
+  suggestions.sort((a, b) => rank(a.priority) - rank(b.priority))
   
-  return suggestions.slice(0, 5) // Limit to top 5 suggestions
+  // Return top items (ensure red‑flag fixes surface). Increase cap slightly to include criticals.
+  return suggestions.slice(0, 6)
 })
 
 // Computed property to get active prompt object
