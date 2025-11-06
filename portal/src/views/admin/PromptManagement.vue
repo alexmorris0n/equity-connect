@@ -172,6 +172,12 @@
             </template>
             AI Audit
           </n-button>
+          <n-button size="small" round type="warning" :disabled="loading || !currentVersion?.id" @click="runPromptCleanup">
+            <template #icon>
+              <n-icon><RefreshOutline /></n-icon>
+            </template>
+            Clean Up
+          </n-button>
         </div>
 
         <n-tabs type="line" size="small" v-model:value="activeTab">
@@ -1276,6 +1282,12 @@
           </span>
           <div style="display: flex; gap: 0.75rem; margin-left: auto;">
             <n-button @click="closeAuditResults">Close</n-button>
+            <n-button type="warning" @click="runPromptCleanup">
+              <template #icon>
+                <n-icon><RefreshOutline /></n-icon>
+              </template>
+              Run Cleanup
+            </n-button>
             <n-button 
               v-if="auditResults.recommendations.length > 0"
               type="success" 
