@@ -3495,49 +3495,33 @@ async function runAIImprove() {
   
   try {
     // Build comprehensive system prompt with OpenAI Realtime API best practices
-    const systemPrompt = `You are an expert prompt engineer specializing in OpenAI's Realtime API for voice conversations.
+    const systemPrompt = `Improve this prompt section for OpenAI Realtime API voice calls.
 
-REFERENCE DOCUMENTATION:
-You must follow best practices from:
-- OpenAI Realtime API Guide: https://platform.openai.com/docs/guides/realtime
-- OpenAI Cookbook: https://github.com/openai/openai-cookbook
-- Realtime Examples: https://github.com/openai/openai-realtime-examples
-- Internal Reference: docs/REALTIME_API_PROMPTING_REFERENCE.md
-
-PROMPT YOU'RE IMPROVING:
-- Name: ${currentPromptMetadata.value.name}
-- Call Type: ${currentPromptMetadata.value.call_type}
-- Purpose: ${currentPromptMetadata.value.purpose}
-- Goal: ${currentPromptMetadata.value.goal}
-
-SECTION: ${aiImprovingSection.value.label} (${aiImprovingSection.value.key})
-
-CURRENT CONTENT:
+SECTION: ${aiImprovingSection.value.label}
+CURRENT CONTENT (${(currentVersion.value.content[aiImprovingSection.value.key] || '').split('\n').length} lines):
 ${currentVersion.value.content[aiImprovingSection.value.key] || '(empty)'}
-
-OTHER SECTIONS SNAPSHOT (read-only; avoid duplicating any lines from these):
-${getOtherSectionsSnapshot(aiImprovingSection.value.key)}
 
 USER REQUEST: ${aiUserRequest.value}
 
-SECTION-SPECIFIC GUIDELINES:
-${getSectionGuidelines(aiImprovingSection.value.key)}
+REALTIME API BEST PRACTICES (from OpenAI):
+- Bullets over paragraphs (clear bullets outperform long text)
+- Guide with sample phrases (model copies exact phrases)
+- 2-3 sentences per turn MAX
+- Stop talking IMMEDIATELY if caller speaks
+- Use variety rule (rotate phrasing to avoid robotic repetition)
+- Convert numbers to words ("sixty-two" not "62")
+- Tool latency fillers ("one moment...", "let me check...")
+- Natural micro-utterances ("mm-hmm", "got it", soft breath)
 
-CRITICAL GUARDRAILS:
-⚠️ You are ONLY improving the "${aiImprovingSection.value.label}" section
-⚠️ Do NOT add metadata like "Name:", "Call Type:", "Purpose:", "Goal:", "SECTION:"
-⚠️ Do NOT include section headers or other sections
-⚠️ Return ONLY the improved content for this specific section
-⚠️ Do NOT duplicate sentences that already appear in OTHER SECTIONS SNAPSHOT. If similar content exists elsewhere, keep it in one place and remove repetition here.
-
-REQUIREMENTS:
-1. Follow OpenAI Realtime API best practices (ultra-brief <200 chars, interrupt-friendly, numbers as words, tool fillers, micro-utterances)
-2. Match the prompt's purpose (${currentPromptMetadata.value.purpose})
-3. Align with the goal (${currentPromptMetadata.value.goal})
-4. Preserve line breaks and formatting (bullets -, numbers 1., arrows →, ALL CAPS headers)
-5. Preserve all {{variableName}} exactly
-6. Return ONLY the section content - nothing else
-7. For 'conversation_flow' and 'instructions', ensure a clear non‑repetition policy (no repeated questions; one re‑prompt max, then summarize/advance).`
+CONSTRAINTS (CRITICAL - ENFORCE THESE):
+1. MAXIMUM 50 LINES total
+2. Use BULLETS, not paragraphs
+3. SIMPLIFY and CONDENSE (make it SHORTER, not longer)
+4. Remove redundancy and repetition
+5. Preserve {{variables}} exactly
+6. Return ONLY the improved section content (no headers, no explanations)
+7. If adding content, REMOVE other content to stay under 50 lines
+8. Focus on clarity and actionability`
 
     // Call OpenAI API with GPT-5 (best for prompt refinement)
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -3700,14 +3684,33 @@ CONTEXT FROM USER:
 FULL PROMPT CONTENT:
 ${fullPromptContent}
 
+REALTIME API BEST PRACTICES (from OpenAI):
+- Bullets over paragraphs (clear bullets outperform long text)
+- Guide with sample phrases (model copies exact phrases)
+- 2-3 sentences per turn MAX
+- Stop talking IMMEDIATELY if caller speaks
+- Use variety rule (rotate phrasing to avoid robotic repetition)
+- Convert numbers to words ("sixty-two" not "62")
+- Tool latency fillers ("one moment...", "let me check...")
+- Natural micro-utterances ("mm-hmm", "got it", soft breath)
+
 EVALUATION CRITERIA:
-1. OpenAI Realtime API Best Practices (ultra-brief responses <200 chars, interrupt-friendly, numbers as words, tool latency fillers, micro-utterances)
+1. Brevity and clarity (shorter is better)
 2. Consistency across all sections (tone, terminology, flow)
 3. Alignment with stated purpose and conversion goal
 4. Handling of target profile and edge cases
 5. Variable usage and syntax correctness
-6. Completeness (missing critical elements)
-7. Known issues addressed
+6. Known issues addressed
+
+ANTI-BLOAT CONSTRAINTS (CRITICAL):
+- Each section recommendation MUST be under 50 lines
+- SIMPLIFY and CONDENSE - don't expand
+- Use BULLETS, not paragraphs
+- Remove redundancy, don't add complexity
+- If suggesting additions, ALSO suggest removals to keep length under control
+- Focus on making prompts SHORTER and CLEARER
+- ONE instruction per bullet
+- NO nested structures or loops
 
 CRITICAL: VALID SECTION KEYS
 You MUST only provide recommendations for these exact section keys: ${validSectionKeys}
@@ -4699,12 +4702,35 @@ const runPromptCleanup = async () => {
         timestamp: new Date()
       })
 
-      const cleanupPrompt = `You are a prompt cleanup assistant. Using the FULL PROMPT below, return a cleaned version of ONLY the section requested.
-GOALS:
-- Remove duplicate sentences/lines across sections (keep content in the most appropriate section).
-- Standardize contact-detail phrasing (phone/email) to one canonical line and reuse consistently.
-- Insert/ensure a clear non‑repetition policy in 'INSTRUCTIONS' and 'CONVERSATION_FLOW' (no repeated questions; one re‑prompt max, then summarize/advance).
-- Keep tone, variables {{likeThis}}, and formatting (bullets, numbers, arrows) intact.
+      const cleanupPrompt = `Clean this prompt section for OpenAI Realtime API voice calls.
+
+SECTION: ${section.label}
+CURRENT CONTENT (${oldText.split('\n').length} lines):
+${oldText}
+
+REALTIME API BEST PRACTICES (from OpenAI):
+- Bullets over paragraphs
+- Guide with sample phrases (model copies them exactly)
+- 2-3 sentences per turn MAX
+- Variety rule (rotate phrasing to avoid repetition)
+- Convert numbers to words
+- Tool latency fillers
+- Micro-utterances
+
+CLEANUP GOALS:
+- Remove duplicate sentences/lines
+- SIMPLIFY and CONDENSE (make it shorter)
+- Use bullets, not paragraphs
+- Keep variables {{likeThis}} intact
+
+ANTI-BLOAT CONSTRAINTS (CRITICAL):
+- MAXIMUM 50 LINES for this section (current: ${oldText.split('\n').length} lines)
+- CONDENSE and SIMPLIFY - make it SHORTER
+- Use BULLETS, not paragraphs
+- Remove redundancy and repetition
+- ONE instruction per bullet
+- NO nested structures
+- If adding content, REMOVE other content to stay under 50 lines
 
 RETURN FORMAT:
 - Return ONLY the cleaned content for the section ${section.label} (${section.key}). No headers, no extra text.
