@@ -494,6 +494,42 @@
                     </div>
                   </template>
 
+                  <!-- Markdown Helper Toolbar -->
+                  <div v-if="expandedSections.includes(section.key)" class="markdown-helper-toolbar">
+                    <button 
+                      type="button"
+                      class="md-btn" 
+                      @click.stop="insertMarkdown(section.key, '- ', '')"
+                      title="Insert bullet point"
+                    >
+                      • Bullet
+                    </button>
+                    <button 
+                      type="button"
+                      class="md-btn" 
+                      @click.stop="insertMarkdown(section.key, '1. ', '')"
+                      title="Insert numbered list"
+                    >
+                      1. Number
+                    </button>
+                    <button 
+                      type="button"
+                      class="md-btn" 
+                      @click.stop="insertMarkdown(section.key, '**', '**')"
+                      title="Bold text (select text first)"
+                    >
+                      <strong>B</strong>
+                    </button>
+                    <button 
+                      type="button"
+                      class="md-btn" 
+                      @click.stop="insertMarkdown(section.key, '# ', '')"
+                      title="Insert header"
+                    >
+                      # Header
+                    </button>
+                  </div>
+
                   <div
                     :ref="el => { if (el) textareaRefs[section.key] = el }"
                     class="notion-textarea"
@@ -4182,6 +4218,74 @@ function insertVariableIntoSection(sectionKey, variableKey) {
   markAsChanged()
 }
 
+function insertMarkdown(sectionKey, prefix, suffix) {
+  if (!currentVersion.value) return
+  
+  const textarea = textareaRefs.value[sectionKey]
+  if (!textarea) return
+  
+  textarea.focus()
+  
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    // No selection - insert at end
+    const currentContent = currentVersion.value.content[sectionKey] || ''
+    currentVersion.value.content[sectionKey] = currentContent + (currentContent ? '\n' : '') + prefix + suffix
+    
+    nextTick(() => {
+      textarea.innerText = currentVersion.value.content[sectionKey]
+      autoResizeTextarea(sectionKey)
+    })
+    
+    markAsChanged()
+    return
+  }
+  
+  const range = selection.getRangeAt(0)
+  
+  // If suffix exists (like bold **text**), wrap selected text
+  if (suffix) {
+    const selectedText = range.toString()
+    if (selectedText) {
+      // Wrap selection
+      range.deleteContents()
+      const wrappedText = prefix + selectedText + suffix
+      const textNode = document.createTextNode(wrappedText)
+      range.insertNode(textNode)
+      range.setStartAfter(textNode)
+      range.collapse(true)
+    } else {
+      // No selection - insert prefix and suffix with cursor in between
+      const prefixNode = document.createTextNode(prefix)
+      const suffixNode = document.createTextNode(suffix)
+      range.insertNode(suffixNode)
+      range.insertNode(prefixNode)
+      range.setStart(prefixNode, prefix.length)
+      range.collapse(true)
+    }
+  } else {
+    // No suffix (like bullet or number) - insert prefix at cursor
+    range.deleteContents()
+    const textNode = document.createTextNode(prefix)
+    range.insertNode(textNode)
+    range.setStartAfter(textNode)
+    range.collapse(true)
+  }
+  
+  selection.removeAllRanges()
+  selection.addRange(range)
+  
+  // Update the model
+  currentVersion.value.content[sectionKey] = textarea.innerText
+  
+  // Auto-resize
+  nextTick(() => {
+    autoResizeTextarea(sectionKey)
+  })
+  
+  markAsChanged()
+}
+
 function insertToolIntoPrompt(tool) {
   if (!currentVersion.value) return
   
@@ -4504,21 +4608,9 @@ async function loadPrompts() {
     
     console.log('📦 Raw prompts data:', data)
     
-    // Custom sort order for call types (left to right in UI)
-    const callTypeOrder = {
-      'inbound-unqualified': 1,
-      'inbound-qualified': 2,
-      'outbound-warm': 3,
-      'outbound-cold': 4,
-      'transfer': 5,
-      'callback': 6,
-      'broker-schedule-check': 7,
-      'broker-connect-appointment': 8,
-      'fallback': 9
-    }
-    
+    // Sort alphabetically by name (A-Z)
     prompts.value = (data || []).sort((a, b) => {
-      return (callTypeOrder[a.call_type] || 99) - (callTypeOrder[b.call_type] || 99)
+      return (a.name || '').localeCompare(b.name || '')
     })
     
     console.log('✅ Loaded prompts:', prompts.value.length, prompts.value)
@@ -5301,6 +5393,42 @@ const cancelCleanup = () => {
 .quick-suggestions .n-tag:hover {
   background: rgba(99, 102, 241, 0.15) !important;
   transform: translateY(-1px);
+}
+
+/* Markdown Helper Toolbar */
+.markdown-helper-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.md-btn {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.md-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-color);
+}
+
+.md-btn:active {
+  transform: scale(0.95);
+}
+
+.md-btn strong {
+  font-weight: 700;
 }
 
 .notion-textarea {
