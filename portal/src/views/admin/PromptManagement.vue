@@ -3428,9 +3428,11 @@ CONSTRAINTS (CRITICAL - ENFORCE THESE):
 3. SIMPLIFY and CONDENSE (make it SHORTER, not longer)
 4. Remove redundancy and repetition
 5. Preserve {{variables}} exactly
-6. Return ONLY the improved section content (no headers, no explanations)
-7. If adding content, REMOVE other content to stay under 50 lines
-8. Focus on clarity and actionability`
+6. **INCREMENTAL CHANGES ONLY** - Modify/add to the existing content, DO NOT replace the entire section
+7. Keep all unrelated parts of the section intact - only change what the user requested
+8. If adding content, REMOVE other content to stay under 50 lines
+9. Return the FULL section with your modifications (preserve everything the user didn't ask to change)
+10. Focus on clarity and actionability`
 
     // Call OpenAI API with GPT-5 (best for prompt refinement)
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
