@@ -3642,6 +3642,9 @@ async function runAudit() {
       .map(([key, value]) => `### ${key.toUpperCase()}\n${value || '(empty)'}`)
       .join('\n\n')
     
+    // Get valid section keys for GPT-5 to use
+    const validSectionKeys = Object.keys(currentVersion.value.content).join(', ')
+    
     const auditPrompt = `You are an expert prompt engineer conducting a comprehensive audit of a voice AI prompt for OpenAI's Realtime API.
 
 PROMPT METADATA:
@@ -3670,6 +3673,11 @@ EVALUATION CRITERIA:
 6. Completeness (missing critical elements)
 7. Known issues addressed
 
+CRITICAL: VALID SECTION KEYS
+You MUST only provide recommendations for these exact section keys: ${validSectionKeys}
+DO NOT invent new sections like "realtime_api_settings" or "system_config" - only use the sections listed above.
+If you want to recommend Realtime API settings changes, put them in the "instructions" or "context" section.
+
 REQUIRED OUTPUT FORMAT (MUST BE VALID JSON):
 {
   "score": <number 0-100>,
@@ -3678,7 +3686,7 @@ REQUIRED OUTPUT FORMAT (MUST BE VALID JSON):
   "criticalIssues": ["critical issue 1", "critical issue 2", ...],
   "recommendations": [
     {
-      "section": "section_key",
+      "section": "section_key",  // MUST be one of: ${validSectionKeys}
       "priority": "critical|high|medium|low",
       "issue": "What's wrong",
       "suggestion": "Improved version of the content",
