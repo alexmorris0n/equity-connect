@@ -236,12 +236,12 @@
                   </n-collapse-item>
                   
                   <n-collapse-item title="Red Flags" name="red-flags" v-if="evaluationData.redFlags.length > 0">
-                    <n-list bordered>
+                    <n-list bordered class="ai-analysis-list">
                       <n-list-item v-for="(flag, idx) in evaluationData.redFlags" :key="idx">
                         <template #prefix>
                           <n-icon color="#ef4444"><CloseCircleOutline /></n-icon>
                         </template>
-                        {{ flag }}
+                        <span style="color: var(--text-primary);">{{ flag }}</span>
                       </n-list-item>
                     </n-list>
                   </n-collapse-item>
@@ -1219,12 +1219,18 @@
                       {{ rec.priority.toUpperCase() }}
                     </span>
                     <span style="margin-left: 0.5rem; font-weight: 500; color: var(--text-primary);">{{ rec.section }}</span>
+                    <span v-if="appliedAuditRecommendations.has(idx)" style="margin-left: 0.5rem; color: #10b981; font-size: 0.75rem;">✓ Applied</span>
                   </div>
-                  <n-button size="small" type="primary" @click="applyAuditRecommendation(rec)">
+                  <n-button 
+                    size="small" 
+                    :type="appliedAuditRecommendations.has(idx) ? 'success' : 'primary'" 
+                    @click="applyAuditRecommendation(rec, idx)"
+                    :disabled="appliedAuditRecommendations.has(idx)"
+                  >
                     <template #icon>
                       <n-icon><CheckmarkDoneOutline /></n-icon>
                     </template>
-                    Apply
+                    {{ appliedAuditRecommendations.has(idx) ? 'Applied' : 'Apply' }}
                   </n-button>
                 </div>
                 <p style="margin: 0 0 0.5rem 0; color: #ef4444; font-size: 0.9rem;"><strong>Issue:</strong> {{ rec.issue }}</p>
@@ -1250,8 +1256,24 @@
       </n-scrollbar>
 
       <template #footer>
-        <div class="modal-footer">
-          <n-button @click="closeAuditResults">Close</n-button>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <span v-if="auditResults.recommendations.length > 0" style="color: var(--text-secondary); font-size: 0.9rem;">
+            {{ appliedAuditRecommendations.size }} of {{ auditResults.recommendations.length }} applied
+          </span>
+          <div style="display: flex; gap: 0.75rem; margin-left: auto;">
+            <n-button @click="closeAuditResults">Close</n-button>
+            <n-button 
+              v-if="auditResults.recommendations.length > 0"
+              type="success" 
+              @click="applyAllAuditRecommendations"
+              :disabled="appliedAuditRecommendations.size === auditResults.recommendations.length"
+            >
+              <template #icon>
+                <n-icon><CheckmarkDoneOutline /></n-icon>
+              </template>
+              Apply All
+            </n-button>
+          </div>
         </div>
       </template>
     </n-modal>
@@ -1418,6 +1440,7 @@ const auditResults = ref({
   recommendations: []
 })
 const auditRecommendationDiffs = ref({})
+const appliedAuditRecommendations = ref(new Set())
 
 const voiceOptions = [
   { label: 'Alloy', value: 'alloy' },
@@ -3331,6 +3354,7 @@ function openAuditModal() {
     recommendations: []
   }
   auditRecommendationDiffs.value = {}
+  appliedAuditRecommendations.value = new Set()
   showAuditQuestionsModal.value = true
 }
 
@@ -3341,6 +3365,7 @@ function closeAuditQuestions() {
 function closeAuditResults() {
   showAuditResultsModal.value = false
   auditRecommendationDiffs.value = {}
+  // Don't reset appliedAuditRecommendations - keep track of what was applied across opens
 }
 
 async function runAudit() {
@@ -3472,11 +3497,36 @@ Provide your comprehensive evaluation now as valid JSON:`
   }
 }
 
-function applyAuditRecommendation(recommendation) {
-  if (!recommendation.section || !recommendation.suggestion) return
+function applyAuditRecommendation(recommendation, recommendationIndex) {
+  console.log('🔧 Applying audit recommendation:', recommendation)
+  
+  if (!recommendation.section || !recommendation.suggestion) {
+    console.error('❌ Missing section or suggestion:', recommendation)
+    window.$message?.error('Cannot apply recommendation: missing section or suggestion')
+    return
+  }
+  
+  // Find the matching section key (case-insensitive)
+  const sectionKeys = Object.keys(currentVersion.value.content)
+  const matchingKey = sectionKeys.find(key => 
+    key.toLowerCase() === recommendation.section.toLowerCase()
+  )
+  
+  if (!matchingKey) {
+    console.error('❌ Section not found:', recommendation.section, 'Available keys:', sectionKeys)
+    window.$message?.error(`Section "${recommendation.section}" not found in prompt`)
+    return
+  }
+  
+  console.log('✅ Found matching section key:', matchingKey)
   
   // Update the current version content with the recommendation
-  currentVersion.value.content[recommendation.section] = recommendation.suggestion
+  currentVersion.value.content[matchingKey] = recommendation.suggestion
+  
+  // Mark this recommendation as applied
+  if (recommendationIndex !== undefined) {
+    appliedAuditRecommendations.value.add(recommendationIndex)
+  }
   
   // Update the textarea
   nextTick(() => {
@@ -3484,7 +3534,67 @@ function applyAuditRecommendation(recommendation) {
     markAsChanged()
   })
   
-  window.$message?.success(`Applied recommendation to ${recommendation.section}. Don't forget to save.`)
+  window.$message?.success(`Applied recommendation to ${matchingKey}. Don't forget to save.`)
+}
+
+function applyAllAuditRecommendations() {
+  console.log('🔧 Applying all audit recommendations:', auditResults.value.recommendations.length)
+  
+  if (!auditResults.value.recommendations || auditResults.value.recommendations.length === 0) {
+    window.$message?.warning('No recommendations to apply')
+    return
+  }
+  
+  let appliedCount = 0
+  let failedCount = 0
+  
+  auditResults.value.recommendations.forEach((rec, index) => {
+    try {
+      if (!rec.section || !rec.suggestion) {
+        console.warn('⚠️ Skipping invalid recommendation:', rec)
+        failedCount++
+        return
+      }
+      
+      // Find the matching section key (case-insensitive)
+      const sectionKeys = Object.keys(currentVersion.value.content)
+      const matchingKey = sectionKeys.find(key => 
+        key.toLowerCase() === rec.section.toLowerCase()
+      )
+      
+      if (!matchingKey) {
+        console.warn('⚠️ Section not found:', rec.section)
+        failedCount++
+        return
+      }
+      
+      // Update the current version content with the recommendation
+      currentVersion.value.content[matchingKey] = rec.suggestion
+      
+      // Mark this recommendation as applied
+      appliedAuditRecommendations.value.add(index)
+      
+      appliedCount++
+      console.log(`✅ Applied recommendation ${index + 1}/${auditResults.value.recommendations.length}`)
+    } catch (error) {
+      console.error('❌ Failed to apply recommendation:', error, rec)
+      failedCount++
+    }
+  })
+  
+  // Update the textarea
+  nextTick(() => {
+    populateContentEditableDivs()
+    markAsChanged()
+  })
+  
+  if (appliedCount > 0) {
+    window.$message?.success(`Applied ${appliedCount} recommendation${appliedCount > 1 ? 's' : ''}. Don't forget to save.`)
+  }
+  
+  if (failedCount > 0) {
+    window.$message?.warning(`Failed to apply ${failedCount} recommendation${failedCount > 1 ? 's' : ''}. Check console for details.`)
+  }
 }
 
 async function confirmDeploy() {
@@ -4795,14 +4905,14 @@ function handleBeforeUnload(e) {
 
 .notion-textarea {
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 0.5rem;
   font-family: 'Inter', sans-serif;
   font-size: 0.75rem;
   line-height: 1.6;
-  background: rgba(0, 0, 0, 0.3);
-  color: white;
+  background: var(--card-color);
+  color: var(--text-primary);
   transition: border 160ms ease, box-shadow 160ms ease;
   box-sizing: border-box;
   min-height: 60px;
@@ -4819,7 +4929,7 @@ function handleBeforeUnload(e) {
 
 .notion-textarea:empty:before {
   content: attr(data-placeholder);
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text-secondary);
   pointer-events: none;
 }
 
@@ -4827,7 +4937,7 @@ function handleBeforeUnload(e) {
   outline: none;
   border-color: rgba(99, 102, 241, 0.65);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--card-color);
 }
 
 .metrics-wrapper {
