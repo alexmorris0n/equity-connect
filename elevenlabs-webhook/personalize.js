@@ -530,6 +530,7 @@ app.post('/tools/get_lead_context', async (req, res) => {
 // Add aliases for old tool names
 app.post('/tools/lookup_lead', (req, res, next) => { req.url = '/tools/get_lead_context'; next(); });
 app.post('/tools/check_availability', (req, res, next) => { req.url = '/tools/check_broker_availability'; next(); });
+app.post('/tools/update_lead', (req, res, next) => { req.url = '/tools/update_lead_info'; next(); });
 
 // Tool 2: Check Broker Availability (REAL Nylas integration)
 app.post('/tools/check_broker_availability', async (req, res) => {
@@ -751,13 +752,53 @@ app.post('/tools/book_appointment', async (req, res) => {
 // Tool 5: Update Lead Info
 app.post('/tools/update_lead_info', async (req, res) => {
   try {
-    const { lead_id, updates } = req.body;
-    console.log('📝 update_lead_info called');
+    const { lead_id, last_name, property_address, age, property_value, owner_occupied } = req.body;
+    console.log('📝 update_lead_info called for lead:', lead_id, { last_name, property_address, age, property_value, owner_occupied });
     
-    await supabase.from('leads').update(updates).eq('id', lead_id);
-    res.json({ success: true });
+    // Build update object (only include fields that were provided)
+    const updateData = {};
+    if (last_name !== undefined) updateData.last_name = last_name;
+    if (property_address !== undefined) updateData.property_address = property_address;
+    if (age !== undefined) updateData.age = age;
+    if (property_value !== undefined) updateData.property_value = property_value;
+    if (owner_occupied !== undefined) updateData.owner_occupied = owner_occupied;
+    
+    // Update timestamps
+    updateData.updated_at = new Date().toISOString();
+    updateData.last_contact = new Date().toISOString();
+    
+    const { data, error } = await supabase
+      .from('leads')
+      .update(updateData)
+      .eq('id', lead_id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Lead update error:', error);
+      return res.json({ 
+        success: false, 
+        error: error.message,
+        message: 'Failed to update lead information.'
+      });
+    }
+    
+    const updatedFields = Object.keys(updateData).filter(k => k !== 'updated_at' && k !== 'last_contact');
+    console.log('✅ Updated fields:', updatedFields.join(', '));
+    
+    res.json({
+      success: true,
+      message: 'Lead information updated successfully.',
+      updated_fields: updatedFields
+    });
+    
   } catch (err) {
-    res.json({ success: false, error: err.message });
+    console.error('❌ update_lead_info error:', err);
+    res.json({ 
+      success: false, 
+      error: err.message,
+      message: 'Unable to update lead information.'
+    });
   }
 });
 
