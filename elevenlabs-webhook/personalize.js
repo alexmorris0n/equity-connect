@@ -606,6 +606,132 @@ app.post('/tools/update_lead_info', async (req, res) => {
   }
 });
 
+/**
+ * Post-Call Webhook
+ * Called by ElevenLabs after each call with full transcript
+ * Matches Barbara V3's save_interaction functionality
+ */
+app.post('/post-call', async (req, res) => {
+  try {
+    const { 
+      conversation_id,
+      agent_id,
+      call_duration_secs,
+      transcript,
+      metadata,
+      analysis
+    } = req.body;
+    
+    console.log('📞 Post-call webhook:', { conversation_id, duration: call_duration_secs });
+    
+    // Extract IDs from metadata (set by our personalization webhook)
+    const leadId = metadata?.conversation_initiation_client_data?.dynamic_variables?.lead_id;
+    const brokerId = metadata?.conversation_initiation_client_data?.dynamic_variables?.broker_id;
+    
+    if (!leadId || leadId === 'unknown') {
+      console.log('⚠️ No lead_id, skipping');
+      return res.json({ status: 'ok', message: 'No lead to log' });
+    }
+    
+    // Build transcript text
+    const transcriptText = transcript?.map(t => `${t.role}: ${t.message}`).join('\n') || '';
+    
+    // Extract tool calls made
+    const toolCallsMade = transcript
+      ?.filter(t => t.tool_calls && t.tool_calls.length > 0)
+      .flatMap(t => t.tool_calls.map(tc => tc.tool_name)) || [];
+    
+    // Determine outcome from conversation
+    const hasAppointment = transcript?.some(t => 
+      t.role === 'agent' && t.message?.toLowerCase().includes('appointment is booked')
+    );
+    
+    const outcome = hasAppointment ? 'appointment_booked' : 
+                    call_duration_secs > 60 ? 'positive' : 'neutral';
+    
+    // Build comprehensive metadata (match Barbara V3 structure)
+    const interactionMetadata = {
+      ai_agent: 'barbara_elevenlabs',
+      version: '1.0',
+      conversation_id,
+      agent_id,
+      
+      // Transcript
+      conversation_transcript: transcript || [],
+      transcript_text: transcriptText,
+      message_count: transcript?.length || 0,
+      
+      // Tool tracking
+      tool_calls_made: toolCallsMade,
+      tool_count: toolCallsMade.length,
+      
+      // Appointment tracking
+      appointment_scheduled: hasAppointment,
+      
+      // Call metrics
+      call_duration_seconds: call_duration_secs,
+      
+      // ElevenLabs analysis
+      call_summary: analysis?.call_summary_title || null,
+      transcript_summary: analysis?.transcript_summary || null,
+      
+      // Platform
+      platform: 'elevenlabs',
+      saved_at: new Date().toISOString()
+    };
+    
+    // Save to interactions table
+    const { data, error } = await supabase
+      .from('interactions')
+      .insert({
+        lead_id: leadId,
+        broker_id: brokerId || null,
+        type: 'voice_call',
+        direction: 'inbound',
+        content: `Call completed - ${call_duration_secs}s - ${outcome}`,
+        duration_seconds: call_duration_secs,
+        outcome,
+        metadata: interactionMetadata,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('❌ Failed to save interaction:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    
+    console.log('✅ Interaction saved:', data.id);
+    
+    // Update lead engagement stats (match Barbara V3)
+    if (hasAppointment) {
+      await supabase
+        .from('leads')
+        .update({ qualified: true })
+        .eq('id', leadId);
+    }
+    
+    await supabase
+      .from('leads')
+      .update({
+        last_contact: new Date().toISOString(),
+        last_engagement: new Date().toISOString()
+      })
+      .eq('id', leadId);
+    
+    res.json({ 
+      status: 'ok', 
+      interaction_id: data.id,
+      outcome
+    });
+    
+  } catch (err) {
+    console.error('❌ Post-call error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'elevenlabs-personalization-webhook' });
