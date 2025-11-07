@@ -11,10 +11,16 @@ const { GoogleAuth } = require('google-auth-library');
 const fetch = require('node-fetch');
 const OpenAI = require('openai');
 
-// Initialize OpenAI for call evaluation
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Initialize OpenAI for call evaluation (optional)
+let openai = null;
+if (process.env.OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+  console.log('✅ OpenAI client initialized for AI evaluation');
+} else {
+  console.log('⚠️ OPENAI_API_KEY not set - AI evaluation disabled');
+}
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));  // Increase limit for large transcripts
@@ -78,6 +84,12 @@ async function generateEmbedding(question) {
  */
 async function evaluateCallAsync(interactionId, transcript, callType) {
   try {
+    // Skip if OpenAI is not configured
+    if (!openai) {
+      console.log('⚠️  OpenAI not configured - skipping AI evaluation');
+      return;
+    }
+    
     console.log(`📊 Starting AI evaluation for interaction ${interactionId}`);
     
     if (!transcript || transcript.length === 0) {
