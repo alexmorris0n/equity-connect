@@ -528,10 +528,13 @@ app.post('/tools/book_appointment', async (req, res) => {
       });
     }
     
-    // Create Nylas event
+    // Create Nylas event (v3 API - match Barbara V3)
     const axios = require('axios');
+    const NYLAS_API_URL = 'https://api.us.nylas.com';
+    const createEventUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events?calendar_id=primary`;
+    
     const eventResponse = await axios.post(
-      `https://api.nylas.com/grants/${broker.nylas_grant_id}/events`,
+      createEventUrl,
       {
         title: 'Reverse Mortgage Consultation',
         description: `Consultation with ${lead_name} booked via Barbara AI (ElevenLabs)`,
