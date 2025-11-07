@@ -1009,12 +1009,14 @@ app.post('/api/outbound-call', async (req, res) => {
         agent_phone_number_id: elevenlabsPhoneNumberId,
         to_number: normalizedToPhone,
         conversation_initiation_client_data: {
-          dynamic_variables: dynamicVariables,
-          agent: {
-            prompt: {
-              prompt: assembledPrompt  // Load prompt from Supabase portal!
+          conversation_config_override: {
+            agent: {
+              prompt: {
+                prompt: assembledPrompt  // Load prompt from Supabase portal!
+              }
             }
-          }
+          },
+          dynamic_variables: dynamicVariables
         }
       })
     });
