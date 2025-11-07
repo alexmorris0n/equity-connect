@@ -897,7 +897,7 @@ app.post('/api/outbound-call', async (req, res) => {
     
     // Determine call type based on database data
     const isQualified = lead.qualified === true;
-    const callType = isQualified ? 'outbound-qualified' : 'outbound-unqualified';
+    const callType = isQualified ? 'outbound-warm' : 'outbound-cold';
     
     console.log(`📋 Call type: ${callType} (qualified: ${lead.qualified})`);
     
