@@ -971,14 +971,41 @@ app.post('/api/outbound-call', async (req, res) => {
     if (sections.output_format) sectionParts.push(`\nOUTPUT FORMAT:\n${sections.output_format}`);
     if (sections.pronunciation) sectionParts.push(`\nPRONUNCIATION GUIDE:\n${sections.pronunciation}`);
     
-    const assembledPrompt = sectionParts.join('\n\n').trim();
+    let assembledPrompt = sectionParts.join('\n\n').trim();
     
-    // Build dynamic variables from database (use enrichedVariables)
+    // Replace {{variable}} placeholders in prompt (like inbound does)
+    const promptVariables = {
+      lead_first_name: enrichedVariables.lead_first_name,
+      lead_last_name: enrichedVariables.lead_last_name,
+      lead_email: enrichedVariables.lead_email,
+      property_city: enrichedVariables.property_city,
+      property_state: enrichedVariables.property_state,
+      property_value_formatted: enrichedVariables.property_value_formatted,
+      estimated_equity_formatted: enrichedVariables.estimated_equity_formatted,
+      broker_name: enrichedVariables.broker_full_name,
+      broker_id: enrichedVariables.broker_id,
+      broker_company: enrichedVariables.broker_company,
+      broker_nmls: enrichedVariables.broker_nmls,
+      // Add any other variables used in your prompts
+    };
+    
+    // Replace ALL {{variable}} placeholders
+    Object.entries(promptVariables).forEach(([key, value]) => {
+      assembledPrompt = assembledPrompt.replace(
+        new RegExp(`\\{\\{${key}\\}\\}`, 'g'),
+        String(value || '')
+      );
+    });
+    
+    // Build minimal dynamic variables (match inbound - only 7 core variables)
     const dynamicVariables = {
-      ...enrichedVariables,
       lead_id: lead_id,
-      call_context: 'outbound',
-      call_type: callType
+      broker_id: enrichedVariables.broker_id,
+      broker_name: enrichedVariables.broker_full_name,
+      call_type: callType,
+      lead_first_name: enrichedVariables.lead_first_name,
+      lead_email: enrichedVariables.lead_email,
+      property_city: enrichedVariables.property_city
     };
     
     console.log('📋 Calling ElevenLabs with:', {
