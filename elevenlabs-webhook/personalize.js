@@ -613,20 +613,29 @@ app.post('/tools/update_lead_info', async (req, res) => {
  */
 app.post('/post-call', async (req, res) => {
   try {
+    // ElevenLabs sends { type, event_timestamp, data }
+    const { type, data } = req.body;
+    
+    if (type !== 'post_call_transcription') {
+      console.log('⚠️ Ignoring webhook type:', type);
+      return res.json({ status: 'ok' });
+    }
+    
     const { 
       conversation_id,
       agent_id,
-      call_duration_secs,
       transcript,
       metadata,
       analysis
-    } = req.body;
+    } = data;
+    
+    const call_duration_secs = metadata?.call_duration_secs || 0;
     
     console.log('📞 Post-call webhook:', { conversation_id, duration: call_duration_secs });
     
-    // Extract IDs from metadata (set by our personalization webhook)
-    const leadId = metadata?.conversation_initiation_client_data?.dynamic_variables?.lead_id;
-    const brokerId = metadata?.conversation_initiation_client_data?.dynamic_variables?.broker_id;
+    // Extract IDs from conversation_initiation_client_data
+    const leadId = data.conversation_initiation_client_data?.dynamic_variables?.lead_id;
+    const brokerId = data.conversation_initiation_client_data?.dynamic_variables?.broker_id;
     
     if (!leadId || leadId === 'unknown') {
       console.log('⚠️ No lead_id, skipping');
