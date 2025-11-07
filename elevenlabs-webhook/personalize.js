@@ -743,6 +743,346 @@ app.post('/tools/update_lead_info', async (req, res) => {
   }
 });
 
+// Tool 6: Cancel Appointment
+app.post('/tools/cancel_appointment', async (req, res) => {
+  try {
+    const { lead_id } = req.body;
+    console.log('🗑️ cancel_appointment called for lead:', lead_id);
+    
+    // Find most recent appointment for this lead
+    const { data: appointment, error: appointmentError } = await supabase
+      .from('interactions')
+      .select('*')
+      .eq('lead_id', lead_id)
+      .eq('type', 'appointment')
+      .order('created_at', { desc: true })
+      .limit(1)
+      .single();
+    
+    if (appointmentError || !appointment) {
+      console.log('❌ No appointment found');
+      return res.json({
+        success: false,
+        error: 'No appointment found',
+        message: 'I couldn\'t find an existing appointment to cancel. Would you like to book a new one instead?'
+      });
+    }
+    
+    // Check if already cancelled
+    if (appointment.outcome === 'cancelled') {
+      return res.json({
+        success: false,
+        error: 'Already cancelled',
+        message: 'This appointment has already been cancelled.'
+      });
+    }
+    
+    const nylasEventId = appointment.metadata?.nylas_event_id;
+    const brokerId = appointment.broker_id;
+    
+    if (!nylasEventId) {
+      console.log('❌ No Nylas event ID found');
+      return res.json({
+        success: false,
+        error: 'Missing event ID',
+        message: 'Unable to cancel appointment - missing calendar event reference.'
+      });
+    }
+    
+    // Get broker info (including Nylas grant ID)
+    const { data: broker, error: brokerError } = await supabase
+      .from('brokers')
+      .select('contact_name, nylas_grant_id')
+      .eq('id', brokerId)
+      .single();
+    
+    if (brokerError || !broker || !broker.nylas_grant_id) {
+      console.log('❌ Broker or grant not found');
+      return res.json({
+        success: false,
+        error: 'Broker calendar not connected',
+        message: 'Unable to cancel - broker calendar not connected.'
+      });
+    }
+    
+    // Delete calendar event via Nylas v3
+    const deleteUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events/${nylasEventId}?calendar_id=primary`;
+    const deleteResponse = await fetch(deleteUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!deleteResponse.ok) {
+      const errorText = await deleteResponse.text();
+      console.log('❌ Nylas delete failed:', deleteResponse.status, errorText);
+      return res.json({
+        success: false,
+        error: 'Calendar deletion failed',
+        message: 'Unable to remove from calendar at this time.'
+      });
+    }
+    
+    console.log('✅ Nylas event deleted');
+    
+    // Update interaction record
+    await supabase
+      .from('interactions')
+      .update({ outcome: 'cancelled' })
+      .eq('id', appointment.id);
+    
+    console.log('✅ Appointment cancelled successfully');
+    
+    res.json({
+      success: true,
+      message: `Your appointment with ${broker.contact_name} has been cancelled.`
+    });
+    
+  } catch (err) {
+    console.error('❌ cancel_appointment error:', err);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Tool 7: Reschedule Appointment
+app.post('/tools/reschedule_appointment', async (req, res) => {
+  try {
+    const { lead_id, new_scheduled_for } = req.body;
+    console.log('📅 reschedule_appointment called for lead:', lead_id, 'to:', new_scheduled_for);
+    
+    // Find most recent appointment for this lead
+    const { data: appointment, error: appointmentError } = await supabase
+      .from('interactions')
+      .select('*')
+      .eq('lead_id', lead_id)
+      .eq('type', 'appointment')
+      .order('created_at', { desc: true })
+      .limit(1)
+      .single();
+    
+    if (appointmentError || !appointment) {
+      console.log('❌ No appointment found');
+      return res.json({
+        success: false,
+        error: 'No appointment found',
+        message: 'I couldn\'t find an existing appointment to reschedule. Would you like to book a new one instead?'
+      });
+    }
+    
+    // Check if already cancelled
+    if (appointment.outcome === 'cancelled') {
+      return res.json({
+        success: false,
+        error: 'Appointment cancelled',
+        message: 'This appointment has been cancelled. Would you like to book a new appointment instead?'
+      });
+    }
+    
+    const nylasEventId = appointment.metadata?.nylas_event_id;
+    const brokerId = appointment.broker_id;
+    const oldScheduledFor = appointment.scheduled_for;
+    
+    if (!nylasEventId) {
+      console.log('❌ No Nylas event ID found');
+      return res.json({
+        success: false,
+        error: 'Missing event ID',
+        message: 'Unable to reschedule appointment - missing calendar event reference.'
+      });
+    }
+    
+    // Get broker info (including Nylas grant ID)
+    const { data: broker, error: brokerError } = await supabase
+      .from('brokers')
+      .select('contact_name, email, nylas_grant_id')
+      .eq('id', brokerId)
+      .single();
+    
+    if (brokerError || !broker || !broker.nylas_grant_id) {
+      console.log('❌ Broker or grant not found');
+      return res.json({
+        success: false,
+        error: 'Broker calendar not connected',
+        message: 'Unable to reschedule - broker calendar not connected.'
+      });
+    }
+    
+    // Parse new time
+    const newDate = new Date(new_scheduled_for);
+    const startUnix = Math.floor(newDate.getTime() / 1000);
+    const endUnix = startUnix + 3600; // 1 hour
+    
+    // Update calendar event via Nylas v3
+    const updateUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events/${nylasEventId}?calendar_id=primary`;
+    const updateResponse = await fetch(updateUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        when: {
+          start_time: startUnix,
+          end_time: endUnix
+        }
+      })
+    });
+    
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text();
+      console.log('❌ Nylas update failed:', updateResponse.status, errorText);
+      return res.json({
+        success: false,
+        error: 'Calendar update failed',
+        message: 'Unable to update calendar at this time.'
+      });
+    }
+    
+    console.log('✅ Nylas event updated');
+    
+    // Update interaction record
+    await supabase
+      .from('interactions')
+      .update({ 
+        scheduled_for: new_scheduled_for,
+        metadata: {
+          ...appointment.metadata,
+          rescheduled_from: oldScheduledFor,
+          rescheduled_at: new Date().toISOString()
+        }
+      })
+      .eq('id', appointment.id);
+    
+    console.log('✅ Appointment rescheduled successfully');
+    
+    res.json({
+      success: true,
+      new_time: new_scheduled_for,
+      message: `Your appointment with ${broker.contact_name} has been moved to ${newDate.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
+    });
+    
+  } catch (err) {
+    console.error('❌ reschedule_appointment error:', err);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Tool 8: Find Broker by Territory
+app.post('/tools/find_broker_by_territory', async (req, res) => {
+  try {
+    const { city, zip_code } = req.body;
+    console.log('🗺️ find_broker_by_territory called:', { city, zip_code });
+    
+    // Query broker_territories table
+    let query = supabase
+      .from('broker_territories')
+      .select('broker_id, brokers(id, contact_name, company_name, phone)')
+      .eq('active', true);
+    
+    // Search by ZIP code first (most precise)
+    if (zip_code) {
+      query = query.eq('zip_code', zip_code);
+    } 
+    // Fallback to city/market name
+    else if (city) {
+      query = query.or(`market_name.ilike.%${city}%,neighborhood_name.ilike.%${city}%`);
+    }
+    
+    const { data, error } = await query.limit(1).single();
+    
+    if (error || !data) {
+      // Default to Walter if no territory match
+      console.log('ℹ️ No territory match, using default broker');
+      const { data: defaultBroker } = await supabase
+        .from('brokers')
+        .select('id, contact_name, company_name')
+        .eq('id', '6a3c5ed5-664a-4e13-b019-99fe8db74174')
+        .single();
+      
+      if (!defaultBroker) {
+        return res.json({
+          found: false,
+          error: 'No broker available',
+          message: 'Unable to assign a broker at this time.'
+        });
+      }
+      
+      console.log('✅ Assigned default broker:', defaultBroker.contact_name);
+      
+      return res.json({
+        found: true,
+        broker_id: defaultBroker.id,
+        broker_name: defaultBroker.contact_name.split(' ')[0], // First name only
+        company_name: defaultBroker.company_name,
+        message: `Assigned to ${defaultBroker.contact_name} (default broker - no specific territory match for ${city || zip_code})`
+      });
+    }
+    
+    const broker = data.brokers;
+    console.log('✅ Found broker:', broker.contact_name, 'for', city || zip_code);
+    
+    res.json({
+      found: true,
+      broker_id: broker.id,
+      broker_name: broker.contact_name.split(' ')[0], // First name only
+      company_name: broker.company_name,
+      broker_phone: broker.phone,
+      message: `Found ${broker.contact_name} who serves ${city || zip_code}.`
+    });
+    
+  } catch (err) {
+    console.error('❌ find_broker_by_territory error:', err);
+    res.json({ found: false, error: err.message });
+  }
+});
+
+// Tool 9: Check Consent & DNC
+app.post('/tools/check_consent_dnc', async (req, res) => {
+  try {
+    const { lead_id } = req.body;
+    console.log('🔒 check_consent_dnc called for lead:', lead_id);
+    
+    const { data: lead, error } = await supabase
+      .from('leads')
+      .select('consent, status, first_name, last_name')
+      .eq('id', lead_id)
+      .single();
+    
+    if (error) {
+      console.error('❌ Consent check error:', error);
+      return res.json({ 
+        error: error.message, 
+        can_call: false,
+        message: 'Unable to verify consent status.'
+      });
+    }
+    
+    // Check consent and not closed_lost (DNC equivalent)
+    const canCall = lead.consent === true && lead.status !== 'closed_lost';
+    
+    console.log(`${canCall ? '✅' : '❌'} Consent check: ${canCall ? 'OK' : 'DENIED'} for ${lead.first_name} ${lead.last_name}`);
+    
+    res.json({
+      can_call: canCall,
+      has_consent: lead.consent,
+      is_dnc: lead.status === 'closed_lost',
+      message: canCall 
+        ? 'Lead has consent and is not on DNC list. You may proceed with the call.'
+        : 'Lead does not have consent or is on DNC list. End the call politely and immediately.'
+    });
+    
+  } catch (err) {
+    console.error('❌ check_consent_dnc error:', err);
+    res.json({ 
+      error: err.message, 
+      can_call: false,
+      message: 'Unable to verify consent. Do not proceed with sales conversation.'
+    });
+  }
+});
+
 /**
  * Post-Call Webhook
  * Called by ElevenLabs after each call with full transcript
