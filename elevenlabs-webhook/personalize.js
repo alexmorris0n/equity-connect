@@ -1151,13 +1151,16 @@ app.post('/post-call', async (req, res) => {
     const callContext = data.conversation_initiation_client_data?.dynamic_variables?.call_context || 'inbound';
     const direction = callContext === 'outbound' ? 'outbound' : 'inbound';
     
+    // Extract call_type for AI evaluation
+    const callType = data.conversation_initiation_client_data?.dynamic_variables?.call_type || null;
+    
     // Build comprehensive metadata (match Barbara V3 structure)
     const interactionMetadata = {
       ai_agent: 'barbara_elevenlabs',
       version: '1.0',
       conversation_id,
       agent_id,
-      call_type: data.conversation_initiation_client_data?.dynamic_variables?.call_type || null,
+      call_type: callType,
       
       // Transcript - transform to portal format (role + text fields)
       conversation_transcript: (transcript || []).map(t => ({
