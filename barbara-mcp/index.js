@@ -30,15 +30,34 @@ const BRIDGE_URL = process.env.BRIDGE_URL || 'https://bridge.northflank.app';
 const BRIDGE_API_KEY = process.env.BRIDGE_API_KEY;
 const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
 const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
+const ELEVENLABS_PHONE_NUMBER_ID = process.env.ELEVENLABS_PHONE_NUMBER_ID; // Default fallback number
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 if (!BRIDGE_API_KEY) {
   app.log.error('BRIDGE_API_KEY environment variable is required');
   process.exit(1);
 }
 
+if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID || !ELEVENLABS_PHONE_NUMBER_ID) {
+  app.log.error('ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID, and ELEVENLABS_PHONE_NUMBER_ID environment variables are required for outbound calls');
+  process.exit(1);
+}
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  app.log.error('SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required for phone number pool lookup');
+  process.exit(1);
+}
+
 if (!NYLAS_API_KEY) {
   app.log.warn('NYLAS_API_KEY not set - Nylas tools will not be available');
 }
+
+// Initialize Supabase client
+import { createClient } from '@supabase/supabase-js';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Tool definitions
 const tools = [
@@ -192,6 +211,12 @@ const tools = [
         lead_id: {
           type: 'string',
           description: 'Lead ID from the database'
+        },
+        
+        // Optional outbound number selection
+        from_phone: {
+          type: 'string',
+          description: 'Optional SignalWire number to call FROM (e.g., "+14244851544"). If not provided, will use broker\'s assigned number pool or default number.'
         },
         
         // Optional broker
@@ -484,11 +509,64 @@ async function executeTool(name, args) {
     }
     
     case 'create_outbound_call': {
-      const { to_phone, lead_id, broker_id, ...variables } = args;
+      const { to_phone, from_phone, lead_id, broker_id, ...variables } = args;
       
-      app.log.info({ to_phone, lead_id, broker_id, hasVariables: Object.keys(variables).length }, '📞 Creating outbound call');
+      app.log.info({ to_phone, from_phone, lead_id, broker_id, hasVariables: Object.keys(variables).length }, '📞 Creating outbound call via ElevenLabs SIP trunk');
       
       try {
+        // Normalize phone numbers to E.164 format
+        const normalizedPhone = to_phone.startsWith('+') ? to_phone : `+1${to_phone.replace(/\D/g, '')}`;
+        const normalizedFromPhone = from_phone ? (from_phone.startsWith('+') ? from_phone : `+1${from_phone.replace(/\D/g, '')}`) : null;
+        
+        // Look up ElevenLabs phone_number_id from Supabase
+        let elevenlabsPhoneNumberId = ELEVENLABS_PHONE_NUMBER_ID; // Default fallback
+        let selectedFromNumber = normalizedFromPhone;
+        
+        if (normalizedFromPhone) {
+          // n8n provided a specific number - look it up in Supabase
+          app.log.info({ from_phone: normalizedFromPhone }, '🔍 Looking up ElevenLabs phone_number_id for provided number');
+          
+          const { data: numberData, error: numberError } = await supabase
+            .from('signalwire_phone_numbers')
+            .select('elevenlabs_phone_number_id, number')
+            .eq('number', normalizedFromPhone)
+            .eq('status', 'active')
+            .single();
+          
+          if (numberError || !numberData) {
+            app.log.warn({ from_phone: normalizedFromPhone, error: numberError }, '⚠️  Number not found in pool, will try fallback');
+          } else if (!numberData.elevenlabs_phone_number_id) {
+            app.log.warn({ from_phone: normalizedFromPhone }, '⚠️  Number found but missing elevenlabs_phone_number_id, using default');
+          } else {
+            elevenlabsPhoneNumberId = numberData.elevenlabs_phone_number_id;
+            selectedFromNumber = numberData.number;
+            app.log.info({ elevenlabs_phone_number_id: elevenlabsPhoneNumberId, from_number: selectedFromNumber }, '✅ Using number from pool');
+          }
+        } else if (broker_id) {
+          // n8n didn't provide a number - try to select from broker's pool
+          app.log.info({ broker_id }, '🔍 Looking up broker\'s assigned numbers');
+          
+          const { data: brokerNumbers, error: brokerError } = await supabase
+            .from('signalwire_phone_numbers')
+            .select('elevenlabs_phone_number_id, number')
+            .eq('assigned_broker_id', broker_id)
+            .eq('status', 'active')
+            .not('elevenlabs_phone_number_id', 'is', null)
+            .limit(1);
+          
+          if (brokerError || !brokerNumbers || brokerNumbers.length === 0) {
+            app.log.warn({ broker_id, error: brokerError }, '⚠️  No numbers found for broker, using default');
+          } else {
+            elevenlabsPhoneNumberId = brokerNumbers[0].elevenlabs_phone_number_id;
+            selectedFromNumber = brokerNumbers[0].number;
+            app.log.info({ broker_id, elevenlabs_phone_number_id: elevenlabsPhoneNumberId, from_number: selectedFromNumber }, '✅ Using broker\'s number');
+          }
+        }
+        
+        if (!selectedFromNumber) {
+          app.log.info('📱 Using default number (no from_phone provided and no broker pool found)');
+        }
+        
         // Determine if lead is qualified (has property/equity data)
         const hasPropertyData = !!(variables.property_value || variables.estimated_equity);
         const isQualified = variables.qualified === true || hasPropertyData;
@@ -500,76 +578,114 @@ async function executeTool(name, args) {
           estimated_equity: variables.estimated_equity
         }, '🎯 Lead qualification determined');
         
-        // Build lead context to pass to bridge
-        // The bridge will use its prompt-manager to select the correct PromptLayer template
-        const leadContext = {
-          qualified: isQualified,
-          first_name: variables.lead_first_name || '',
-          last_name: variables.lead_last_name || '',
-          primary_email: variables.lead_email || '',
+        // Build dynamic variables for ElevenLabs personalization
+        // These will be injected into the agent's prompt via {{variable_name}}
+        const dynamicVariables = {
+          // Lead info
+          lead_id: lead_id || '',
+          lead_first_name: variables.lead_first_name || '',
+          lead_last_name: variables.lead_last_name || '',
+          lead_full_name: variables.lead_full_name || '',
+          lead_email: variables.lead_email || '',
+          lead_phone: variables.lead_phone || normalizedPhone,
+          
+          // Property info
+          property_address: variables.property_address || '',
           property_city: variables.property_city || '',
           property_state: variables.property_state || '',
-          property_value: variables.property_value || null,
-          estimated_equity: variables.estimated_equity || null,
-          mortgage_balance: variables.mortgage_balance || null
+          property_zipcode: variables.property_zipcode || '',
+          property_value: variables.property_value || '',
+          property_value_formatted: variables.property_value_formatted || '',
+          
+          // Equity calculations
+          estimated_equity: variables.estimated_equity || '',
+          estimated_equity_formatted: variables.estimated_equity_formatted || '',
+          equity_50_percent: variables.equity_50_percent || '',
+          equity_50_formatted: variables.equity_50_formatted || '',
+          equity_60_percent: variables.equity_60_percent || '',
+          equity_60_formatted: variables.equity_60_formatted || '',
+          
+          // Campaign and persona
+          campaign_archetype: variables.campaign_archetype || '',
+          persona_assignment: variables.persona_assignment || '',
+          persona_sender_name: variables.persona_sender_name || '',
+          
+          // Broker info
+          broker_id: broker_id || '',
+          broker_company: variables.broker_company || '',
+          broker_full_name: variables.broker_full_name || '',
+          broker_nmls: variables.broker_nmls || '',
+          broker_phone: variables.broker_phone || '',
+          broker_display: variables.broker_display || '',
+          
+          // Qualification status
+          qualified: isQualified ? 'true' : 'false',
+          
+          // Call context
+          call_context: 'outbound',
+          call_type: isQualified ? 'outbound-qualified' : 'outbound-unqualified'
         };
         
         app.log.info({ 
-          leadContext,
-          willUsePrompt: isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'
-        }, '📋 Sending lead context to bridge for PromptLayer selection');
+          dynamicVariables,
+          callType: isQualified ? 'outbound-qualified' : 'outbound-unqualified'
+        }, '📋 Dynamic variables prepared for ElevenLabs');
         
-        // Call the bridge API - it will handle PromptLayer prompt selection
-        const response = await fetch(`${BRIDGE_URL}/api/outbound-call`, {
+        // Call ElevenLabs SIP trunk outbound API
+        const response = await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+            'xi-api-key': ELEVENLABS_API_KEY,
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            to_phone,
-            lead_id,
-            broker_id,
-            lead_context: leadContext  // Bridge will use this for prompt selection
+            agent_id: ELEVENLABS_AGENT_ID,
+            agent_phone_number_id: elevenlabsPhoneNumberId,
+            to_number: normalizedPhone,
+            conversation_initiation_client_data: {
+              dynamic_variables: dynamicVariables
+            }
           })
         });
         
         const result = await response.json();
         
         if (result.success) {
-          app.log.info({ result }, '✅ Call created successfully');
+          app.log.info({ result }, '✅ Outbound call initiated successfully');
           return {
             content: [
               {
                 type: 'text',
-                text: `✅ Call created successfully!\n\n` +
-                      `📞 Call ID: ${result.call_id}\n` +
-                      `📱 From: ${result.from}\n` +
-                      `📱 To: ${result.to}\n` +
-                      `🎯 Prompt: ${isQualified ? 'barbara-outbound-warm' : 'barbara-outbound-cold'} (selected by bridge)\n` +
-                      `💬 Message: ${result.message}`
+                text: `✅ Outbound Call Initiated Successfully!\n\n` +
+                      `📞 Conversation ID: ${result.conversation_id || 'N/A'}\n` +
+                      `📱 SIP Call ID: ${result.sip_call_id || 'N/A'}\n` +
+                      `📞 From: ${selectedFromNumber || 'Default number'}\n` +
+                      `📱 To: ${normalizedPhone}\n` +
+                      `👤 Lead: ${variables.lead_full_name || variables.lead_first_name || 'Unknown'}\n` +
+                      `🎯 Call Type: ${isQualified ? 'Outbound Qualified' : 'Outbound Unqualified'}\n` +
+                      `💬 ${result.message || 'Call in progress'}`
               }
             ]
           };
         } else {
-          app.log.error({ result }, '❌ Call creation failed');
+          app.log.error({ result }, '❌ ElevenLabs outbound call failed');
           return {
             content: [
               {
                 type: 'text',
-                text: `❌ Call creation failed: ${result.message}`
+                text: `❌ Outbound call failed: ${result.message || 'Unknown error'}`
               }
             ],
             isError: true
           };
         }
       } catch (error) {
-        app.log.error({ error }, '❌ Bridge API error');
+        app.log.error({ error }, '❌ ElevenLabs API error');
         return {
           content: [
             {
               type: 'text',
-              text: `❌ Bridge API error: ${error.message}`
+              text: `❌ ElevenLabs API error: ${error.message}`
             }
           ],
           isError: true

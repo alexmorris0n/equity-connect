@@ -1,28 +1,29 @@
 # Barbara MCP Server
 
-A custom Model Context Protocol (MCP) server that exposes Barbara's outbound calling functionality as a tool for n8n's AI Agent. This replaces the VAPI MCP node with our SignalWire + OpenAI Realtime system.
+A custom Model Context Protocol (MCP) server that exposes Barbara's outbound calling functionality as a tool for n8n's AI Agent. This uses ElevenLabs Conversational AI with SignalWire SIP trunk for high-quality voice calls.
 
 ## Features
 
-- **Outbound Call Creation**: Create calls to leads using Barbara AI voice assistant
-- **PromptLayer Integration**: Automatically selects correct prompt variant (warm/cold) based on lead qualification
+- **Outbound Call Creation**: Create calls to leads using Barbara AI voice assistant via ElevenLabs
+- **Dynamic Personalization**: Automatically injects lead/broker data into prompts using ElevenLabs dynamic variables
 - **Lead Context Integration**: Automatically personalizes calls with lead information
 - **Broker Assignment**: Uses lead's assigned broker or specified broker ID
-- **SignalWire Integration**: Handles phone number normalization and call routing
+- **SignalWire SIP Trunk**: Handles phone connectivity (same as inbound calls)
+- **ElevenLabs Tools**: Calendar checking, appointment booking, knowledge base search
 - **Error Handling**: Graceful fallbacks and comprehensive error reporting
 
 ## Prompt Selection Logic
 
-The MCP server automatically fetches the correct prompt from PromptLayer based on lead qualification:
+The MCP server automatically determines the correct prompt variant based on lead qualification:
 
-- **`barbara-outbound-warm`**: For qualified leads (have property/equity data or marked qualified in DB)
-- **`barbara-outbound-cold`**: For unqualified leads (no property data, cold outreach)
+- **`outbound-qualified`**: For qualified leads (have property/equity data or marked qualified in DB)
+- **`outbound-unqualified`**: For unqualified leads (no property data, cold outreach)
 
 Qualification is determined by:
 1. `qualified` field in lead record (if provided)
 2. Presence of `property_value` or `estimated_equity` data
 
-This ensures Barbara uses the appropriate tone and approach for each call.
+This is sent as a dynamic variable (`call_type`) to ElevenLabs, ensuring Barbara uses the appropriate tone and approach for each call.
 
 ## Quick Start
 
@@ -42,8 +43,12 @@ cp env.example .env
 ```
 
 Required variables:
-- `BRIDGE_URL`: Your bridge server URL (e.g., `https://bridge.northflank.app`)
+- `ELEVENLABS_API_KEY`: Your ElevenLabs API key (e.g., `sk_...`)
+- `ELEVENLABS_AGENT_ID`: Your ElevenLabs agent ID (e.g., `agent_...`)
+- `ELEVENLABS_PHONE_NUMBER_ID`: Your ElevenLabs phone number ID (SignalWire SIP trunk)
+- `BRIDGE_URL`: Your bridge server URL (for tools like calendar, knowledge base)
 - `BRIDGE_API_KEY`: Secure API key for bridge authentication
+- `NYLAS_API_KEY`: Nylas API key for calendar integration (optional)
 
 ### 3. Run Locally
 
@@ -91,11 +96,11 @@ Creates an outbound call to a lead using Barbara AI voice assistant.
 ```json
 {
   "success": true,
-  "message": "✅ Call created successfully!",
-  "call_id": "signalwire-call-sid",
-  "internal_id": "call-timestamp-random",
-  "from": "+15551234567",
-  "to": "+16505300051"
+  "message": "✅ Outbound Call Initiated Successfully!",
+  "conversation_id": "conv_abc123...",
+  "sip_call_id": "sip-call-id-xyz",
+  "to_number": "+16505300051",
+  "call_type": "Outbound Qualified"
 }
 ```
 
@@ -141,8 +146,12 @@ Build and run with Docker:
 ```bash
 docker build -t barbara-mcp .
 docker run -p 3000:3000 \
+  -e ELEVENLABS_API_KEY=sk_your-api-key \
+  -e ELEVENLABS_AGENT_ID=your-agent-id \
+  -e ELEVENLABS_PHONE_NUMBER_ID=your-phone-number-id \
   -e BRIDGE_URL=https://bridge.northflank.app \
   -e BRIDGE_API_KEY=your-secure-api-key \
+  -e NYLAS_API_KEY=your-nylas-api-key \
   barbara-mcp
 ```
 
@@ -151,8 +160,12 @@ docker run -p 3000:3000 \
 1. Create new service: "barbara-mcp"
 2. Connect to GitHub repo or upload files
 3. Set environment variables:
+   - `ELEVENLABS_API_KEY`: Your ElevenLabs API key
+   - `ELEVENLABS_AGENT_ID`: Your ElevenLabs agent ID
+   - `ELEVENLABS_PHONE_NUMBER_ID`: Your phone number ID (SignalWire SIP trunk)
    - `BRIDGE_URL`: Your bridge server URL
    - `BRIDGE_API_KEY`: Secure API key
+   - `NYLAS_API_KEY`: Nylas API key (optional)
 4. Port: 3000
 5. Health check: `/health`
 
@@ -167,10 +180,12 @@ docker run -p 3000:3000 \
 
 ### Bridge Server
 
-The bridge server must have the following endpoints:
-- `POST /api/outbound-call` - Creates SignalWire calls
-- `GET /public/outbound-xml` - Serves LaML for outbound calls
-- `POST /api/call-status` - Handles call status callbacks
+The bridge server provides tool endpoints for ElevenLabs agent:
+- `POST /api/tools/check_broker_availability` - Check calendar availability
+- `POST /api/tools/book_appointment` - Book calendar appointments
+- `POST /api/tools/cancel_appointment` - Cancel calendar appointments
+- `POST /api/tools/reschedule_appointment` - Reschedule calendar appointments
+- `POST /api/tools/update_lead_info` - Update lead information in Supabase
 
 ## Error Handling
 
