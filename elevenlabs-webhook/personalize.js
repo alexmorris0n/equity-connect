@@ -883,8 +883,16 @@ app.post('/api/outbound-call', async (req, res) => {
       call_type: dynamicVariables.call_type
     });
     
-    // Call ElevenLabs SIP trunk outbound API
-    const elevenlabsResponse = await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call', {
+    // Determine which API to use: Twilio (simpler) or SIP trunk
+    const useTwilio = elevenlabsPhoneNumberId.startsWith('phnum_twilio_') || process.env.USE_TWILIO_FOR_OUTBOUND === 'true';
+    const apiEndpoint = useTwilio 
+      ? 'https://api.elevenlabs.io/v1/convai/twilio/outbound-call'
+      : 'https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call';
+    
+    console.log(`📡 Using ${useTwilio ? 'Twilio' : 'SIP trunk'} API for outbound call`);
+    
+    // Call ElevenLabs outbound API (Twilio or SIP trunk)
+    const elevenlabsResponse = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         'xi-api-key': process.env.ELEVENLABS_API_KEY,
@@ -914,10 +922,11 @@ app.post('/api/outbound-call', async (req, res) => {
         call_type: dynamicVariables.call_type
       });
     } else {
-      console.error('❌ ElevenLabs outbound call failed:', elevenlabsResult);
+      console.error('❌ ElevenLabs outbound call failed:', JSON.stringify(elevenlabsResult, null, 2));
       return res.status(400).json({
         success: false,
-        message: elevenlabsResult.detail?.message || elevenlabsResult.message || 'Call initiation failed'
+        message: elevenlabsResult.detail?.message || elevenlabsResult.message || 'Call initiation failed',
+        elevenlabs_error: elevenlabsResult  // Include full error for debugging
       });
     }
     
