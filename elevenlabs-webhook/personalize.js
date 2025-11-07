@@ -9,9 +9,15 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { GoogleAuth } = require('google-auth-library');
 const fetch = require('node-fetch');
+const OpenAI = require('openai');
+
+// Initialize OpenAI for call evaluation
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));  // Increase limit for large transcripts
 
 // Supabase client
 const supabase = createClient(
@@ -64,6 +70,137 @@ async function generateEmbedding(question) {
   
   const data = await response.json();
   return data.predictions[0].embeddings.values;
+}
+
+/**
+ * AI Call Evaluation (async - runs after webhook responds)
+ * Uses GPT-5-mini to score call quality on 6 metrics
+ */
+async function evaluateCallAsync(interactionId, transcript, callType) {
+  try {
+    console.log(`📊 Starting AI evaluation for interaction ${interactionId}`);
+    
+    if (!transcript || transcript.length === 0) {
+      console.warn('⚠️  No transcript to evaluate');
+      return;
+    }
+    
+    // Format transcript for GPT (Caller/Barbara format)
+    const formattedTranscript = transcript
+      .map(t => `${t.role === 'user' ? 'Caller' : 'Barbara'}: ${t.message || ''}`)
+      .filter(line => line.trim())
+      .join('\n\n');
+    
+    if (!formattedTranscript.trim()) {
+      console.warn('⚠️  Transcript is empty after formatting');
+      return;
+    }
+    
+    const evaluationPrompt = `You are a call quality analyst specializing in reverse mortgage sales calls. Evaluate the following conversation transcript between Barbara (AI assistant) and a potential client.
+
+Score each metric from 0-10 where:
+- 0-3: Poor/Needs significant improvement
+- 4-6: Acceptable/Needs minor improvement
+- 7-8: Good/Effective
+- 9-10: Excellent/Best practice
+
+# Evaluation Metrics:
+
+1. **Opening Effectiveness (0-10)**: Did Barbara establish rapport, confirm the caller's name, and set a positive tone?
+
+2. **Property Discussion Quality (0-10)**: How well did Barbara gather property details (location, value, mortgage status)?
+
+3. **Objection Handling (0-10)**: How effectively did Barbara address concerns and reframe objections?
+
+4. **Booking Attempt Quality (0-10)**: Did Barbara make clear, confident appointment booking attempts? Did she use tie-downs?
+
+5. **Tone Consistency (0-10)**: Was Barbara conversational, empathetic, and professional throughout?
+
+6. **Overall Call Flow (0-10)**: Did the conversation follow a logical progression? Was it too rushed or too slow?
+
+# Analysis Categories:
+
+- **Strengths**: What did Barbara do well? (2-4 specific examples)
+- **Weaknesses**: What could be improved? (2-4 specific examples)
+- **Objections Handled**: List any objections the caller raised and how Barbara addressed them
+- **Booking Opportunities Missed**: Did Barbara miss clear chances to book an appointment?
+- **Red Flags**: Any concerning patterns (talking over caller, pushy behavior, incorrect information)
+- **Summary**: 2-3 sentence overall assessment
+
+Return your evaluation as a JSON object with this exact structure:
+{
+  "scores": {
+    "opening_effectiveness": 0-10,
+    "property_discussion_quality": 0-10,
+    "objection_handling": 0-10,
+    "booking_attempt_quality": 0-10,
+    "tone_consistency": 0-10,
+    "overall_call_flow": 0-10
+  },
+  "analysis": {
+    "strengths": ["...", "..."],
+    "weaknesses": ["...", "..."],
+    "objections_handled": ["...", "..."],
+    "booking_opportunities_missed": ["...", "..."],
+    "red_flags": ["...", "..."],
+    "summary": "..."
+  }
+}`;
+    
+    const startTime = Date.now();
+    
+    // Call GPT-5-mini for evaluation
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-5-mini',
+      messages: [
+        { role: 'system', content: evaluationPrompt },
+        { role: 'user', content: `# Conversation Transcript:\n\n${formattedTranscript}` }
+      ],
+      response_format: { type: 'json_object' },
+      max_completion_tokens: 2000
+    });
+    
+    const result = completion.choices[0]?.message?.content;
+    if (!result) {
+      throw new Error('No evaluation result from OpenAI');
+    }
+    
+    const parsed = JSON.parse(result);
+    const evaluationDuration = Date.now() - startTime;
+    
+    // Validate structure
+    if (!parsed.scores || !parsed.analysis) {
+      throw new Error('Invalid evaluation result structure');
+    }
+    
+    // Save to call_evaluations table
+    const { error: evalError } = await supabase
+      .from('call_evaluations')
+      .insert({
+        interaction_id: interactionId,
+        opening_effectiveness: parsed.scores.opening_effectiveness,
+        property_discussion_quality: parsed.scores.property_discussion_quality,
+        objection_handling: parsed.scores.objection_handling,
+        booking_attempt_quality: parsed.scores.booking_attempt_quality,
+        tone_consistency: parsed.scores.tone_consistency,
+        overall_call_flow: parsed.scores.overall_call_flow,
+        analysis: parsed.analysis,
+        prompt_registry_id: callType,
+        evaluation_model: 'gpt-5-mini',
+        evaluation_duration_ms: evaluationDuration,
+        evaluated_at: new Date().toISOString()
+      });
+    
+    if (evalError) {
+      console.error('❌ Failed to save evaluation:', evalError);
+    } else {
+      console.log(`✅ AI evaluation saved for ${interactionId} (${evaluationDuration}ms)`);
+    }
+    
+  } catch (err) {
+    console.error('❌ AI evaluation error:', err);
+    throw err;
+  }
 }
 
 /**
@@ -670,8 +807,12 @@ app.post('/post-call', async (req, res) => {
       agent_id,
       call_type: data.conversation_initiation_client_data?.dynamic_variables?.call_type || null,
       
-      // Transcript
-      conversation_transcript: transcript || [],
+      // Transcript - transform to portal format (role + text fields)
+      conversation_transcript: (transcript || []).map(t => ({
+        role: t.role === 'agent' ? 'assistant' : 'user',  // Map 'agent' to 'assistant' for portal
+        text: t.message || '',  // Map 'message' to 'text' for portal
+        timestamp: t.time_in_call_secs || 0
+      })),
       transcript_text: transcriptText,
       message_count: transcript?.length || 0,
       
@@ -733,6 +874,11 @@ app.post('/post-call', async (req, res) => {
         last_engagement: new Date().toISOString()
       })
       .eq('id', leadId);
+    
+    // Run AI evaluation asynchronously (don't block webhook response)
+    evaluateCallAsync(savedInteraction.id, transcript, callType).catch(err => {
+      console.error('❌ AI evaluation failed:', err);
+    });
     
     res.json({ 
       status: 'ok', 
