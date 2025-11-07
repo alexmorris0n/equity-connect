@@ -21,7 +21,7 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
       
       - name: Deploy to Fly.io
-        run: flyctl deploy --config elevenlabs-webhook/fly.toml --dockerfile elevenlabs-webhook/Dockerfile --remote-only
+        run: flyctl deploy --config fly.toml --dockerfile Dockerfile --remote-only
         working-directory: elevenlabs-webhook
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
