@@ -834,45 +834,67 @@ app.post('/api/outbound-call', async (req, res) => {
       persona_sender_name: variables.persona_sender_name || ''
     };
     
-    // Select phone number from pool (V3 logic)
-    if (!normalizedFromPhone && broker_id) {
-      console.log(`🔍 Looking up broker's assigned number (broker_id: ${broker_id})`);
-      
-      // Try to get broker's assigned numbers first
-      const { data: brokerNumbers, error: brokerError } = await supabase
-        .from('signalwire_phone_numbers')
-        .select('number, elevenlabs_phone_number_id')
-        .eq('assigned_broker_id', broker_id)
-        .eq('status', 'active')
-        .not('elevenlabs_phone_number_id', 'is', null)
-        .limit(1);
-      
-      if (brokerNumbers && brokerNumbers.length > 0) {
-        normalizedFromPhone = brokerNumbers[0].number;
-        console.log(`✅ Using broker's number: ${normalizedFromPhone}`);
-      } else {
-        console.log('⚠️  No broker number found, checking Equity Connect pool...');
+    // Select phone number from pool
+    // If USE_TWILIO_FOR_OUTBOUND is set, only look for Twilio numbers
+    if (!normalizedFromPhone) {
+      if (process.env.USE_TWILIO_FOR_OUTBOUND === 'true') {
+        console.log('🔍 USE_TWILIO_FOR_OUTBOUND=true, selecting Twilio number from pool');
         
-        // Fallback to Equity Connect pool
-        const { data: defaultNumbers } = await supabase
+        // Get Twilio numbers only (assigned_broker_company = 'Twilio Outbound')
+        const { data: twilioNumbers } = await supabase
           .from('signalwire_phone_numbers')
           .select('number, elevenlabs_phone_number_id')
-          .eq('assigned_broker_company', 'Equity Connect')
+          .eq('assigned_broker_company', 'Twilio Outbound')
           .eq('status', 'active')
           .not('elevenlabs_phone_number_id', 'is', null)
           .limit(1);
         
-        if (defaultNumbers && defaultNumbers.length > 0) {
-          normalizedFromPhone = defaultNumbers[0].number;
-          console.log(`✅ Using Equity Connect number: ${normalizedFromPhone}`);
+        if (twilioNumbers && twilioNumbers.length > 0) {
+          normalizedFromPhone = twilioNumbers[0].number;
+          console.log(`✅ Using Twilio number: ${normalizedFromPhone}`);
         } else {
-          normalizedFromPhone = process.env.DEFAULT_FROM_NUMBER || '+14244851544';
-          console.log(`⚠️  Using fallback number: ${normalizedFromPhone}`);
+          normalizedFromPhone = '+13105964216';  // Your Twilio number as fallback
+          console.log(`⚠️  No Twilio numbers in pool, using hardcoded: ${normalizedFromPhone}`);
         }
+      } else if (broker_id) {
+        console.log(`🔍 Looking up broker's assigned number (broker_id: ${broker_id})`);
+        
+        // Try to get broker's assigned numbers first
+        const { data: brokerNumbers, error: brokerError } = await supabase
+          .from('signalwire_phone_numbers')
+          .select('number, elevenlabs_phone_number_id')
+          .eq('assigned_broker_id', broker_id)
+          .eq('status', 'active')
+          .not('elevenlabs_phone_number_id', 'is', null)
+          .limit(1);
+        
+        if (brokerNumbers && brokerNumbers.length > 0) {
+          normalizedFromPhone = brokerNumbers[0].number;
+          console.log(`✅ Using broker's number: ${normalizedFromPhone}`);
+        } else {
+          console.log('⚠️  No broker number found, checking Equity Connect pool...');
+          
+          // Fallback to Equity Connect pool
+          const { data: defaultNumbers } = await supabase
+            .from('signalwire_phone_numbers')
+            .select('number, elevenlabs_phone_number_id')
+            .eq('assigned_broker_company', 'Equity Connect')
+            .eq('status', 'active')
+            .not('elevenlabs_phone_number_id', 'is', null)
+            .limit(1);
+          
+          if (defaultNumbers && defaultNumbers.length > 0) {
+            normalizedFromPhone = defaultNumbers[0].number;
+            console.log(`✅ Using Equity Connect number: ${normalizedFromPhone}`);
+          } else {
+            normalizedFromPhone = process.env.DEFAULT_FROM_NUMBER || '+14244851544';
+            console.log(`⚠️  Using fallback number: ${normalizedFromPhone}`);
+          }
+        }
+      } else {
+        normalizedFromPhone = process.env.DEFAULT_FROM_NUMBER || '+14244851544';
+        console.log(`✅ Using default number: ${normalizedFromPhone}`);
       }
-    } else if (!normalizedFromPhone) {
-      normalizedFromPhone = process.env.DEFAULT_FROM_NUMBER || '+14244851544';
-      console.log(`✅ Using default number: ${normalizedFromPhone}`);
     }
     
     // Look up ElevenLabs phone_number_id for the selected number
