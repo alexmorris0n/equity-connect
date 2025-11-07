@@ -702,8 +702,7 @@ app.post('/post-call', async (req, res) => {
         broker_id: brokerId || null,
         type: 'ai_call',
         direction: direction,
-        subject: `${direction === 'outbound' ? 'Outbound' : 'Inbound'} call - ${call_duration_secs}s`,
-        content: transcriptText,  // Put transcript in content field for portal display
+        content: `Call completed - ${call_duration_secs}s - ${outcome}`,
         duration_seconds: call_duration_secs,
         outcome,
         metadata: interactionMetadata,
