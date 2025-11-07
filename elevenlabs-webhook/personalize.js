@@ -384,6 +384,9 @@ app.post('/personalize', async (req, res) => {
     const response = {
       type: "conversation_initiation_client_data",
       conversation_config_override: {
+        tts: {
+          speed: 0.85  // Slow down 15% for seniors (more comfortable pace)
+        },
         agent: {
           prompt: {
             prompt: personalizedPrompt  // FROM YOUR SUPABASE PORTAL!
@@ -418,6 +421,9 @@ app.post('/personalize', async (req, res) => {
     res.json({
       type: "conversation_initiation_client_data",
       conversation_config_override: {
+        tts: {
+          speed: 0.85  // Slow down 15% for seniors (more comfortable pace)
+        },
         agent: {
           prompt: {
             prompt: `You are Barbara, a warm and professional coordinator for Equity Connect.
@@ -1540,6 +1546,9 @@ app.post('/api/outbound-call', async (req, res) => {
         to_number: normalizedToPhone,
         conversation_initiation_client_data: {
           conversation_config_override: {
+            tts: {
+              speed: 0.85  // Slow down 15% for seniors (more comfortable pace)
+            },
             agent: {
               prompt: {
                 prompt: assembledPrompt  // Load prompt from Supabase portal!
