@@ -690,7 +690,7 @@ app.post('/post-call', async (req, res) => {
     };
     
     // Save to interactions table
-    const { data, error } = await supabase
+    const { data: savedInteraction, error: saveError } = await supabase
       .from('interactions')
       .insert({
         lead_id: leadId,
@@ -706,12 +706,12 @@ app.post('/post-call', async (req, res) => {
       .select()
       .single();
     
-    if (error) {
-      console.error('❌ Failed to save interaction:', error);
-      return res.status(500).json({ error: error.message });
+    if (saveError) {
+      console.error('❌ Failed to save interaction:', saveError);
+      return res.status(500).json({ error: saveError.message });
     }
     
-    console.log('✅ Interaction saved:', data.id);
+    console.log('✅ Interaction saved:', savedInteraction.id);
     
     // Update lead engagement stats (match Barbara V3)
     if (hasAppointment) {
@@ -731,7 +731,7 @@ app.post('/post-call', async (req, res) => {
     
     res.json({ 
       status: 'ok', 
-      interaction_id: data.id,
+      interaction_id: savedInteraction.id,
       outcome
     });
     
