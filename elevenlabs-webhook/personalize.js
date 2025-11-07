@@ -658,6 +658,10 @@ app.post('/post-call', async (req, res) => {
     const outcome = hasAppointment ? 'appointment_booked' : 
                     call_duration_secs > 60 ? 'positive' : 'neutral';
     
+    // Determine call direction from dynamic variables
+    const callContext = data.conversation_initiation_client_data?.dynamic_variables?.call_context || 'inbound';
+    const direction = callContext === 'outbound' ? 'outbound' : 'inbound';
+    
     // Build comprehensive metadata (match Barbara V3 structure)
     const interactionMetadata = {
       ai_agent: 'barbara_elevenlabs',
@@ -695,8 +699,8 @@ app.post('/post-call', async (req, res) => {
       .insert({
         lead_id: leadId,
         broker_id: brokerId || null,
-        type: 'voice_call',
-        direction: 'inbound',
+        type: 'ai_call',
+        direction: direction,
         content: `Call completed - ${call_duration_secs}s - ${outcome}`,
         duration_seconds: call_duration_secs,
         outcome,
