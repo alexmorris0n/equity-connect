@@ -668,6 +668,7 @@ app.post('/post-call', async (req, res) => {
       version: '1.0',
       conversation_id,
       agent_id,
+      call_type: data.conversation_initiation_client_data?.dynamic_variables?.call_type || null,
       
       // Transcript
       conversation_transcript: transcript || [],
@@ -997,12 +998,13 @@ app.post('/api/outbound-call', async (req, res) => {
       );
     });
     
-    // Build minimal dynamic variables (match inbound - only 7 core variables)
+    // Build minimal dynamic variables (match inbound pattern + call_context for webhook)
     const dynamicVariables = {
       lead_id: lead_id,
       broker_id: enrichedVariables.broker_id,
       broker_name: enrichedVariables.broker_full_name,
       call_type: callType,
+      call_context: 'outbound',  // For post-call webhook direction detection
       lead_first_name: enrichedVariables.lead_first_name,
       lead_email: enrichedVariables.lead_email,
       property_city: enrichedVariables.property_city
