@@ -741,6 +741,195 @@ app.post('/post-call', async (req, res) => {
   }
 });
 
+/**
+ * Outbound Call Endpoint (called by Barbara MCP from n8n)
+ * POST /api/outbound-call
+ */
+app.post('/api/outbound-call', async (req, res) => {
+  const { to_phone, from_phone, lead_id, broker_id, ...variables } = req.body;
+  
+  console.log('📞 Outbound call request:', { to_phone, from_phone, lead_id, broker_id });
+  
+  try {
+    // Validate required fields
+    if (!to_phone || !lead_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: to_phone, lead_id'
+      });
+    }
+    
+    // Normalize phone numbers to E.164 format
+    const normalizedToPhone = to_phone.startsWith('+') ? to_phone : `+1${to_phone.replace(/\D/g, '')}`;
+    let normalizedFromPhone = from_phone ? (from_phone.startsWith('+') ? from_phone : `+1${from_phone.replace(/\D/g, '')}`) : null;
+    
+    // Select phone number from pool (V3 logic)
+    if (!normalizedFromPhone && broker_id) {
+      console.log(`🔍 Looking up broker's assigned number (broker_id: ${broker_id})`);
+      
+      // Try to get broker's assigned numbers first
+      const { data: brokerNumbers, error: brokerError } = await supabase
+        .from('signalwire_phone_numbers')
+        .select('number, elevenlabs_phone_number_id')
+        .eq('assigned_broker_id', broker_id)
+        .eq('status', 'active')
+        .not('elevenlabs_phone_number_id', 'is', null)
+        .limit(1);
+      
+      if (brokerNumbers && brokerNumbers.length > 0) {
+        normalizedFromPhone = brokerNumbers[0].number;
+        console.log(`✅ Using broker's number: ${normalizedFromPhone}`);
+      } else {
+        console.log('⚠️  No broker number found, checking Equity Connect pool...');
+        
+        // Fallback to Equity Connect pool
+        const { data: defaultNumbers } = await supabase
+          .from('signalwire_phone_numbers')
+          .select('number, elevenlabs_phone_number_id')
+          .eq('assigned_broker_company', 'Equity Connect')
+          .eq('status', 'active')
+          .not('elevenlabs_phone_number_id', 'is', null)
+          .limit(1);
+        
+        if (defaultNumbers && defaultNumbers.length > 0) {
+          normalizedFromPhone = defaultNumbers[0].number;
+          console.log(`✅ Using Equity Connect number: ${normalizedFromPhone}`);
+        } else {
+          normalizedFromPhone = process.env.DEFAULT_FROM_NUMBER || '+14244851544';
+          console.log(`⚠️  Using fallback number: ${normalizedFromPhone}`);
+        }
+      }
+    } else if (!normalizedFromPhone) {
+      normalizedFromPhone = process.env.DEFAULT_FROM_NUMBER || '+14244851544';
+      console.log(`✅ Using default number: ${normalizedFromPhone}`);
+    }
+    
+    // Look up ElevenLabs phone_number_id for the selected number
+    const { data: numberData, error: numberError } = await supabase
+      .from('signalwire_phone_numbers')
+      .select('elevenlabs_phone_number_id')
+      .eq('number', normalizedFromPhone)
+      .eq('status', 'active')
+      .single();
+    
+    let elevenlabsPhoneNumberId;
+    if (numberError || !numberData || !numberData.elevenlabs_phone_number_id) {
+      console.warn(`⚠️  No ElevenLabs phone_number_id found for ${normalizedFromPhone}, cannot make call`);
+      return res.status(400).json({
+        success: false,
+        message: `Phone number ${normalizedFromPhone} is not registered in ElevenLabs. Please add it to the agent's SIP trunk configuration.`
+      });
+    } else {
+      elevenlabsPhoneNumberId = numberData.elevenlabs_phone_number_id;
+      console.log(`✅ Using ElevenLabs phone_number_id: ${elevenlabsPhoneNumberId}`);
+    }
+    
+    // Determine if lead is qualified
+    const hasPropertyData = !!(variables.property_value || variables.estimated_equity);
+    const isQualified = variables.qualified === true || hasPropertyData;
+    
+    // Build dynamic variables for ElevenLabs (all 27+ variables)
+    const dynamicVariables = {
+      // Lead info
+      lead_id: lead_id || '',
+      lead_first_name: variables.lead_first_name || '',
+      lead_last_name: variables.lead_last_name || '',
+      lead_full_name: variables.lead_full_name || '',
+      lead_email: variables.lead_email || '',
+      lead_phone: variables.lead_phone || normalizedToPhone,
+      
+      // Property info
+      property_address: variables.property_address || '',
+      property_city: variables.property_city || '',
+      property_state: variables.property_state || '',
+      property_zipcode: variables.property_zipcode || '',
+      property_value: variables.property_value || '',
+      property_value_formatted: variables.property_value_formatted || '',
+      
+      // Equity calculations
+      estimated_equity: variables.estimated_equity || '',
+      estimated_equity_formatted: variables.estimated_equity_formatted || '',
+      equity_50_percent: variables.equity_50_percent || '',
+      equity_50_formatted: variables.equity_50_formatted || '',
+      equity_60_percent: variables.equity_60_percent || '',
+      equity_60_formatted: variables.equity_60_formatted || '',
+      
+      // Campaign and persona
+      campaign_archetype: variables.campaign_archetype || '',
+      persona_assignment: variables.persona_assignment || '',
+      persona_sender_name: variables.persona_sender_name || '',
+      
+      // Broker info
+      broker_id: broker_id || '',
+      broker_company: variables.broker_company || '',
+      broker_full_name: variables.broker_full_name || '',
+      broker_nmls: variables.broker_nmls || '',
+      broker_phone: variables.broker_phone || '',
+      broker_display: variables.broker_display || '',
+      
+      // Qualification status
+      qualified: isQualified ? 'true' : 'false',
+      
+      // Call context
+      call_context: 'outbound',
+      call_type: isQualified ? 'outbound-qualified' : 'outbound-unqualified'
+    };
+    
+    console.log('📋 Calling ElevenLabs with:', {
+      agent_id: process.env.ELEVENLABS_AGENT_ID,
+      phone_number_id: elevenlabsPhoneNumberId,
+      to_number: normalizedToPhone,
+      from_number: normalizedFromPhone,
+      call_type: dynamicVariables.call_type
+    });
+    
+    // Call ElevenLabs SIP trunk outbound API
+    const elevenlabsResponse = await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        agent_id: process.env.ELEVENLABS_AGENT_ID,
+        agent_phone_number_id: elevenlabsPhoneNumberId,
+        to_number: normalizedToPhone,
+        conversation_initiation_client_data: {
+          dynamic_variables: dynamicVariables
+        }
+      })
+    });
+    
+    const elevenlabsResult = await elevenlabsResponse.json();
+    
+    if (elevenlabsResult.success) {
+      console.log('✅ Outbound call initiated:', elevenlabsResult);
+      return res.json({
+        success: true,
+        message: 'Outbound call initiated successfully',
+        conversation_id: elevenlabsResult.conversation_id,
+        sip_call_id: elevenlabsResult.sip_call_id,
+        from_number: normalizedFromPhone,
+        to_number: normalizedToPhone,
+        call_type: dynamicVariables.call_type
+      });
+    } else {
+      console.error('❌ ElevenLabs outbound call failed:', elevenlabsResult);
+      return res.status(400).json({
+        success: false,
+        message: elevenlabsResult.detail?.message || elevenlabsResult.message || 'Call initiation failed'
+      });
+    }
+    
+  } catch (err) {
+    console.error('❌ Outbound call error:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Internal server error'
+    });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'elevenlabs-personalization-webhook' });
