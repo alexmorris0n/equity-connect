@@ -767,6 +767,73 @@ app.post('/api/outbound-call', async (req, res) => {
     const normalizedToPhone = to_phone.startsWith('+') ? to_phone : `+1${to_phone.replace(/\D/g, '')}`;
     let normalizedFromPhone = from_phone ? (from_phone.startsWith('+') ? from_phone : `+1${from_phone.replace(/\D/g, '')}`) : null;
     
+    // Look up full lead data from Supabase (like personalization webhook does)
+    console.log(`🔍 Looking up lead data for ${lead_id}`);
+    const { data: leads, error: leadError } = await supabase
+      .from('leads')
+      .select(`
+        id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
+        property_address, property_city, property_state, property_zip,
+        property_value, estimated_equity, age, status, qualified, owner_occupied,
+        assigned_broker_id,
+        brokers:assigned_broker_id (
+          id, contact_name, company_name, phone, nmls_number, nylas_grant_id
+        )
+      `)
+      .eq('id', lead_id)
+      .limit(1);
+    
+    const lead = leads?.[0];
+    
+    if (!lead) {
+      console.warn(`⚠️  Lead ${lead_id} not found in database`);
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found in database'
+      });
+    }
+    
+    console.log(`✅ Lead found: ${lead.first_name} ${lead.last_name || ''} (${lead.property_city || 'no city'})`);
+    
+    // Use database data, fallback to n8n-provided variables
+    const enrichedVariables = {
+      lead_first_name: lead.first_name || variables.lead_first_name || '',
+      lead_last_name: lead.last_name || variables.lead_last_name || '',
+      lead_full_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || variables.lead_full_name || '',
+      lead_email: lead.primary_email || variables.lead_email || '',
+      lead_phone: lead.primary_phone_e164 || lead.primary_phone || variables.lead_phone || normalizedToPhone,
+      
+      property_address: lead.property_address || variables.property_address || '',
+      property_city: lead.property_city || variables.property_city || '',
+      property_state: lead.property_state || variables.property_state || '',
+      property_zipcode: lead.property_zip || variables.property_zipcode || '',
+      property_value: lead.property_value?.toString() || variables.property_value || '',
+      property_value_formatted: lead.property_value ? `$${(lead.property_value / 1000000).toFixed(1)}M` : variables.property_value_formatted || '',
+      
+      estimated_equity: lead.estimated_equity?.toString() || variables.estimated_equity || '',
+      estimated_equity_formatted: lead.estimated_equity ? `$${(lead.estimated_equity / 1000000).toFixed(1)}M` : variables.estimated_equity_formatted || '',
+      equity_50_percent: lead.estimated_equity ? (lead.estimated_equity * 0.5).toString() : variables.equity_50_percent || '',
+      equity_50_formatted: lead.estimated_equity ? `$${(lead.estimated_equity * 0.5 / 1000).toFixed(0)}K` : variables.equity_50_formatted || '',
+      equity_60_percent: lead.estimated_equity ? (lead.estimated_equity * 0.6).toString() : variables.equity_60_percent || '',
+      equity_60_formatted: lead.estimated_equity ? `$${(lead.estimated_equity * 0.6 / 1000).toFixed(0)}K` : variables.equity_60_formatted || '',
+      
+      broker_id: lead.brokers?.id || broker_id || '',
+      broker_company: lead.brokers?.company_name || variables.broker_company || 'Equity Connect',
+      broker_full_name: lead.brokers?.contact_name || variables.broker_full_name || 'your specialist',
+      broker_nmls: lead.brokers?.nmls_number || variables.broker_nmls || '',
+      broker_phone: lead.brokers?.phone || variables.broker_phone || '',
+      broker_display: lead.brokers?.contact_name && lead.brokers?.nmls_number 
+        ? `${lead.brokers.contact_name} (NMLS ${lead.brokers.nmls_number})` 
+        : variables.broker_display || '',
+      
+      qualified: lead.qualified === true ? 'true' : (variables.qualified ? 'true' : 'false'),
+      
+      // Keep n8n campaign/persona data if provided
+      campaign_archetype: variables.campaign_archetype || '',
+      persona_assignment: variables.persona_assignment || '',
+      persona_sender_name: variables.persona_sender_name || ''
+    };
+    
     // Select phone number from pool (V3 logic)
     if (!normalizedFromPhone && broker_id) {
       console.log(`🔍 Looking up broker's assigned number (broker_id: ${broker_id})`);
@@ -828,55 +895,68 @@ app.post('/api/outbound-call', async (req, res) => {
       console.log(`✅ Using ElevenLabs phone_number_id: ${elevenlabsPhoneNumberId}`);
     }
     
-    // Determine if lead is qualified
-    const hasPropertyData = !!(variables.property_value || variables.estimated_equity);
-    const isQualified = variables.qualified === true || hasPropertyData;
+    // Determine call type based on database data
+    const isQualified = lead.qualified === true;
+    const callType = isQualified ? 'outbound-qualified' : 'outbound-unqualified';
     
-    // Build dynamic variables for ElevenLabs (all 27+ variables)
+    console.log(`📋 Call type: ${callType} (qualified: ${lead.qualified})`);
+    
+    // Load prompt from Supabase (like personalization webhook does)
+    const { data: prompt, error: promptError } = await supabase
+      .from('prompts')
+      .select('id, voice, vad_threshold, vad_prefix_padding_ms, vad_silence_duration_ms')
+      .eq('call_type', callType)
+      .eq('is_active', true)
+      .single();
+    
+    if (promptError || !prompt) {
+      console.error('❌ Prompt not found:', promptError);
+      return res.status(500).json({
+        success: false,
+        message: `No prompt found for ${callType}`
+      });
+    }
+    
+    // Get the active version's content
+    const { data: version, error: versionError } = await supabase
+      .from('prompt_versions')
+      .select('content')
+      .eq('prompt_id', prompt.id)
+      .eq('is_active', true)
+      .single();
+    
+    if (versionError || !version) {
+      console.error('❌ Active version not found:', versionError);
+      return res.status(500).json({
+        success: false,
+        message: `No active version for ${callType}`
+      });
+    }
+    
+    console.log(`✅ Loaded prompt for: ${callType}`);
+    
+    // Assemble prompt from sections
+    const sections = version.content;
+    const sectionParts = [];
+    
+    if (sections.role) sectionParts.push(`ROLE:\n${sections.role}`);
+    if (sections.personality) sectionParts.push(`\nPERSONALITY & STYLE:\n${sections.personality}`);
+    if (sections.context) sectionParts.push(`\nCONTEXT:\n${sections.context}`);
+    if (sections.instructions) sectionParts.push(`\nCRITICAL INSTRUCTIONS:\n${sections.instructions}`);
+    if (sections.conversation_flow) sectionParts.push(`\nCONVERSATION FLOW:\n${sections.conversation_flow}`);
+    if (sections.tools) sectionParts.push(`\nTOOL USAGE:\n${sections.tools}`);
+    if (sections.safety) sectionParts.push(`\nSAFETY & ESCALATION:\n${sections.safety}`);
+    if (sections.output_format) sectionParts.push(`\nOUTPUT FORMAT:\n${sections.output_format}`);
+    if (sections.pronunciation) sectionParts.push(`\nPRONUNCIATION GUIDE:\n${sections.pronunciation}`);
+    
+    const assembledPrompt = sectionParts.join('\n\n').trim();
+    
+    // Build dynamic variables from database (use enrichedVariables)
     const dynamicVariables = {
-      // Lead info
-      lead_id: lead_id || '',
-      lead_first_name: variables.lead_first_name || '',
-      lead_last_name: variables.lead_last_name || '',
-      lead_full_name: variables.lead_full_name || '',
-      lead_email: variables.lead_email || '',
-      lead_phone: variables.lead_phone || normalizedToPhone,
-      
-      // Property info
-      property_address: variables.property_address || '',
-      property_city: variables.property_city || '',
-      property_state: variables.property_state || '',
-      property_zipcode: variables.property_zipcode || '',
-      property_value: variables.property_value || '',
-      property_value_formatted: variables.property_value_formatted || '',
-      
-      // Equity calculations
-      estimated_equity: variables.estimated_equity || '',
-      estimated_equity_formatted: variables.estimated_equity_formatted || '',
-      equity_50_percent: variables.equity_50_percent || '',
-      equity_50_formatted: variables.equity_50_formatted || '',
-      equity_60_percent: variables.equity_60_percent || '',
-      equity_60_formatted: variables.equity_60_formatted || '',
-      
-      // Campaign and persona
-      campaign_archetype: variables.campaign_archetype || '',
-      persona_assignment: variables.persona_assignment || '',
-      persona_sender_name: variables.persona_sender_name || '',
-      
-      // Broker info
-      broker_id: broker_id || '',
-      broker_company: variables.broker_company || '',
-      broker_full_name: variables.broker_full_name || '',
-      broker_nmls: variables.broker_nmls || '',
-      broker_phone: variables.broker_phone || '',
-      broker_display: variables.broker_display || '',
-      
-      // Qualification status
-      qualified: isQualified ? 'true' : 'false',
-      
-      // Call context
+      ...enrichedVariables,
+      lead_id: lead_id,
       call_context: 'outbound',
-      call_type: isQualified ? 'outbound-qualified' : 'outbound-unqualified'
+      call_type: callType
     };
     
     console.log('📋 Calling ElevenLabs with:', {
@@ -907,7 +987,12 @@ app.post('/api/outbound-call', async (req, res) => {
         agent_phone_number_id: elevenlabsPhoneNumberId,
         to_number: normalizedToPhone,
         conversation_initiation_client_data: {
-          dynamic_variables: dynamicVariables
+          dynamic_variables: dynamicVariables,
+          agent: {
+            prompt: {
+              prompt: assembledPrompt  // Load prompt from Supabase portal!
+            }
+          }
         }
       })
     });
