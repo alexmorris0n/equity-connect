@@ -12,6 +12,7 @@ RUN npm ci --production
 # Copy source code from elevenlabs-webhook/
 COPY elevenlabs-webhook/personalize.js ./
 COPY elevenlabs-webhook/tools.js ./
+COPY elevenlabs-webhook/nylas-helpers.js ./
 
 # Expose port 3001 (personalization + tools on same port)
 EXPOSE 3001

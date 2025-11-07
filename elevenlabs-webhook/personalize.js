@@ -398,43 +398,51 @@ app.post('/tools/check_broker_availability', async (req, res) => {
       });
     }
     
-    // Call Nylas API
+    // Call Nylas v3 Events API (Barbara V3 method)
     const axios = require('axios');
-    const response = await axios.get(
-      `https://api.nylas.com/grants/${broker.nylas_grant_id}/availability`,
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.NYLAS_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        params: {
-          duration: 30,
-          interval: 30,
-          start_time: Math.floor(Date.now() / 1000),
-          end_time: Math.floor((Date.now() + (days_ahead * 24 * 60 * 60 * 1000)) / 1000)
-        }
+    const NYLAS_API_URL = 'https://api.us.nylas.com';
+    const startTime = Math.floor(Date.now() / 1000);
+    const endTime = Math.floor((Date.now() + 14 * 24 * 60 * 60 * 1000) / 1000);
+    
+    const eventsUrl = `${NYLAS_API_URL}/v3/grants/${broker.nylas_grant_id}/events?calendar_id=primary&start=${startTime}&end=${endTime}`;
+    
+    const response = await axios.get(eventsUrl, {
+      headers: {
+        'Authorization': `Bearer ${process.env.NYLAS_API_KEY}`,
+        'Content-Type': 'application/json'
       }
+    });
+    
+    const events = response.data.data || [];
+    console.log(`✅ Got ${events.length} events from Nylas`);
+    
+    // Extract busy times
+    const busyTimes = events.map(event => ({
+      start: event.when.start_time * 1000,
+      end: event.when.end_time * 1000
+    }));
+    
+    // Find free slots (Barbara V3 method)
+    const { findFreeSlots, formatAvailableSlots } = require('./nylas-helpers');
+    const freeSlots = findFreeSlots(
+      startTime * 1000,
+      endTime * 1000,
+      busyTimes,
+      30 * 60 * 1000,  // 30 min duration
+      'America/Los_Angeles'
     );
     
-    const slots = response.data.slice(0, 5);
-    console.log(`✅ Found ${slots.length} slots for ${broker.contact_name}`);
+    const formattedSlots = formatAvailableSlots(freeSlots, null, null, 'America/Los_Angeles');
+    
+    console.log(`✅ Found ${formattedSlots.length} available slots`);
     
     res.json({
-      available: slots.length > 0,
+      available: formattedSlots.length > 0,
       broker_name: broker.contact_name,
-      slots: slots.map(slot => ({
-        start_time: slot.start_time,
-        formatted: new Date(slot.start_time * 1000).toLocaleString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
-        })
-      })),
-      message: slots.length > 0 
-        ? `${broker.contact_name} has ${slots.length} times available.`
-        : `No availability in the next ${days_ahead} days.`
+      slots: formattedSlots,
+      message: formattedSlots.length > 0
+        ? `${broker.contact_name} has ${formattedSlots.length} times available.`
+        : `No availability in the next 14 days.`
     });
   } catch (err) {
     console.error('❌ check_broker_availability error:', err);

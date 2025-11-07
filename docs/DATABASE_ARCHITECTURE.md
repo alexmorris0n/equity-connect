@@ -1,9 +1,10 @@
-# 🏗️ BatchData + Waterfall Skip-Trace Database Architecture
+# 🏗️ Database Architecture - Equity Connect
 
-## ✅ Phase 1 Complete: Database Schema
+## ✅ Current Status: Production Ready
 
-### **Migration Applied**: `batchdata_waterfall_architecture_v2`
+### **Last Updated**: November 6, 2025
 ### **Project**: mxnqfwuhvurajrgoefyg (Supabase)
+### **Note**: This document covers the BatchData + Waterfall Skip-Trace architecture. For complete schema reference, see `DATABASE_SCHEMA_REFERENCE.md`
 
 ---
 
@@ -459,19 +460,28 @@ SELECT * FROM vw_campaign_ready_leads LIMIT 250;
 
 ## ✅ Migration Status
 
-- ✅ **Tables Created**: 3 new + 1 enhanced
-- ✅ **Indexes Created**: 15 total
-- ✅ **Functions Created**: 7 helper functions
-- ✅ **Triggers Created**: 1 auto-compute trigger
+- ✅ **Tables Created**: 3 new + 1 enhanced (plus many more since initial migration)
+- ✅ **Indexes Created**: 15+ total
+- ✅ **Functions Created**: 7+ helper functions
+- ✅ **Triggers Created**: Multiple auto-compute triggers
 - ✅ **Views Created**: 2 monitoring views
-- ✅ **Enum Values Added**: 3 new lead statuses
+- ✅ **Enum Values Added**: Extended lead_status and campaign_status enums
 
 **Database**: mxnqfwuhvurajrgoefyg (Supabase)
-**Migration**: `batchdata_waterfall_architecture_v2`
-**Applied**: October 8, 2025
-**Status**: ✅ **COMPLETE**
+**Original Migration**: `batchdata_waterfall_architecture_v2` (October 8, 2025)
+**Status**: ✅ **PRODUCTION** with ongoing enhancements
 
 ---
 
-Ready for Phase 2: n8n Workflows! 🚀
+## 📝 Related Documentation
+
+- **Complete Schema Reference**: See `DATABASE_SCHEMA_REFERENCE.md` for all tables, columns, and types
+- **Prompt Management**: Schema includes `prompts`, `prompt_versions`, `broker_prompt_assignments` tables
+- **Calendar Integration**: Nylas OAuth integration fields in `brokers` table
+- **Campaign Tracking**: `campaigns`, `email_events`, `campaign_history` JSONB tracking
+- **Phone Pool**: `signalwire_phone_numbers` for appointment tracking
+
+---
+
+🚀 **System is production-ready and actively handling leads!**
 

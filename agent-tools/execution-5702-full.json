@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "data": {
+    "id": "5702",
+    "workflowId": "MOtbYjaDYIF4IJwY",
+    "status": "success",
+    "mode": "full",
+    "startedAt": "2025-11-06T06:19:47.228Z",
+    "stoppedAt": "2025-11-06T06:19:57.255Z",
+    "duration": 10027,
+    "finished": true,
+    "AI_Agent_Output": {
+      "error": "Received tool input did not match expected schema"
+    }
+  }
+}
+
