@@ -277,49 +277,134 @@ async function loadPromptFromSupabase(callType: string): Promise<PromptMetadata 
 }
 
 /**
- * Format JSONB prompt content into a single string
- * Content structure: role, tools, safety, context, personality, instructions, etc.
+ * Format JSONB prompt content into a single string optimized for OpenAI Realtime
+ * Reads the same 9 cleaned sections from Supabase as ElevenLabs, but compiles
+ * for Realtime API with plain-text labels and runtime-specific guidance.
+ * 
+ * Content structure: role, personality, context, tools, conversation_flow, 
+ *                    instructions, safety, output_format, pronunciation
  */
 function formatPromptContent(content: any): string {
-  const sections: string[] = [];
-  
-  if (content.role) {
-    sections.push(`ROLE:\n${content.role}`);
+  const parts: string[] = [];
+
+  // 1. Core role (non-negotiable, first)
+  if (content.role && String(content.role).trim().length > 0) {
+    parts.push(String(content.role).trim());
+  } else {
+    parts.push(
+      "You are Barbara, a warm, professional voice assistant for Equity Connect. " +
+      "You help seniors understand reverse mortgage options, verify their information, " +
+      "answer questions accurately, and when appropriate schedule time with their assigned broker."
+    );
   }
-  
-  if (content.personality) {
-    sections.push(`\nPERSONALITY & STYLE:\n${content.personality}`);
+
+  // 2. Personality & style (critical for voice behavior)
+  if (content.personality && String(content.personality).trim().length > 0) {
+    parts.push(
+      "PERSONALITY & STYLE:\n" +
+      String(content.personality).trim()
+    );
+  } else {
+    parts.push(
+      [
+        "PERSONALITY & STYLE:",
+        "- Warm, calm, patient, never pushy.",
+        "- Short turns (1–2 concise sentences).",
+        "- Stop speaking immediately if the caller starts talking.",
+        "- Use the caller's first name only in the greeting, not repeatedly."
+      ].join("\n")
+    );
   }
-  
-  if (content.context) {
-    sections.push(`\nCONTEXT:\n${content.context}`);
+
+  // 3. Realtime-specific behavior (hardcoded runtime rules)
+  parts.push(
+    [
+      "REALTIME BEHAVIOR (OPENAI REALTIME SPECIFIC):",
+      "- Stop talking immediately if the caller interrupts you.",
+      "- If there is about 2 seconds of silence, you may use a soft acknowledging filler (e.g., \"mm-hmm\", \"okay\").",
+      "- If there is about 5 seconds of silence, gently prompt (e.g., \"Whenever you're ready, I'm here.\").",
+      "- While tools or external lookups run, briefly narrate once (e.g., \"Let me check that for you one moment.\").",
+      "- Speak in natural, concise sentences suited for seniors.",
+      "- Express all important numbers as words (e.g., \"sixty-two\", \"five hundred thousand\").",
+      "- Do not read bullet points or labels out loud verbatim; respond conversationally."
+    ].join("\n")
+  );
+
+  // 4. Context
+  if (content.context && String(content.context).trim().length > 0) {
+    parts.push(
+      "CONTEXT:\n" +
+      String(content.context).trim()
+    );
   }
-  
-  if (content.instructions) {
-    sections.push(`\nCRITICAL INSTRUCTIONS:\n${content.instructions}`);
+
+  // 5. Tools (conceptual usage only; actual JSON schema is defined in code)
+  if (content.tools && String(content.tools).trim().length > 0) {
+    parts.push(
+      "TOOLS (HOW TO USE THEM):\n" +
+      String(content.tools).trim()
+    );
   }
-  
-  if (content.conversation_flow) {
-    sections.push(`\nCONVERSATION FLOW:\n${content.conversation_flow}`);
+
+  // 6. Conversation flow
+  if (content.conversation_flow && String(content.conversation_flow).trim().length > 0) {
+    parts.push(
+      "CONVERSATION FLOW:\n" +
+      String(content.conversation_flow).trim()
+    );
   }
-  
-  if (content.tools) {
-    sections.push(`\nTOOL USAGE:\n${content.tools}`);
+
+  // 7. Rules & constraints
+  if (content.instructions && String(content.instructions).trim().length > 0) {
+    parts.push(
+      "RULES & CONSTRAINTS:\n" +
+      String(content.instructions).trim()
+    );
   }
-  
-  if (content.safety) {
-    sections.push(`\nSAFETY & ESCALATION:\n${content.safety}`);
+
+  // 8. Safety & escalation
+  if (content.safety && String(content.safety).trim().length > 0) {
+    parts.push(
+      "SAFETY & ESCALATION:\n" +
+      String(content.safety).trim()
+    );
   }
-  
-  if (content.output_format) {
-    sections.push(`\nOUTPUT FORMAT:\n${content.output_format}`);
+
+  // 9. Output format
+  if (content.output_format && String(content.output_format).trim().length > 0) {
+    parts.push(
+      "OUTPUT FORMAT:\n" +
+      String(content.output_format).trim()
+    );
+  } else {
+    parts.push(
+      [
+        "OUTPUT FORMAT:",
+        "- Natural spoken language only.",
+        "- 1–2 sentences per turn unless more detail is requested.",
+        "- Use words instead of numerals for key numbers and dollar amounts.",
+        "- Do not read internal labels (like CONTEXT, TOOLS) aloud."
+      ].join("\n")
+    );
   }
-  
-  if (content.pronunciation) {
-    sections.push(`\nPRONUNCIATION GUIDE:\n${content.pronunciation}`);
+
+  // 10. Pronunciation guide
+  if (content.pronunciation && String(content.pronunciation).trim().length > 0) {
+    parts.push(
+      "PRONUNCIATION:\n" +
+      String(content.pronunciation).trim()
+    );
+  } else {
+    parts.push(
+      [
+        "PRONUNCIATION:",
+        "- \"NMLS\" → say \"N-M-L-S\".",
+        "- \"Equity\" → say \"EH-kwi-tee\"."
+      ].join("\n")
+    );
   }
-  
-  return sections.join('\n\n').trim();
+
+  return parts.join("\n\n").trim();
 }
 
 // ============================================================================

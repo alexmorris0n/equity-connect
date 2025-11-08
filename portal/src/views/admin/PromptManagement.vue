@@ -549,116 +549,293 @@
           <n-tab-pane name="settings" tab="Settings">
             <div class="tab-content">
               <div class="settings-section">
-                <h3>Voice Settings</h3>
-                <p class="text-muted">Configure the AI voice and behavior for this prompt:</p>
+                <h3>Runtime Configuration</h3>
+                <p class="text-muted">Select the AI runtime and configure its settings:</p>
                 
+                <!-- Runtime Selector -->
                 <div style="margin-top: 1.5rem;">
-                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Voice:</label>
+                  <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Runtime:</label>
                   <n-select
-                    v-model:value="selectedVoice"
-                    :options="voiceOptions"
+                    v-model:value="selectedRuntime"
+                    :options="runtimeOptions"
                     size="large"
-                    placeholder="Select a voice"
-                    @update:value="handleVoiceChange"
+                    placeholder="Select runtime"
+                    @update:value="handleRuntimeChange"
                   />
                   <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
-                    AI voice for this prompt (default: shimmer)
+                    Choose which AI system will handle calls for this prompt type
                   </p>
                 </div>
 
-                <!-- Advanced Settings Toggle -->
-                <n-button
-                  @click="showAdvancedSettings = !showAdvancedSettings"
-                  secondary
-                  style="margin-top: 1.5rem;"
-                >
-                  {{ showAdvancedSettings ? 'Hide' : 'Show' }} Advanced Settings
-                </n-button>
+                <!-- ElevenLabs Settings -->
+                <div v-if="selectedRuntime === 'elevenlabs'" style="margin-top: 2rem;">
+                  <h4 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600;">ElevenLabs Configuration</h4>
+                  
+                  <!-- Voice ID -->
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Voice:</label>
+                    <n-select
+                      v-model:value="elevenLabsVoiceId"
+                      :options="elevenLabsVoiceOptions"
+                      size="medium"
+                      placeholder="Select voice"
+                      @update:value="handleElevenLabsSettingChange"
+                      filterable
+                      tag
+                    />
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      Select from presets or paste custom voice_id. Default: Tiffany
+                    </p>
+                  </div>
 
-                <!-- Advanced Settings Section -->
-                <div v-if="showAdvancedSettings" style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb; font-size: 0.9rem;">
-                  <n-alert type="warning" style="margin-bottom: 1rem; font-size: 0.85rem;">
-                    <template #icon>
-                      <n-icon size="16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M85.57 446.25h340.86a32 32 0 0028.17-47.17L284.18 82.58c-12.09-22.44-44.27-22.44-56.36 0L57.4 399.08a32 32 0 0028.17 47.17z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M250.26 195.39l5.74 122 5.73-121.95a5.74 5.74 0 00-5.79-6h0a5.74 5.74 0 00-5.68 5.95z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M256 397.25a20 20 0 1120-20 20 20 0 01-20 20z"/></svg></n-icon>
-                    </template>
-                    <strong>Advanced Settings</strong> - Changing these can affect call quality. Only adjust if you understand VAD parameters.
-                  </n-alert>
+                  <!-- First Message -->
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Default First Message:</label>
+                    <n-input
+                      v-model:value="elevenLabsFirstMessage"
+                      type="textarea"
+                      placeholder="Hi, this is Barbara..."
+                      :autosize="{ minRows: 2, maxRows: 4 }"
+                      @update:value="handleElevenLabsSettingChange"
+                    />
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      Default greeting when webhook doesn't provide a personalized one
+                    </p>
+                  </div>
 
-                  <h4 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; font-weight: 600;">Voice Activity Detection (VAD)</h4>
-
-                  <div style="margin-bottom: 1rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.85rem;">
-                      VAD Threshold: {{ vadThreshold.toFixed(2) }}
+                  <!-- Voice Speed -->
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">
+                      Voice Speed: {{ elevenLabsVoiceSpeed.toFixed(2) }}x
                     </label>
                     <n-slider
-                      v-model:value="vadThreshold"
+                      v-model:value="elevenLabsVoiceSpeed"
                       :step="0.05"
-                      :min="0.3"
-                      :max="0.8"
+                      :min="0.5"
+                      :max="1.5"
                       :marks="{
-                        0.3: 'Sensitive',
-                        0.5: 'Default',
-                        0.8: 'Patient'
+                        0.5: 'Slow',
+                        0.85: 'Default',
+                        1.0: 'Normal',
+                        1.5: 'Fast'
                       }"
-                      size="small"
-                      @update:value="handleVadThresholdChange"
+                      @update:value="handleElevenLabsSettingChange"
                     />
-                    <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
-                      Lower = more sensitive to speech (may trigger on noise). Higher = waits for clearer speech.
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      0.85 = 15% slower (recommended for seniors)
                     </p>
                   </div>
 
-                  <div style="margin-bottom: 1rem;">
-                    <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Prefix Padding (ms):</label>
-                    <n-input-number
-                      v-model:value="vadPrefixPaddingMs"
-                      :min="100"
-                      :max="1000"
-                      :step="50"
-                      size="small"
-                      style="width: 100%;"
-                      @update:value="handleVadPrefixPaddingChange"
+                  <!-- Language -->
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Language:</label>
+                    <n-select
+                      v-model:value="elevenLabsAgentLanguage"
+                      :options="languageOptions"
+                      size="medium"
+                      placeholder="Select language"
+                      @update:value="handleElevenLabsSettingChange"
                     />
-                    <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
-                      Audio captured BEFORE speech starts. 300-400ms recommended.
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      Default: English
                     </p>
                   </div>
 
-                  <div style="margin-bottom: 1rem;">
-                    <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Silence Duration (ms):</label>
-                    <n-input-number
-                      v-model:value="vadSilenceDurationMs"
-                      :min="200"
-                      :max="2000"
-                      :step="100"
-                      size="small"
-                      style="width: 100%;"
-                      @update:value="handleVadSilenceDurationChange"
-                    />
-                    <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
-                      How long to wait before considering speech finished. 500ms = balanced, 700ms+ = patient (good for seniors).
-                    </p>
-                  </div>
-
+                  <!-- Advanced Voice Settings Toggle -->
                   <n-button
-                    @click="resetVadToDefaults"
+                    @click="showAdvancedSettings = !showAdvancedSettings"
                     secondary
-                    size="small"
-                    style="margin-top: 0.5rem;"
+                    style="margin-top: 1rem;"
+                  >
+                    {{ showAdvancedSettings ? 'Hide' : 'Show' }} Advanced Voice Settings
+                  </n-button>
+
+                  <!-- Advanced Voice Settings -->
+                  <div v-if="showAdvancedSettings" style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                    <n-alert type="info" style="margin-bottom: 1rem; font-size: 0.85rem;">
+                      <strong>Advanced Voice Settings</strong> - Fine-tune voice stability and similarity. Default values work well for most use cases.
+                    </n-alert>
+
+                    <!-- Voice Stability -->
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.85rem;">
+                        Voice Stability: {{ elevenLabsVoiceStability.toFixed(2) }}
+                      </label>
+                      <n-slider
+                        v-model:value="elevenLabsVoiceStability"
+                        :step="0.05"
+                        :min="0"
+                        :max="1"
+                        :marks="{
+                          0: 'Variable',
+                          0.5: 'Balanced',
+                          1: 'Stable'
+                        }"
+                        @update:value="handleElevenLabsSettingChange"
+                      />
+                      <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af;">
+                        Higher = more consistent voice. Lower = more expressive but variable.
+                      </p>
+                    </div>
+
+                    <!-- Voice Similarity -->
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.85rem;">
+                        Voice Similarity: {{ elevenLabsVoiceSimilarity.toFixed(2) }}
+                      </label>
+                      <n-slider
+                        v-model:value="elevenLabsVoiceSimilarity"
+                        :step="0.05"
+                        :min="0"
+                        :max="1"
+                        :marks="{
+                          0: 'Creative',
+                          0.75: 'Balanced',
+                          1: 'Exact'
+                        }"
+                        @update:value="handleElevenLabsSettingChange"
+                      />
+                      <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af;">
+                        Higher = closer to original voice. Lower = more creative interpretation.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Realtime (V3) Settings -->
+                <div v-if="selectedRuntime === 'realtime'" style="margin-top: 2rem;">
+                  <h4 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600;">OpenAI Realtime Configuration</h4>
+                  
+                  <!-- Voice -->
+                  <div style="margin-bottom: 1.5rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Voice:</label>
+                    <n-select
+                      v-model:value="selectedVoice"
+                      :options="voiceOptions"
+                      size="medium"
+                      placeholder="Select voice"
+                      @update:value="handleElevenLabsSettingChange"
+                    />
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                      OpenAI Realtime voice. Default: shimmer
+                    </p>
+                  </div>
+
+                  <!-- VAD Settings Toggle -->
+                  <n-button
+                    @click="showAdvancedSettings = !showAdvancedSettings"
+                    secondary
+                    style="margin-top: 1rem;"
+                  >
+                    {{ showAdvancedSettings ? 'Hide' : 'Show' }} Advanced VAD Settings
+                  </n-button>
+
+                  <!-- VAD Settings -->
+                  <div v-if="showAdvancedSettings" style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                    <n-alert type="warning" style="margin-bottom: 1rem; font-size: 0.85rem;">
+                      <template #icon>
+                        <n-icon size="16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M85.57 446.25h340.86a32 32 0 0028.17-47.17L284.18 82.58c-12.09-22.44-44.27-22.44-56.36 0L57.4 399.08a32 32 0 0028.17 47.17z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M250.26 195.39l5.74 122 5.73-121.95a5.74 5.74 0 00-5.79-6h0a5.74 5.74 0 00-5.68 5.95z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/><path d="M256 397.25a20 20 0 1120-20 20 20 0 01-20 20z"/></svg></n-icon>
+                      </template>
+                      <strong>Advanced Settings</strong> - Changing these can affect call quality. Only adjust if you understand VAD parameters.
+                    </n-alert>
+
+                    <h4 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; font-weight: 600;">Voice Activity Detection (VAD)</h4>
+
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.85rem;">
+                        VAD Threshold: {{ vadThreshold.toFixed(2) }}
+                      </label>
+                      <n-slider
+                        v-model:value="vadThreshold"
+                        :step="0.05"
+                        :min="0.3"
+                        :max="0.8"
+                        :marks="{
+                          0.3: 'Sensitive',
+                          0.5: 'Default',
+                          0.8: 'Patient'
+                        }"
+                        size="small"
+                        @update:value="handleElevenLabsSettingChange"
+                      />
+                      <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
+                        Lower = more sensitive to speech (may trigger on noise). Higher = waits for clearer speech.
+                      </p>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Prefix Padding (ms):</label>
+                      <n-input-number
+                        v-model:value="vadPrefixPaddingMs"
+                        :min="100"
+                        :max="1000"
+                        :step="50"
+                        size="small"
+                        style="width: 100%;"
+                        @update:value="handleElevenLabsSettingChange"
+                      />
+                      <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
+                        Audio captured BEFORE speech starts. 300-400ms recommended.
+                      </p>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                      <label style="display: block; margin-bottom: 0.35rem; font-weight: 500; font-size: 0.85rem;">Silence Duration (ms):</label>
+                      <n-input-number
+                        v-model:value="vadSilenceDurationMs"
+                        :min="200"
+                        :max="2000"
+                        :step="100"
+                        size="small"
+                        style="width: 100%;"
+                        @update:value="handleElevenLabsSettingChange"
+                      />
+                      <p style="margin: 0.35rem 0 0 0; font-size: 0.75rem; color: #9ca3af; line-height: 1.3;">
+                        How long to wait before considering speech finished. 500ms = balanced, 700ms+ = patient (good for seniors).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Save and Reset Buttons -->
+                <div style="margin-top: 2rem; display: flex; gap: 1rem; align-items: center;">
+                  <n-button
+                    type="primary"
+                    :loading="loading"
+                    :disabled="!settingsHasChanges"
+                    @click="saveRuntimeSettings"
                   >
                     <template #icon>
-                      <n-icon size="14"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M320 146s24.36-12-64-12a160 160 0 10160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 58l80 80-80 80"/></svg></n-icon>
+                      <n-icon><SaveOutline /></n-icon>
+                    </template>
+                    Save Settings
+                  </n-button>
+                  
+                  <n-button
+                    secondary
+                    @click="resetRuntimeToDefaults"
+                  >
+                    <template #icon>
+                      <n-icon><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M320 146s24.36-12-64-12a160 160 0 10160 160" fill="none" stroke="currentColor" stroke-linecap="round" stroke-miterlimit="10" stroke-width="32"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="32" d="M256 58l80 80-80 80"/></svg></n-icon>
                     </template>
                     Reset to Defaults
                   </n-button>
+                  
+                  <span v-if="settingsHasChanges" style="font-size: 0.85rem; color: #f59e0b;">
+                    Unsaved changes
+                  </span>
                 </div>
 
-                <div v-if="selectedVoice" style="margin-top: 1.5rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
+                <!-- Current Runtime Info -->
+                <div style="margin-top: 2rem; padding: 1rem; background: rgba(99, 102, 241, 0.05); border-radius: 8px;">
                   <p style="margin: 0; font-size: 0.9rem; color: var(--text-secondary);">
-                    <strong>Current Voice:</strong> {{ selectedVoice }}
+                    <strong>Active Runtime:</strong> {{ selectedRuntime === 'elevenlabs' ? 'ElevenLabs (Production)' : 'Realtime V3 (A/B Testing)' }}
                   </p>
-                  <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
-                    This voice will be used when this prompt is deployed and used in calls.
+                  <p v-if="selectedRuntime === 'elevenlabs'" style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    Voice: {{ elevenLabsVoiceOptions.find(v => v.value === elevenLabsVoiceId)?.label || elevenLabsVoiceId }} • Speed: {{ elevenLabsVoiceSpeed }}x • Language: {{ elevenLabsAgentLanguage }}
+                  </p>
+                  <p v-else style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #9ca3af;">
+                    Voice: {{ selectedVoice }} • VAD: {{ vadThreshold }}
                   </p>
                 </div>
               </div>
@@ -1525,11 +1702,23 @@ const deployChangeSummary = ref('')
 const selectedVoice = ref('alloy')
 const currentPromptMetadata = ref({ name: '', purpose: '', goal: '', call_type: '' })
 
-// VAD settings
+// Runtime settings
+const selectedRuntime = ref('elevenlabs')
+const settingsHasChanges = ref(false)
+
+// VAD settings (Realtime)
 const vadThreshold = ref(0.5)
 const vadPrefixPaddingMs = ref(300)
 const vadSilenceDurationMs = ref(500)
 const showAdvancedSettings = ref(false)
+
+// ElevenLabs defaults
+const elevenLabsVoiceId = ref('6aDn1KB0hjpdcocrUkmq') // Tiffany default
+const elevenLabsFirstMessage = ref('Hi, this is Barbara with Equity Connect. How are you today?')
+const elevenLabsVoiceSpeed = ref(0.85)
+const elevenLabsAgentLanguage = ref('en')
+const elevenLabsVoiceStability = ref(0.5)
+const elevenLabsVoiceSimilarity = ref(0.75)
 
 // AI Improve feature
 const showAIImproveModal = ref(false)
@@ -1569,6 +1758,7 @@ const auditResults = ref({
 const auditRecommendationDiffs = ref({})
 const appliedAuditRecommendations = ref(new Set())
 
+// OpenAI Realtime voices
 const voiceOptions = [
   { label: 'Alloy', value: 'alloy' },
   { label: 'Echo', value: 'echo' },
@@ -1580,6 +1770,41 @@ const voiceOptions = [
   { label: 'Verse', value: 'verse' },
   { label: 'Cedar', value: 'cedar' },
   { label: 'Marin', value: 'marin' }
+]
+
+// ElevenLabs voices (your custom voices)
+const elevenLabsVoiceOptions = [
+  { label: 'Tiffany', value: '6aDn1KB0hjpdcocrUkmq' },
+  { label: 'Dakota H', value: 'P7x743VjyZEOihNNygQ9' },
+  { label: 'Ms. Walker', value: 'DLsHlh26Ugcm6ELvS0qi' },
+  { label: 'Jamahal', value: 'DTKMou8ccj1ZaWGBiotd' },
+  { label: 'Eric B', value: '9T9vSqRrPPxIs5wpyZfK' },
+  { label: 'Mark', value: 'UgBBYS2sOqTuMpoF3BR0' }
+]
+
+// Runtime options
+const runtimeOptions = [
+  { label: 'ElevenLabs (Production)', value: 'elevenlabs' },
+  { label: 'Realtime V3 (A/B Testing)', value: 'realtime' }
+]
+
+// Language options for ElevenLabs
+const languageOptions = [
+  { label: 'English', value: 'en' },
+  { label: 'Spanish', value: 'es' },
+  { label: 'French', value: 'fr' },
+  { label: 'German', value: 'de' },
+  { label: 'Italian', value: 'it' },
+  { label: 'Portuguese', value: 'pt' },
+  { label: 'Polish', value: 'pl' },
+  { label: 'Turkish', value: 'tr' },
+  { label: 'Russian', value: 'ru' },
+  { label: 'Dutch', value: 'nl' },
+  { label: 'Czech', value: 'cs' },
+  { label: 'Arabic', value: 'ar' },
+  { label: 'Chinese', value: 'zh' },
+  { label: 'Japanese', value: 'ja' },
+  { label: 'Korean', value: 'ko' }
 ]
 
 const prompts = ref([])
@@ -2423,7 +2648,8 @@ const fetchEvaluationData = async () => {
     hasCurrentVersion: !!currentVersion.value,
     hasActivePrompt: !!activePrompt.value,
     currentVersionId: currentVersion.value?.id,
-    activePromptCallType: activePrompt.value?.call_type
+    activePromptCallType: activePrompt.value?.call_type,
+    versionNumber: currentVersion.value?.version_number
   })
   
   // Note: We don't clear appliedSuggestions here - they persist from the database
@@ -2440,6 +2666,21 @@ const fetchEvaluationData = async () => {
     // Format: "inbound-qualified-v3" or "outbound-warm-v2"
     const promptVersion = `${activePrompt.value.call_type}-v${currentVersion.value.version_number}`
     console.log('🔍 Querying evaluations for prompt_version:', promptVersion)
+    
+    // DEBUG: Also query ALL evaluations to see what's in the database
+    const { data: allEvals, error: debugError } = await supabase
+      .from('call_evaluations')
+      .select('prompt_version, evaluated_at, overall_score')
+      .order('evaluated_at', { ascending: false })
+      .limit(10)
+    
+    console.log('📊 Recent evaluations in database:')
+    console.table(allEvals?.map(e => ({
+      'Prompt Version': e.prompt_version,
+      'Score': e.overall_score,
+      'Time': new Date(e.evaluated_at).toLocaleString()
+    })))
+    if (debugError) console.error('Debug query error:', debugError)
     
     // Query Supabase for evaluations matching this prompt_version
     const { data, error: queryError } = await supabase
@@ -2638,16 +2879,32 @@ async function selectPrompt(id) {
   if (promptError) {
     console.error('Failed to load prompt:', promptError)
   } else if (promptData) {
-    selectedVoice.value = promptData.voice || 'alloy'
+    // Load runtime settings
+    selectedRuntime.value = promptData.runtime || 'elevenlabs'
+    
+    // Load Realtime (V3) settings
+    selectedVoice.value = promptData.voice || 'shimmer'
     vadThreshold.value = promptData.vad_threshold || 0.5
     vadPrefixPaddingMs.value = promptData.vad_prefix_padding_ms || 300
     vadSilenceDurationMs.value = promptData.vad_silence_duration_ms || 500
+    
+    // Load ElevenLabs defaults
+    const elevenLabsDefaults = promptData.elevenlabs_defaults || {}
+    elevenLabsVoiceId.value = elevenLabsDefaults.voice_id || '6aDn1KB0hjpdcocrUkmq'
+    elevenLabsFirstMessage.value = elevenLabsDefaults.first_message || 'Hi, this is Barbara with Equity Connect. How are you today?'
+    elevenLabsVoiceSpeed.value = elevenLabsDefaults.voice_speed || 0.85
+    elevenLabsAgentLanguage.value = elevenLabsDefaults.agent_language || 'en'
+    elevenLabsVoiceStability.value = elevenLabsDefaults.voice_stability || 0.5
+    elevenLabsVoiceSimilarity.value = elevenLabsDefaults.voice_similarity || 0.75
+    
     currentPromptMetadata.value = {
       name: promptData.name,
       purpose: promptData.purpose || '',
       goal: promptData.goal || '',
       call_type: promptData.call_type
     }
+    
+    settingsHasChanges.value = false
   }
   
   // Reload versions for the selected prompt
@@ -4433,6 +4690,82 @@ async function resetVadToDefaults() {
     console.error('Failed to reset VAD settings:', err)
     window.$message?.error('Failed to reset VAD settings')
   }
+}
+
+// Runtime Settings Handlers
+async function saveRuntimeSettings() {
+  if (!activePromptId.value) return
+  
+  loading.value = true
+  try {
+    const updateData = {
+      runtime: selectedRuntime.value
+    }
+    
+    // Save runtime-specific settings
+    if (selectedRuntime.value === 'elevenlabs') {
+      updateData.elevenlabs_defaults = {
+        voice_id: elevenLabsVoiceId.value,
+        first_message: elevenLabsFirstMessage.value,
+        voice_speed: elevenLabsVoiceSpeed.value,
+        agent_language: elevenLabsAgentLanguage.value,
+        voice_stability: elevenLabsVoiceStability.value,
+        voice_similarity: elevenLabsVoiceSimilarity.value
+      }
+    } else if (selectedRuntime.value === 'realtime') {
+      updateData.voice = selectedVoice.value
+      updateData.vad_threshold = vadThreshold.value
+      updateData.vad_prefix_padding_ms = vadPrefixPaddingMs.value
+      updateData.vad_silence_duration_ms = vadSilenceDurationMs.value
+    }
+    
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update(updateData)
+      .eq('id', activePromptId.value)
+    
+    if (updateError) throw updateError
+    
+    settingsHasChanges.value = false
+    window.$message?.success('Runtime settings saved successfully')
+  } catch (err) {
+    console.error('Failed to save runtime settings:', err)
+    window.$message?.error('Failed to save runtime settings')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function resetRuntimeToDefaults() {
+  if (!activePromptId.value) return
+  
+  if (selectedRuntime.value === 'elevenlabs') {
+    // Reset ElevenLabs defaults
+    elevenLabsVoiceId.value = '6aDn1KB0hjpdcocrUkmq' // Tiffany
+    elevenLabsFirstMessage.value = 'Hi, this is Barbara with Equity Connect. How are you today?'
+    elevenLabsVoiceSpeed.value = 0.85
+    elevenLabsAgentLanguage.value = 'en'
+    elevenLabsVoiceStability.value = 0.5
+    elevenLabsVoiceSimilarity.value = 0.75
+  } else if (selectedRuntime.value === 'realtime') {
+    // Reset Realtime defaults
+    selectedVoice.value = 'shimmer'
+    vadThreshold.value = 0.5
+    vadPrefixPaddingMs.value = 300
+    vadSilenceDurationMs.value = 500
+  }
+  
+  settingsHasChanges.value = true
+  window.$message?.info('Settings reset to defaults. Click Save to apply.')
+}
+
+function handleRuntimeChange(runtime) {
+  selectedRuntime.value = runtime
+  settingsHasChanges.value = true
+}
+
+function handleElevenLabsSettingChange() {
+  settingsHasChanges.value = true
 }
 
 function insertToolFromDropdown(toolKey) {

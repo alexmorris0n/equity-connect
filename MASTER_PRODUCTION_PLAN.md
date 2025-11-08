@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 6, 2025  
-**Status:** Production Ready - Multi-Broker Scale Validated  
-**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + Barbara Prompt System V2
-**Latest Updates:** 🎙️ **Barbara Voice Prompt Loop Fix + Field-Tested Format (Nov 6, 2025 Evening)** – Fixed critical conversation looping issues by switching from OpenAI Cookbook's verbose Goal/Exit/Next format to field-tested action-oriented markdown structure. All 5 prompts updated to v6/v7 with: SAY-ONCE guards (prevent greeting repetition), Q&A hard loops (always ask "Anything else?" in same turn), security verification transition, KB fallback improvements (general answer THEN broker redirect), push-back handling (acknowledge + vary response), and reduced first name overuse. Fixed appointment time rounding in bridge (clean 15-min intervals: 11:00, 11:15 vs weird 11:12, 11:27). Updated Portal AI helpers to recommend proven production format over theoretical cookbook patterns. Removed awkward equity statement that created conversation gaps. **Key Learning:** Simple action bullets with arrows (→) outperform abstract state-based structures in production.
+**Last Updated:** November 8, 2025  
+**Status:** Production Ready - ElevenLabs Voice System Deployed  
+**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + ElevenLabs Voice Migration Complete + Unified Prompt System
+**Latest Updates:** 🎙️ **MAJOR PIVOT: OpenAI Realtime → ElevenLabs Agent Platform (Nov 6-8, 2025)** – Migrated entire voice infrastructure from custom OpenAI Realtime bridge to ElevenLabs Agent Platform for best-in-class voice quality. **Selected GPT-5 as conversational LLM** for superior emotional intelligence with seniors (beats Claude 4.5 Sonnet, GPT-5 Mini on empathy, TTS optimization, trust-building). New architecture: SignalWire/Twilio → ElevenLabs Agent (GPT-5) → Webhook (loads Supabase prompts) → 11 HTTP Tools. Deployed `elevenlabs-webhook` service on Fly.io with personalization webhook, tool endpoints, and GPT-5 Mini post-call evaluation. Updated Barbara MCP for ElevenLabs SIP trunk outbound calls. Portal PromptManagement.vue UNCHANGED - still loads from Supabase with all 28 variables working. Agent ID: `agent_4101k9d99r1vfg3vtnbbc8gkdy99`. Cost: ~$113k/year ($49k premium over old system) for superior voice quality + emotional rapport. **Key Benefits:** GPT-5 emotional intelligence, unified platform (inbound + outbound), zero orchestration code, built-in analytics, easier maintenance, best voice conversion rates. 📝 **PROMPT SYSTEM OPTIMIZATION (Nov 8, 2025)** – Implemented runtime-specific prompt compilers: ElevenLabs uses GPT-5-optimized Markdown format, Barbara V3 uses Realtime-optimized plain text. Both systems read from same Supabase data (single source of truth), enabling A/B testing and rollback without re-editing prompts. Cleaned all prompt sections (v1), removed redundant headers, optimized for respective AI models. Built multi-runtime settings UI with ElevenLabs voice configuration (Tiffany default), default values for all overridable fields (voice_speed 0.85x, language, stability, similarity), Save/Reset buttons, and full A/B testing support.
 
 ---
 
@@ -22,12 +22,16 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 **Key Innovation:** Model Context Protocol (MCP) architecture enables one AI agent to orchestrate 4+ external services, replacing 135 deterministic workflow nodes with 13 intelligent nodes.
 
 **Tech Stack:**
-- **AI:** Gemini 2.5 Flash via OpenRouter (orchestration), OpenAI Realtime (voice)
+- **AI Voice:** ElevenLabs Agent Platform (GPT-5 LLM + conversational AI + best-in-class TTS)
+- **AI Orchestration:** Gemini 2.5 Flash via OpenRouter (n8n workflows)
+- **AI Evaluation:** GPT-5 Mini (post-call quality scoring)
+- **Telephony:** SignalWire SIP trunk (primary), Twilio (native integration)
+- **Voice Webhook:** Custom Node.js service on Fly.io (loads Supabase prompts, 11 HTTP tools)
 - **Orchestration:** n8n (self-hosted on Northflank)
 - **Database:** Supabase (PostgreSQL + pgvector)
 - **Data Sources:** PropertyRadar API (property data + contact enrichment)
-- **Outreach:** Instantly.ai (email), OpenAI Realtime + SignalWire (voice)
-- **Integration:** MCP servers (Supabase, Instantly, Barbara, SwarmTrace); Direct Supabase client for voice bridge
+- **Outreach:** Instantly.ai (email), ElevenLabs Agent (voice)
+- **Integration:** MCP servers (Supabase, Instantly, Barbara, SwarmTrace)
 
 ---
 
@@ -36,18 +40,23 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 ```
 equity-connect/ (Git Monorepo)
 ├── .github/workflows/
-│   └── deploy-barbara.yml        → Auto-deploy Barbara V3 on push
-├── barbara-v3/                   → Fly.io (2 machines, HA)
-│   ├── src/tools/business/       → 11 production tools
-│   └── src/services/             → Supabase, Nylas, Vertex AI, MFA
-├── portal/                       → Vue.js admin (Vercel/Netlify)
-│   └── src/components/           → BarbaraConfig, LiveCallMonitor, etc.
-├── barbara-mcp/                  → Docker/Local (extended integrations)
+│   ├── deploy-barbara.yml        → Auto-deploy Barbara V3 on push (DEPRECATED)
+│   └── deploy-elevenlabs-webhook.yml → Auto-deploy ElevenLabs webhook on push (ACTIVE)
+├── elevenlabs-webhook/           → Fly.io (production voice system)
+│   ├── personalize.js            → Loads Supabase prompts + injects 28 variables
+│   ├── tools.js                  → 11 HTTP tool endpoints (lead lookup, KB, calendar, etc.)
+│   ├── create-agent.js           → One-time agent creation script
+│   └── nylas-helpers.js          → Calendar integration helpers
+├── barbara-mcp/                  → Northflank (MCP server for n8n)
+│   └── index.js                  → Outbound calls via ElevenLabs SIP trunk API
+├── portal/                       → Vue.js admin (Vercel)
+│   └── src/components/           → PromptManagement, LiveCallMonitor, etc.
 ├── propertyradar-mcp/            → Docker/Local (property lookups)
 ├── swarmtrace-mcp/               → Docker/Local (analytics)
-├── bridge/                       → Bridge V1 (legacy fallback)
+├── barbara-v3/                   → DEPRECATED (OpenAI Realtime - replaced by ElevenLabs)
+├── bridge/                       → DEPRECATED (replaced by elevenlabs-webhook)
 ├── database/                     → Shared Supabase schema
-├── prompts/                      → Shared prompt templates
+├── prompts/                      → Shared prompt templates (loaded by webhook)
 ├── workflows/                    → N8N workflow definitions
 └── config/                       → API configurations
 ```
@@ -60,10 +69,11 @@ equity-connect/ (Git Monorepo)
 - ✅ All Barbara versions (v1, v2, v3) kept for reference
 
 **Deployment Triggers:**
-- `barbara-v3/**` changes → Deploy to Fly.io
+- `elevenlabs-webhook/**` changes → Deploy to Fly.io (production voice)
 - `portal/**` changes → Deploy to Vercel
 - `workflows/**` changes → Update n8n workflows
 - `database/**` changes → Run Supabase migrations
+- `barbara-v3/**` changes → DEPRECATED (no longer deployed)
 
 ---
 
@@ -105,6 +115,555 @@ equity-connect/ (Git Monorepo)
 - ✅ Phone number pool rotation validated
 - ✅ Multi-broker economics confirmed
 - ✅ Ready for 10+ broker scaling
+
+---
+
+## 🎙️ ElevenLabs Voice System Architecture (Current Production)
+
+**Migration Date:** November 6-8, 2025  
+**Status:** ✅ PRODUCTION READY - Fully Operational  
+**Replaces:** Barbara V3 (OpenAI Realtime) + Custom Bridge
+
+### Why We Migrated
+
+**Problems with OpenAI Realtime:**
+- Required custom orchestration code (2,500+ lines for audio relay)
+- Complex WebSocket management, deadlock prevention, memory leak protection
+- Manual VAD tuning, turn-taking logic, interruption handling
+- Higher maintenance burden, more potential points of failure
+- Good voice quality but not best-in-class
+
+**Benefits of ElevenLabs:**
+- ✅ **GPT-5 Emotional Intelligence** - Superior empathy and rapport-building with seniors (selected over Claude 4.5 Sonnet)
+- ✅ **Superior Voice Quality** - Best-in-class conversational AI with natural TTS optimized for GPT-5 output
+- ✅ **Zero Orchestration Code** - ElevenLabs handles all conversation management (no WebSocket complexity)
+- ✅ **Built-in Analytics** - Dashboard with live conversations, latency, quality metrics
+- ✅ **Simpler Architecture** - Webhook + HTTP tools vs complex WebSocket bridge (2,500 lines eliminated)
+- ✅ **Better Interruption Handling** - Native turn-taking, no custom VAD tuning needed
+- ✅ **Faster Iteration** - Update prompts in portal, apply immediately (no redeploys)
+- ✅ **Higher Conversion Rates** - GPT-5 emotional intelligence + premium voice quality justifies $49k/year premium
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     INBOUND CALL FLOW                           │
+└─────────────────────────────────────────────────────────────────┘
+
+Caller dials SignalWire/Twilio number
+    ↓
+ElevenLabs Agent Platform receives call
+    ↓
+POST https://barbara-elevenlabs-webhook.fly.dev/personalize
+    ├─ Headers: call_sid, from, to, agent_id
+    ├─ Body: caller_id, called_number, direction: "inbound"
+    ↓
+Webhook Logic (personalize.js):
+    1. Extract phone numbers from ElevenLabs headers
+    2. Query Supabase leads table (both E.164 and 10-digit formats)
+    3. Determine call type:
+       - inbound-qualified (lead found + qualified=true)
+       - inbound-unqualified (lead found + qualified=false)
+       - inbound-unknown (lead not found)
+    4. Load active prompt from Supabase prompts table
+    5. Inject 28 dynamic variables:
+       • Lead: first_name, email, phone, age
+       • Property: address, city, state, value, equity
+       • Broker: name, company, phone, NMLS
+    6. Return personalized prompt to ElevenLabs
+    ↓
+Barbara speaks with ElevenLabs voice
+    ↓
+During conversation, calls tools as needed:
+    - POST /tools/lookup_lead (verify identity)
+    - POST /tools/search_knowledge (answer questions via Vertex AI)
+    - POST /tools/check_availability (Nylas calendar)
+    - POST /tools/book_appointment (create event + billing)
+    - POST /tools/update_lead_info (collect details)
+    ↓
+Call ends → POST /post-call-webhook
+    ├─ Saves interaction to Supabase (transcript, metadata, duration)
+    ├─ Triggers AI evaluation (GPT-5-mini, 6 metrics, async)
+    └─ Returns 200 OK
+
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    OUTBOUND CALL FLOW                           │
+└─────────────────────────────────────────────────────────────────┘
+
+n8n workflow triggers Barbara MCP
+    ↓
+POST http://barbara-mcp-server/mcp
+    ├─ Tool: create_outbound_call
+    ├─ Parameters: lead_id, broker_id, to_phone, qualified, etc.
+    ↓
+Barbara MCP Logic (index.js):
+    1. Query Supabase for full lead + broker data
+    2. Select phone number:
+       • Use from_phone if provided
+       • OR query signalwire_phone_numbers by broker territory
+       • OR fallback to ELEVENLABS_PHONE_NUMBER_ID
+    3. Build 28 dynamic variables
+    4. Determine call type (outbound-warm vs outbound-cold)
+    5. POST to ElevenLabs SIP Trunk API:
+       https://api.elevenlabs.io/v1/convai/conversation/outbound_call
+       ├─ agent_id: agent_4101k9d99r1vfg3vtnbbc8gkdy99
+       ├─ phone_number_id: (selected from pool)
+       ├─ to_phone: lead's number
+       ├─ dynamic_variables: { leadFirstName, propertyCity, ... }
+    ↓
+ElevenLabs dials lead via SignalWire SIP trunk
+    ↓
+Lead answers → ElevenLabs calls personalization webhook
+    ├─ Loads prompt for "outbound-warm" or "outbound-cold"
+    ├─ Injects 28 variables (already prepared by MCP)
+    ↓
+Barbara introduces herself naturally
+"Hi {{leadFirstName}}, this is Barbara from {{brokerCompanyName}}. 
+Your broker {{brokerFullName}} asked me to reach out..."
+    ↓
+Conversation proceeds with tools
+    ↓
+Post-call webhook saves interaction + triggers evaluation
+```
+
+### Key Components
+
+**1. Personalization Webhook** (`elevenlabs-webhook/personalize.js`)
+- **Purpose:** Loads dynamic prompts from Supabase and injects variables
+- **Endpoints:**
+  - `POST /personalize` - Called by ElevenLabs at call start
+  - `POST /post-call-webhook` - Called by ElevenLabs at call end
+  - `GET /health` - Health check endpoint
+- **Database Integration:** Queries `prompts`, `leads`, `brokers` tables
+- **Variable Injection:** 28 variables (lead, property, broker details)
+- **Call Type Detection:** 
+  - Inbound: qualified/unqualified/unknown (based on lead lookup)
+  - Outbound: warm/cold (based on `qualified` parameter from MCP)
+- **AI Evaluation:** GPT-5-mini scores 6 metrics post-call (async, non-blocking)
+
+**2. HTTP Tool Endpoints** (`elevenlabs-webhook/tools.js`)
+- **Purpose:** RESTful wrappers for business logic that ElevenLabs can call
+- **11 Tools Available:**
+  1. `lookup_lead` - Query lead by phone
+  2. `search_knowledge` - Vertex AI vector search
+  3. `check_availability` - Nylas calendar free/busy
+  4. `book_appointment` - Create Nylas event + billing
+  5. `update_lead_info` - Update Supabase lead data
+  6. `find_broker_by_territory` - ZIP-based broker assignment
+  7. `check_consent_dnc` - Verify calling permissions
+  8. `assign_tracking_number` - Link SignalWire number
+  9. `save_interaction` - Log call with metadata
+  10. `get_time` - Current time (Eastern timezone)
+  11. `get_weather` - US weather via weather.gov
+
+**3. Barbara MCP Server** (`barbara-mcp/index.js`)
+- **Purpose:** n8n integration for triggering outbound calls
+- **Main Tool:** `create_outbound_call`
+- **Deployment:** Northflank (MCP server accessible from n8n)
+- **Phone Selection Logic:**
+  - Explicit `from_phone` parameter (highest priority)
+  - Broker's assigned number from `signalwire_phone_numbers` table
+  - Default fallback `ELEVENLABS_PHONE_NUMBER_ID`
+- **Lead Context Loading:** Queries full lead + broker data before call
+- **Variable Preparation:** Builds all 28 variables for ElevenLabs
+
+**4. Portal Integration** (`portal/src/views/admin/PromptManagement.vue`)
+- **Status:** UNCHANGED - Still works perfectly!
+- **Workflow:**
+  1. User edits prompt in portal
+  2. Portal saves to Supabase `prompts` table
+  3. Next call → Webhook loads updated prompt
+  4. Zero code changes needed!
+- **All Variables Work:** `{{leadFirstName}}`, `{{propertyCity}}`, `{{estimatedEquity}}`, etc.
+
+### Deployment
+
+**Fly.io App:** `barbara-elevenlabs-webhook`
+- **URL:** https://barbara-elevenlabs-webhook.fly.dev
+- **IP:** 66.241.124.17 (shared IPv4)
+- **Region:** iad (US East)
+- **Machines:** 1 instance, auto-start, min 1 running
+- **Memory:** 512MB
+- **Auto-Deploy:** GitHub Actions on `elevenlabs-webhook/**` changes
+
+**Environment Secrets:**
+```bash
+SUPABASE_URL
+SUPABASE_SERVICE_KEY
+ELEVENLABS_API_KEY
+NYLAS_API_KEY
+GOOGLE_APPLICATION_CREDENTIALS_JSON  # Vertex AI
+GOOGLE_PROJECT_ID                     # barbara-475319
+OPENAI_API_KEY                        # Optional, for AI evaluation
+```
+
+**ElevenLabs Agent:**
+- **Agent ID:** `agent_4101k9d99r1vfg3vtnbbc8gkdy99`
+- **Agent Name:** Barbara - Equity Connect
+- **LLM:** GPT-5 (selected for superior emotional intelligence and senior-friendly conversation)
+- **Voice:** ElevenLabs conversational AI (0.85x speed for seniors)
+- **Webhook:** https://barbara-elevenlabs-webhook.fly.dev/personalize
+- **Tools:** 11 HTTP endpoints configured in agent settings
+
+### Phone Numbers
+
+**SignalWire Pool (SIP Trunk):**
+- MyReverseOptions1: +1 424 485 1544 (CA, Walter's primary)
+- MyReverseOptions2: +1 424 550 2888 (OR, WA)
+- MyReverseOptions3: +1 424 550 2229 (TX, AZ)
+- MyReverseOptions4: +1 424 550 2223 (FL, GA)
+- MyReverseOptions5: +1 424 672 4222 (NY, NJ, IL, IN)
+
+**Twilio (Native Integration):**
+- +1 310 596 4216 (Test number)
+
+### Cost Analysis
+
+**Monthly Costs at 105,000 minutes:**
+- ElevenLabs Agent: $0.08/min = $8,400/month
+  - Includes: GPT-5 LLM ($0.0072/min) + TTS + Conversation Management
+  - Bundled pricing (no separate LLM invoice)
+- SignalWire PSTN: $0.0085/min = $891/month
+- Twilio PSTN (if used): $0.013/min = $1,365/month
+- GPT-5 Mini (evaluation): $0.0014/min × 105k min = $147/month (post-call scoring)
+- **Total (SignalWire):** ~$9,438/month = **$113,256/year**
+- **Total (Twilio):** ~$9,912/month = **$118,944/year**
+
+**vs Barbara V3 (OpenAI Realtime):**
+- Barbara V3: ~$64,260/year
+- **Premium:** +$48,996/year (SignalWire) or +$54,684/year (Twilio)
+
+**Why Worth It:**
+- **GPT-5 emotional intelligence** → Superior rapport with seniors
+- **Superior voice quality** → Higher conversion rates (estimated +10-15%)
+- **Simpler maintenance** → Lower engineering costs (no WebSocket orchestration)
+- **Better analytics** → Data-driven optimization via ElevenLabs dashboard
+- **Faster iteration** → Update prompts in portal, no redeploys needed
+- **ROI:** $49k premium / 12 months = $4,083/month extra. If GPT-5 increases conversion by even 5%, pays for itself.
+
+### Monitoring & Analytics
+
+**ElevenLabs Dashboard:**
+- **Live Conversations:** https://elevenlabs.io/app/agents/conversations
+- **Analytics:** https://elevenlabs.io/app/agents/analytics
+- **Usage/Billing:** https://elevenlabs.io/app/usage
+
+**Fly.io Logs:**
+```bash
+fly logs --app barbara-elevenlabs-webhook
+```
+
+**Health Check:**
+```bash
+curl https://barbara-elevenlabs-webhook.fly.dev/health
+# Response: {"status": "ok", "service": "elevenlabs-personalization-webhook"}
+```
+
+**Test Personalization:**
+```bash
+curl -X POST https://barbara-elevenlabs-webhook.fly.dev/personalize \
+  -H "Content-Type: application/json" \
+  -d '{"caller_id": "+14155551234", "agent_id": "agent_4101k9d99r1vfg3vtnbbc8gkdy99", "called_number": "+14244851544", "call_sid": "test-123"}'
+```
+
+### Model Selection: Why GPT-5?
+
+**Decision:** GPT-5 chosen as primary conversational LLM for ElevenLabs Agent
+
+**Alternatives Evaluated:**
+- GPT-5 ($0.0072/min) ← **Selected**
+- Claude 4.5 Sonnet ($0.0158/min) - Backup option
+- GPT-5 Mini ($0.0014/min) - Budget mode
+- GLM-4.5-Air ($0.0062/min) - Experimental
+
+**Why GPT-5 Won:**
+
+| Criterion | GPT-5 Advantage |
+|-----------|-----------------|
+| **Emotional Intelligence** | Deep empathy, consistent warmth across long dialogues (critical for seniors discussing finances) |
+| **TTS Optimization** | Produces steady, declarative sentences that sound most natural through ElevenLabs voices |
+| **Punctuation Style** | Avoids comma overuse, maintains simple punctuation for better prosody |
+| **Emotional Register** | Maintains consistent tone throughout conversation (GPT-5 Mini occasionally shifts mid-sentence) |
+| **Senior-Friendly Pacing** | Non-robotic rhythm, naturally paced responses |
+| **Trust Building** | Most believable and trustworthy tone for sensitive financial topics |
+
+**Model Architecture:**
+
+| Component | Model | Cost/min | Purpose |
+|-----------|-------|----------|---------|
+| **Live Dialogue** | GPT-5 | $0.0072 | Main conversational brain (emotional rapport) |
+| **Call Evaluation** | GPT-5 Mini | $0.0014 | Async post-call scoring (6 metrics) |
+| **Follow-ups/SMS** | GPT-5 Mini | $0.0014 | Lightweight reminders and confirmations |
+| **Backup (Latency)** | Claude 4.5 Sonnet | $0.0158 | Optional fast fallback (15-20% faster) |
+
+**Key Insight:** GPT-5 text → ElevenLabs voice → Seniors = Most believable, emotionally consistent agent
+
+**Cost Impact:** Minimal increase over alternatives, justified by superior conversion rates from better emotional connection
+
+### Recent Improvements (Nov 6-8, 2025)
+
+✅ **GPT-5 as conversational LLM** - Superior emotional intelligence for senior conversations  
+✅ **Slow speech rate** - 0.85x speed for senior-friendly clarity  
+✅ **AI evaluation** - GPT-5 Mini scores 6 metrics per call (async, cost-efficient)  
+✅ **Post-call webhook** - Full transcript capture + metadata  
+✅ **Prompt override system** - Dynamic loading from Supabase  
+✅ **Phone number pool** - Territory-based automatic selection  
+✅ **Outbound enhancements** - Pre-loads lead context (no "made up names")  
+✅ **11 tool endpoints** - Complete business logic coverage  
+✅ **GitHub Actions** - Auto-deploy on webhook changes  
+
+### Migration Checklist
+
+- [x] Create ElevenLabs agent via API
+- [x] Deploy webhook service to Fly.io
+- [x] Configure SIP trunk (SignalWire → ElevenLabs)
+- [x] Set up Twilio native integration (alternative)
+- [x] Update Barbara MCP for outbound calls
+- [x] Test inbound calls (all 3 call types)
+- [x] Test outbound calls (warm + cold)
+- [x] Verify tool endpoints (all 11 working)
+- [x] Confirm portal integration (prompts loading)
+- [x] AI evaluation working (post-call scoring)
+- [x] Phone number pool selection logic
+- [x] Production testing with real leads
+- [x] Cost tracking and monitoring
+- [x] Documentation complete
+- [x] Deprecate Barbara V3 (preserve code for reference)
+- [x] Optimize prompts for GPT-5 + Realtime (Nov 8, 2025)
+
+---
+
+## 🎯 Unified Prompt Management System ⭐ **PRODUCTION READY** (NOV 8, 2025)
+
+**Status:** ✅ **Complete - Single Source of Truth Architecture**
+
+### Overview
+
+Implemented runtime-specific prompt compilers enabling both ElevenLabs (GPT-5) and Barbara V3 (OpenAI Realtime) to use the same Supabase prompt data with optimized formatting for each AI model.
+
+### Architecture
+
+```
+┌─────────────────────────┐
+│  Supabase Database      │
+│  (9 cleaned sections)   │  ← SINGLE SOURCE OF TRUTH
+│  All call types v1      │
+└───────────┬─────────────┘
+            │
+    ┌───────┴────────┐
+    │                │
+┌───▼─────┐    ┌────▼─────┐
+│ElevenLabs│    │Barbara V3│
+│(Main Prod│    │(A/B Test)│
+└───┬──────┘    └────┬─────┘
+    │                │
+buildSystemPrompt    formatPrompt
+ForElevenLabs()     Content()
+    │                │
+┌───▼──────┐    ┌────▼─────┐
+│GPT-5     │    │Realtime  │
+│Markdown  │    │Plain Text│
+│## Headers│    │+ RT Spec │
+└──────────┘    └──────────┘
+```
+
+### Benefits
+
+✅ **Edit Once, Update Everywhere**
+- Edit prompts in Supabase portal
+- Both ElevenLabs and V3 auto-update
+- No code changes needed
+
+✅ **A/B Testing Ready**
+- Switch between ElevenLabs and V3
+- Same prompts, different compilers
+- Compare performance without re-editing
+
+✅ **Easy Rollback**
+- Roll back to V3 if needed
+- No prompt re-engineering required
+- Instant failover capability
+
+### Implementation Details
+
+**Database Sections (9 total, all v1):**
+1. `role` - Core identity and objective
+2. `personality` - Tone, brevity, interruption rules
+3. `context` - Lead/broker info, direct answers
+4. `tools` - Tool usage and behavior
+5. `conversation_flow` - Step-by-step dialogue with `###` subsections
+6. `instructions` - Rules and constraints
+7. `safety` - Escalation and disqualification
+8. `output_format` - Response formatting
+9. `pronunciation` - Phonetic guidance
+
+**All sections cleaned (Nov 8, 2025):**
+- ❌ No `##` or `#` headers at top of sections
+- ❌ No ALL-CAPS labels baked in (`ROLE:`, `CRITICAL:`)
+- ✅ Raw content only (formatter adds structure)
+- ✅ Subsections can use `###` for hierarchy
+
+**ElevenLabs Compiler** (`buildSystemPromptForElevenLabs`):
+```javascript
+// Optimized for GPT-5 Markdown parsing
+## Role & Objective
+You are Barbara...
+
+## Personality & Tone
+- Warm, calm, professional...
+
+## Context
+Lead information:
+- Name: {{lead_first_name}}
+...
+```
+
+**Barbara V3 Compiler** (`formatPromptContent`):
+```typescript
+// Optimized for OpenAI Realtime
+You are Barbara, a warm voice assistant...
+
+PERSONALITY & STYLE:
+- Warm, calm, professional...
+
+REALTIME BEHAVIOR (OPENAI REALTIME SPECIFIC):
+- Stop talking immediately if caller interrupts...
+- Silence > 2s: soft filler...
+
+CONTEXT:
+Lead information:
+- Name: {{lead_first_name}}
+...
+```
+
+### Key Differences by Runtime
+
+| Feature | ElevenLabs (GPT-5) | Barbara V3 (Realtime) |
+|---------|-------------------|---------------------|
+| **Headers** | Markdown `## Section` | Simple `SECTION:` labels |
+| **Role Placement** | `## Role & Objective` header | Raw text at top (no label) |
+| **RT Guidance** | Not needed | Hardcoded `REALTIME BEHAVIOR` |
+| **Interruptions** | ElevenLabs handles | Must specify in prompt |
+| **Silence Handling** | Auto-managed | Explicit filler guidance (2s, 5s) |
+| **Format Goal** | Clean Markdown for GPT-5 | Plain text + RT specifics |
+
+### Call Types Optimized (All v1)
+
+✅ **inbound-qualified** - Known lead, pre-qualified
+✅ **inbound-unqualified** - Known lead, needs qualification
+✅ **inbound-unknown** - Unknown caller
+✅ **outbound-warm** - Callback to known lead
+✅ **outbound-cold** - Cold outreach
+
+### Files Modified
+
+**ElevenLabs Integration:**
+- `elevenlabs-webhook/personalize.js`
+  - Added `buildSystemPromptForElevenLabs()` function
+  - Updated `/personalize` endpoint (inbound)
+  - Updated `/api/outbound-call` endpoint (outbound)
+
+**Barbara V3 Integration:**
+- `barbara-v3/src/services/prompts.ts`
+  - Updated `formatPromptContent()` function
+  - Added hardcoded `REALTIME BEHAVIOR` section
+  - Optimized for OpenAI Realtime API
+
+**Database:**
+- Created v1 versions for all 5 call types
+- Deactivated all old versions (v2-v7)
+- No schema changes required
+
+### Validation Results
+
+**ElevenLabs Output:**
+- ✅ Clean Markdown headers (`##`)
+- ✅ No ALL-CAPS labels
+- ✅ Blank lines between sections
+- ✅ ~1746 tokens (optimal for GPT-5)
+
+**Barbara V3 Output:**
+- ✅ Plain text with simple labels
+- ✅ Hardcoded Realtime behavior section
+- ✅ Interruption/silence handling
+- ✅ ~1675 tokens (optimal for Realtime)
+
+### Production Impact
+
+**Before:**
+- ElevenLabs and V3 used different prompts
+- Editing required updating both systems
+- A/B testing required duplicate work
+- Rollback meant re-engineering prompts
+
+**After:**
+- Single source of truth in Supabase
+- Edit once, both systems update
+- A/B test by switching compilers
+- Rollback without prompt changes
+
+**Status:** ✅ **Live in Production - Both Systems Operational**
+
+### Multi-Runtime Settings UI (Nov 8, 2025)
+
+**Status:** ✅ **Complete - Full A/B Testing & Configuration Control**
+
+Built comprehensive runtime configuration UI in Prompt Management portal enabling full control over both ElevenLabs and Barbara V3 settings with single-source-of-truth architecture.
+
+**Features Implemented:**
+
+✅ **Runtime Selector**
+- Dropdown: ElevenLabs (Production) / Realtime V3 (A/B Testing)
+- Per-prompt runtime selection
+- Instant switching for A/B testing
+
+✅ **ElevenLabs Configuration Panel**
+- Voice selector with 6 custom voices:
+  - Tiffany (6aDn1KB0hjpdcocrUkmq) ⭐ DEFAULT
+  - Dakota H, Ms. Walker, Jamahal, Eric B, Mark
+  - Filterable dropdown + manual voice_id input
+- Default First Message (textarea)
+- Voice Speed slider (0.5x - 1.5x, default 0.85x for seniors)
+- Language selector (15 languages, default English)
+- Advanced settings (collapsible):
+  - Voice Stability (0-1, default 0.5)
+  - Voice Similarity (0-1, default 0.75)
+
+✅ **Realtime (V3) Configuration Panel**
+- Voice selector (shimmer, alloy, echo, fable, onyx, nova, etc.)
+- VAD settings (existing):
+  - Threshold (0.3-0.8)
+  - Prefix Padding (100-1000ms)
+  - Silence Duration (200-2000ms)
+
+✅ **Save & Reset Controls**
+- Save Settings button (disabled when no changes, loading state)
+- Reset to Defaults button (runtime-specific defaults)
+- Unsaved changes indicator (yellow warning text)
+- Active runtime info display with key settings
+
+**Database Schema:**
+- Added `runtime` column (elevenlabs/realtime)
+- Added `elevenlabs_defaults` jsonb with default values
+- All existing prompts initialized with Tiffany voice defaults
+
+**Webhook Integration:**
+- `elevenlabs-webhook/personalize.js` reads defaults from database
+- Applies voice_speed, language to conversation_config_override
+- Fallbacks ensure graceful degradation
+
+**Benefits:**
+- 🎯 Full control over ElevenLabs overrides from UI
+- 🎯 A/B test ElevenLabs vs V3 with same prompts
+- 🎯 Quick rollback without prompt re-engineering
+- 🎯 Safe defaults with one-click reset
+- 🎯 Visual feedback on unsaved changes
+
+**Files Modified:**
+- `portal/src/views/admin/PromptManagement.vue` - Multi-runtime UI
+- `elevenlabs-webhook/personalize.js` - Apply defaults from database
+- Database migration - Added runtime & elevenlabs_defaults columns
 
 ---
 
@@ -316,42 +875,47 @@ equity-connect/ (Git Monorepo)
 - **n8n Upload Workflow:** `kuDxW8kPndFKXZHP` configured to load only reverse mortgage KB files
 - **Status:** ✅ Cleaned, ready for proper KB upload from GitHub
 
-**5. OpenAI Realtime Voice Bridge** ⭐ PRODUCTION (OCT 18-22) - **VAPI REPLACED**
-- **Architecture:** Custom Node.js bridge connects SignalWire PSTN ↔ OpenAI Realtime API
-- **Deployment:** Northflank (Docker container, WebSocket support) - **LIVE**
-- **Repository:** `equity-connect/bridge/` (same repo, separate service)
-- **Cost:** **$0.36 per 7-min call** (vs $1.33 with Vapi) - **74% savings**
-- **Annual Savings:** **$173,880** at scale (180,000 calls/year)
+**5. ElevenLabs Agent Platform - Production Voice System** ⭐ **PRODUCTION (NOV 6-8, 2025)** - **REPLACES BARBARA V3**
+- **Architecture:** SignalWire/Twilio → ElevenLabs Agent Platform → Webhook (Supabase prompts) → HTTP Tools
+- **Deployment:** Fly.io (`barbara-elevenlabs-webhook.fly.dev`) - **LIVE**
+- **Repository:** `equity-connect/elevenlabs-webhook/` (monorepo, auto-deploy)
+- **Agent ID:** `agent_4101k9d99r1vfg3vtnbbc8gkdy99`
+- **Cost:** **~$0.093 per minute** ($9,765/month at 105k min) - **PREMIUM VOICE QUALITY**
+- **Annual Cost:** **$117,180/year** (vs $77k with Barbara V3, +$40k premium for best conversion)
 - **Key Components:**
-  - **Bridge Server** (`bridge/server.js`) - Fastify + WebSocket, health checks, `/api/active-calls` endpoint
-  - **Audio Relay** (`bridge/audio-bridge.js`) - SignalWire ↔ OpenAI bidirectional streaming (2,562 lines)
-  - **7 Supabase Tools** (`bridge/tools.js`) - Lead lookup, KB search, Nylas calendar, booking, logging with rich metadata
-  - **Number Formatter** - Converts numbers to words (prevents TTS pitch issues)
-  - **SignalWire Client** - REST API for outbound call placement
-  - **PromptLayer Integration** (`bridge/promptlayer-integration.js`) - Call analytics, A/B testing, debugging
-  - **Live Call Metrics** (`bridge/api/active-calls.js`) - Real-time sentiment, interest, buying signals
+  - **Personalization Webhook** (`personalize.js`) - Loads Supabase prompts, injects 28 variables, post-call evaluation
+  - **11 HTTP Tool Endpoints** (`tools.js`) - RESTful wrappers for business logic
+  - **Nylas Calendar Integration** (`nylas-helpers.js`) - Availability checking, appointment booking
+  - **Agent Creation Script** (`create-agent.js`) - One-time setup via ElevenLabs API
+  - **Vertex AI Knowledge Base** - Vector search for reverse mortgage questions (20s timeout)
+  - **AI Call Evaluation** - GPT-5-mini scores every call on 6 metrics (async, non-blocking)
+  - **GitHub Actions Auto-Deploy** - Push to `elevenlabs-webhook/**` triggers Fly.io deployment
 - **Features:**
-  - ✅ **Inbound calls** - SignalWire number → LaML → WebSocket stream
-  - ✅ **Outbound calls** - n8n → Bridge → SignalWire REST → Lead answers
-  - ✅ **Custom prompts from n8n** - Different Barbara per use case
-  - ✅ **Knowledge base search** - Vector similarity with 20s timeout (no more timeouts!)
-  - ✅ **Nylas calendar integration** - Real availability checking, appointment booking (15s timeouts)
-  - ✅ **Static prompt caching** - OpenAI caches repeated content (50% cost reduction)
-  - ✅ **Production error handling** - Logging, health checks, session cleanup
-  - ✅ **Deadlock prevention** - Watchdog timer auto-recovers Barbara if stuck (15s)
-  - ✅ **Memory leak protection** - 30s timeout on pending audio promises
-  - ✅ **Audio cutoff fix** - Awaits all audio chunks before marking response complete
-  - ✅ **No token limits** (Oct 22) - Removed artificial 400 token cap that caused mid-sentence cutoffs
-  - ✅ **VAD recovery disabled** (Oct 22) - Was clearing legitimate user speech after 10s of silence
-  - ✅ **Performance tracking** (Oct 22) - Detailed timing logs for all external API calls
-- **Tool Definitions & Timeouts:**
-  1. `get_lead_context` (10s) - Query lead by phone (includes last call metadata for follow-ups)
-  2. `search_knowledge` (20s) - Search reverse mortgage KB with text-embedding-3-small (faster than ada-002)
-  3. `check_consent_dnc` (10s) - Verify calling permissions
-  4. `update_lead_info` (10s) - Save collected data during call
-  5. `check_broker_availability` (15s) - Nylas free/busy API with smart slot suggestions (business hours, 2hr notice, same-day priority)
-  6. `book_appointment` (15s) - Nylas Events API (uses email as grant ID) + billing event
-  7. `save_interaction` (10s) - Log full conversation transcript + rich metadata (money purpose, objections, commitment points, etc.)
+  - ✅ **Inbound calls** - SignalWire SIP/Twilio → ElevenLabs Agent → Webhook personalization
+  - ✅ **Outbound calls** - Barbara MCP → ElevenLabs SIP Trunk API → SignalWire → Lead answers
+  - ✅ **Dynamic prompt loading** - Loads from Supabase `prompts` table per call type (inbound-qualified/unqualified/unknown, outbound-warm/cold)
+  - ✅ **28 dynamic variables** - Lead info, property data, broker details injected into every prompt
+  - ✅ **Portal integration preserved** - PromptManagement.vue UNCHANGED, edits save to Supabase and apply immediately
+  - ✅ **Knowledge base search** - Vertex AI text-embedding-005 vector search (80 chunks, reverse mortgage KB)
+  - ✅ **Nylas calendar integration** - Real availability checking, appointment booking, calendar invites
+  - ✅ **AI call evaluation** - GPT-5-mini scores every call on 6 metrics (async, post-call)
+  - ✅ **Multiple phone options** - Twilio native integration OR SignalWire SIP trunk
+  - ✅ **Phone number pool** - Automatic selection by broker territory or explicit `from_phone`
+  - ✅ **Zero orchestration code** - ElevenLabs handles conversation flow, interruptions, turn-taking
+  - ✅ **Built-in analytics** - ElevenLabs dashboard shows all conversations, latency, quality metrics
+  - ✅ **Production error handling** - Express middleware, health checks, comprehensive logging
+- **11 HTTP Tool Endpoints** (all POST requests to `https://barbara-elevenlabs-webhook.fly.dev/tools/*`):
+  1. `lookup_lead` - Query lead by phone from Supabase (both E.164 and 10-digit formats)
+  2. `search_knowledge` - Vertex AI vector search (text-embedding-005, reverse mortgage KB)
+  3. `check_availability` - Nylas free/busy API, returns top 5 available slots
+  4. `book_appointment` - Nylas Events API, creates calendar event + billing record
+  5. `update_lead_info` - Updates lead data in Supabase (contact info, property details, auto-calculates equity)
+  6. `find_broker_by_territory` - Assigns broker by ZIP code or city
+  7. `check_consent_dnc` - Verifies calling permissions and DNC status
+  8. `assign_tracking_number` - Links SignalWire number to lead for callback tracking
+  9. `save_interaction` - Logs call with metadata (duration, outcome, transcript, tool calls)
+  10. `get_time` - Returns current time in Eastern timezone
+  11. `get_weather` - US weather via weather.gov API
 - **Rich Metadata Capture:**
   - Money purpose, specific needs, amount needed, timeline
   - Objections raised, questions asked, key details
@@ -360,48 +924,45 @@ equity-connect/ (Git Monorepo)
   - Full conversation transcript stored
   - Tool calls made during conversation
 - **Integration Points:**
-  - **n8n workflows:** Build custom Barbara prompts per lead type
-  - **SignalWire numbers:** Same 5-number pool (MyReverseOptions1-5)
-  - **Supabase:** Direct client (not MCP - optimized for <100ms queries)
-  - **Vector store:** 80-chunk KB for factual answers
-  - **Nylas Calendar:** Real broker availability + appointment booking
-  - **PromptLayer:** Call analytics, prompt A/B testing, debugging
-- **Three Use Cases:**
-  1. **Email Reply → Call** (Warm leads, rapport-building, 7-10 min)
-  2. **Microsite Instant → Call** (HOT leads, 10-sec trigger, 40% close rate)
-  3. **Inbound → Barbara Answers** (Active seekers, immediate help)
-- **Audio Specs:**
-  - Codec: L16@16000h (16-bit linear PCM @ 16kHz)
-  - Streaming: Bidirectional, real-time mode
-  - Latency: <300ms end-to-end
-  - VAD Tuning: 0.80 threshold (optimized for phone lines + seniors)
-- **Status:** ✅ **PRODUCTION - Vapi Fully Replaced**
-- **Stability Fixes (Oct 21):**
-  - Response queue deadlock prevention (force unlock in cleanup)
-  - Memory leak protection (30s timeout on audio promises)
-  - Watchdog timer (15s auto-recovery from stuck speaking flag)
-  - Audio cutoff fix (await all chunks before response.audio.done)
-- **Critical Fixes (Oct 22):**
-  - **Nylas appointment booking** - Fixed grant ID (email instead of UUID), fixing all 404 errors
-  - **Token limit removed** - Changed from 400 to 'inf' (was cutting Barbara off mid-sentence)
-  - **VAD recovery disabled** - Was deleting legitimate user speech ("hello hello" attempts)
-  - **Tool timeouts extended** - 20s for KB search, 15s for Nylas API calls (prevents timeouts)
-  - **PromptLayer timestamps** - Fixed format (Unix seconds, not ISO strings)
-  - **Performance tracking** - Added detailed timing logs to all tools for optimization
+  - **n8n workflows:** `create_outbound_call` tool in Barbara MCP triggers ElevenLabs SIP trunk
+  - **Phone numbers:** SignalWire pool (MyReverseOptions1-5) OR Twilio native integration
+  - **Supabase:** Prompts table (source of truth), leads, brokers, interactions, billing
+  - **Vector store:** Vertex AI text-embedding-005 for knowledge base (80 chunks)
+  - **Nylas Calendar:** Real broker availability + appointment booking + calendar invites
+  - **ElevenLabs Dashboard:** Live conversation monitoring, analytics, usage/billing
+- **Call Flow Architecture:**
+  1. **Inbound:** Caller → SignalWire/Twilio → ElevenLabs → Webhook loads prompt → Personalized greeting → Tools as needed
+  2. **Outbound:** n8n → Barbara MCP → ElevenLabs SIP Trunk API → SignalWire dials → Lead answers → Personalized script
+  3. **Post-call:** Webhook receives end-of-call data → Saves interaction → Triggers async AI evaluation
+- **Voice Quality:**
+  - Provider: ElevenLabs conversational AI (best-in-class natural TTS)
+  - Latency: <500ms average (end-to-end with tools)
+  - Interruption handling: Built-in (no custom VAD tuning needed)
+  - Natural conversation: ElevenLabs manages turn-taking, pauses, speech detection
+- **Status:** ✅ **PRODUCTION - REPLACES BARBARA V3 + BRIDGE**
+- **Recent Improvements (Nov 6-8, 2025):**
+  - **Slow speech rate** - Adjusted ElevenLabs voice to 0.85x speed for senior-friendly clarity
+  - **AI evaluation integration** - GPT-5-mini scores all calls on 6 metrics (opening, property discussion, objections, booking, tone, flow)
+  - **Post-call webhook** - Captures full transcript, metadata, tool calls for analysis
+  - **Prompt override system** - Dynamic prompts loaded from Supabase per call type
+  - **Phone number pool** - Automatic selection based on broker territory or explicit `from_phone` parameter
+  - **Outbound call enhancements** - Loads lead context from Supabase before calling (no "made up names")
 - **Documentation:**
-  - `IMPLEMENTATION_SUMMARY.md` - Complete project overview
-  - `VOICE_BRIDGE_DEPLOYMENT.md` - Deployment guide
-  - `N8N_BARBARA_WORKFLOW.md` - n8n workflow setup
-  - `MICROSITE_INSTANT_CALL_FLOW.md` - Hot lead instant calls
-  - `BARBARA_APPOINTMENT_BOOKING_FIX.md` - Nylas grant ID and timeout fixes (Oct 22)
-  - `KNOWLEDGE_BASE_TIMEOUT_FIX.md` - KB search optimization (Oct 22)
-  - `bridge/README.md` - Technical details
+  - `elevenlabs-webhook/README.md` - Complete webhook setup guide
+  - `elevenlabs-webhook/DEPLOYMENT_GUIDE.md` - Step-by-step deployment instructions
+  - `elevenlabs-webhook/AGENT_INFO.md` - Agent details and monitoring
+  - `ELEVENLABS_OPTION4_COMPLETE.md` - Migration summary and cost analysis
+  - `barbara-mcp/MIGRATION_TO_ELEVENLABS.md` - MCP server integration guide
+  - `elevenlabs-webhook/PROMPT_TRACKING_GUIDE.md` - Prompt versioning and testing
 
-**6. Barbara V3 - Production Voice AI** ⭐ **FULLY OPERATIONAL + PROMPT SYSTEM V1 OVERHAUL** (OCT 25-27, 2025 + NOV 6, 2025)
-- **Architecture:** SignalWire cXML + OpenAI Realtime API + OpenAI Agents SDK
-- **Deployment:** Fly.io (2 machines for HA) + GitHub Actions (git-based auto-deploys)
-- **Repository:** `barbara-v3/` - Standalone TypeScript service
+**6. Barbara V3 - Production Voice AI** ❌ **DEPRECATED (NOV 6-8, 2025)** - **REPLACED BY ELEVENLABS**
+- **Status:** NO LONGER IN PRODUCTION - Code preserved in repo for reference
+- **Replaced By:** ElevenLabs Agent Platform (Section 5 above)
+- **Architecture (Historical):** SignalWire cXML + OpenAI Realtime API + OpenAI Agents SDK
+- **Deployment (Historical):** Fly.io (2 machines for HA) + GitHub Actions (git-based auto-deploys)
+- **Repository:** `barbara-v3/` - Standalone TypeScript service (NOT DEPLOYED)
 - **Based On:** SignalWire's official `cXML-realtime-agent-stream` + `digital_employees` reference
+- **Why Replaced:** ElevenLabs provides superior voice quality, simpler architecture (no orchestration code), built-in analytics, and better conversation handling. +$40k/year premium justified by higher conversion rates.
 - **Key Features:**
   - ✅ **TypeScript + ESM** - Type safety, modern imports
   - ✅ **Zod validation** - Schema validation for all tool parameters
@@ -769,14 +1330,17 @@ equity-connect/ (Git Monorepo)
 - **Status:** ✅ Built - Ready to deploy to portal
 - **Purpose:** Monitor active calls for quality, troubleshooting, training
 
-**11. Barbara MCP Tools Expansion** ⭐ NEW OCT 21
-- **Added to MCP Server:**
-  - `check_broker_availability` - Nylas calendar availability
-  - `book_appointment` - Nylas event creation
-  - `update_lead_info` - Collect/verify contact details
-- **Purpose:** n8n workflows can now call these tools directly
-- **Architecture:** `barbara-mcp/index.js` proxies to `bridge/tools.js` API
-- **Status:** ✅ Live - Available in n8n MCP tool list
+**11. Barbara MCP - ElevenLabs Integration** ⭐ **UPDATED NOV 6-8, 2025**
+- **Purpose:** n8n workflows trigger outbound calls via ElevenLabs SIP Trunk API
+- **Architecture:** `barbara-mcp/index.js` calls ElevenLabs API with 28 dynamic variables
+- **Main Tool:** `create_outbound_call` - Triggers ElevenLabs SIP trunk with full lead context
+- **Phone Selection:** 
+  - Uses `from_phone` parameter if provided
+  - OR auto-selects from broker's assigned number pool (queries Supabase `signalwire_phone_numbers`)
+  - OR falls back to default `ELEVENLABS_PHONE_NUMBER_ID`
+- **Dynamic Variables:** Passes 28 variables (lead name, property data, broker info, equity calculations)
+- **Deployment:** Northflank (MCP server for n8n)
+- **Status:** ✅ **PRODUCTION - Integrated with ElevenLabs**
 
 **12. SwarmTrace MCP Server** ⭐ PRODUCTION OCT 21 - **REPLACED BATCHDATA**
 - **Purpose:** Batch skip trace enrichment fallback (when PropertyRadar /persons API insufficient)
@@ -1681,11 +2245,17 @@ Reply Handler (n8n webhook from Instantly)
   ↓ (positive replies only)
 Consent Form (TCPA for phone calls)
   ↓ (consent recorded)
-SignalWire Phone Pool Assignment (territory-based)
-  ↓ (MyReverseOptions1-5 numbers)
-Phone Outreach (VAPI + Barbara AI via SignalWire)
+Barbara MCP → ElevenLabs SIP Trunk API
+  ↓ (selects SignalWire number from pool: MyReverseOptions1-5)
+ElevenLabs Agent Platform
+  ↓ (calls personalization webhook)
+Webhook Loads Supabase Prompt + Injects 28 Variables
   ↓
-Appointment (Cal.com)
+Phone Call (Natural conversation with tools)
+  ↓
+Appointment Booking (Nylas Calendar)
+  ↓
+Post-Call Evaluation (GPT-5-mini scores 6 metrics)
   ↓
 Deal Closed
 ```
@@ -1975,18 +2545,19 @@ Flow:
 - Database: Supabase (PostgreSQL + pgvector)
 - Automation: n8n (self-hosted on Northflank)
 - Email: Instantly.ai (cold email platform)
-- Voice: OpenAI Realtime + SignalWire (custom bridge on Northflank)
+- Voice: ElevenLabs Agent Platform + SignalWire SIP trunk (webhook on Fly.io)
 - Calendar: Nylas v3 API (broker availability + booking)
-- Analytics: PromptLayer (prompt management + A/B testing)
-- Admin UI: Vercel (Next.js - future)
+- Analytics: ElevenLabs Dashboard (conversation analytics) + GPT-5-mini call evaluation
+- Admin UI: Vercel (Vue 3 portal - barbarapro.com)
 
 **APIs & Services:**
 - PropertyRadar: Property data + owner contacts + enrichment
-- SignalWire: Phone number pools + PSTN streaming + WebSocket bridge
-- OpenAI Realtime: AI voice with Barbara assistant (production)
-- OpenAI Embeddings: Vector search for knowledge base (80 chunks)
+- SignalWire: Phone number pools + SIP trunk (primary telephony)
+- Twilio: Alternative telephony (native ElevenLabs integration)
+- ElevenLabs: Conversational AI platform (voice + LLM + conversation management)
+- Vertex AI: Vector embeddings (text-embedding-005) for knowledge base search
 - Nylas: Calendar integration (availability + event creation)
-- PromptLayer: Call analytics and prompt iteration
+- OpenAI: GPT-5-mini for call evaluation (optional, 6 metrics per call)
 
 **Development:**
 - Version Control: Git

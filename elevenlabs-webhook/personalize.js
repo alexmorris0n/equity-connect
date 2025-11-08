@@ -82,7 +82,7 @@ async function generateEmbedding(question) {
  * AI Call Evaluation (async - runs after webhook responds)
  * Uses GPT-5-mini to score call quality on 6 metrics
  */
-async function evaluateCallAsync(interactionId, transcript, callType) {
+async function evaluateCallAsync(interactionId, transcript, callType, promptVersionNumber = null) {
   try {
     // Skip if OpenAI is not configured
     if (!openai) {
@@ -185,6 +185,11 @@ Return your evaluation as a JSON object with this exact structure:
       throw new Error('Invalid evaluation result structure');
     }
     
+    // Build prompt_version string if we have the version number
+    const promptVersion = promptVersionNumber 
+      ? `${callType}-v${promptVersionNumber}` 
+      : null;
+    
     // Save to call_evaluations table
     const { error: evalError } = await supabase
       .from('call_evaluations')
@@ -197,7 +202,8 @@ Return your evaluation as a JSON object with this exact structure:
         tone_consistency: parsed.scores.tone_consistency,
         overall_call_flow: parsed.scores.overall_call_flow,
         analysis: parsed.analysis,
-        prompt_registry_id: callType,
+        prompt_version: promptVersion,  // ✅ Fixed: now saves "inbound-qualified-v7"
+        prompt_registry_id: callType,   // Keep for backwards compatibility
         evaluation_model: 'gpt-5-mini',
         evaluation_duration_ms: evaluationDuration,
         evaluated_at: new Date().toISOString()
@@ -213,6 +219,54 @@ Return your evaluation as a JSON object with this exact structure:
     console.error('❌ AI evaluation error:', err);
     throw err;
   }
+}
+
+/**
+ * Build system prompt for ElevenLabs in clean Markdown format
+ * Optimized for GPT-5 parsing with semantic headers
+ */
+function buildSystemPromptForElevenLabs(sections) {
+  const parts = [];
+  
+  // Order optimized for GPT-5: persona before flow
+  if (sections.role) {
+    parts.push(`## Role & Objective\n${sections.role}`);
+  }
+  
+  if (sections.personality) {
+    parts.push(`## Personality & Tone\n${sections.personality}`);
+  }
+  
+  if (sections.context) {
+    parts.push(`## Context\n${sections.context}`);
+  }
+  
+  if (sections.tools) {
+    parts.push(`## Tools\n${sections.tools}`);
+  }
+  
+  if (sections.conversation_flow) {
+    parts.push(`## Conversation Flow\n${sections.conversation_flow}`);
+  }
+  
+  if (sections.instructions) {
+    parts.push(`## Rules & Constraints\n${sections.instructions}`);
+  }
+  
+  if (sections.safety) {
+    parts.push(`## Safety & Escalation\n${sections.safety}`);
+  }
+  
+  if (sections.output_format) {
+    parts.push(`## Output Format\n${sections.output_format}`);
+  }
+  
+  if (sections.pronunciation) {
+    parts.push(`## Pronunciation Guide\n${sections.pronunciation}`);
+  }
+  
+  // Join with blank lines (no --- separators)
+  return parts.join('\n\n').trim();
 }
 
 /**
@@ -261,7 +315,7 @@ app.post('/personalize', async (req, res) => {
     // First get the prompt, then get its active version
     const { data: prompt, error: promptError } = await supabase
       .from('prompts')
-      .select('id, voice, vad_threshold, vad_prefix_padding_ms, vad_silence_duration_ms')
+      .select('id, voice, vad_threshold, vad_prefix_padding_ms, vad_silence_duration_ms, runtime, elevenlabs_defaults')
       .eq('call_type', callType)
       .eq('is_active', true)
       .single();
@@ -286,21 +340,9 @@ app.post('/personalize', async (req, res) => {
     
     console.log('✅ Loaded prompt for:', callType, 'version');
     
-    // 4. Assemble prompt from 8 sections (match Barbara V3 format with section headers)
+    // 4. Assemble prompt from 9 sections using GPT-5 optimized Markdown format
     const sections = version.content;
-    const sectionParts = [];
-    
-    if (sections.role) sectionParts.push(`ROLE:\n${sections.role}`);
-    if (sections.personality) sectionParts.push(`\nPERSONALITY & STYLE:\n${sections.personality}`);
-    if (sections.context) sectionParts.push(`\nCONTEXT:\n${sections.context}`);
-    if (sections.instructions) sectionParts.push(`\nCRITICAL INSTRUCTIONS:\n${sections.instructions}`);
-    if (sections.conversation_flow) sectionParts.push(`\nCONVERSATION FLOW:\n${sections.conversation_flow}`);
-    if (sections.tools) sectionParts.push(`\nTOOL USAGE:\n${sections.tools}`);
-    if (sections.safety) sectionParts.push(`\nSAFETY & ESCALATION:\n${sections.safety}`);
-    if (sections.output_format) sectionParts.push(`\nOUTPUT FORMAT:\n${sections.output_format}`);
-    if (sections.pronunciation) sectionParts.push(`\nPRONUNCIATION GUIDE:\n${sections.pronunciation}`);
-    
-    const assembledPrompt = sectionParts.join('\n\n').trim();
+    let assembledPrompt = buildSystemPromptForElevenLabs(sections);
     
     // 5. Inject variables (28 variables like Barbara V3 with defaults)
     let personalizedPrompt = assembledPrompt;
@@ -375,23 +417,25 @@ app.post('/personalize', async (req, res) => {
       );
     });
     
-    // 6. Build first message
+    // 6. Build first message (use defaults from portal or personalize)
+    const defaults = prompt.elevenlabs_defaults || {};
     const firstMessage = lead 
       ? `Hi ${lead.first_name}! This is Barbara with Equity Connect. How are you today?`
-      : "Hi! This is Barbara with Equity Connect. What brought you to call today?";
+      : (defaults.first_message || "Hi! This is Barbara with Equity Connect. What brought you to call today?");
     
     // 7. Return to ElevenLabs (per their docs structure)
     const response = {
       type: "conversation_initiation_client_data",
       conversation_config_override: {
         tts: {
-          speed: 0.85  // Slow down 15% for seniors (more comfortable pace)
+          speed: defaults.voice_speed || 0.85  // Use portal default or fallback
         },
         agent: {
           prompt: {
             prompt: personalizedPrompt  // FROM YOUR SUPABASE PORTAL!
           },
-          first_message: firstMessage
+          first_message: firstMessage,
+          language: defaults.agent_language || 'en'
         }
       },
       dynamic_variables: {
@@ -1199,7 +1243,46 @@ app.post('/post-call', async (req, res) => {
     const direction = callContext === 'outbound' ? 'outbound' : 'inbound';
     
     // Extract call_type for AI evaluation
-    const callType = data.conversation_initiation_client_data?.dynamic_variables?.call_type || null;
+    const callType = data.conversation_initiation_client_data?.dynamic_variables?.call_type || 'inbound-qualified';
+    
+    // Load prompt metadata for tracking
+    let promptMetadata = {
+      prompt_version_id: null,
+      prompt_version_number: null,
+      prompt_call_type: callType,
+      prompt_source: 'unknown'
+    };
+    
+    try {
+      // Get active prompt and version from Supabase
+      const { data: prompt } = await supabase
+        .from('prompts')
+        .select('id')
+        .eq('call_type', callType)
+        .eq('is_active', true)
+        .single();
+      
+      if (prompt) {
+        const { data: version } = await supabase
+          .from('prompt_versions')
+          .select('id, version_number')
+          .eq('prompt_id', prompt.id)
+          .eq('is_active', true)
+          .single();
+        
+        if (version) {
+          promptMetadata = {
+            prompt_version_id: version.id,
+            prompt_version_number: version.version_number,
+            prompt_call_type: callType,
+            prompt_source: 'supabase'
+          };
+          console.log(`✅ Loaded prompt: ${callType} v${version.version_number}`);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not load prompt metadata:', err.message);
+    }
     
     // Build comprehensive metadata (match Barbara V3 structure)
     const interactionMetadata = {
@@ -1234,7 +1317,13 @@ app.post('/post-call', async (req, res) => {
       
       // Platform
       platform: 'elevenlabs',
-      saved_at: new Date().toISOString()
+      saved_at: new Date().toISOString(),
+      
+      // ✅ Prompt tracking for evaluation
+      prompt_version_id: promptMetadata.prompt_version_id,
+      prompt_version_number: promptMetadata.prompt_version_number,
+      prompt_call_type: promptMetadata.prompt_call_type,
+      prompt_source: promptMetadata.prompt_source
     };
     
     // Save to interactions table
@@ -1278,7 +1367,12 @@ app.post('/post-call', async (req, res) => {
       .eq('id', leadId);
     
     // Run AI evaluation asynchronously (don't block webhook response)
-    evaluateCallAsync(savedInteraction.id, transcript, callType).catch(err => {
+    evaluateCallAsync(
+      savedInteraction.id, 
+      transcript, 
+      callType, 
+      promptMetadata.prompt_version_number  // ✅ Now passing version number!
+    ).catch(err => {
       console.error('❌ AI evaluation failed:', err);
     });
     
@@ -1475,7 +1569,7 @@ app.post('/api/outbound-call', async (req, res) => {
     // Load prompt from Supabase (like personalization webhook does)
     const { data: prompt, error: promptError } = await supabase
       .from('prompts')
-      .select('id, voice, vad_threshold, vad_prefix_padding_ms, vad_silence_duration_ms')
+      .select('id, voice, vad_threshold, vad_prefix_padding_ms, vad_silence_duration_ms, runtime, elevenlabs_defaults')
       .eq('call_type', callType)
       .eq('is_active', true)
       .single();
@@ -1506,21 +1600,9 @@ app.post('/api/outbound-call', async (req, res) => {
     
     console.log(`✅ Loaded prompt for: ${callType}`);
     
-    // Assemble prompt from sections
+    // Assemble prompt from sections using GPT-5 optimized Markdown format
     const sections = version.content;
-    const sectionParts = [];
-    
-    if (sections.role) sectionParts.push(`ROLE:\n${sections.role}`);
-    if (sections.personality) sectionParts.push(`\nPERSONALITY & STYLE:\n${sections.personality}`);
-    if (sections.context) sectionParts.push(`\nCONTEXT:\n${sections.context}`);
-    if (sections.instructions) sectionParts.push(`\nCRITICAL INSTRUCTIONS:\n${sections.instructions}`);
-    if (sections.conversation_flow) sectionParts.push(`\nCONVERSATION FLOW:\n${sections.conversation_flow}`);
-    if (sections.tools) sectionParts.push(`\nTOOL USAGE:\n${sections.tools}`);
-    if (sections.safety) sectionParts.push(`\nSAFETY & ESCALATION:\n${sections.safety}`);
-    if (sections.output_format) sectionParts.push(`\nOUTPUT FORMAT:\n${sections.output_format}`);
-    if (sections.pronunciation) sectionParts.push(`\nPRONUNCIATION GUIDE:\n${sections.pronunciation}`);
-    
-    let assembledPrompt = sectionParts.join('\n\n').trim();
+    let assembledPrompt = buildSystemPromptForElevenLabs(sections);
     
     // Replace {{variable}} placeholders in prompt (like inbound does)
     const promptVariables = {
@@ -1574,6 +1656,9 @@ app.post('/api/outbound-call', async (req, res) => {
     
     console.log(`📡 Using ${useTwilio ? 'Twilio' : 'SIP trunk'} API for outbound call`);
     
+    // Get defaults from portal
+    const outboundDefaults = prompt.elevenlabs_defaults || {};
+    
     // Call ElevenLabs outbound API (Twilio or SIP trunk)
     const elevenlabsResponse = await fetch(apiEndpoint, {
       method: 'POST',
@@ -1588,12 +1673,13 @@ app.post('/api/outbound-call', async (req, res) => {
         conversation_initiation_client_data: {
           conversation_config_override: {
             tts: {
-              speed: 0.85  // Slow down 15% for seniors (more comfortable pace)
+              speed: outboundDefaults.voice_speed || 0.85
             },
             agent: {
               prompt: {
                 prompt: assembledPrompt  // Load prompt from Supabase portal!
-              }
+              },
+              language: outboundDefaults.agent_language || 'en'
             }
           },
           dynamic_variables: dynamicVariables
