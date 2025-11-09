@@ -365,6 +365,31 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info(f"✅ LLM provider active: {actual_llm}")
         
+        # CRITICAL FIX: If we started with is_realtime=True but fell back to non-Realtime LLM,
+        # we need to initialize STT/TTS which were skipped earlier
+        if is_realtime and actual_llm != "openai_realtime":
+            logger.warning(f"⚠️ Realtime failed, fell back to {actual_llm}. Initializing STT/TTS...")
+            is_realtime = False  # Update flag
+            
+            # Initialize STT
+            stt_provider, actual_stt = await fallback_handler.create_with_fallback(
+                "stt",
+                create_stt,
+                phone_config.copy()
+            )
+            logger.info(f"✅ STT provider active: {actual_stt}")
+            
+            # Initialize TTS  
+            tts_config = phone_config.copy()
+            if prompt_metadata.get("voice"):
+                tts_config["tts_voice"] = prompt_metadata["voice"]
+            tts_provider, actual_tts = await fallback_handler.create_with_fallback(
+                "tts",
+                create_tts,
+                tts_config
+            )
+            logger.info(f"✅ TTS provider active: {actual_tts}")
+        
         # Update phone_config with actual providers used (for cost tracking)
         actual_providers = fallback_handler.get_actual_providers()
         phone_config.update({
