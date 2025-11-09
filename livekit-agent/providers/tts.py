@@ -238,6 +238,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         data[f'{self.edenai_provider}_settings'] = provider_settings
                     
                     logger.error(f"🚨 ABOUT TO CALL EDENAI API! provider={self.edenai_provider}, voice={self.voice}, text_len={len(text)}")
+                    logger.error(f"🚨 REQUEST DATA: {json.dumps(data, indent=2)}")
                     
                     headers = {
                         'Authorization': f'Bearer {self.api_key}',
@@ -252,6 +253,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                             headers=headers,
                             json=data
                         )
+                        logger.error(f"🚨 EdenAI Response: status={response.status_code}, body={response.text[:500]}")
                         response.raise_for_status()
                         result = response.json()
                         logger.error(f"🚨 EdenAI response received! status={response.status_code}")
