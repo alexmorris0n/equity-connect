@@ -310,20 +310,18 @@ async def entrypoint(ctx: JobContext):
                 model=config.get("llm_model", "gpt-5")
             )
         elif provider_name == "openrouter":
-            # Use official OpenRouter plugin for regular text LLM requests
-            # Supports hundreds of models from multiple providers with fallback routing
+            # Use OpenRouter via OpenAI-compatible API with custom base URL
+            # Supports hundreds of models from multiple providers
             if not Config.OPENROUTER_API_KEY:
                 raise ValueError("OPENROUTER_API_KEY not set")
             from livekit.plugins import openai
             model = config.get("llm_model", "anthropic/claude-sonnet-4.5")
-            fallback_models = config.get("llm_fallback_models", [])
-            if isinstance(fallback_models, str):
-                fallback_models = [m.strip() for m in fallback_models.split(",")]
             
-            return openai.LLM.with_openrouter(
+            # OpenRouter uses OpenAI-compatible API
+            return openai.LLM(
                 model=model,
-                fallback_models=fallback_models if fallback_models else None,
-                api_key=Config.OPENROUTER_API_KEY
+                api_key=Config.OPENROUTER_API_KEY,
+                base_url="https://openrouter.ai/api/v1"
             )
         else:
             raise ValueError(f"Unknown LLM provider: {provider_name}")
