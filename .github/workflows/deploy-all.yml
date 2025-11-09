@@ -49,6 +49,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Prepare build context
+        run: cp -r livekit-agent deploy/agent/
       - name: Deploy Agent Workers
         run: cd deploy/agent && flyctl deploy --ha=false --remote-only
         env:
@@ -61,6 +63,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Prepare build context
+        run: cp -r livekit-agent deploy/api/
       - name: Deploy API Server
         run: cd deploy/api && flyctl deploy --ha=false --remote-only
         env:

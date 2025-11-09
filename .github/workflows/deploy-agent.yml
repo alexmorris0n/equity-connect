@@ -22,6 +22,10 @@ jobs:
       - name: Setup Fly.io CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
       
+      - name: Prepare build context
+        run: |
+          cp -r livekit-agent deploy/agent/
+      
       - name: Deploy to Fly.io
         run: |
           cd deploy/agent
