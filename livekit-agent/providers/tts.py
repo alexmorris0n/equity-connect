@@ -215,12 +215,14 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 
                 logger.error(f"🚨 _generate_audio STARTED! provider={self.edenai_provider}")
                 try:
-                    data = {
-                        'providers': self.edenai_provider,
-                        'text': text,
-                        'language': language,
-                        'option': 'MALE',  # Required by EdenAI: MALE or FEMALE
-                    }
+                data = {
+                    'providers': self.edenai_provider,
+                    'text': text,
+                    'language': language,
+                    'option': 'MALE',  # Required by EdenAI: MALE or FEMALE
+                    'audio_format': 'wav',  # Request WAV format (contains PCM)
+                    'sampling_rate': self._sample_rate,  # Request target sample rate
+                }
                     
                     if self.voice:
                         # Different providers use different parameter names
@@ -279,23 +281,49 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 else:
                                     raise Exception("No audio data in Eden AI response")
 
-                            # Decode MP3 to PCM using av (pyav)
+                            # Smart format detection and conversion
                             import av
                             import io
-                            logger.error(f"🚨 Decoding MP3: {len(audio_data)} bytes")
-                            
-                            # Decode MP3 audio to PCM
-                            container = av.open(io.BytesIO(audio_data))
-                            audio_frames = []
-                            for frame in container.decode(audio=0):
-                                audio_frames.append(frame.to_ndarray())
-                            
-                            # Concatenate all frames
                             import numpy as np
-                            pcm_data = np.concatenate(audio_frames).flatten()
                             
-                            # Convert to bytes
-                            pcm_bytes = pcm_data.tobytes()
+                            logger.error(f"🚨 Received {len(audio_data)} bytes, detecting format...")
+                            
+                            # Detect audio format by magic bytes
+                            if audio_data[:4] == b'RIFF':  # WAV format
+                                logger.error("✅ WAV detected, extracting PCM from container...")
+                                # WAV files have a 44-byte header, PCM data follows
+                                pcm_bytes = audio_data[44:]
+                            
+                            elif audio_data[:3] == b'ID3' or audio_data[:2] == b'\xff\xfb':  # MP3 format
+                                logger.error("🔄 MP3 detected, decoding with PyAV...")
+                                container = av.open(io.BytesIO(audio_data))
+                                audio_frames = []
+                                for frame in container.decode(audio=0):
+                                    audio_frames.append(frame.to_ndarray())
+                                pcm_data = np.concatenate(audio_frames).flatten()
+                                pcm_bytes = pcm_data.tobytes()
+                            
+                            elif audio_data[:4] == b'fLaC':  # FLAC format
+                                logger.error("🔄 FLAC detected, decoding with PyAV...")
+                                container = av.open(io.BytesIO(audio_data))
+                                audio_frames = []
+                                for frame in container.decode(audio=0):
+                                    audio_frames.append(frame.to_ndarray())
+                                pcm_data = np.concatenate(audio_frames).flatten()
+                                pcm_bytes = pcm_data.tobytes()
+                            
+                            else:
+                                logger.error("❓ Unknown format, trying PyAV fallback...")
+                                try:
+                                    container = av.open(io.BytesIO(audio_data))
+                                    audio_frames = []
+                                    for frame in container.decode(audio=0):
+                                        audio_frames.append(frame.to_ndarray())
+                                    pcm_data = np.concatenate(audio_frames).flatten()
+                                    pcm_bytes = pcm_data.tobytes()
+                                except Exception as decode_error:
+                                    logger.error(f"⚠️ PyAV decode failed: {decode_error}, treating as raw PCM...")
+                                    pcm_bytes = audio_data
                             
                             logger.error(f"🚨 Creating AudioFrame: {len(pcm_bytes)} bytes PCM")
                             audio_frame = rtc.AudioFrame(
