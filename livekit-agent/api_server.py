@@ -1066,50 +1066,54 @@ async def get_tts_models(provider: str):
 
 @app.get("/api/ai-providers/tts-voices")
 async def get_tts_voices(provider: str, model: str):
-    """Get available voices for a specific TTS provider/model"""
-    voices_db = {
-        "eden_ai": {
-            "elevenlabs-multilingual-v2": [
-                {"id": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel", "gender": "female", "accent": "American", "age": "young"},
-                {"id": "AZnzlk1XvdvUeBnXmlld", "name": "Domi", "gender": "female", "accent": "American", "age": "young"},
-                {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Bella", "gender": "female", "accent": "American", "age": "middle"},
-                {"id": "ErXwobaYiN019PkySvjV", "name": "Antoni", "gender": "male", "accent": "American", "age": "young"},
-                {"id": "pNInz6obpgDQGcFmaJgB", "name": "Adam", "gender": "male", "accent": "American", "age": "middle"},
-            ],
-            "playht-2.0-turbo": [
-                {"id": "s3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json", "name": "Charlotte (Female)", "gender": "female", "accent": "American"},
-                {"id": "s3://voice-cloning-zero-shot/d82d246c-148b-457f-9668-37b789520891/original/manifest.json", "name": "Ethan (Male)", "gender": "male", "accent": "American"},
-            ],
-            "google-neural2": [
-                {"id": "en-US-Neural2-A", "name": "US Neural2 A (Male)", "gender": "male", "accent": "American"},
-                {"id": "en-US-Neural2-C", "name": "US Neural2 C (Female)", "gender": "female", "accent": "American"},
-                {"id": "en-US-Neural2-F", "name": "US Neural2 F (Female)", "gender": "female", "accent": "American"},
-            ],
-            "openai-tts-1": [
-                {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
-                {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
-                {"id": "fable", "name": "Fable (Female)", "gender": "female", "accent": "British"},
-                {"id": "onyx", "name": "Onyx (Male)", "gender": "male", "accent": "American"},
-                {"id": "nova", "name": "Nova (Female)", "gender": "female", "accent": "American"},
-                {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
-            ],
-            "openai-tts-1-hd": [
+    """Get available voices for a specific TTS provider/model with live data"""
+    from services.provider_catalog import get_eden_ai_tts_voices
+    
+    try:
+        # For Eden AI, fetch live voices from API
+        if provider == "eden_ai":
+            # Parse provider from model (e.g., "elevenlabs-multilingual-v2" -> "elevenlabs")
+            underlying_provider = model.split("-")[0] if "-" in model else model
+            voices_data = await get_eden_ai_tts_voices(underlying_provider, model)
+            
+            # Format voices for UI
+            voices = []
+            for voice in voices_data:
+                voices.append({
+                    "id": voice.get("voice_id") or voice.get("name"),
+                    "name": voice.get("display_name") or voice.get("name"),
+                    "gender": voice.get("gender", "unknown"),
+                    "accent": voice.get("accent") or voice.get("language", "en-US"),
+                    "age": voice.get("age"),
+                    "preview_url": voice.get("preview_url")
+                })
+            
+            return JSONResponse(content={"voices": voices})
+        
+        # Fallback: hardcoded voices for non-Eden AI providers
+        elif provider == "openai_realtime":
+            voices = [
                 {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
                 {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
                 {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
             ]
-        },
-        "openai_realtime": {
-            "bundled": [
-                {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
-                {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
-                {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
+            return JSONResponse(content={"voices": voices})
+        
+        # Default: empty list
+        return JSONResponse(content={"voices": []})
+        
+    except Exception as e:
+        logger.error(f"Error fetching TTS voices: {e}")
+        # Return fallback hardcoded voices on error
+        fallback_voices = {
+            "elevenlabs-multilingual-v2": [
+                {"id": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel", "gender": "female", "accent": "American"},
+                {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Bella", "gender": "female", "accent": "American"},
+                {"id": "ErXwobaYiN019PkySvjV", "name": "Antoni", "gender": "male", "accent": "American"},
             ]
         }
-    }
-    
-    voices = voices_db.get(provider, {}).get(model, [])
-    return JSONResponse(content={"voices": voices})
+        voices = fallback_voices.get(model, [])
+        return JSONResponse(content={"voices": voices})
 
 
 @app.get("/api/ai-providers/llm-models")
