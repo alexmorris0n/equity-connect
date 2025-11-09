@@ -210,9 +210,11 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 """Inner async generator for audio chunks"""
                 import httpx
                 import json
+                import time
                 from livekit.agents import tts as lk_tts
                 from livekit import rtc
                 
+                start_time = time.time()
                 logger.error(f"🚨 _generate_audio STARTED! provider={self.edenai_provider}")
                 try:
                     data = {
@@ -249,6 +251,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         'Content-Type': 'application/json'
                     }
                     
+                    api_start = time.time()
                     logger.error(f"🚨 Creating httpx client...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         logger.error(f"🚨 Posting to EdenAI...")
@@ -257,6 +260,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                             headers=headers,
                             json=data
                         )
+                        api_time = time.time() - api_start
+                        logger.error(f"⏱️ EdenAI API took: {api_time:.2f}s")
                         logger.error(f"🚨 EdenAI Response: status={response.status_code}, body={response.text[:500]}")
                         response.raise_for_status()
                         result = response.json()
@@ -312,11 +317,14 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
                                 target_rate = self._sample_rate  # 24000 Hz (our config)
                                 if actual_sample_rate != target_rate:
+                                    resample_start = time.time()
                                     logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
                                     # Fast linear interpolation (much faster than scipy)
                                     num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
                                     indices = np.linspace(0, len(pcm_data) - 1, num_samples)
                                     pcm_data = np.interp(indices, np.arange(len(pcm_data)), pcm_data)
+                                    resample_time = time.time() - resample_start
+                                    logger.error(f"⏱️ Resampling took: {resample_time:.3f}s")
                                 
                                 pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
                                 # Use our target sample rate (24000 Hz), not the source rate
@@ -341,11 +349,14 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
                                 target_rate = self._sample_rate  # 24000 Hz (our config)
                                 if actual_sample_rate != target_rate:
+                                    resample_start = time.time()
                                     logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
                                     # Fast linear interpolation (much faster than scipy)
                                     num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
                                     indices = np.linspace(0, len(pcm_data) - 1, num_samples)
                                     pcm_data = np.interp(indices, np.arange(len(pcm_data)), pcm_data)
+                                    resample_time = time.time() - resample_start
+                                    logger.error(f"⏱️ Resampling took: {resample_time:.3f}s")
                                 
                                 pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
                                 # Use our target sample rate (24000 Hz), not the source rate
@@ -390,6 +401,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 num_channels=self._num_channels,
                                 samples_per_channel=len(pcm_bytes) // (2 * self._num_channels)  # 16-bit = 2 bytes
                             )
+                            total_time = time.time() - start_time
+                            logger.error(f"⏱️ TOTAL TTS pipeline took: {total_time:.2f}s")
                             logger.error(f"🚨 Yielding SynthesizedAudio...")
                             yield lk_tts.SynthesizedAudio(
                                 request_id="",
