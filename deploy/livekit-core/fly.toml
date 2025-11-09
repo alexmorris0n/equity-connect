@@ -26,6 +26,6 @@ primary_region = "lax"
   internal_port = 50000
   processes = ["app"]
   [[services.ports]]
-    port = 50000
+    start_port = 50000
     end_port = 60000
 
