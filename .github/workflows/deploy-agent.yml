@@ -3,7 +3,7 @@ name: Deploy Agent Workers
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'livekit-agent/**'
       - 'deploy/agent/**'
