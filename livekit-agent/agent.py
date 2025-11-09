@@ -97,65 +97,112 @@ async def entrypoint(ctx: JobContext):
     room = ctx.room
     room_name = room.name
     
-    # Get SIP metadata (set by LiveKit SIP bridge)
-    sip_to = None
-    sip_from = None
+    # Check if this is a test room from playground
+    import json
+    room_metadata_str = room.metadata or "{}"
+    try:
+        room_metadata_dict = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
+    except:
+        room_metadata_dict = {}
     
-    # Try to get from room metadata or participant metadata
-    for participant in room.remote_participants.values():
-        if participant.kind == rtc.ParticipantKind.SIP:
-            # SIP participant metadata
-            metadata = participant.metadata or {}
-            sip_to = metadata.get("sip_to") or metadata.get("to")
-            sip_from = metadata.get("sip_from") or metadata.get("from")
-            break
+    is_test_room = room_metadata_dict.get("is_test", False)
+    template_id_from_room = room_metadata_dict.get("template_id")
     
-    # Fallback: try room metadata
-    if not sip_to:
-        room_metadata = room.metadata or {}
-        sip_to = room_metadata.get("sip_to") or room_metadata.get("called_number")
-        sip_from = room_metadata.get("sip_from") or room_metadata.get("caller_number")
-    
-    logger.info(f"📞 Call metadata: to={sip_to}, from={sip_from}, room={room_name}")
-    
-    # Determine call direction and type
-    called_number = sip_to or room_name
-    caller_number = sip_from
-    
-    # Detect call type
-    call_type_result = await detect_call_type(
-        caller_phone=caller_number,
-        called_number=called_number
-    )
-    
-    call_type = call_type_result.get("call_type", "inbound-unknown")
-    lead = call_type_result.get("lead")
-    broker = call_type_result.get("broker")
-    lead_id = str(lead["id"]) if lead and lead.get("id") else None
-    broker_id = str(broker["id"]) if broker and broker.get("id") else None
-    
-    logger.info(f"📋 Call type: {call_type}, lead_id={lead_id}, broker_id={broker_id}")
-    
-    # Get phone configuration from AI template with fallback to legacy config
-    from services.templates import get_agent_config_with_template
-    phone_config = await get_agent_config_with_template(called_number)
-    logger.info(f"⚙️ Template: {phone_config.get('template_name', 'Legacy')} | STT={phone_config.get('stt_provider')}, TTS={phone_config.get('tts_provider')}, LLM={phone_config.get('llm_provider')}")
-    
-    # Load prompt for call type
-    prompt_metadata = await get_instructions_for_call_type(
-        direction="inbound" if call_type.startswith("inbound") else "outbound",
-        context={
-            "lead_id": lead_id,
-            "broker_id": broker_id,
-            "from": caller_number,
-            "to": called_number,
-            "call_type": call_type,
-            "lead": lead,
-            "broker": broker
-        }
-    )
-    
-    logger.info(f"📝 Loaded prompt: {prompt_metadata.get('call_type')} v{prompt_metadata.get('version_number') or 'hardcoded'}")
+    if is_test_room and template_id_from_room:
+        logger.info(f"🎮 TEST ROOM detected: {room_name} | Template: {room_metadata_dict.get('template_name')}")
+        # For test rooms, load template directly and skip phone/lead lookup
+        from services.templates import get_supabase_client
+        supabase = get_supabase_client()
+        template = supabase.table("ai_templates").select("*").eq("id", template_id_from_room).single().execute()
+        
+        if template.data:
+            from services.templates import template_to_phone_config
+            phone_config = template_to_phone_config(template.data)
+            
+            # Use generic test prompt
+            prompt_metadata = {
+                "prompt": "You are Barbara, a friendly AI assistant testing voice configuration. Greet the user and ask how you can help them today.",
+                "call_type": "test",
+                "version_number": "test",
+                "voice": phone_config.get("tts_voice", "alloy"),
+                "vad_threshold": phone_config.get("vad_threshold", 0.5),
+                "vad_prefix_padding_ms": phone_config.get("vad_prefix_padding_ms", 300),
+                "vad_silence_duration_ms": phone_config.get("vad_silence_duration_ms", 500)
+            }
+            
+            lead = None
+            broker = None
+            lead_id = None
+            broker_id = None
+            call_type = "test"
+            caller_number = None
+            called_number = "+10000000000"
+            
+            logger.info(f"✅ Test room configured with template: {phone_config.get('template_name')}")
+            # Skip to provider initialization (jump past call type detection)
+        else:
+            logger.error(f"❌ Template {template_id_from_room} not found for test room")
+            return
+    else:
+        # Normal call flow
+        # Get SIP metadata (set by LiveKit SIP bridge)
+        sip_to = None
+        sip_from = None
+        
+        # Try to get from room metadata or participant metadata
+        for participant in room.remote_participants.values():
+            if participant.kind == rtc.ParticipantKind.SIP:
+                # SIP participant metadata
+                metadata = participant.metadata or {}
+                sip_to = metadata.get("sip_to") or metadata.get("to")
+                sip_from = metadata.get("sip_from") or metadata.get("from")
+                break
+        
+        # Fallback: try room metadata
+        if not sip_to:
+            sip_to = room_metadata_dict.get("sip_to") or room_metadata_dict.get("called_number")
+            sip_from = room_metadata_dict.get("sip_from") or room_metadata_dict.get("caller_number")
+        
+        logger.info(f"📞 Call metadata: to={sip_to}, from={sip_from}, room={room_name}")
+        
+        # Determine call direction and type
+        called_number = sip_to or room_name
+        caller_number = sip_from
+        
+        # Detect call type
+        call_type_result = await detect_call_type(
+            caller_phone=caller_number,
+            called_number=called_number
+        )
+        
+        call_type = call_type_result.get("call_type", "inbound-unknown")
+        lead = call_type_result.get("lead")
+        broker = call_type_result.get("broker")
+        lead_id = str(lead["id"]) if lead and lead.get("id") else None
+        broker_id = str(broker["id"]) if broker and broker.get("id") else None
+        
+        logger.info(f"📋 Call type: {call_type}, lead_id={lead_id}, broker_id={broker_id}")
+        
+        # Get phone configuration from AI template with fallback to legacy config
+        from services.templates import get_agent_config_with_template
+        phone_config = await get_agent_config_with_template(called_number)
+        logger.info(f"⚙️ Template: {phone_config.get('template_name', 'Legacy')} | STT={phone_config.get('stt_provider')}, TTS={phone_config.get('tts_provider')}, LLM={phone_config.get('llm_provider')}")
+        
+        # Load prompt for call type
+        prompt_metadata = await get_instructions_for_call_type(
+            direction="inbound" if call_type.startswith("inbound") else "outbound",
+            context={
+                "lead_id": lead_id,
+                "broker_id": broker_id,
+                "from": caller_number,
+                "to": called_number,
+                "call_type": call_type,
+                "lead": lead,
+                "broker": broker
+            }
+        )
+        
+        logger.info(f"📝 Loaded prompt: {prompt_metadata.get('call_type')} v{prompt_metadata.get('version_number') or 'hardcoded'}")
     
     # Initialize transcript capture
     transcript_capture = TranscriptCapture()

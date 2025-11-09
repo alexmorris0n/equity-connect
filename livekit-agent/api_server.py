@@ -1223,6 +1223,7 @@ async def generate_test_token(request: Request):
     try:
         import time
         from livekit import api
+        from livekit.api import RoomServiceClient, CreateRoomRequest
         
         body = await request.json()
         template_id = body.get("template_id")
@@ -1239,33 +1240,21 @@ async def generate_test_token(request: Request):
         room_name = f"test-{template_id[:8]}-{int(time.time())}"
         
         # Create room with metadata so agent knows it's a test
-        room_service = api.RoomService(
-            http_client=httpx.AsyncClient(),
-            base_url=Config.LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://"),
-            api_key=Config.LIVEKIT_API_KEY,
-            api_secret=Config.LIVEKIT_API_SECRET
+        livekit_http_url = Config.LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://")
+        room_service = RoomServiceClient(
+            livekit_http_url,
+            Config.LIVEKIT_API_KEY,
+            Config.LIVEKIT_API_SECRET
         )
         
-        # Create a temporary phone number for this test (or use first broker phone)
-        # Agent needs a phone number to load configuration
-        test_phone_result = supabase.table("signalwire_phone_numbers")\
-            .select("number")\
-            .eq("assigned_ai_template_id", template_id)\
-            .limit(1)\
-            .execute()
-        
-        test_phone = test_phone_result.data[0]["number"] if test_phone_result.data else "+10000000000"
-        
-        # Create room with template metadata
-        await room_service.create_room(api.CreateRoomRequest(
+        # Create room with template metadata (agent will load template directly)
+        await room_service.create_room(CreateRoomRequest(
             name=room_name,
             empty_timeout=300,  # 5 minutes
             metadata=str({
                 "template_id": template_id,
                 "template_name": template.data.get("name"),
-                "is_test": True,
-                "sip_to": test_phone,  # Agent uses this to load config
-                "called_number": test_phone
+                "is_test": True
             })
         ))
         
