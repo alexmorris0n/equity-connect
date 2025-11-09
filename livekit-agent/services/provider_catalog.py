@@ -87,8 +87,9 @@ async def get_eden_ai_tts_pricing(force_refresh: bool = False) -> Dict[str, Any]
     Returns:
         {
             "elevenlabs": {"multilingual-v2": 0.180, "turbo-v2.5": 0.090},
-            "playht": {"2.0-turbo": 0.040},
-            "google": {"neural2": 0.024},
+            "openai": {"tts-1": 0.0023, "tts-1-hd": 0.0045},
+            "deepgram": {"aura": 0.0023},
+            "google": {"neural": 0.024, "standard": 0.006},
             ...
         }
     """
@@ -348,7 +349,7 @@ async def get_eden_ai_tts_voices(provider: str, model: str, force_refresh: bool 
     Get available TTS voices from Eden AI provider info API
     
     Args:
-        provider: Underlying provider (e.g., 'elevenlabs', 'playht', 'google')
+        provider: Underlying provider (e.g., 'elevenlabs', 'openai', 'google', 'deepgram')
         model: Model name (e.g., 'elevenlabs-multilingual-v2')
         force_refresh: Force cache refresh
     
@@ -435,9 +436,27 @@ def get_fallback_voices(provider: str) -> List[Dict[str, Any]]:
             {"voice_id": "pNInz6obpgDQGcFmaJgB", "display_name": "Adam", "name": "Adam", "gender": "male", "accent": "American", "age": "middle"},
             {"voice_id": "yoZ06aMxZJJ28mfd3POQ", "display_name": "Sam", "name": "Sam", "gender": "male", "accent": "American", "age": "young"},
         ],
-        "playht": [
-            {"voice_id": "s3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json", "display_name": "Charlotte", "name": "Charlotte", "gender": "female", "accent": "American"},
-            {"voice_id": "s3://voice-cloning-zero-shot/d82d246c-148b-457f-9668-37b789520891/original/manifest.json", "display_name": "Ethan", "name": "Ethan", "gender": "male", "accent": "American"},
+        "openai": [
+            {"voice_id": "alloy", "display_name": "Alloy", "name": "Alloy", "gender": "neutral", "accent": "Neutral"},
+            {"voice_id": "echo", "display_name": "Echo", "name": "Echo", "gender": "male", "accent": "American"},
+            {"voice_id": "fable", "display_name": "Fable", "name": "Fable", "gender": "neutral", "accent": "British"},
+            {"voice_id": "onyx", "display_name": "Onyx", "name": "Onyx", "gender": "male", "accent": "American"},
+            {"voice_id": "nova", "display_name": "Nova", "name": "Nova", "gender": "female", "accent": "American"},
+            {"voice_id": "shimmer", "display_name": "Shimmer", "name": "Shimmer", "gender": "female", "accent": "American"},
+        ],
+        "deepgram": [
+            {"voice_id": "aura-asteria-en", "display_name": "Asteria", "name": "Asteria", "gender": "female", "accent": "American"},
+            {"voice_id": "aura-luna-en", "display_name": "Luna", "name": "Luna", "gender": "female", "accent": "American"},
+            {"voice_id": "aura-stella-en", "display_name": "Stella", "name": "Stella", "gender": "female", "accent": "American"},
+            {"voice_id": "aura-athena-en", "display_name": "Athena", "name": "Athena", "gender": "female", "accent": "British"},
+            {"voice_id": "aura-hera-en", "display_name": "Hera", "name": "Hera", "gender": "female", "accent": "American"},
+            {"voice_id": "aura-orion-en", "display_name": "Orion", "name": "Orion", "gender": "male", "accent": "American"},
+            {"voice_id": "aura-arcas-en", "display_name": "Arcas", "name": "Arcas", "gender": "male", "accent": "American"},
+            {"voice_id": "aura-perseus-en", "display_name": "Perseus", "name": "Perseus", "gender": "male", "accent": "American"},
+            {"voice_id": "aura-angus-en", "display_name": "Angus", "name": "Angus", "gender": "male", "accent": "Irish"},
+            {"voice_id": "aura-orpheus-en", "display_name": "Orpheus", "name": "Orpheus", "gender": "male", "accent": "American"},
+            {"voice_id": "aura-helios-en", "display_name": "Helios", "name": "Helios", "gender": "male", "accent": "British"},
+            {"voice_id": "aura-zeus-en", "display_name": "Zeus", "name": "Zeus", "gender": "male", "accent": "American"},
         ],
         "google": [
             {"voice_id": "en-US-Neural2-A", "display_name": "US Neural2 A (Male)", "name": "Neural2-A", "gender": "male", "accent": "American"},
