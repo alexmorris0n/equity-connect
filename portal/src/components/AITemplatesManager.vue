@@ -251,8 +251,16 @@ function editTemplate(template) {
 }
 
 function testTemplate(template) {
-  // Navigate to playground with template ID
-  router.push(`/admin/livekit-playground?template=${template.id}`)
+  // Navigate to playground with template ID and return path
+  const currentPath = router.currentRoute.value.fullPath
+  router.push({
+    path: '/admin/livekit-playground',
+    query: { 
+      template: template.id,
+      returnTo: currentPath,
+      returnTab: 'ai-templates'
+    }
+  })
 }
 
 async function deleteTemplate(templateId) {

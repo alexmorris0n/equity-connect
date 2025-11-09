@@ -1,5 +1,12 @@
 <template>
   <div class="livekit-playground">
+    <n-button text @click="goBack" style="margin-bottom: 16px">
+      <template #icon>
+        <n-icon><ArrowBackOutline /></n-icon>
+      </template>
+      Back to Templates
+    </n-button>
+
     <n-card title="LiveKit Voice AI Playground">
       <n-alert type="info" style="margin-bottom: 16px">
         Test your AI configuration in real-time. Click "Connect" to start a test call.
@@ -108,7 +115,8 @@ import {
 import {
   CallOutline,
   StopOutline,
-  CheckmarkCircleOutline
+  CheckmarkCircleOutline,
+  ArrowBackOutline
 } from '@vicons/ionicons5'
 import { LiveKitRoom } from '@blockgain/livekit-vue'
 
@@ -198,6 +206,20 @@ function disconnect() {
   roomToken.value = ''
   roomName.value = ''
   message.info('Disconnected from test room')
+}
+
+function goBack() {
+  const returnTo = route.query.returnTo
+  const returnTab = route.query.returnTab
+  
+  if (returnTo && returnTab) {
+    // Navigate back with tab hash
+    router.push(`${returnTo}#${returnTab}`)
+  } else if (returnTo) {
+    router.push(returnTo)
+  } else {
+    router.back()
+  }
 }
 
 function onConnected() {

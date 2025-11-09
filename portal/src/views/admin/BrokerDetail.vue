@@ -43,9 +43,9 @@
       </div>
 
       <!-- Tabs -->
-      <n-tabs type="line" animated>
+      <n-tabs v-model:value="activeTab" type="line" animated :tab-style="{ padding: '12px 4px', whiteSpace: 'nowrap' }" style="width: 100%; overflow-x: auto; overflow-y: hidden">
         <!-- Basic Information Tab -->
-        <n-tab-pane name="basic" tab="Basic Information">
+        <n-tab-pane name="basic" tab="Info">
           <n-card title="Contact Information">
             <div class="form-grid">
               <n-form-item label="Contact Name">
@@ -104,7 +104,7 @@
         </n-tab-pane>
 
         <!-- Business Settings Tab -->
-        <n-tab-pane name="business" tab="Business Settings">
+        <n-tab-pane name="business" tab="Business">
           <n-card title="Pricing & Capacity">
             <div class="form-grid">
               <n-form-item label="Status">
@@ -384,8 +384,13 @@
         </n-tab-pane>
 
         <!-- AI Templates Tab -->
-        <n-tab-pane name="ai-templates" tab="AI Templates">
+        <n-tab-pane name="ai-templates" tab="AI Config">
           <AITemplatesManager :broker-id="broker.id" />
+        </n-tab-pane>
+
+        <!-- Phone Numbers Tab -->
+        <n-tab-pane name="phone-numbers" tab="Numbers">
+          <PhoneNumberManager :broker-id="broker.id" />
         </n-tab-pane>
       </n-tabs>
     </div>
@@ -427,6 +432,7 @@ import {
   SyncOutline
 } from '@vicons/ionicons5'
 import AITemplatesManager from '@/components/AITemplatesManager.vue'
+import PhoneNumberManager from '@/components/PhoneNumberManager.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -439,6 +445,7 @@ const saving = ref(false)
 const connectingCalendar = ref(false)
 const disconnectingCalendar = ref(false)
 const syncingCalendar = ref(false)
+const activeTab = ref('basic')
 
 // Options
 const statusOptions = [
@@ -615,6 +622,14 @@ async function syncCalendar() {
 
 onMounted(() => {
   loadBroker()
+  
+  // Check for hash to set active tab
+  if (window.location.hash) {
+    const tabName = window.location.hash.substring(1)
+    if (['basic', 'business', 'contract', 'performance', 'integration', 'notes', 'ai-templates', 'phone-numbers'].includes(tabName)) {
+      activeTab.value = tabName
+    }
+  }
 })
 </script>
 

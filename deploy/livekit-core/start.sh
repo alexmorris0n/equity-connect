@@ -14,6 +14,8 @@ REDIS_ADDR=$(echo "$REDIS_URL" | sed -E 's#^redis://([^@]*@)?([^/]+).*#\2#')
 
 cat <<EOF >/tmp/livekit.yaml
 port: 7880
+bind_addresses:
+  - 0.0.0.0
 keys:
   "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"
 rtc:

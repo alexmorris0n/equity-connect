@@ -7,19 +7,20 @@ primary_region = "lax"
 [env]
   REDIS_URL = "redis://equity-redis-server.internal:6379"
 
+[http_service]
+  internal_port = 7880
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
 [[services]]
   protocol = "tcp"
   internal_port = 7880
   processes = ["app"]
-  auto_start_machines = true
-  auto_stop_machines = false
-  min_machines_running = 1
   [[services.ports]]
-    port = 80
-    handlers = ["http"]
-  [[services.ports]]
-    port = 443
-    handlers = ["tls", "http"]
+    port = 7880
 
 [[services]]
   protocol = "udp"

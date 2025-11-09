@@ -1219,7 +1219,7 @@ async def log_template_cost_to_billing(interaction_id: str, template_id: str, du
 
 @app.post("/api/livekit/test-token")
 async def generate_test_token(request: Request):
-    """Generate LiveKit token for testing template in playground"""
+    """Generate LiveKit token for testing template in playground and dispatch agent"""
     try:
         import time
         from livekit import api
@@ -1238,7 +1238,40 @@ async def generate_test_token(request: Request):
         # Create test room
         room_name = f"test-{template_id[:8]}-{int(time.time())}"
         
-        # Generate token
+        # Create room with metadata so agent knows it's a test
+        room_service = api.RoomService(
+            http_client=httpx.AsyncClient(),
+            base_url=Config.LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://"),
+            api_key=Config.LIVEKIT_API_KEY,
+            api_secret=Config.LIVEKIT_API_SECRET
+        )
+        
+        # Create a temporary phone number for this test (or use first broker phone)
+        # Agent needs a phone number to load configuration
+        test_phone_result = supabase.table("signalwire_phone_numbers")\
+            .select("number")\
+            .eq("assigned_ai_template_id", template_id)\
+            .limit(1)\
+            .execute()
+        
+        test_phone = test_phone_result.data[0]["number"] if test_phone_result.data else "+10000000000"
+        
+        # Create room with template metadata
+        await room_service.create_room(api.CreateRoomRequest(
+            name=room_name,
+            empty_timeout=300,  # 5 minutes
+            metadata=str({
+                "template_id": template_id,
+                "template_name": template.data.get("name"),
+                "is_test": True,
+                "sip_to": test_phone,  # Agent uses this to load config
+                "called_number": test_phone
+            })
+        ))
+        
+        logger.info(f"✅ Created test room: {room_name}")
+        
+        # Generate token for user
         token = api.AccessToken(Config.LIVEKIT_API_KEY, Config.LIVEKIT_API_SECRET)
         token.with_identity(f"tester-{template_id[:8]}")
         token.with_name("Test User")
@@ -1252,12 +1285,14 @@ async def generate_test_token(request: Request):
         jwt_token = token.to_jwt()
         
         logger.info(f"🎮 Generated test token for template {template.data.get('name')}")
+        logger.info(f"🤖 Agent workers will auto-join room {room_name}")
         
         return JSONResponse(content={
             "token": jwt_token,
             "room_name": room_name,
             "livekit_url": Config.LIVEKIT_URL,
-            "template": template.data
+            "template": template.data,
+            "instructions": "Connect to the room. An AI agent will auto-join and greet you using the selected template configuration."
         })
     
     except HTTPException:
