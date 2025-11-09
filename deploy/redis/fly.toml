@@ -1,0 +1,40 @@
+app = "equity-redis-server"
+primary_region = "lax"
+
+[build]
+  image = "redis:7-alpine"
+
+[env]
+  REDIS_ARGS = "--save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lru"
+
+[[vm]]
+  memory = "512mb"
+  cpus = 1
+
+[[mounts]]
+  source = "redis_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[processes]
+  app = "redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lru"
+
+# Internal networking only - no public access
+[[services]]
+  protocol = "tcp"
+  internal_port = 6379
+  processes = ["app"]
+  auto_start_machines = true
+  auto_stop_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 6379
+
+[checks]
+  [checks.redis_ping]
+    type = "tcp"
+    interval = "30s"
+    timeout = "5s"
+    port = 6379
+

@@ -1,0 +1,20 @@
+app = "equity-agent"
+primary_region = "lax"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  LIVEKIT_URL = "ws://equity-livekit-core.internal:7880"
+  SUPABASE_RECORDINGS_BUCKET = "call-recordings"
+  S3_ENDPOINT = "http://equity-minio.internal:9000"
+  S3_FORCE_PATH_STYLE = "true"
+  AWS_BUCKET_NAME = "recordings"
+
+[[vm]]
+  memory = "1gb"
+  cpus = 1
+
+[processes]
+  worker = "python agent.py start"
+

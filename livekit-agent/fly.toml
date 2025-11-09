@@ -1,0 +1,22 @@
+# fly.toml app configuration file for livekit-agent
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'barbara-livekit-agent'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+  build-target = ''
+
+[env]
+  PYTHONUNBUFFERED = '1'
+
+# LiveKit agents run as workers, not HTTP services
+# They connect to LiveKit Cloud via WebSocket
+# No HTTP service needed for the agent itself
+
+# If you need to run the API server separately, create a separate app
+# For now, the agent runs as a worker process
+

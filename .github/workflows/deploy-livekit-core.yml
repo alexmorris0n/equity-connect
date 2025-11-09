@@ -1,0 +1,30 @@
+name: Deploy LiveKit Core
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'deploy/livekit-core/**'
+      - '.github/workflows/deploy-livekit-core.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy LiveKit Core to Fly.io
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Deploy to Fly.io
+        run: |
+          cd deploy/livekit-core
+          flyctl deploy --ha=false --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+

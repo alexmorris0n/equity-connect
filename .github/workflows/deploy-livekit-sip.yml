@@ -1,0 +1,30 @@
+name: Deploy LiveKit SIP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'deploy/livekit-sip/**'
+      - '.github/workflows/deploy-livekit-sip.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy LiveKit SIP to Fly.io
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      
+      - name: Deploy to Fly.io
+        run: |
+          cd deploy/livekit-sip
+          flyctl deploy --ha=false --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
