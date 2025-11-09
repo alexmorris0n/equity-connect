@@ -204,6 +204,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
         async def synthesize(self, text: str, *, language: str = "en-US", **kwargs) -> AsyncIterator:
             """Synthesize speech from text - async context manager that yields an async iterator"""
             # Note: LiveKit may pass conn_options and other kwargs, we accept them with **kwargs
+            logger.error(f"🚨🚨🚨 SYNTHESIZE CALLED! text='{text[:50]}...', provider={self.edenai_provider}, voice={self.voice}")
             
             async def _generate_audio():
                 """Inner async generator for audio chunks"""
@@ -212,6 +213,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 from livekit.agents import tts as lk_tts
                 from livekit import rtc
                 
+                logger.error(f"🚨 _generate_audio STARTED! provider={self.edenai_provider}")
                 try:
                     data = {
                         'providers': self.edenai_provider,
@@ -235,14 +237,16 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         # Pass dict object (not JSON string) since we use json=data
                         data[f'{self.edenai_provider}_settings'] = provider_settings
                     
-                    logger.debug(f"🎤 Eden AI TTS request: provider={self.edenai_provider}, voice={self.voice}, text_len={len(text)}")
+                    logger.error(f"🚨 ABOUT TO CALL EDENAI API! provider={self.edenai_provider}, voice={self.voice}, text_len={len(text)}")
                     
                     headers = {
                         'Authorization': f'Bearer {self.api_key}',
                         'Content-Type': 'application/json'
                     }
                     
+                    logger.error(f"🚨 Creating httpx client...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
+                        logger.error(f"🚨 Posting to EdenAI...")
                         response = await client.post(
                             f'{self.base_url}/audio/text_to_speech',
                             headers=headers,
@@ -250,8 +254,10 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         )
                         response.raise_for_status()
                         result = response.json()
+                        logger.error(f"🚨 EdenAI response received! status={response.status_code}")
                         
                         provider_result = result.get(self.edenai_provider, {})
+                        logger.error(f"🚨 Provider result: {provider_result.get('status')}")
                         if provider_result.get('status') == 'success':
                             audio_url = provider_result.get('audio_resource_url')
                             if audio_url:
@@ -269,27 +275,32 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                     raise Exception("No audio data in Eden AI response")
 
                             # Return the audio as a single frame
+                            logger.error(f"🚨 Creating AudioFrame: {len(audio_data)} bytes")
                             audio_frame = rtc.AudioFrame(
                                 data=audio_data,
                                 sample_rate=self._sample_rate,
                                 num_channels=self._num_channels,
                                 samples_per_channel=len(audio_data) // (2 * self._num_channels)  # 16-bit = 2 bytes
                             )
+                            logger.error(f"🚨 Yielding SynthesizedAudio...")
                             yield lk_tts.SynthesizedAudio(
                                 request_id="",
                                 frame=audio_frame
                             )
+                            logger.error(f"🚨 SynthesizedAudio yielded successfully!")
                         else:
                             error = provider_result.get('error', 'Unknown error')
                             logger.error(f"❌ Eden AI TTS error: {error}")
                             raise Exception(f"Eden AI TTS failed: {error}")
                             
                 except Exception as e:
-                    logger.error(f"❌ Eden AI TTS error: {e}")
+                    logger.error(f"❌ Eden AI TTS error in _generate_audio: {e}")
                     raise
             
             # Yield the async generator
+            logger.error(f"🚨 About to yield _generate_audio() generator...")
             yield _generate_audio()
+            logger.error(f"🚨 Generator yielded, context manager done!")
     
     return EdenAITTSPlugin(api_key=api_key, provider=provider, voice=voice)
 
