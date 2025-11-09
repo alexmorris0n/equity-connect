@@ -182,6 +182,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
     """
     from livekit import agents
     from livekit.agents import tts
+    from contextlib import asynccontextmanager
     
     class EdenAITTSPlugin(tts.TTS):
         """LiveKit TTS plugin wrapper for Eden AI"""
@@ -198,12 +199,14 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
             self.voice = voice
             self.base_url = 'https://api.edenai.run/v2'
         
-        async def synthesize(self, text: str, *, language: str = "en-US", **kwargs) -> tts.SynthesizeStream:
-            """Synthesize speech from text"""
+        @asynccontextmanager
+        async def synthesize(self, text: str, *, language: str = "en-US", **kwargs):
+            """Synthesize speech from text - async context manager"""
             # Note: LiveKit may pass conn_options and other kwargs, we accept them with **kwargs
             import httpx
             import json
             
+            stream = tts.SynthesizeStream(self)
             try:
                 data = {
                     'providers': self.edenai_provider,
@@ -248,14 +251,14 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         audio_url = provider_result.get('audio_resource_url')
                         if audio_url:
                             # Stream the audio file in chunks for lower latency playback
-                            stream = tts.SynthesizeStream()
                             async with client.stream('GET', audio_url) as audio_response:
                                 audio_response.raise_for_status()
                                 async for chunk in audio_response.aiter_bytes():
                                     if chunk:
                                         await stream.push_frame(chunk)
                             await stream.aclose()
-                            return stream
+                            yield stream
+                            return
                         else:
                             # Some providers return base64 audio
                             audio_base64 = provider_result.get('audio')
@@ -266,10 +269,10 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 raise Exception("No audio data in Eden AI response")
 
                         # Fallback: push the full decoded audio buffer at once
-                        stream = tts.SynthesizeStream()
                         await stream.push_frame(audio_data)
                         await stream.aclose()
-                        return stream
+                        yield stream
+                        return
                     else:
                         error = provider_result.get('error', 'Unknown error')
                         logger.error(f"❌ Eden AI TTS error: {error}")
@@ -277,6 +280,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         
             except Exception as e:
                 logger.error(f"❌ Eden AI TTS error: {e}")
+                await stream.aclose()
                 raise
     
     return EdenAITTSPlugin(api_key=api_key, provider=provider, voice=voice)
