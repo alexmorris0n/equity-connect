@@ -454,8 +454,12 @@ async def entrypoint(ctx: JobContext):
     # Add STT/TTS if not using Realtime
     if not is_realtime and stt_provider:
         session_config["stt"] = stt_provider
+        logger.error(f"🚨 STT added to session_config!")
     if not is_realtime and tts_provider:
         session_config["tts"] = tts_provider
+        logger.error(f"🚨 TTS added to session_config! type={type(tts_provider)}")
+    else:
+        logger.error(f"🚨 TTS NOT added! is_realtime={is_realtime}, tts_provider={tts_provider}")
     
     # Configure turn detection with VAD settings
     if vad:
