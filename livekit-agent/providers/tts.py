@@ -183,6 +183,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
     from livekit import agents
     from livekit.agents import tts
     from contextlib import asynccontextmanager
+    from typing import AsyncIterator
     
     class EdenAITTSPlugin(tts.TTS):
         """LiveKit TTS plugin wrapper for Eden AI"""
@@ -199,89 +200,96 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
             self.voice = voice
             self.base_url = 'https://api.edenai.run/v2'
         
-        async def synthesize(self, text: str, *, language: str = "en-US", **kwargs):
-            """Synthesize speech from text - async generator"""
+        @asynccontextmanager
+        async def synthesize(self, text: str, *, language: str = "en-US", **kwargs) -> AsyncIterator:
+            """Synthesize speech from text - async context manager that yields an async iterator"""
             # Note: LiveKit may pass conn_options and other kwargs, we accept them with **kwargs
-            import httpx
-            import json
-            from livekit.agents import tts as lk_tts, utils
             
-            try:
-                data = {
-                    'providers': self.edenai_provider,
-                    'text': text,
-                    'language': language,
-                }
+            async def _generate_audio():
+                """Inner async generator for audio chunks"""
+                import httpx
+                import json
+                from livekit.agents import tts as lk_tts
+                from livekit import rtc
                 
-                if self.voice:
-                    # Different providers use different parameter names
-                    if self.edenai_provider == 'elevenlabs':
-                        provider_settings = {'voice_id': self.voice}
-                    elif self.edenai_provider == 'openai':
-                        provider_settings = {'voice': self.voice}
-                    elif self.edenai_provider == 'playht':
-                        provider_settings = {'voice': self.voice}
-                    elif self.edenai_provider == 'google':
-                        provider_settings = {'voice_name': self.voice}
-                    else:
-                        provider_settings = {'voice': self.voice}  # Default
+                try:
+                    data = {
+                        'providers': self.edenai_provider,
+                        'text': text,
+                        'language': language,
+                    }
                     
-                    # Pass dict object (not JSON string) since we use json=data
-                    data[f'{self.edenai_provider}_settings'] = provider_settings
-                
-                logger.debug(f"🎤 Eden AI TTS request: provider={self.edenai_provider}, voice={self.voice}, text_len={len(text)}")
-                
-                headers = {
-                    'Authorization': f'Bearer {self.api_key}',
-                    'Content-Type': 'application/json'
-                }
-                
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        f'{self.base_url}/audio/text_to_speech',
-                        headers=headers,
-                        json=data
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    
-                    provider_result = result.get(self.edenai_provider, {})
-                    if provider_result.get('status') == 'success':
-                        audio_url = provider_result.get('audio_resource_url')
-                        if audio_url:
-                            # Download the complete audio file
-                            audio_response = await client.get(audio_url)
-                            audio_response.raise_for_status()
-                            audio_data = audio_response.content
+                    if self.voice:
+                        # Different providers use different parameter names
+                        if self.edenai_provider == 'elevenlabs':
+                            provider_settings = {'voice_id': self.voice}
+                        elif self.edenai_provider == 'openai':
+                            provider_settings = {'voice': self.voice}
+                        elif self.edenai_provider == 'playht':
+                            provider_settings = {'voice': self.voice}
+                        elif self.edenai_provider == 'google':
+                            provider_settings = {'voice_name': self.voice}
                         else:
-                            # Some providers return base64 audio
-                            audio_base64 = provider_result.get('audio')
-                            if audio_base64:
-                                import base64
-                                audio_data = base64.b64decode(audio_base64)
-                            else:
-                                raise Exception("No audio data in Eden AI response")
-
-                        # Return the audio as a single frame
-                        from livekit import rtc
-                        audio_frame = rtc.AudioFrame(
-                            data=audio_data,
-                            sample_rate=self._sample_rate,
-                            num_channels=self._num_channels,
-                            samples_per_channel=len(audio_data) // (2 * self._num_channels)  # 16-bit = 2 bytes
-                        )
-                        yield lk_tts.SynthesizedAudio(
-                            request_id="",
-                            frame=audio_frame
-                        )
-                    else:
-                        error = provider_result.get('error', 'Unknown error')
-                        logger.error(f"❌ Eden AI TTS error: {error}")
-                        raise Exception(f"Eden AI TTS failed: {error}")
+                            provider_settings = {'voice': self.voice}  # Default
                         
-            except Exception as e:
-                logger.error(f"❌ Eden AI TTS error: {e}")
-                raise
+                        # Pass dict object (not JSON string) since we use json=data
+                        data[f'{self.edenai_provider}_settings'] = provider_settings
+                    
+                    logger.debug(f"🎤 Eden AI TTS request: provider={self.edenai_provider}, voice={self.voice}, text_len={len(text)}")
+                    
+                    headers = {
+                        'Authorization': f'Bearer {self.api_key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(
+                            f'{self.base_url}/audio/text_to_speech',
+                            headers=headers,
+                            json=data
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        
+                        provider_result = result.get(self.edenai_provider, {})
+                        if provider_result.get('status') == 'success':
+                            audio_url = provider_result.get('audio_resource_url')
+                            if audio_url:
+                                # Download the complete audio file
+                                audio_response = await client.get(audio_url)
+                                audio_response.raise_for_status()
+                                audio_data = audio_response.content
+                            else:
+                                # Some providers return base64 audio
+                                audio_base64 = provider_result.get('audio')
+                                if audio_base64:
+                                    import base64
+                                    audio_data = base64.b64decode(audio_base64)
+                                else:
+                                    raise Exception("No audio data in Eden AI response")
+
+                            # Return the audio as a single frame
+                            audio_frame = rtc.AudioFrame(
+                                data=audio_data,
+                                sample_rate=self._sample_rate,
+                                num_channels=self._num_channels,
+                                samples_per_channel=len(audio_data) // (2 * self._num_channels)  # 16-bit = 2 bytes
+                            )
+                            yield lk_tts.SynthesizedAudio(
+                                request_id="",
+                                frame=audio_frame
+                            )
+                        else:
+                            error = provider_result.get('error', 'Unknown error')
+                            logger.error(f"❌ Eden AI TTS error: {error}")
+                            raise Exception(f"Eden AI TTS failed: {error}")
+                            
+                except Exception as e:
+                    logger.error(f"❌ Eden AI TTS error: {e}")
+                    raise
+            
+            # Yield the async generator
+            yield _generate_audio()
     
     return EdenAITTSPlugin(api_key=api_key, provider=provider, voice=voice)
 
