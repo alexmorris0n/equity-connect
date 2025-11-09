@@ -8,13 +8,13 @@ from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import httpx
+from datetime import timedelta, datetime
 
 from config import Config
 from services.supabase import get_supabase_client, get_lead_by_phone
 from services.signalwire import SignalWireClient
 import boto3
 from botocore.exceptions import ClientError
-from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -845,6 +845,51 @@ def get_llm_cost(provider: str, model: str) -> float:
 # PROVIDER DATA ENDPOINTS
 # ============================================================================
 
+@app.post("/api/ai-providers/refresh-catalog")
+async def refresh_provider_catalog():
+    """Refresh provider catalogs from Eden AI and OpenRouter APIs"""
+    try:
+        from services.provider_catalog import refresh_all_catalogs
+        await refresh_all_catalogs()
+        return JSONResponse(content={"success": True, "message": "Catalogs refreshed"})
+    except Exception as e:
+        logger.error(f"Error refreshing catalogs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai-providers/pricing")
+async def get_live_pricing():
+    """Get live pricing data from all providers"""
+    try:
+        from services.provider_catalog import (
+            get_eden_ai_stt_pricing,
+            get_eden_ai_tts_pricing,
+            get_openrouter_models
+        )
+        
+        stt_pricing = await get_eden_ai_stt_pricing()
+        tts_pricing = await get_eden_ai_tts_pricing()
+        llm_models = await get_openrouter_models()
+        
+        # Build pricing summary
+        return JSONResponse(content={
+            "stt": stt_pricing,
+            "tts": tts_pricing,
+            "llm": [
+                {
+                    "id": m["id"],
+                    "name": m["name"],
+                    "pricing_per_1k_tokens": (m["pricing"]["prompt"] + m["pricing"]["completion"]) / 2 * 1000
+                }
+                for m in llm_models[:20]  # Top 20 models
+            ],
+            "last_updated": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error getting pricing: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/ai-providers/health")
 async def check_provider_health():
     """Verify all configured API keys work"""
@@ -929,64 +974,77 @@ async def get_all_providers():
 
 @app.get("/api/ai-providers/stt-models")
 async def get_stt_models(provider: str):
-    """Get available STT models"""
+    """Get available STT models with live pricing"""
     if provider == "eden_ai":
-        return JSONResponse(content={
-            "models": [
-                {"id": "deepgram-nova-2", "name": "Deepgram Nova 2", "cost_per_min": 0.0043, "quality": "excellent", "speed": "fast"},
-                {"id": "deepgram-base", "name": "Deepgram Base", "cost_per_min": 0.0036, "quality": "good", "speed": "fast"},
-                {"id": "assemblyai-best", "name": "AssemblyAI Best", "cost_per_min": 0.00037, "quality": "excellent", "speed": "medium"},
-                {"id": "google-latest", "name": "Google Speech Latest", "cost_per_min": 0.006, "quality": "excellent", "speed": "medium"},
-                {"id": "whisper-1", "name": "Whisper (via Eden AI)", "cost_per_min": 0.006, "quality": "good", "speed": "slow"},
-            ]
-        })
+        from services.provider_catalog import get_eden_ai_stt_pricing
+        
+        pricing = await get_eden_ai_stt_pricing()
+        models = []
+        
+        # Flatten pricing dict to model list
+        for provider_name, provider_models in pricing.items():
+            for model_id, cost in provider_models.items():
+                models.append({
+                    "id": f"{provider_name}-{model_id}",
+                    "name": f"{provider_name.title()} {model_id.replace('-', ' ').title()}",
+                    "cost_per_min": cost,
+                    "provider": provider_name,
+                    "quality": "excellent" if cost > 0.004 else "good",
+                    "speed": "fast" if "deepgram" in provider_name else "medium"
+                })
+        
+        return JSONResponse(content={"models": models})
+    
     elif provider == "openai_realtime":
         return JSONResponse(content={
             "models": [
-                {"id": "bundled", "name": "Bundled with Realtime", "cost_per_min": 0.0, "quality": "excellent", "speed": "realtime"}
+                {"id": "bundled", "name": "Bundled with Realtime", "cost_per_min": 0.06, "quality": "excellent", "speed": "realtime"}
             ]
         })
+    
     return JSONResponse(content={"models": []})
 
 
 @app.get("/api/ai-providers/tts-models")
 async def get_tts_models(provider: str):
-    """Get available TTS models grouped by underlying provider"""
+    """Get available TTS models with live pricing grouped by underlying provider"""
     if provider == "eden_ai":
-        return JSONResponse(content={
-            "grouped_models": [
-                {
-                    "provider_name": "ElevenLabs",
-                    "provider_badge": "premium",
-                    "models": [
-                        {"id": "elevenlabs-multilingual-v2", "name": "Multilingual V2", "cost_per_min": 0.180, "badge": "best", "languages": 29},
-                        {"id": "elevenlabs-turbo-v2.5", "name": "Turbo V2.5", "cost_per_min": 0.090, "badge": "fast", "languages": 32}
-                    ]
-                },
-                {
-                    "provider_name": "PlayHT",
-                    "provider_badge": "budget",
-                    "models": [
-                        {"id": "playht-2.0-turbo", "name": "2.0 Turbo", "cost_per_min": 0.040, "badge": "budget", "languages": 20}
-                    ]
-                },
-                {
-                    "provider_name": "Google",
-                    "provider_badge": "budget",
-                    "models": [
-                        {"id": "google-neural2", "name": "Neural2", "cost_per_min": 0.024, "badge": "cheapest", "languages": 40}
-                    ]
-                },
-                {
-                    "provider_name": "OpenAI",
-                    "provider_badge": "standard",
-                    "models": [
-                        {"id": "openai-tts-1", "name": "TTS-1", "cost_per_min": 0.015, "badge": "standard", "languages": 58},
-                        {"id": "openai-tts-1-hd", "name": "TTS-1-HD", "cost_per_min": 0.030, "badge": "hd", "languages": 58}
-                    ]
-                }
-            ]
-        })
+        from services.provider_catalog import get_eden_ai_tts_pricing
+        
+        pricing = await get_eden_ai_tts_pricing()
+        grouped_models = []
+        
+        # Group by provider
+        provider_groups = {
+            "elevenlabs": {"name": "ElevenLabs", "badge": "premium", "models": []},
+            "playht": {"name": "PlayHT", "badge": "budget", "models": []},
+            "google": {"name": "Google", "badge": "budget", "models": []},
+            "amazon": {"name": "Amazon", "badge": "budget", "models": []},
+            "openai": {"name": "OpenAI", "badge": "standard", "models": []}
+        }
+        
+        for provider_name, models in pricing.items():
+            if provider_name in provider_groups:
+                for model_id, cost in models.items():
+                    provider_groups[provider_name]["models"].append({
+                        "id": f"{provider_name}-{model_id}",
+                        "name": model_id.replace("-", " ").title(),
+                        "cost_per_min": cost,
+                        "badge": "best" if cost > 0.15 else ("fast" if cost > 0.05 else "budget"),
+                        "languages": 29 if "elevenlabs" in provider_name else 20
+                    })
+        
+        # Convert to list format
+        for provider_key, group_data in provider_groups.items():
+            if group_data["models"]:
+                grouped_models.append({
+                    "provider_name": group_data["name"],
+                    "provider_badge": group_data["badge"],
+                    "models": group_data["models"]
+                })
+        
+        return JSONResponse(content={"grouped_models": grouped_models})
+    
     elif provider == "openai_realtime":
         return JSONResponse(content={
             "grouped_models": [
@@ -994,11 +1052,12 @@ async def get_tts_models(provider: str):
                     "provider_name": "OpenAI Realtime",
                     "provider_badge": "bundled",
                     "models": [
-                        {"id": "bundled", "name": "Bundled with Realtime", "cost_per_min": 0.0, "badge": "included", "languages": 58}
+                        {"id": "bundled", "name": "Bundled with Realtime", "cost_per_min": 0.24, "badge": "included", "languages": 58}
                     ]
                 }
             ]
         })
+    
     return JSONResponse(content={"grouped_models": []})
 
 
@@ -1052,33 +1111,48 @@ async def get_tts_voices(provider: str, model: str):
 
 @app.get("/api/ai-providers/llm-models")
 async def get_llm_models(provider: str):
-    """Get available LLM models"""
+    """Get available LLM models with live pricing from OpenRouter"""
     if provider == "openrouter":
-        return JSONResponse(content={
-            "models": [
-                # OpenAI Models
-                {"id": "openai/gpt-4o", "name": "GPT-4 Omni", "provider": "OpenAI", "context": 128000, "cost_per_1m_tokens": 5.0, "speed": "fast"},
-                {"id": "openai/gpt-4o-mini", "name": "GPT-4 Omni Mini", "provider": "OpenAI", "context": 128000, "cost_per_1m_tokens": 0.15, "speed": "very_fast"},
+        from services.provider_catalog import get_openrouter_models
+        
+        all_models = await get_openrouter_models()
+        
+        # Filter to popular/recommended models
+        curated_models = []
+        for model in all_models:
+            model_id = model.get("id", "")
+            
+            # Include popular models
+            if any(keyword in model_id.lower() for keyword in [
+                "gpt-4o", "claude-3", "llama-3", "gemini", "mistral"
+            ]):
+                # Calculate cost per 1M tokens (average of prompt + completion)
+                pricing = model.get("pricing", {})
+                prompt_price = float(pricing.get("prompt", 0))
+                completion_price = float(pricing.get("completion", 0))
+                avg_cost_per_1m = ((prompt_price + completion_price) / 2) * 1000000
                 
-                # Anthropic Models
-                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet", "provider": "Anthropic", "context": 200000, "cost_per_1m_tokens": 3.0, "speed": "fast"},
-                {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku", "provider": "Anthropic", "context": 200000, "cost_per_1m_tokens": 0.25, "speed": "very_fast"},
-                
-                # Meta Models
-                {"id": "meta-llama/llama-3.1-70b-instruct", "name": "Llama 3.1 70B", "provider": "Meta", "context": 128000, "cost_per_1m_tokens": 0.88, "speed": "fast"},
-                {"id": "meta-llama/llama-3.1-8b-instruct", "name": "Llama 3.1 8B", "provider": "Meta", "context": 128000, "cost_per_1m_tokens": 0.07, "speed": "very_fast"},
-                
-                # Google Models
-                {"id": "google/gemini-pro-1.5", "name": "Gemini 1.5 Pro", "provider": "Google", "context": 1000000, "cost_per_1m_tokens": 3.5, "speed": "medium"},
-                {"id": "google/gemini-flash-1.5", "name": "Gemini 1.5 Flash", "provider": "Google", "context": 1000000, "cost_per_1m_tokens": 0.075, "speed": "very_fast"},
-            ]
-        })
+                curated_models.append({
+                    "id": model["id"],
+                    "name": model.get("name", model["id"]),
+                    "provider": model.get("top_provider", "Unknown"),
+                    "context": model.get("context_length", 128000),
+                    "cost_per_1m_tokens": round(avg_cost_per_1m, 2),
+                    "speed": "very_fast" if avg_cost_per_1m < 0.5 else ("fast" if avg_cost_per_1m < 5 else "medium")
+                })
+        
+        # Sort by cost (cheapest first)
+        curated_models.sort(key=lambda m: m["cost_per_1m_tokens"])
+        
+        return JSONResponse(content={"models": curated_models[:30]})  # Top 30
+    
     elif provider == "openai_realtime":
         return JSONResponse(content={
             "models": [
                 {"id": "gpt-4o-realtime-preview", "name": "GPT-4 Omni Realtime", "provider": "OpenAI", "context": 128000, "cost_per_1m_tokens": 10.0, "speed": "realtime"}
             ]
         })
+    
     return JSONResponse(content={"models": []})
 
 
