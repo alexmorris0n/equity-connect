@@ -197,6 +197,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                     provider_settings = {'voice': self.voice}
                     data[f'{self.provider}_settings'] = json.dumps(provider_settings)
                 
+                logger.debug(f"🎤 Eden AI TTS request: provider={self.provider}, voice={self.voice}, text_len={len(text)}")
+                
                 headers = {
                     'Authorization': f'Bearer {self.api_key}',
                     'Content-Type': 'application/json'
