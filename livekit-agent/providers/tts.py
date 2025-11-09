@@ -312,10 +312,11 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
                                 target_rate = self._sample_rate  # 24000 Hz (our config)
                                 if actual_sample_rate != target_rate:
-                                    from scipy import signal
                                     logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
+                                    # Fast linear interpolation (much faster than scipy)
                                     num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
-                                    pcm_data = signal.resample(pcm_data, num_samples)
+                                    indices = np.linspace(0, len(pcm_data) - 1, num_samples)
+                                    pcm_data = np.interp(indices, np.arange(len(pcm_data)), pcm_data)
                                 
                                 pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
                                 # Use our target sample rate (24000 Hz), not the source rate
@@ -340,10 +341,11 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
                                 target_rate = self._sample_rate  # 24000 Hz (our config)
                                 if actual_sample_rate != target_rate:
-                                    from scipy import signal
                                     logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
+                                    # Fast linear interpolation (much faster than scipy)
                                     num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
-                                    pcm_data = signal.resample(pcm_data, num_samples)
+                                    indices = np.linspace(0, len(pcm_data) - 1, num_samples)
+                                    pcm_data = np.interp(indices, np.arange(len(pcm_data)), pcm_data)
                                 
                                 pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
                                 # Use our target sample rate (24000 Hz), not the source rate
