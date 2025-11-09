@@ -303,8 +303,12 @@ async def entrypoint(ctx: JobContext):
             # Neither OpenRouter nor Eden AI support GPT-realtime voice streaming
             if not Config.OPENAI_API_KEY:
                 raise ValueError("OPENAI_API_KEY not set")
-            from livekit.plugins.openai import RealtimeModel
-            return RealtimeModel(api_key=Config.OPENAI_API_KEY)
+            from livekit.plugins import openai
+            voice = config.get("tts_voice", "alloy")
+            return openai.realtime.RealtimeModel(
+                api_key=Config.OPENAI_API_KEY,
+                voice=voice
+            )
         elif provider_name == "openai":
             if not Config.OPENAI_API_KEY:
                 raise ValueError("OPENAI_API_KEY not set")
