@@ -151,7 +151,7 @@ def extract_edenai_provider(model_name: str, service_type: str) -> str:
     Examples:
     - "deepgram-nova-2" → "deepgram"
     - "elevenlabs-multilingual-v2" → "elevenlabs"
-    - "playht-2.0-turbo" → "playht"
+    - "openai-tts-1" → "openai"
     """
     if not model_name or model_name == "bundled":
         return ""
@@ -161,15 +161,16 @@ def extract_edenai_provider(model_name: str, service_type: str) -> str:
     if len(parts) > 0:
         provider = parts[0]
         
-        # Map to Eden AI provider names
+        # Map to Eden AI provider names (only EdenAI-available providers)
         provider_map = {
             "deepgram": "deepgram",
             "assemblyai": "assemblyai",
             "google": "google",
             "whisper": "openai",
             "elevenlabs": "elevenlabs",
-            "playht": "playht",
             "amazon": "amazon",
+            "microsoft": "microsoft",
+            "lovoai": "lovoai",
             "openai": "openai"
         }
         

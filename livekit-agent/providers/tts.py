@@ -101,7 +101,7 @@ class EdenAITTS(TTSProvider):
         
         Args:
             api_key: Eden AI API key
-            provider: Underlying provider name (e.g., 'elevenlabs', 'openai', 'playht', 'google')
+            provider: Underlying provider name (e.g., 'elevenlabs', 'openai', 'deepgram', 'google', 'amazon', 'microsoft')
             voice: Voice name for the provider
         """
         self.api_key = api_key
@@ -232,12 +232,11 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                             }
                         elif self.edenai_provider == 'openai':
                             provider_settings = {'voice': self.voice}
-                        elif self.edenai_provider == 'playht':
-                            provider_settings = {'voice': self.voice}
                         elif self.edenai_provider == 'google':
                             provider_settings = {'voice_name': self.voice}
                         else:
-                            provider_settings = {'voice': self.voice}  # Default
+                            # Default for amazon, microsoft, deepgram, lovoai
+                            provider_settings = {'voice': self.voice}
                         
                         # Pass dict object (not JSON string) since we use json=data
                         data[f'{self.edenai_provider}_settings'] = provider_settings

@@ -966,7 +966,7 @@ async def get_all_providers():
             {"id": "openai_realtime", "name": "OpenAI Realtime (Bundled)", "description": "Built-in STT with GPT-4o Realtime"}
         ],
         "tts_providers": [
-            {"id": "eden_ai", "name": "Eden AI (Aggregator)", "description": "Access to ElevenLabs, PlayHT, Google, Amazon Polly, etc."},
+            {"id": "eden_ai", "name": "Eden AI (Aggregator)", "description": "Access to ElevenLabs, OpenAI, Deepgram, Google, Amazon, Microsoft, Lovoai"},
             {"id": "openai_realtime", "name": "OpenAI Realtime (Bundled)", "description": "Built-in TTS with GPT-4o Realtime"}
         ],
         "llm_providers": [
@@ -1018,13 +1018,15 @@ async def get_tts_models(provider: str):
         pricing = await get_eden_ai_tts_pricing()
         grouped_models = []
         
-        # Group by provider
+        # Group by provider (only EdenAI-available providers)
         provider_groups = {
             "elevenlabs": {"name": "ElevenLabs", "badge": "premium", "models": []},
-            "playht": {"name": "PlayHT", "badge": "budget", "models": []},
-            "google": {"name": "Google", "badge": "budget", "models": []},
+            "google": {"name": "Google", "badge": "standard", "models": []},
             "amazon": {"name": "Amazon", "badge": "budget", "models": []},
-            "openai": {"name": "OpenAI", "badge": "standard", "models": []}
+            "openai": {"name": "OpenAI", "badge": "budget", "models": []},  # Cheapest at $0.015/1K chars
+            "deepgram": {"name": "Deepgram", "badge": "budget", "models": []},  # Cheapest at $0.015/1K chars
+            "microsoft": {"name": "Microsoft", "badge": "standard", "models": []},
+            "lovoai": {"name": "Lovoai", "badge": "premium", "models": []}
         }
         
         for provider_name, models in pricing.items():

@@ -285,22 +285,28 @@ def get_fallback_tts_pricing() -> Dict[str, Any]:
             "turbo-v2.5": 0.090,         # ElevenLabs Turbo V2.5 - fast & good
             "turbo-v2": 0.090            # ElevenLabs Turbo V2
         },
-        "playht": {
-            "2.0-turbo": 0.040,          # PlayHT 2.0 Turbo
-            "2.0": 0.060,                # PlayHT 2.0 Standard
-            "1.0": 0.095                 # PlayHT 1.0 (legacy)
+        "openai": {
+            "tts-1": 0.0023,             # OpenAI TTS-1 - $0.015/1K chars (~150 chars/min = $0.00225)
+            "tts-1-hd": 0.0045           # OpenAI TTS-1-HD - $0.030/1K chars
+        },
+        "deepgram": {
+            "aura": 0.0023               # Deepgram Aura - $0.015/1K chars (same as OpenAI)
         },
         "google": {
-            "neural2": 0.024,            # Google Neural2 voices
-            "standard": 0.004            # Google Standard voices
+            "neural": 0.024,             # Google Neural voices - $16/1M chars
+            "wavenet": 0.024,            # Google Wavenet - $16/1M chars
+            "standard": 0.006,           # Google Standard - $4/1M chars
+            "studio": 0.024              # Google Studio - $0.16/1K chars
         },
         "amazon": {
-            "polly-neural": 0.024,       # Amazon Polly Neural
-            "polly-standard": 0.004      # Amazon Polly Standard
+            "neural": 0.024,             # Amazon Polly Neural - $16/1M chars
+            "standard": 0.006            # Amazon Polly Standard - $4/1M chars
         },
-        "openai": {
-            "tts-1": 0.015,              # OpenAI TTS-1
-            "tts-1-hd": 0.030            # OpenAI TTS-1-HD
+        "microsoft": {
+            "neural": 0.024              # Microsoft Azure Neural - $16/1M chars
+        },
+        "lovoai": {
+            "standard": 0.240            # Lovoai - $160/1M chars (expensive!)
         }
     }
 
@@ -309,7 +315,7 @@ def get_fallback_eden_catalog() -> Dict[str, Any]:
     """Fallback Eden AI catalog if API is unavailable"""
     return {
         "speech_to_text": ["deepgram", "assemblyai", "google", "openai", "revai"],
-        "text_to_speech": ["elevenlabs", "playht", "google", "amazon", "openai"]
+        "text_to_speech": ["elevenlabs", "openai", "deepgram", "google", "amazon", "microsoft", "lovoai"]
     }
 
 
