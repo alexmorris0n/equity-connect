@@ -29,7 +29,7 @@ async def get_template_for_phone(phone_number: str) -> Optional[Dict[str, Any]]:
         # 1. Try phone's assigned template
         phone_result = supabase.table("signalwire_phone_numbers")\
             .select("assigned_ai_template_id")\
-            .eq("phone_number", phone_number)\
+            .eq("number", phone_number)\
             .single()\
             .execute()
         
