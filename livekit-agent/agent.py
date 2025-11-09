@@ -267,9 +267,17 @@ async def entrypoint(ctx: JobContext):
             if not Config.OPENAI_API_KEY:
                 raise ValueError("OPENAI_API_KEY not set")
             from livekit.plugins import openai
+            
+            # Valid OpenAI voices
+            valid_voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'coral', 'verse', 'ballad', 'ash', 'sage', 'marin', 'cedar']
+            requested_voice = config.get("tts_voice", "alloy")
+            
+            # If voice ID is not a valid OpenAI voice (e.g., ElevenLabs ID), use default
+            voice = requested_voice if requested_voice in valid_voices else "echo"
+            
             return openai.TTS(
                 api_key=Config.OPENAI_API_KEY,
-                voice=config.get("tts_voice", "alloy")
+                voice=voice
             )
         elif provider_name == "edenai" or provider_name == "eden_ai":
             # Use Eden AI REST API wrapper (implements LiveKit TTS plugin interface)
