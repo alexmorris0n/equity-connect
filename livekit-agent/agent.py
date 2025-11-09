@@ -380,11 +380,12 @@ async def entrypoint(ctx: JobContext):
         # Final fallback - use OpenAI defaults
         try:
             from livekit.plugins import openai
-            if not is_realtime:
-                stt_provider = openai.STT(api_key=Config.OPENAI_API_KEY)
-                tts_provider = openai.TTS(api_key=Config.OPENAI_API_KEY, voice="alloy")
+            # Always initialize STT/TTS in fallback mode (we're not using Realtime if we're here)
+            stt_provider = openai.STT(api_key=Config.OPENAI_API_KEY)
+            tts_provider = openai.TTS(api_key=Config.OPENAI_API_KEY, voice="alloy")
             llm_provider = openai.LLM(api_key=Config.OPENAI_API_KEY, model="gpt-5")
-            logger.warning("⚠️ Using OpenAI fallback providers")
+            is_realtime = False  # We're not using Realtime if we fell back
+            logger.warning("⚠️ Using OpenAI fallback providers (STT/TTS/LLM)")
         except Exception as final_error:
             logger.error(f"❌ Even fallback providers failed: {final_error}")
             raise
