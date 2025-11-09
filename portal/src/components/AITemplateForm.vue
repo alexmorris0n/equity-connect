@@ -486,10 +486,16 @@ async function onTTSProviderChange(provider) {
 }
 
 async function onTTSModelChange(model) {
+  console.log('🎤 Loading voices for:', formData.value.tts_provider, model)
   loadingTTSVoices.value = true
   try {
-    const response = await fetch(`/api/ai-providers/tts-voices?provider=${formData.value.tts_provider}&model=${model}`)
+    const url = `/api/ai-providers/tts-voices?provider=${formData.value.tts_provider}&model=${model}`
+    console.log('📞 Fetching voices from:', url)
+    
+    const response = await fetch(url)
     const data = await response.json()
+    
+    console.log('✅ Received voices:', data.voices?.length || 0, data.voices)
     
     ttsVoiceOptions.value = data.voices.map(v => ({
       label: `${v.name} (${v.gender}, ${v.accent})`,
@@ -497,12 +503,15 @@ async function onTTSModelChange(model) {
       voice: v
     }))
     
+    console.log('🎯 Voice options:', ttsVoiceOptions.value)
+    
     // Auto-select first voice
     if (data.voices.length > 0) {
       formData.value.tts_voice_id = data.voices[0].id
+      console.log('✅ Auto-selected voice:', data.voices[0].id)
     }
   } catch (error) {
-    console.error('Error loading TTS voices:', error)
+    console.error('❌ Error loading TTS voices:', error)
   } finally {
     loadingTTSVoices.value = false
   }

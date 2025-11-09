@@ -371,6 +371,11 @@ async def get_eden_ai_tts_voices(provider: str, model: str, force_refresh: bool 
             if response.status_code == 200:
                 data = response.json()
                 
+                # Debug: log all provider names
+                provider_names = [p.get("provider_name") for p in data.get("providers", [])]
+                logger.info(f"🔍 Eden AI providers available: {provider_names}")
+                logger.info(f"🔍 Looking for provider: {provider}")
+                
                 # Find the provider in the response
                 for prov in data.get("providers", []):
                     if prov.get("provider_name", "").lower() == provider.lower():
@@ -384,7 +389,7 @@ async def get_eden_ai_tts_voices(provider: str, model: str, force_refresh: bool 
                         return voices
                 
                 # Provider not found, return empty
-                logger.warning(f"⚠️ Provider {provider} not found in Eden AI response")
+                logger.warning(f"⚠️ Provider '{provider}' not found in Eden AI response. Available: {provider_names}")
                 return []
             else:
                 logger.error(f"❌ Eden AI voices API error: {response.status_code}")
