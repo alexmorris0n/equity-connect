@@ -1044,19 +1044,33 @@ Built comprehensive runtime configuration UI in Prompt Management portal enablin
 - ✅ **A/B Testing Ready** - Compare AI providers per phone number for performance
 - ✅ **Scalable** - Auto-scaling on Fly.io, horizontal scaling of agent workers
 
-**Status:** ✅ **PRODUCTION READY - Deployed November 9, 2025**
+**Status:** ✅ **PRODUCTION READY - TTS AUDIO WORKING (Nov 9, 2025)** 🎉
 - ✅ All 6 Fly.io apps deployed and operational
 - ✅ Multi-region deployment complete (lax, ord, ewr)
-- ✅ Eden AI STT/TTS integration working
+- ✅ **Eden AI STT/TTS integration FULLY OPERATIONAL** - Sound output working!
+- ✅ **EdenAI TTS fixes deployed (Nov 9):**
+  - Fixed OpenAI strict schema validation (metadata parameter)
+  - Added required 'option' parameter for EdenAI API
+  - Implemented MP3 → PCM decoding using PyAV
+  - Refactored synthesize to async context manager pattern
 - ✅ OpenRouter LLM integration working
 - ✅ OpenAI Realtime plugin installed and configured
 - ✅ SignalWire SWML webhook routing to LiveKit SIP bridge
 - ✅ Recording flow operational (MinIO → Supabase Storage)
-- ✅ GitHub Actions CI/CD fully automated
+- ✅ GitHub Actions CI/CD fully automated (18 deployments on Nov 9)
 - ✅ Internal networking configured (LiveKit Core ↔ SIP ↔ Agent ↔ API)
 - ✅ Health checks and monitoring in place
+- ✅ **Aggressive debug logging implemented for production troubleshooting**
+
+**Recent Fixes (November 9, 2025 - 18 commits):**
+1. **LLM Schema Fix:** Changed `save_interaction` metadata from `Dict` to `str` for OpenAI strict mode
+2. **EdenAI API Fix:** Added required `option: 'MALE'` parameter to TTS requests
+3. **Audio Decoding Fix:** MP3 → PCM conversion using PyAV (34,735 bytes successfully decoded)
+4. **TTS Plugin Fix:** Implemented proper async context manager pattern for LiveKit
+5. **Fallback Logic:** Fixed OpenAI Realtime fallback when API unavailable
 
 **Next Steps:**
+- [x] Fix TTS audio output (COMPLETED Nov 9)
 - [ ] Test inbound calls via SignalWire SIP gateway
 - [ ] Test outbound calls via API server
 - [ ] Verify recording playback via signed URLs
@@ -2635,7 +2649,68 @@ Flow:
 
 ## 🚀 Recent Major Deployments
 
-### November 9, 2025: Self-Hosted LiveKit Voice Stack on Fly.io ⭐ **MAJOR INFRASTRUCTURE UPGRADE**
+### November 9, 2025 (Evening): LiveKit TTS Audio Pipeline Fix ⭐ **CRITICAL BREAKTHROUGH** 🎉
+
+**Status:** ✅ **SOUND IS WORKING!** Tiffany's voice now plays through self-hosted LiveKit stack.
+
+**What Was Fixed (18 commits, 3 hours debugging):**
+
+**Critical Issues Resolved:**
+1. **LLM Initialization Crash** - OpenAI strict mode rejecting `Dict[str, Any]` in function tools
+   - Changed `save_interaction` metadata parameter from `Dict` to `str` with JSON parsing
+   - Agent now initializes successfully and joins rooms
+   
+2. **EdenAI TTS 400 Bad Request** - Missing required API parameters
+   - Added `option: 'MALE'` parameter to EdenAI request payload
+   - API now accepts requests and returns audio (34,735 bytes received)
+   
+3. **AudioFrame Format Error** - MP3 audio incompatible with LiveKit
+   - Implemented MP3 → PCM decoding using PyAV library
+   - `ValueError: data length must be a multiple of sizeof(int16)` → FIXED
+   
+4. **TTS Plugin Architecture** - Async context manager protocol violations
+   - Refactored `synthesize` method through 4 iterations
+   - Final solution: `@asynccontextmanager` yielding inner async generator
+   - Complies with LiveKit's TTS plugin interface requirements
+
+**Additional Improvements:**
+- ✅ Added aggressive ERROR-level logging throughout TTS pipeline
+- ✅ Log full EdenAI request payloads and responses for debugging
+- ✅ Fixed OpenAI Realtime fallback logic (import path, model name, STT/TTS initialization)
+- ✅ Resolved provider name conflict with LiveKit base class
+- ✅ Added **kwargs support for LiveKit conn_options
+
+**Production Impact:**
+- **Before:** Agent crashed on init, no sound output, EdenAI API errors
+- **After:** Agent stable, sound working, full TTS pipeline operational ✅
+- **Deployments:** 18 automated deployments via GitHub Actions
+- **Final Version:** 107 (deployed 10:30 UTC to LAX region)
+
+**Architecture Working:**
+```
+SignalWire → LiveKit SIP → LiveKit Core → Python Agent
+                                              ↓
+                                    EdenAI API (ElevenLabs)
+                                              ↓
+                                    MP3 → PyAV → PCM
+                                              ↓
+                                    LiveKit AudioFrame
+                                              ↓
+                                         SOUND! 🔊
+```
+
+**Key Learnings:**
+1. LiveKit TTS requires `@asynccontextmanager` yielding async generator of `SynthesizedAudio`
+2. OpenAI strict mode (Azure via OpenRouter) rejects Dict types in function tools
+3. EdenAI requires `option` parameter (MALE/FEMALE) when using voice_id
+4. EdenAI returns MP3 - must decode to PCM for LiveKit (PyAV handles this perfectly)
+
+**Documentation Created:**
+- `DAILY_SUMMARY_NOV_9_2025.md` - Complete debugging chronicle (18 commits analyzed)
+
+---
+
+### November 9, 2025 (Morning): Self-Hosted LiveKit Voice Stack on Fly.io ⭐ **MAJOR INFRASTRUCTURE UPGRADE**
 
 **Overview:**
 Completed full deployment of self-hosted LiveKit voice agent infrastructure to Fly.io, replacing dependency on third-party platforms with a flexible, multi-provider AI architecture.
