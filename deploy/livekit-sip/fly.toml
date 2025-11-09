@@ -35,6 +35,6 @@ primary_region = "lax"
   internal_port = 60000
   protocol = "udp"
   [[services.ports]]
-    port = 60000
+    start_port = 60000
     end_port = 61000
 
