@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
+# Build context is deploy/agent, copy from ../../livekit-agent
 COPY ../../livekit-agent/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 

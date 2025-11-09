@@ -3,6 +3,7 @@ primary_region = "lax"
 
 [build]
   dockerfile = "Dockerfile"
+  build_context = "deploy/agent"
 
 [env]
   LIVEKIT_URL = "ws://equity-livekit-core.internal:7880"
