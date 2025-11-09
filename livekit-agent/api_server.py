@@ -574,16 +574,19 @@ async def list_templates(broker_id: Optional[str] = None):
             # Public endpoint only shows system defaults
             query = query.eq("is_system_default", True)
         
-        result = query.order("is_system_default.desc,name.asc").execute()
+        result = query.execute()
         
         # Enrich with usage counts
-        templates = result.data
+        templates = result.data or []
         for template in templates:
             usage_result = supabase.table("signalwire_phone_numbers")\
                 .select("id", count="exact")\
                 .eq("assigned_ai_template_id", template["id"])\
                 .execute()
             template["phone_count"] = usage_result.count or 0
+        
+        # Sort in Python instead of SQL (avoid Supabase ordering issues)
+        templates.sort(key=lambda t: (not t.get("is_system_default", False), t.get("name", "")))
         
         return JSONResponse(content={"templates": templates})
     
