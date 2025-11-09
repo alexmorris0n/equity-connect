@@ -215,14 +215,14 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 
                 logger.error(f"🚨 _generate_audio STARTED! provider={self.edenai_provider}")
                 try:
-                data = {
-                    'providers': self.edenai_provider,
-                    'text': text,
-                    'language': language,
-                    'option': 'MALE',  # Required by EdenAI: MALE or FEMALE
-                    'audio_format': 'wav',  # Request WAV format (contains PCM)
-                    'sampling_rate': self._sample_rate,  # Request target sample rate
-                }
+                    data = {
+                        'providers': self.edenai_provider,
+                        'text': text,
+                        'language': language,
+                        'option': 'MALE',  # Required by EdenAI: MALE or FEMALE
+                        'audio_format': 'wav',  # Request WAV format (contains PCM)
+                        'sampling_rate': self._sample_rate,  # Request target sample rate
+                    }
                     
                     if self.voice:
                         # Different providers use different parameter names
