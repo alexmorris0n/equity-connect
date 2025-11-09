@@ -254,7 +254,7 @@ async def entrypoint(ctx: JobContext):
     # Helper function to create TTS provider (returns LiveKit plugin)
     async def create_tts(provider_name: str, config: Dict[str, Any]):
         """Create TTS provider as LiveKit plugin"""
-        logger.info(f"🔍 DEBUG: create_tts called with provider_name='{provider_name}'")
+        logger.error(f"🚨🚨🚨 create_tts CALLED with provider_name='{provider_name}', config keys={list(config.keys())}")
         if provider_name == "elevenlabs":
             if not Config.ELEVENLABS_API_KEY:
                 raise ValueError("ELEVENLABS_API_KEY not set")
@@ -274,16 +274,22 @@ async def entrypoint(ctx: JobContext):
         elif provider_name == "edenai" or provider_name == "eden_ai":
             # Use Eden AI REST API wrapper (implements LiveKit TTS plugin interface)
             # Provides unified API key management and provider switching via config
+            logger.info(f"🔍 EDEN_AI TTS: provider_name='{provider_name}' matched!")
             if not Config.EDENAI_API_KEY:
+                logger.error("❌ EDENAI_API_KEY not set!")
                 raise ValueError("EDENAI_API_KEY not set")
+            logger.info(f"✅ EDENAI_API_KEY is set")
             from providers.tts import create_edenai_tts_plugin
             underlying_provider = config.get("tts_edenai_provider", "elevenlabs")
             voice = config.get("tts_voice")
-            return create_edenai_tts_plugin(
+            logger.info(f"🎤 Creating EdenAI TTS: provider={underlying_provider}, voice={voice}")
+            plugin = create_edenai_tts_plugin(
                 api_key=Config.EDENAI_API_KEY,
                 provider=underlying_provider,
                 voice=voice
             )
+            logger.info(f"✅ EdenAI TTS plugin created successfully!")
+            return plugin
         else:
             raise ValueError(f"Unknown TTS provider: {provider_name}")
     
