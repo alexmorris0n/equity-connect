@@ -382,6 +382,11 @@
             />
           </n-card>
         </n-tab-pane>
+
+        <!-- AI Templates Tab -->
+        <n-tab-pane name="ai-templates" tab="AI Templates">
+          <AITemplatesManager :broker-id="broker.id" />
+        </n-tab-pane>
       </n-tabs>
     </div>
 
@@ -421,6 +426,7 @@ import {
   UnlinkOutline,
   SyncOutline
 } from '@vicons/ionicons5'
+import AITemplatesManager from '@/components/AITemplatesManager.vue'
 
 const route = useRoute()
 const router = useRouter()

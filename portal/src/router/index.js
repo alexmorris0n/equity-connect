@@ -62,6 +62,16 @@ const router = createRouter({
           path: 'appointments',
           name: 'AdminAppointments',
           component: () => import('@/views/admin/Appointments.vue')
+        },
+        {
+          path: 'livekit-playground',
+          name: 'LiveKitPlayground',
+          component: () => import('@/views/admin/LiveKitPlayground.vue')
+        },
+        {
+          path: 'live-calls',
+          name: 'LiveCalls',
+          component: () => import('@/views/admin/LiveCalls.vue')
         }
       ]
     },

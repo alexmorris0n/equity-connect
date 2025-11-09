@@ -556,6 +556,780 @@ async def get_recording_url(interaction_id: str, expires_in: int = 3600):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+# ============================================================================
+# AI TEMPLATES API
+# ============================================================================
+
+@app.get("/api/ai-templates")
+async def list_templates(broker_id: Optional[str] = None):
+    """List all AI templates (system + broker's custom)"""
+    try:
+        supabase = get_supabase_client()
+        query = supabase.table("ai_templates").select("*")
+        
+        if broker_id:
+            # Broker sees their own templates + system defaults
+            query = query.or_(f"broker_id.eq.{broker_id},is_system_default.eq.true")
+        else:
+            # Public endpoint only shows system defaults
+            query = query.eq("is_system_default", True)
+        
+        result = query.order("is_system_default.desc(), name.asc()").execute()
+        
+        # Enrich with usage counts
+        templates = result.data
+        for template in templates:
+            usage_result = supabase.table("signalwire_phone_numbers")\
+                .select("id", count="exact")\
+                .eq("assigned_ai_template_id", template["id"])\
+                .execute()
+            template["phone_count"] = usage_result.count or 0
+        
+        return JSONResponse(content={"templates": templates})
+    
+    except Exception as e:
+        logger.error(f"Error listing templates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai-templates")
+async def create_template(request: Request):
+    """Create new AI template with validation"""
+    try:
+        template_data = await request.json()
+        
+        # Validate provider combinations
+        validation_result = await validate_template_config(template_data)
+        if not validation_result["valid"]:
+            raise HTTPException(status_code=400, detail={"errors": validation_result["errors"]})
+        
+        # Calculate estimated cost
+        template_data["estimated_cost_per_minute"] = calculate_template_cost(template_data)
+        
+        # Insert into database
+        supabase = get_supabase_client()
+        result = supabase.table("ai_templates").insert(template_data).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to create template")
+        
+        logger.info(f"✅ Created template: {result.data[0]['name']}")
+        return JSONResponse(content={"template": result.data[0]})
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating template: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/ai-templates/{template_id}")
+async def update_template(template_id: str, request: Request):
+    """Update AI template (only if not system default)"""
+    try:
+        updates = await request.json()
+        supabase = get_supabase_client()
+        
+        # Check if template exists and is not system default
+        existing = supabase.table("ai_templates").select("*").eq("id", template_id).single().execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        if existing.data.get("is_system_default"):
+            raise HTTPException(status_code=403, detail="Cannot modify system templates")
+        
+        # Merge and validate
+        merged_data = {**existing.data, **updates}
+        validation_result = await validate_template_config(merged_data)
+        if not validation_result["valid"]:
+            raise HTTPException(status_code=400, detail={"errors": validation_result["errors"]})
+        
+        # Recalculate cost
+        updates["estimated_cost_per_minute"] = calculate_template_cost(merged_data)
+        
+        # Update
+        result = supabase.table("ai_templates").update(updates).eq("id", template_id).execute()
+        
+        logger.info(f"✅ Updated template: {template_id}")
+        return JSONResponse(content={"template": result.data[0]})
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating template: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/ai-templates/{template_id}")
+async def delete_template(template_id: str):
+    """Delete template (only if not in use and not system default)"""
+    try:
+        supabase = get_supabase_client()
+        
+        # Check if template is system default
+        template = supabase.table("ai_templates").select("*").eq("id", template_id).single().execute()
+        if not template.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        if template.data.get("is_system_default"):
+            raise HTTPException(status_code=403, detail="Cannot delete system templates")
+        
+        # Check usage
+        usage = supabase.table("signalwire_phone_numbers").select("id").eq("assigned_ai_template_id", template_id).execute()
+        if usage.data and len(usage.data) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Template is assigned to {len(usage.data)} phone numbers. Unassign first."
+            )
+        
+        # Delete
+        supabase.table("ai_templates").delete().eq("id", template_id).execute()
+        
+        logger.info(f"✅ Deleted template: {template_id}")
+        return JSONResponse(content={"success": True})
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting template: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai-templates/{template_id}/clone")
+async def clone_template(template_id: str, request: Request):
+    """Clone system preset for customization"""
+    try:
+        body = await request.json()
+        broker_id = body.get("broker_id")
+        new_name = body.get("name")
+        
+        if not broker_id or not new_name:
+            raise HTTPException(status_code=400, detail="broker_id and name are required")
+        
+        supabase = get_supabase_client()
+        
+        # Get original template
+        original = supabase.table("ai_templates").select("*").eq("id", template_id).single().execute()
+        if not original.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        # Create new template
+        new_template = {**original.data}
+        new_template.pop("id", None)
+        new_template.pop("created_at", None)
+        new_template.pop("updated_at", None)
+        new_template["name"] = new_name
+        new_template["broker_id"] = broker_id
+        new_template["is_system_default"] = False
+        new_template["is_preset"] = False
+        
+        result = supabase.table("ai_templates").insert(new_template).execute()
+        
+        logger.info(f"✅ Cloned template {template_id} → {result.data[0]['id']}")
+        return JSONResponse(content={"template": result.data[0]})
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cloning template: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# VALIDATION & COST CALCULATION
+# ============================================================================
+
+async def validate_template_config(template: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate STT/TTS/LLM provider combinations"""
+    errors = []
+    
+    # Check API keys exist
+    if template.get("stt_provider") == "eden_ai" and not Config.EDENAI_API_KEY:
+        errors.append("Eden AI API key not configured")
+    if template.get("llm_provider") == "openrouter" and not Config.OPENROUTER_API_KEY:
+        errors.append("OpenRouter API key not configured")
+    if template.get("llm_provider") == "openai_realtime" and not Config.OPENAI_API_KEY:
+        errors.append("OpenAI API key not configured")
+    
+    # Check required fields
+    required_fields = ["name", "stt_provider", "stt_model", "tts_provider", "tts_model", "tts_voice_id", "llm_provider", "llm_model"]
+    for field in required_fields:
+        if not template.get(field):
+            errors.append(f"Missing required field: {field}")
+    
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors
+    }
+
+
+def calculate_template_cost(template: Dict[str, Any]) -> float:
+    """Estimate $/minute for template configuration"""
+    try:
+        # STT cost (per minute of audio)
+        stt_cost = get_stt_cost(template.get("stt_provider"), template.get("stt_model"))
+        
+        # TTS cost (assuming ~150 words/minute)
+        tts_cost = get_tts_cost(template.get("tts_provider"), template.get("tts_model"))
+        
+        # LLM cost (assuming ~50 tokens/turn, ~4 turns/minute = 200 tokens/min)
+        llm_cost = get_llm_cost(template.get("llm_provider"), template.get("llm_model"))
+        
+        total = stt_cost + tts_cost + llm_cost
+        return round(total, 4)
+    except Exception as e:
+        logger.warning(f"Error calculating cost: {e}")
+        return 0.0
+
+
+def get_stt_cost(provider: str, model: str) -> float:
+    """Get STT cost per minute"""
+    if provider == "openai_realtime":
+        return 0.0  # Bundled in realtime cost
+    
+    # Eden AI pricing (per minute)
+    pricing = {
+        "deepgram-nova-2": 0.0043,
+        "deepgram-base": 0.0036,
+        "assemblyai-best": 0.00037,
+        "google-latest": 0.006,
+        "whisper-1": 0.006,
+        "revai-human-parity": 0.02
+    }
+    return pricing.get(model, 0.005)
+
+
+def get_tts_cost(provider: str, model: str) -> float:
+    """Get TTS cost per minute (150 words)"""
+    if provider == "openai_realtime":
+        return 0.0  # Bundled in realtime cost
+    
+    # Eden AI pricing (per minute, ~150 words)
+    pricing = {
+        "elevenlabs-multilingual-v2": 0.180,
+        "elevenlabs-turbo-v2.5": 0.090,
+        "playht-2.0-turbo": 0.040,
+        "google-neural2": 0.024,
+        "amazon-polly-neural": 0.024,
+        "openai-tts-1": 0.015,
+        "openai-tts-1-hd": 0.030
+    }
+    return pricing.get(model, 0.020)
+
+
+def get_llm_cost(provider: str, model: str) -> float:
+    """Get LLM cost per minute (~200 tokens input+output)"""
+    if provider == "openai_realtime":
+        # GPT-4o Realtime: $5/1M input + $20/1M output = avg $12.5/1M
+        # 200 tokens/min = 0.0002M tokens
+        return 0.0025
+    
+    # OpenRouter pricing (per 200 tokens)
+    token_pricing = {
+        "openai/gpt-4o": 5.0,  # $5/1M input
+        "openai/gpt-4o-mini": 0.15,
+        "anthropic/claude-3.5-sonnet": 3.0,
+        "anthropic/claude-3-haiku": 0.25,
+        "meta-llama/llama-3.1-70b-instruct": 0.88,
+        "meta-llama/llama-3.1-8b-instruct": 0.07,
+        "google/gemini-pro-1.5": 3.5,
+        "google/gemini-flash-1.5": 0.075,
+    }
+    
+    cost_per_1m = token_pricing.get(model, 1.0)
+    # 200 tokens = 0.0002M tokens
+    return (cost_per_1m * 0.0002)
+
+
+# ============================================================================
+# PROVIDER DATA ENDPOINTS
+# ============================================================================
+
+@app.get("/api/ai-providers/health")
+async def check_provider_health():
+    """Verify all configured API keys work"""
+    results = {
+        "eden_ai": {"status": "unknown", "error": None, "configured": bool(Config.EDENAI_API_KEY)},
+        "openrouter": {"status": "unknown", "error": None, "configured": bool(Config.OPENROUTER_API_KEY)},
+        "openai": {"status": "unknown", "error": None, "configured": bool(Config.OPENAI_API_KEY)}
+    }
+    
+    # Test Eden AI
+    if Config.EDENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    "https://api.edenai.run/v2/info/providers",
+                    headers={"Authorization": f"Bearer {Config.EDENAI_API_KEY}"}
+                )
+                results["eden_ai"]["status"] = "healthy" if response.status_code == 200 else "error"
+                if response.status_code != 200:
+                    results["eden_ai"]["error"] = f"HTTP {response.status_code}"
+        except Exception as e:
+            results["eden_ai"]["status"] = "error"
+            results["eden_ai"]["error"] = str(e)
+    else:
+        results["eden_ai"]["status"] = "not_configured"
+    
+    # Test OpenRouter
+    if Config.OPENROUTER_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"Authorization": f"Bearer {Config.OPENROUTER_API_KEY}"}
+                )
+                results["openrouter"]["status"] = "healthy" if response.status_code == 200 else "error"
+                if response.status_code != 200:
+                    results["openrouter"]["error"] = f"HTTP {response.status_code}"
+        except Exception as e:
+            results["openrouter"]["status"] = "error"
+            results["openrouter"]["error"] = str(e)
+    else:
+        results["openrouter"]["status"] = "not_configured"
+    
+    # Test OpenAI
+    if Config.OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {Config.OPENAI_API_KEY}"}
+                )
+                results["openai"]["status"] = "healthy" if response.status_code == 200 else "error"
+                if response.status_code != 200:
+                    results["openai"]["error"] = f"HTTP {response.status_code}"
+        except Exception as e:
+            results["openai"]["status"] = "error"
+            results["openai"]["error"] = str(e)
+    else:
+        results["openai"]["status"] = "not_configured"
+    
+    return JSONResponse(content=results)
+
+
+@app.get("/api/ai-providers/all")
+async def get_all_providers():
+    """Get complete provider catalog for dropdown population"""
+    return JSONResponse(content={
+        "stt_providers": [
+            {"id": "eden_ai", "name": "Eden AI (Aggregator)", "description": "Access to Deepgram, AssemblyAI, Google, Whisper, etc."},
+            {"id": "openai_realtime", "name": "OpenAI Realtime (Bundled)", "description": "Built-in STT with GPT-4o Realtime"}
+        ],
+        "tts_providers": [
+            {"id": "eden_ai", "name": "Eden AI (Aggregator)", "description": "Access to ElevenLabs, PlayHT, Google, Amazon Polly, etc."},
+            {"id": "openai_realtime", "name": "OpenAI Realtime (Bundled)", "description": "Built-in TTS with GPT-4o Realtime"}
+        ],
+        "llm_providers": [
+            {"id": "openrouter", "name": "OpenRouter (Aggregator)", "description": "Access to 100+ LLMs: GPT, Claude, Llama, Gemini, etc."},
+            {"id": "openai_realtime", "name": "OpenAI Realtime (Direct)", "description": "GPT-4o Realtime only"}
+        ]
+    })
+
+
+@app.get("/api/ai-providers/stt-models")
+async def get_stt_models(provider: str):
+    """Get available STT models"""
+    if provider == "eden_ai":
+        return JSONResponse(content={
+            "models": [
+                {"id": "deepgram-nova-2", "name": "Deepgram Nova 2", "cost_per_min": 0.0043, "quality": "excellent", "speed": "fast"},
+                {"id": "deepgram-base", "name": "Deepgram Base", "cost_per_min": 0.0036, "quality": "good", "speed": "fast"},
+                {"id": "assemblyai-best", "name": "AssemblyAI Best", "cost_per_min": 0.00037, "quality": "excellent", "speed": "medium"},
+                {"id": "google-latest", "name": "Google Speech Latest", "cost_per_min": 0.006, "quality": "excellent", "speed": "medium"},
+                {"id": "whisper-1", "name": "Whisper (via Eden AI)", "cost_per_min": 0.006, "quality": "good", "speed": "slow"},
+            ]
+        })
+    elif provider == "openai_realtime":
+        return JSONResponse(content={
+            "models": [
+                {"id": "bundled", "name": "Bundled with Realtime", "cost_per_min": 0.0, "quality": "excellent", "speed": "realtime"}
+            ]
+        })
+    return JSONResponse(content={"models": []})
+
+
+@app.get("/api/ai-providers/tts-models")
+async def get_tts_models(provider: str):
+    """Get available TTS models grouped by underlying provider"""
+    if provider == "eden_ai":
+        return JSONResponse(content={
+            "grouped_models": [
+                {
+                    "provider_name": "ElevenLabs",
+                    "provider_badge": "premium",
+                    "models": [
+                        {"id": "elevenlabs-multilingual-v2", "name": "Multilingual V2", "cost_per_min": 0.180, "badge": "best", "languages": 29},
+                        {"id": "elevenlabs-turbo-v2.5", "name": "Turbo V2.5", "cost_per_min": 0.090, "badge": "fast", "languages": 32}
+                    ]
+                },
+                {
+                    "provider_name": "PlayHT",
+                    "provider_badge": "budget",
+                    "models": [
+                        {"id": "playht-2.0-turbo", "name": "2.0 Turbo", "cost_per_min": 0.040, "badge": "budget", "languages": 20}
+                    ]
+                },
+                {
+                    "provider_name": "Google",
+                    "provider_badge": "budget",
+                    "models": [
+                        {"id": "google-neural2", "name": "Neural2", "cost_per_min": 0.024, "badge": "cheapest", "languages": 40}
+                    ]
+                },
+                {
+                    "provider_name": "OpenAI",
+                    "provider_badge": "standard",
+                    "models": [
+                        {"id": "openai-tts-1", "name": "TTS-1", "cost_per_min": 0.015, "badge": "standard", "languages": 58},
+                        {"id": "openai-tts-1-hd", "name": "TTS-1-HD", "cost_per_min": 0.030, "badge": "hd", "languages": 58}
+                    ]
+                }
+            ]
+        })
+    elif provider == "openai_realtime":
+        return JSONResponse(content={
+            "grouped_models": [
+                {
+                    "provider_name": "OpenAI Realtime",
+                    "provider_badge": "bundled",
+                    "models": [
+                        {"id": "bundled", "name": "Bundled with Realtime", "cost_per_min": 0.0, "badge": "included", "languages": 58}
+                    ]
+                }
+            ]
+        })
+    return JSONResponse(content={"grouped_models": []})
+
+
+@app.get("/api/ai-providers/tts-voices")
+async def get_tts_voices(provider: str, model: str):
+    """Get available voices for a specific TTS provider/model"""
+    voices_db = {
+        "eden_ai": {
+            "elevenlabs-multilingual-v2": [
+                {"id": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel", "gender": "female", "accent": "American", "age": "young"},
+                {"id": "AZnzlk1XvdvUeBnXmlld", "name": "Domi", "gender": "female", "accent": "American", "age": "young"},
+                {"id": "EXAVITQu4vr4xnSDxMaL", "name": "Bella", "gender": "female", "accent": "American", "age": "middle"},
+                {"id": "ErXwobaYiN019PkySvjV", "name": "Antoni", "gender": "male", "accent": "American", "age": "young"},
+                {"id": "pNInz6obpgDQGcFmaJgB", "name": "Adam", "gender": "male", "accent": "American", "age": "middle"},
+            ],
+            "playht-2.0-turbo": [
+                {"id": "s3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json", "name": "Charlotte (Female)", "gender": "female", "accent": "American"},
+                {"id": "s3://voice-cloning-zero-shot/d82d246c-148b-457f-9668-37b789520891/original/manifest.json", "name": "Ethan (Male)", "gender": "male", "accent": "American"},
+            ],
+            "google-neural2": [
+                {"id": "en-US-Neural2-A", "name": "US Neural2 A (Male)", "gender": "male", "accent": "American"},
+                {"id": "en-US-Neural2-C", "name": "US Neural2 C (Female)", "gender": "female", "accent": "American"},
+                {"id": "en-US-Neural2-F", "name": "US Neural2 F (Female)", "gender": "female", "accent": "American"},
+            ],
+            "openai-tts-1": [
+                {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
+                {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
+                {"id": "fable", "name": "Fable (Female)", "gender": "female", "accent": "British"},
+                {"id": "onyx", "name": "Onyx (Male)", "gender": "male", "accent": "American"},
+                {"id": "nova", "name": "Nova (Female)", "gender": "female", "accent": "American"},
+                {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
+            ],
+            "openai-tts-1-hd": [
+                {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
+                {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
+                {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
+            ]
+        },
+        "openai_realtime": {
+            "bundled": [
+                {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
+                {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
+                {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
+            ]
+        }
+    }
+    
+    voices = voices_db.get(provider, {}).get(model, [])
+    return JSONResponse(content={"voices": voices})
+
+
+@app.get("/api/ai-providers/llm-models")
+async def get_llm_models(provider: str):
+    """Get available LLM models"""
+    if provider == "openrouter":
+        return JSONResponse(content={
+            "models": [
+                # OpenAI Models
+                {"id": "openai/gpt-4o", "name": "GPT-4 Omni", "provider": "OpenAI", "context": 128000, "cost_per_1m_tokens": 5.0, "speed": "fast"},
+                {"id": "openai/gpt-4o-mini", "name": "GPT-4 Omni Mini", "provider": "OpenAI", "context": 128000, "cost_per_1m_tokens": 0.15, "speed": "very_fast"},
+                
+                # Anthropic Models
+                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet", "provider": "Anthropic", "context": 200000, "cost_per_1m_tokens": 3.0, "speed": "fast"},
+                {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku", "provider": "Anthropic", "context": 200000, "cost_per_1m_tokens": 0.25, "speed": "very_fast"},
+                
+                # Meta Models
+                {"id": "meta-llama/llama-3.1-70b-instruct", "name": "Llama 3.1 70B", "provider": "Meta", "context": 128000, "cost_per_1m_tokens": 0.88, "speed": "fast"},
+                {"id": "meta-llama/llama-3.1-8b-instruct", "name": "Llama 3.1 8B", "provider": "Meta", "context": 128000, "cost_per_1m_tokens": 0.07, "speed": "very_fast"},
+                
+                # Google Models
+                {"id": "google/gemini-pro-1.5", "name": "Gemini 1.5 Pro", "provider": "Google", "context": 1000000, "cost_per_1m_tokens": 3.5, "speed": "medium"},
+                {"id": "google/gemini-flash-1.5", "name": "Gemini 1.5 Flash", "provider": "Google", "context": 1000000, "cost_per_1m_tokens": 0.075, "speed": "very_fast"},
+            ]
+        })
+    elif provider == "openai_realtime":
+        return JSONResponse(content={
+            "models": [
+                {"id": "gpt-4o-realtime-preview", "name": "GPT-4 Omni Realtime", "provider": "OpenAI", "context": 128000, "cost_per_1m_tokens": 10.0, "speed": "realtime"}
+            ]
+        })
+    return JSONResponse(content={"models": []})
+
+
+# ============================================================================
+# COST TRACKING & BILLING
+# ============================================================================
+
+async def log_template_cost_to_billing(interaction_id: str, template_id: str, duration_seconds: int, broker_id: Optional[str] = None):
+    """
+    Log template usage to billing_events table
+    Called after call ends to track AI provider costs
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        # Get template details
+        template = supabase.table("ai_templates").select("*").eq("id", template_id).single().execute()
+        if not template.data:
+            logger.warning(f"Template {template_id} not found for billing")
+            return
+        
+        # Calculate total cost
+        cost_per_minute = template.data.get("estimated_cost_per_minute", 0)
+        total_cost = (cost_per_minute * duration_seconds) / 60
+        
+        # Use broker_id from template if not provided
+        if not broker_id:
+            broker_id = template.data.get("broker_id")
+        
+        # Log to billing_events
+        billing_event = {
+            "interaction_id": interaction_id,
+            "broker_id": broker_id,
+            "event_type": "ai_template_usage",
+            "amount": round(total_cost, 4),
+            "metadata": {
+                "template_id": template_id,
+                "template_name": template.data.get("name"),
+                "duration_seconds": duration_seconds,
+                "cost_per_minute": cost_per_minute,
+                "stt_provider": template.data.get("stt_provider"),
+                "stt_model": template.data.get("stt_model"),
+                "tts_provider": template.data.get("tts_provider"),
+                "tts_model": template.data.get("tts_model"),
+                "llm_provider": template.data.get("llm_provider"),
+                "llm_model": template.data.get("llm_model"),
+            }
+        }
+        
+        supabase.table("billing_events").insert(billing_event).execute()
+        logger.info(f"✅ Logged ${total_cost:.4f} cost for interaction {interaction_id} (template: {template.data.get('name')})")
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to log billing event: {e}")
+        # Don't raise - billing failure shouldn't crash call cleanup
+
+
+# ============================================================================
+# LIVEKIT INTEGRATION
+# ============================================================================
+
+@app.post("/api/livekit/test-token")
+async def generate_test_token(request: Request):
+    """Generate LiveKit token for testing template in playground"""
+    try:
+        import time
+        from livekit import api
+        
+        body = await request.json()
+        template_id = body.get("template_id")
+        
+        if not template_id:
+            raise HTTPException(status_code=400, detail="template_id is required")
+        
+        supabase = get_supabase_client()
+        template = supabase.table("ai_templates").select("*").eq("id", template_id).single().execute()
+        if not template.data:
+            raise HTTPException(status_code=404, detail="Template not found")
+        
+        # Create test room
+        room_name = f"test-{template_id[:8]}-{int(time.time())}"
+        
+        # Generate token
+        token = api.AccessToken(Config.LIVEKIT_API_KEY, Config.LIVEKIT_API_SECRET)
+        token.with_identity(f"tester-{template_id[:8]}")
+        token.with_name("Test User")
+        token.with_grants(api.VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True
+        ))
+        
+        jwt_token = token.to_jwt()
+        
+        logger.info(f"🎮 Generated test token for template {template.data.get('name')}")
+        
+        return JSONResponse(content={
+            "token": jwt_token,
+            "room_name": room_name,
+            "livekit_url": Config.LIVEKIT_URL,
+            "template": template.data
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating test token: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/livekit/active-calls")
+async def get_active_calls():
+    """List all active LiveKit rooms/calls"""
+    try:
+        # For now, return active interactions from database
+        # In production, query LiveKit API for real-time room status
+        supabase = get_supabase_client()
+        
+        # Get interactions that started recently and haven't ended
+        from datetime import datetime, timedelta
+        recent_cutoff = (datetime.now() - timedelta(hours=2)).isoformat()
+        
+        result = supabase.table("interactions")\
+            .select("id, lead_name, broker_id, created_at, metadata, room_name")\
+            .gte("created_at", recent_cutoff)\
+            .is_("ended_at", "null")\
+            .order("created_at.desc")\
+            .limit(50)\
+            .execute()
+        
+        active_calls = []
+        for interaction in result.data:
+            # Get broker name
+            broker_name = "Unknown"
+            if interaction.get("broker_id"):
+                broker = supabase.table("brokers").select("contact_name").eq("id", interaction["broker_id"]).single().execute()
+                if broker.data:
+                    broker_name = broker.data.get("contact_name", "Unknown")
+            
+            # Calculate duration
+            start_time = datetime.fromisoformat(interaction["created_at"].replace("Z", "+00:00"))
+            duration = int((datetime.now(start_time.tzinfo) - start_time).total_seconds())
+            
+            active_calls.append({
+                "call_id": interaction["id"],
+                "room_name": interaction.get("room_name"),
+                "lead_name": interaction.get("lead_name", "Unknown"),
+                "broker_name": broker_name,
+                "duration": duration,
+                "template_name": interaction.get("metadata", {}).get("template_name"),
+                "started_at": interaction["created_at"]
+            })
+        
+        return JSONResponse(content={"active_calls": active_calls, "count": len(active_calls)})
+    
+    except Exception as e:
+        logger.error(f"Error getting active calls: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/livekit/monitor-token/{call_id}")
+async def generate_monitor_token(call_id: str):
+    """Generate token to monitor an active call (listen-only)"""
+    try:
+        from livekit import api
+        
+        supabase = get_supabase_client()
+        
+        # Get interaction to find room name
+        interaction = supabase.table("interactions").select("room_name").eq("id", call_id).single().execute()
+        if not interaction.data or not interaction.data.get("room_name"):
+            raise HTTPException(status_code=404, detail="Active call not found")
+        
+        room_name = interaction.data["room_name"]
+        
+        # Generate listen-only token
+        token = api.AccessToken(Config.LIVEKIT_API_KEY, Config.LIVEKIT_API_SECRET)
+        token.with_identity("admin-monitor")
+        token.with_name("Admin Monitor")
+        token.with_grants(api.VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=False,  # Listen only
+            can_subscribe=True
+        ))
+        
+        jwt_token = token.to_jwt()
+        
+        logger.info(f"🎧 Generated monitor token for call {call_id}")
+        
+        return JSONResponse(content={
+            "token": jwt_token,
+            "room_name": room_name,
+            "livekit_url": Config.LIVEKIT_URL
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating monitor token: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/livekit/webhooks")
+async def livekit_webhook_handler(request: Request):
+    """Handle LiveKit call events and save to interactions table"""
+    try:
+        event = await request.json()
+        event_type = event.get("event")
+        
+        if event_type == "room_finished":
+            room = event.get("room", {})
+            room_name = room.get("name")
+            duration = room.get("duration", 0)
+            metadata = room.get("metadata", {})
+            
+            if room_name:
+                supabase = get_supabase_client()
+                
+                # Update interaction record
+                update_data = {
+                    "ended_at": datetime.now().isoformat(),
+                    "duration_seconds": duration
+                }
+                
+                result = supabase.table("interactions")\
+                    .update(update_data)\
+                    .eq("room_name", room_name)\
+                    .execute()
+                
+                # Log cost to billing if template was used
+                if metadata.get("template_id") and result.data:
+                    interaction = result.data[0]
+                    await log_template_cost_to_billing(
+                        interaction_id=interaction["id"],
+                        template_id=metadata["template_id"],
+                        duration_seconds=duration,
+                        broker_id=interaction.get("broker_id")
+                    )
+                
+                logger.info(f"✅ Processed room_finished event for {room_name} ({duration}s)")
+        
+        return JSONResponse(content={"success": True})
+    
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}")
+        # Return 200 anyway to avoid webhook retries
+        return JSONResponse(content={"success": False, "error": str(e)})
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

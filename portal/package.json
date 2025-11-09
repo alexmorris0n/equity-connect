@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@blockgain/livekit-vue": "^0.1.1",
     "@codemirror/lang-markdown": "^6.2.4",
     "@codemirror/state": "^6.4.0",
     "@codemirror/theme-one-dark": "^6.1.2",
@@ -19,13 +20,14 @@
     "@fullcalendar/vue3": "^6.1.19",
     "@supabase/supabase-js": "^2.39.7",
     "@vicons/ionicons5": "^0.13.0",
+    "@vitejs/plugin-vue": "^5.0.4",
     "codemirror": "^6.0.1",
     "diff": "^8.0.2",
+    "livekit-client": "^2.15.14",
     "naive-ui": "^2.43.1",
     "vfonts": "^0.0.3",
+    "vite": "^5.1.5",
     "vue": "^3.4.21",
-    "vue-router": "^4.3.0",
-    "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.1.5"
+    "vue-router": "^4.3.0"
   }
 }
