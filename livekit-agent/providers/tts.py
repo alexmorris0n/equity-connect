@@ -305,11 +305,20 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                         actual_channels = len(frame.layout.channels)
                                         logger.error(f"📊 MP3 metadata: {actual_sample_rate}Hz, {actual_channels} channels")
                                     audio_frames.append(frame.to_ndarray())
+                                
                                 # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
-                                pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
-                                pcm_bytes = pcm_data.tobytes()
-                                # Use actual sample rate from MP3, not our config
-                                self._sample_rate = actual_sample_rate or self._sample_rate
+                                pcm_data = np.concatenate(audio_frames).flatten()
+                                
+                                # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
+                                target_rate = self._sample_rate  # 24000 Hz (our config)
+                                if actual_sample_rate != target_rate:
+                                    from scipy import signal
+                                    logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
+                                    num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
+                                    pcm_data = signal.resample(pcm_data, num_samples)
+                                
+                                pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
+                                # Use our target sample rate (24000 Hz), not the source rate
                                 self._num_channels = actual_channels or self._num_channels
                             
                             elif audio_data[:4] == b'fLaC':  # FLAC format
@@ -324,11 +333,20 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                         actual_channels = len(frame.layout.channels)
                                         logger.error(f"📊 FLAC metadata: {actual_sample_rate}Hz, {actual_channels} channels")
                                     audio_frames.append(frame.to_ndarray())
+                                
                                 # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
-                                pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
-                                pcm_bytes = pcm_data.tobytes()
-                                # Use actual sample rate from FLAC, not our config
-                                self._sample_rate = actual_sample_rate or self._sample_rate
+                                pcm_data = np.concatenate(audio_frames).flatten()
+                                
+                                # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
+                                target_rate = self._sample_rate  # 24000 Hz (our config)
+                                if actual_sample_rate != target_rate:
+                                    from scipy import signal
+                                    logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
+                                    num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
+                                    pcm_data = signal.resample(pcm_data, num_samples)
+                                
+                                pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
+                                # Use our target sample rate (24000 Hz), not the source rate
                                 self._num_channels = actual_channels or self._num_channels
                             
                             else:
@@ -344,11 +362,20 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                             actual_channels = len(frame.layout.channels)
                                             logger.error(f"📊 Unknown format metadata: {actual_sample_rate}Hz, {actual_channels} channels")
                                         audio_frames.append(frame.to_ndarray())
+                                    
                                     # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
-                                    pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
-                                    pcm_bytes = pcm_data.tobytes()
-                                    # Use actual sample rate from decoded audio
-                                    self._sample_rate = actual_sample_rate or self._sample_rate
+                                    pcm_data = np.concatenate(audio_frames).flatten()
+                                    
+                                    # Resample if needed (WebRTC supports: 8k, 16k, 24k, 48k - NOT 44.1k!)
+                                    target_rate = self._sample_rate  # 24000 Hz (our config)
+                                    if actual_sample_rate != target_rate:
+                                        from scipy import signal
+                                        logger.error(f"🔄 Resampling: {actual_sample_rate}Hz → {target_rate}Hz...")
+                                        num_samples = int(len(pcm_data) * target_rate / actual_sample_rate)
+                                        pcm_data = signal.resample(pcm_data, num_samples)
+                                    
+                                    pcm_bytes = (pcm_data * 32767).astype(np.int16).tobytes()
+                                    # Use our target sample rate (24000 Hz), not the source rate
                                     self._num_channels = actual_channels or self._num_channels
                                 except Exception as decode_error:
                                     logger.error(f"⚠️ PyAV decode failed: {decode_error}, treating as raw PCM...")
