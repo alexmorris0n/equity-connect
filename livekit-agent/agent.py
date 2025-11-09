@@ -172,8 +172,9 @@ async def entrypoint(ctx: JobContext):
         
         # Detect call type
         call_type_result = await detect_call_type(
+            direction="inbound" if caller_number else "outbound",
             caller_phone=caller_number,
-            called_number=called_number
+            called_phone=called_number
         )
         
         call_type = call_type_result.get("call_type", "inbound-unknown")
