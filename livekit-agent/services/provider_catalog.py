@@ -337,6 +337,64 @@ def get_fallback_elevenlabs_voices() -> List[Dict[str, Any]]:
     ]
 
 
+async def get_eden_ai_tts_voices(provider: str, model: str, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """
+    Get available TTS voices from Eden AI for a specific provider/model
+    
+    Args:
+        provider: Underlying provider (e.g., 'elevenlabs', 'playht', 'google')
+        model: Model name (e.g., 'elevenlabs-multilingual-v2')
+        force_refresh: Force cache refresh
+    
+    Returns:
+        List of voice objects with id, name, gender, accent, etc.
+    """
+    cache_key = f"eden_ai_voices_{provider}_{model}"
+    timestamp_key = f"{cache_key}_timestamp"
+    
+    # Check cache
+    if not force_refresh and CATALOG_CACHE.get(cache_key) and CATALOG_CACHE.get(timestamp_key):
+        if datetime.now() - CATALOG_CACHE[timestamp_key] < CACHE_DURATION:
+            logger.debug(f"✅ Using cached Eden AI voices for {provider}/{model}")
+            return CATALOG_CACHE[cache_key]
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "https://api.edenai.run/v2/audio/text_to_speech/providers",
+                headers={
+                    "Authorization": f"Bearer {Config.EDENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Find the provider in the response
+                for prov in data.get("providers", []):
+                    if prov.get("provider_name", "").lower() == provider.lower():
+                        voices = prov.get("voices", [])
+                        
+                        # Cache and return
+                        CATALOG_CACHE[cache_key] = voices
+                        CATALOG_CACHE[timestamp_key] = datetime.now()
+                        
+                        logger.info(f"✅ Loaded {len(voices)} voices for {provider}/{model}")
+                        return voices
+                
+                # Provider not found, return empty
+                logger.warning(f"⚠️ Provider {provider} not found in Eden AI response")
+                return []
+            else:
+                logger.error(f"❌ Eden AI voices API error: {response.status_code}")
+                return []
+                
+    except Exception as e:
+        logger.error(f"❌ Error fetching Eden AI voices: {e}")
+        return []
+
+
 async def refresh_all_catalogs():
     """
     Refresh all provider catalogs
