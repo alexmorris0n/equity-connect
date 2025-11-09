@@ -219,7 +219,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         'providers': self.edenai_provider,
                         'text': text,
                         'language': language,
-                        # Note: Don't set 'option' when voice_id is provided - it may override the voice!
+                        'option': 'FEMALE',  # Required by EdenAI API (doesn't override voice_id)
                         # Note: ElevenLabs only supports mp3, not wav
                         # Other providers may support 'audio_format': 'wav'
                     }
