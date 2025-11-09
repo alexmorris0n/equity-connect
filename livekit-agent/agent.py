@@ -366,10 +366,22 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"✅ LLM provider active: {actual_llm}")
         
         # CRITICAL FIX: If we started with is_realtime=True but fell back to non-Realtime LLM,
-        # we need to initialize STT/TTS which were skipped earlier
+        # we need to initialize STT/TTS which were skipped earlier AND fix the model name
         if is_realtime and actual_llm != "openai_realtime":
             logger.warning(f"⚠️ Realtime failed, fell back to {actual_llm}. Initializing STT/TTS...")
             is_realtime = False  # Update flag
+            
+            # Fix model name if it's still the realtime model - recreate LLM with correct model
+            if phone_config.get("llm_model") == "gpt-4o-realtime-preview":
+                phone_config["llm_model"] = "gpt-4o"  # Use chat model instead
+                logger.info("🔄 Recreating LLM with gpt-4o instead of gpt-4o-realtime-preview")
+                # Recreate LLM with the correct model
+                llm_provider, actual_llm = await fallback_handler.create_with_fallback(
+                    "llm",
+                    create_llm,
+                    phone_config.copy()
+                )
+                logger.info(f"✅ LLM recreated with correct model: {actual_llm}")
             
             # Initialize STT
             stt_provider, actual_stt = await fallback_handler.create_with_fallback(
