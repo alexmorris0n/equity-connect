@@ -128,7 +128,8 @@ async def entrypoint(ctx: JobContext):
                 "voice": phone_config.get("tts_voice", "alloy"),
                 "vad_threshold": phone_config.get("vad_threshold", 0.5),
                 "vad_prefix_padding_ms": phone_config.get("vad_prefix_padding_ms", 300),
-                "vad_silence_duration_ms": phone_config.get("vad_silence_duration_ms", 500)
+                # Reduced from 500ms to 200ms for faster turn detection
+                "vad_silence_duration_ms": phone_config.get("vad_silence_duration_ms", 200)
             }
             
             lead = None
@@ -449,7 +450,8 @@ async def entrypoint(ctx: JobContext):
     vad = ctx.proc.userdata.get("vad")
     vad_threshold = prompt_metadata.get("vad_threshold", 0.5)
     vad_prefix_padding_ms = prompt_metadata.get("vad_prefix_padding_ms", 300)
-    vad_silence_duration_ms = prompt_metadata.get("vad_silence_duration_ms", 500)
+    # Reduced from 500ms to 200ms for faster turn detection (2.5x faster response time)
+    vad_silence_duration_ms = prompt_metadata.get("vad_silence_duration_ms", 200)
     
     # Create agent session
     session_config: Dict[str, Any] = {

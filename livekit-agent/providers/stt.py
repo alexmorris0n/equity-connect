@@ -178,7 +178,7 @@ def create_edenai_stt_plugin(api_key: str, provider: str = 'deepgram', model: Op
             self.model = model
             self.base_url = 'https://api.edenai.run/v2'
         
-        async def recognize(self, *, buffer: bytes, language: str = "en-US") -> stt.SpeechEvent:
+        async def _recognize_impl(self, *, buffer: bytes, language: str = "en-US") -> stt.SpeechEvent:
             """Recognize speech from audio buffer"""
             try:
                 import httpx
