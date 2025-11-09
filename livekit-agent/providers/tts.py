@@ -205,8 +205,10 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
             # Note: LiveKit may pass conn_options and other kwargs, we accept them with **kwargs
             import httpx
             import json
+            from livekit.agents import utils
             
-            stream = tts.SynthesizeStream(self)
+            # Use ChunkedStream for audio data
+            stream = utils.codecs.ChunkedStream()
             try:
                 data = {
                     'providers': self.edenai_provider,
@@ -255,8 +257,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 audio_response.raise_for_status()
                                 async for chunk in audio_response.aiter_bytes():
                                     if chunk:
-                                        await stream.push_frame(chunk)
-                            await stream.aclose()
+                                        stream.write_chunk(chunk)
+                            stream.close()
                             yield stream
                             return
                         else:
@@ -269,8 +271,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 raise Exception("No audio data in Eden AI response")
 
                         # Fallback: push the full decoded audio buffer at once
-                        await stream.push_frame(audio_data)
-                        await stream.aclose()
+                        stream.write_chunk(audio_data)
+                        stream.close()
                         yield stream
                         return
                     else:
@@ -280,7 +282,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         
             except Exception as e:
                 logger.error(f"❌ Eden AI TTS error: {e}")
-                await stream.aclose()
+                stream.close()
                 raise
     
     return EdenAITTSPlugin(api_key=api_key, provider=provider, voice=voice)
