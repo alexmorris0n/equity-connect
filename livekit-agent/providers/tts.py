@@ -187,7 +187,12 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
         """LiveKit TTS plugin wrapper for Eden AI"""
         
         def __init__(self, api_key: str, provider: str, voice: Optional[str]):
-            super().__init__()
+            # Initialize LiveKit TTS base class with required capabilities
+            super().__init__(
+                capabilities=tts.TTSCapabilities(streaming=False),
+                sample_rate=24000,
+                num_channels=1
+            )
             self.api_key = api_key
             self.provider = provider
             self.voice = voice
