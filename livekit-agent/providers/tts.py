@@ -297,32 +297,59 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 logger.error("🔄 MP3 detected, decoding with PyAV...")
                                 container = av.open(io.BytesIO(audio_data))
                                 audio_frames = []
+                                actual_sample_rate = None
+                                actual_channels = None
                                 for frame in container.decode(audio=0):
+                                    if actual_sample_rate is None:
+                                        actual_sample_rate = frame.sample_rate
+                                        actual_channels = len(frame.layout.channels)
+                                        logger.error(f"📊 MP3 metadata: {actual_sample_rate}Hz, {actual_channels} channels")
                                     audio_frames.append(frame.to_ndarray())
                                 # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
                                 pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
                                 pcm_bytes = pcm_data.tobytes()
+                                # Use actual sample rate from MP3, not our config
+                                self._sample_rate = actual_sample_rate or self._sample_rate
+                                self._num_channels = actual_channels or self._num_channels
                             
                             elif audio_data[:4] == b'fLaC':  # FLAC format
                                 logger.error("🔄 FLAC detected, decoding with PyAV...")
                                 container = av.open(io.BytesIO(audio_data))
                                 audio_frames = []
+                                actual_sample_rate = None
+                                actual_channels = None
                                 for frame in container.decode(audio=0):
+                                    if actual_sample_rate is None:
+                                        actual_sample_rate = frame.sample_rate
+                                        actual_channels = len(frame.layout.channels)
+                                        logger.error(f"📊 FLAC metadata: {actual_sample_rate}Hz, {actual_channels} channels")
                                     audio_frames.append(frame.to_ndarray())
                                 # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
                                 pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
                                 pcm_bytes = pcm_data.tobytes()
+                                # Use actual sample rate from FLAC, not our config
+                                self._sample_rate = actual_sample_rate or self._sample_rate
+                                self._num_channels = actual_channels or self._num_channels
                             
                             else:
                                 logger.error("❓ Unknown format, trying PyAV fallback...")
                                 try:
                                     container = av.open(io.BytesIO(audio_data))
                                     audio_frames = []
+                                    actual_sample_rate = None
+                                    actual_channels = None
                                     for frame in container.decode(audio=0):
+                                        if actual_sample_rate is None:
+                                            actual_sample_rate = frame.sample_rate
+                                            actual_channels = len(frame.layout.channels)
+                                            logger.error(f"📊 Unknown format metadata: {actual_sample_rate}Hz, {actual_channels} channels")
                                         audio_frames.append(frame.to_ndarray())
                                     # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
                                     pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
                                     pcm_bytes = pcm_data.tobytes()
+                                    # Use actual sample rate from decoded audio
+                                    self._sample_rate = actual_sample_rate or self._sample_rate
+                                    self._num_channels = actual_channels or self._num_channels
                                 except Exception as decode_error:
                                     logger.error(f"⚠️ PyAV decode failed: {decode_error}, treating as raw PCM...")
                                     pcm_bytes = audio_data
