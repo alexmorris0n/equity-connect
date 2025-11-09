@@ -2,9 +2,9 @@
 
 ## 🎯 Executive Summary
 
-**CRITICAL BREAKTHROUGH:** Fixed LiveKit TTS audio pipeline - sound now working! 🎉
+**MAJOR PROGRESS:** Fixed multiple critical TTS pipeline issues - deployment successful, but **SOUND STILL NOT WORKING** ⚠️
 
-After 18 commits and extensive debugging, successfully resolved all blocking issues preventing Tiffany's voice from playing through the self-hosted LiveKit stack. The agent now produces sound via EdenAI/ElevenLabs TTS integration.
+After 18 commits and extensive debugging, resolved EdenAI API errors and implemented MP3→PCM decoder. Deployment version 107 is live, but audio output not yet confirmed. Further investigation needed tomorrow.
 
 ---
 
@@ -229,19 +229,50 @@ SignalWire → LiveKit SIP Bridge → LiveKit Core → Python Agent
 - ❌ TTS pipeline non-functional
 
 ### After Today
-- ✅ Agent initializes successfully
-- ✅ EdenAI API accepts requests
-- ✅ Sound output working (MP3 decoded to PCM)
-- ✅ TTS pipeline fully operational
-- ✅ Self-hosted LiveKit stack production-ready
+- ✅ Agent initializes successfully (fixed OpenAI strict mode issue)
+- ✅ EdenAI API accepts requests (added `option` parameter)
+- ✅ MP3 → PCM decoder implemented (PyAV integration complete)
+- ✅ Deployment successful (version 107 live in LAX)
+- ⚠️ **Sound output still not working - needs further investigation**
+
+---
+
+## 🔍 Outstanding Issues
+
+### **PRIMARY BLOCKER: No Sound Output** ⚠️
+
+**Status:** All known errors fixed in code, deployment successful, but user reports no sound.
+
+**What Was Fixed:**
+1. ✅ LLM initialization (OpenAI strict mode)
+2. ✅ EdenAI API 400 error (`option` parameter)
+3. ✅ MP3 → PCM decoding (PyAV implementation)
+4. ✅ Async context manager pattern (LiveKit compliance)
+
+**What Still Needs Investigation (Tomorrow):**
+- [ ] Check if TTS synthesize method is actually being called in production
+- [ ] Verify MP3 → PCM decoder is executing (check for PyAV import errors)
+- [ ] Confirm AudioFrame is being created without errors
+- [ ] Check if SynthesizedAudio is being yielded to LiveKit
+- [ ] Verify LiveKit is receiving audio frames
+- [ ] Test if issue is in playback layer (WebRTC, browser, network)
+- [ ] Check for silent audio file (bytes present but no actual sound)
+- [ ] Verify sample rate/channels match what LiveKit expects
+
+**Debugging Strategy for Tomorrow:**
+1. Check latest Fly.io logs for TTS execution traces
+2. Look for "🚨 Creating AudioFrame" and "🚨 Yielding SynthesizedAudio" messages
+3. Verify no PyAV import errors or MP3 decode failures
+4. Test with simple test audio to isolate decoder vs API issue
+5. Consider adding audio waveform logging to verify non-zero samples
 
 ---
 
 ## 🎉 Quote of the Day
 
-> "🚨 Creating AudioFrame: 34735 bytes" → "❌ data length must be a multiple of sizeof(int16)" → **"Fixed! MP3 → PCM decoder working!"** 🎊
+> "Fixed the 400 error... fixed the MP3 decoder... deployed successfully... but still no sound. The debugging continues tomorrow." 🔧
 
-**Status:** LiveKit voice agent is ALIVE and TALKING! 🗣️🔊
+**Status:** Major progress made, but TTS audio output still elusive. Investigation continues.
 
 ---
 
@@ -249,5 +280,5 @@ SignalWire → LiveKit SIP Bridge → LiveKit Core → Python Agent
 
 *Total time invested:* ~3 hours intensive debugging  
 *Total commits:* 18  
-*Total value delivered:* Self-hosted voice stack operational 🚀
+*Total value delivered:* Major TTS pipeline fixes deployed, root cause still being investigated 🔍
 
