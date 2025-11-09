@@ -86,19 +86,7 @@
             :options="ttsModelOptions"
             :loading="loadingTTSModels"
             @update:value="onTTSModelChange"
-          >
-            <template #header v-if="ttsModelGroups.length > 0">
-              <div v-for="group in ttsModelGroups" :key="group.provider_name">
-                <div class="select-group-header">{{ group.provider_name }}</div>
-                <n-option 
-                  v-for="model in group.models"
-                  :key="model.id"
-                  :value="model.id"
-                  :label="`  ${model.name} ($${model.cost_per_min}/min)`"
-                />
-              </div>
-            </template>
-          </n-select>
+          />
         </n-form-item>
 
         <n-form-item label="TTS Voice" path="tts_voice_id">

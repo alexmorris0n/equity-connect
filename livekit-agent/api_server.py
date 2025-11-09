@@ -574,7 +574,7 @@ async def list_templates(broker_id: Optional[str] = None):
             # Public endpoint only shows system defaults
             query = query.eq("is_system_default", True)
         
-        result = query.order("is_system_default.desc(), name.asc()").execute()
+        result = query.order("is_system_default.desc,name.asc").execute()
         
         # Enrich with usage counts
         templates = result.data
