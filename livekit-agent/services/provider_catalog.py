@@ -339,19 +339,76 @@ def get_fallback_elevenlabs_voices() -> List[Dict[str, Any]]:
 
 async def get_eden_ai_tts_voices(provider: str, model: str, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
-    Get available TTS voices for Eden AI providers
-    
-    NOTE: Eden AI doesn't provide a voices list API, so these are hardcoded
-    based on provider documentation
+    Get available TTS voices from Eden AI provider info API
     
     Args:
         provider: Underlying provider (e.g., 'elevenlabs', 'playht', 'google')
         model: Model name (e.g., 'elevenlabs-multilingual-v2')
+        force_refresh: Force cache refresh
     
     Returns:
         List of voice objects with voice_id, display_name, gender, accent, etc.
     """
-    # Hardcoded voice database (since Eden AI has no list API)
+    cache_key = f"eden_ai_voices_{provider}_{model}"
+    timestamp_key = f"{cache_key}_timestamp"
+    
+    # Check cache
+    if not force_refresh and CATALOG_CACHE.get(cache_key) and CATALOG_CACHE.get(timestamp_key):
+        if datetime.now() - CATALOG_CACHE[timestamp_key] < CACHE_DURATION:
+            logger.debug(f"✅ Using cached Eden AI voices for {provider}/{model}")
+            return CATALOG_CACHE[cache_key]
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Use the provider_subfeatures API to get voice models
+            response = await client.get(
+                f"https://api.edenai.run/v2/info/provider_subfeatures?feature__name=audio&subfeature__name=text_to_speech&provider__name={provider}",
+                headers={
+                    "Authorization": f"Bearer {Config.EDENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Extract voices from the response
+                voices = []
+                if data and len(data) > 0:
+                    provider_info = data[0]  # First result should be our provider
+                    
+                    # Get voices from models field
+                    models = provider_info.get("models", [])
+                    for voice_model in models:
+                        voices.append({
+                            "voice_id": voice_model.get("value") or voice_model.get("name"),
+                            "display_name": voice_model.get("display_name") or voice_model.get("name"),
+                            "name": voice_model.get("name"),
+                            "gender": voice_model.get("gender", "unknown"),
+                            "accent": voice_model.get("accent") or voice_model.get("language", "en-US"),
+                            "age": voice_model.get("age"),
+                            "language": voice_model.get("language")
+                        })
+                
+                # Cache and return
+                CATALOG_CACHE[cache_key] = voices
+                CATALOG_CACHE[timestamp_key] = datetime.now()
+                
+                logger.info(f"✅ Loaded {len(voices)} voices from Eden AI API for {provider}/{model}")
+                return voices
+            else:
+                logger.error(f"❌ Eden AI provider info API error: {response.status_code}")
+                # Fall back to hardcoded
+                return get_fallback_voices(provider)
+                
+    except Exception as e:
+        logger.error(f"❌ Error fetching Eden AI voices: {e}")
+        # Fall back to hardcoded
+        return get_fallback_voices(provider)
+
+
+def get_fallback_voices(provider: str) -> List[Dict[str, Any]]:
+    """Fallback hardcoded voices if API fails"""
     voices_db = {
         "elevenlabs": [
             {"voice_id": "21m00Tcm4TlvDq8ikWAM", "display_name": "Rachel", "name": "Rachel", "gender": "female", "accent": "American", "age": "young"},
@@ -374,18 +431,9 @@ async def get_eden_ai_tts_voices(provider: str, model: str, force_refresh: bool 
             {"voice_id": "en-US-Neural2-F", "display_name": "US Neural2 F (Female)", "name": "Neural2-F", "gender": "female", "accent": "American"},
             {"voice_id": "en-US-Neural2-J", "display_name": "US Neural2 J (Male)", "name": "Neural2-J", "gender": "male", "accent": "American"},
         ],
-        "openai": [
-            {"voice_id": "alloy", "display_name": "Alloy", "name": "Alloy", "gender": "neutral", "accent": "American"},
-            {"voice_id": "echo", "display_name": "Echo", "name": "Echo", "gender": "male", "accent": "American"},
-            {"voice_id": "fable", "display_name": "Fable", "name": "Fable", "gender": "female", "accent": "British"},
-            {"voice_id": "onyx", "display_name": "Onyx", "name": "Onyx", "gender": "male", "accent": "American"},
-            {"voice_id": "nova", "display_name": "Nova", "name": "Nova", "gender": "female", "accent": "American"},
-            {"voice_id": "shimmer", "display_name": "Shimmer", "name": "Shimmer", "gender": "female", "accent": "American"},
-        ]
     }
-    
     voices = voices_db.get(provider, [])
-    logger.info(f"✅ Loaded {len(voices)} hardcoded voices for {provider}/{model}")
+    logger.info(f"⚠️ Using fallback voices: {len(voices)} for {provider}")
     return voices
 
 
