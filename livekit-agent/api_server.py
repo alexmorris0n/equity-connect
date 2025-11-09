@@ -1223,7 +1223,6 @@ async def generate_test_token(request: Request):
     try:
         import time
         from livekit import api
-        from livekit.api import RoomServiceClient, CreateRoomRequest
         
         body = await request.json()
         template_id = body.get("template_id")
@@ -1241,14 +1240,14 @@ async def generate_test_token(request: Request):
         
         # Create room with metadata so agent knows it's a test
         livekit_http_url = Config.LIVEKIT_URL.replace("wss://", "https://").replace("ws://", "http://")
-        room_service = RoomServiceClient(
+        lkapi = api.LiveKitAPI(
             livekit_http_url,
             Config.LIVEKIT_API_KEY,
             Config.LIVEKIT_API_SECRET
         )
         
         # Create room with template metadata (agent will load template directly)
-        await room_service.create_room(CreateRoomRequest(
+        await lkapi.room.create_room(api.CreateRoomRequest(
             name=room_name,
             empty_timeout=300,  # 5 minutes
             metadata=str({
@@ -1257,6 +1256,8 @@ async def generate_test_token(request: Request):
                 "is_test": True
             })
         ))
+        
+        await lkapi.aclose()
         
         logger.info(f"✅ Created test room: {room_name}")
         
