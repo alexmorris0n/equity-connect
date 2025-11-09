@@ -151,9 +151,10 @@ async def entrypoint(ctx: JobContext):
         
         # Try to get from room metadata or participant metadata
         for participant in room.remote_participants.values():
-            if participant.kind == rtc.ParticipantKind.SIP:
-                # SIP participant metadata
-                metadata = participant.metadata or {}
+            # Check participant metadata for SIP info
+            # Note: ParticipantKind.SIP may not exist in all SDK versions, so we check metadata instead
+            metadata = participant.metadata or {}
+            if metadata.get("sip_to") or metadata.get("to"):
                 sip_to = metadata.get("sip_to") or metadata.get("to")
                 sip_from = metadata.get("sip_from") or metadata.get("from")
                 break
@@ -515,7 +516,7 @@ async def entrypoint(ctx: JobContext):
     
     # Wait for participant to disconnect
     try:
-        await ctx.wait_for_participant(kind=[rtc.ParticipantKind.STANDARD, rtc.ParticipantKind.SIP], timeout=None)
+        await ctx.wait_for_participant(timeout=None)
     except Exception:
         pass
     

@@ -214,6 +214,8 @@ const customTemplates = computed(() =>
 )
 
 function getVoiceName(voiceId) {
+  if (!voiceId) return 'Not set'
+  
   // Map common voice IDs to friendly names
   const voiceMap = {
     // Custom voices
@@ -239,7 +241,30 @@ function getVoiceName(voiceId) {
     'sage': 'Sage',
     'verse': 'Verse'
   }
-  return voiceMap[voiceId] || voiceId
+  
+  // Check if we have a mapped name
+  if (voiceMap[voiceId]) return voiceMap[voiceId]
+  
+  // Parse S3 URLs from PlayHT (e.g., "s3://...female-cs/..." -> "Charlotte (Female)")
+  if (voiceId.includes('s3://') && voiceId.includes('female')) {
+    return 'Charlotte (Female)'
+  }
+  if (voiceId.includes('s3://') && voiceId.includes('male') && !voiceId.includes('female')) {
+    return 'Ethan (Male)'
+  }
+  
+  // Parse Google voices (e.g., "en-US-Neural2-A" -> "Neural2-A")
+  if (voiceId.includes('Neural2')) {
+    const match = voiceId.match(/Neural2-([A-Z])/)
+    return match ? `Neural2-${match[1]}` : voiceId
+  }
+  
+  // Return first 12 chars + ... for long IDs
+  if (voiceId.length > 20) {
+    return voiceId.substring(0, 12) + '...'
+  }
+  
+  return voiceId
 }
 
 async function loadTemplates() {
