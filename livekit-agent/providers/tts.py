@@ -299,7 +299,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 audio_frames = []
                                 for frame in container.decode(audio=0):
                                     audio_frames.append(frame.to_ndarray())
-                                pcm_data = np.concatenate(audio_frames).flatten()
+                                # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
+                                pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
                                 pcm_bytes = pcm_data.tobytes()
                             
                             elif audio_data[:4] == b'fLaC':  # FLAC format
@@ -308,7 +309,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 audio_frames = []
                                 for frame in container.decode(audio=0):
                                     audio_frames.append(frame.to_ndarray())
-                                pcm_data = np.concatenate(audio_frames).flatten()
+                                # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
+                                pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
                                 pcm_bytes = pcm_data.tobytes()
                             
                             else:
@@ -318,7 +320,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                     audio_frames = []
                                     for frame in container.decode(audio=0):
                                         audio_frames.append(frame.to_ndarray())
-                                    pcm_data = np.concatenate(audio_frames).flatten()
+                                    # Convert float32 [-1.0, 1.0] to int16 PCM [-32768, 32767]
+                                    pcm_data = (np.concatenate(audio_frames).flatten() * 32767).astype(np.int16)
                                     pcm_bytes = pcm_data.tobytes()
                                 except Exception as decode_error:
                                     logger.error(f"⚠️ PyAV decode failed: {decode_error}, treating as raw PCM...")
