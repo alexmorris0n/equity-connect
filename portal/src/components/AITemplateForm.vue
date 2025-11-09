@@ -265,7 +265,6 @@ import {
   NFormItem,
   NInput,
   NSelect,
-  NOption,
   NRadioGroup,
   NRadio,
   NSlider,
