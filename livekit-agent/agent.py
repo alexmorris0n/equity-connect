@@ -100,13 +100,17 @@ async def entrypoint(ctx: JobContext):
     # Check if this is a test room from playground
     import json
     room_metadata_str = room.metadata or "{}"
+    logger.error(f"🔍 RAW room.metadata: {room_metadata_str[:200]}")
     try:
         room_metadata_dict = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
-    except:
+    except Exception as e:
+        logger.error(f"❌ Failed to parse room metadata: {e}")
         room_metadata_dict = {}
     
+    logger.error(f"🔍 PARSED room_metadata_dict: {room_metadata_dict}")
     is_test_room = room_metadata_dict.get("is_test", False)
     template_id_from_room = room_metadata_dict.get("template_id")
+    logger.error(f"🔍 is_test_room={is_test_room}, template_id={template_id_from_room}")
     
     if is_test_room and template_id_from_room:
         logger.info(f"🎮 TEST ROOM detected: {room_name} | Template: {room_metadata_dict.get('template_name')}")
