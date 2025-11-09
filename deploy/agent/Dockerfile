@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system packages
+# Install system packages (ffmpeg needed for PyAV audio decoding)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 # livekit-agent folder is copied into deploy/agent/ by GitHub Actions
