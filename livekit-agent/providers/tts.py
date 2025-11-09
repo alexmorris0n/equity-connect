@@ -201,10 +201,10 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
         async def synthesize(self, text: str, *, language: str = "en-US", **kwargs) -> tts.SynthesizeStream:
             """Synthesize speech from text"""
             # Note: LiveKit may pass conn_options and other kwargs, we accept them with **kwargs
+            import httpx
+            import json
+            
             try:
-                import httpx
-                import json
-                
                 data = {
                     'providers': self.edenai_provider,
                     'text': text,
