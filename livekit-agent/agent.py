@@ -136,9 +136,10 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"📋 Call type: {call_type}, lead_id={lead_id}, broker_id={broker_id}")
     
-    # Get phone configuration from Supabase
-    phone_config = await get_phone_config(called_number)
-    logger.info(f"⚙️ Provider config: STT={phone_config.get('stt_provider')}, TTS={phone_config.get('tts_provider')}, LLM={phone_config.get('llm_provider')}")
+    # Get phone configuration from AI template with fallback to legacy config
+    from services.templates import get_agent_config_with_template
+    phone_config = await get_agent_config_with_template(called_number)
+    logger.info(f"⚙️ Template: {phone_config.get('template_name', 'Legacy')} | STT={phone_config.get('stt_provider')}, TTS={phone_config.get('tts_provider')}, LLM={phone_config.get('llm_provider')}")
     
     # Load prompt for call type
     prompt_metadata = await get_instructions_for_call_type(
@@ -363,11 +364,49 @@ async def entrypoint(ctx: JobContext):
         session_config["min_endpointing_delay"] = vad_prefix_padding_ms / 1000.0
         session_config["max_endpointing_delay"] = vad_silence_duration_ms / 1000.0
     
+    # Add template metadata to room for webhook tracking
+    if phone_config.get("template_id"):
+        try:
+            await ctx.room.update_metadata(str({
+                "template_id": phone_config.get("template_id"),
+                "template_name": phone_config.get("template_name")
+            }))
+            logger.info(f"✅ Room metadata updated with template ID")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to update room metadata: {e}")
+    
     session = AgentSession(**session_config)
+    
+    # Prepare instructions (convert for GPT-realtime if needed)
+    instructions = prompt_metadata.get("prompt", "You are a helpful assistant.")
+    
+    if is_realtime and phone_config.get("llm_provider") == "openai_realtime":
+        # Convert prompt to GPT-realtime format
+        from services.prompt_adapter import convert_and_cache_prompt
+        
+        # Build variable context for injection
+        prompt_variables = {
+            "leadFirstName": lead.get("first_name", "") if lead else "",
+            "leadFullName": lead.get("full_name", "") if lead else "",
+            "brokerName": broker.get("contact_name", "") if broker else "",
+            "brokerCompany": broker.get("company_name", "") if broker else "",
+            "callContext": "inbound" if call_type.startswith("inbound") else "outbound",
+            "phoneNumber": caller_number or "",
+        }
+        
+        # Convert to realtime format
+        try:
+            instructions = convert_and_cache_prompt(
+                prompt_content={"role": instructions},  # Wrap in structure
+                variables=prompt_variables
+            )
+            logger.info("✅ Converted prompt to GPT-realtime format")
+        except Exception as e:
+            logger.error(f"❌ Prompt conversion failed: {e}. Using original.")
     
     # Create agent with instructions and tools
     agent = EquityConnectAgent(
-        instructions=prompt_metadata.get("prompt", "You are a helpful assistant."),
+        instructions=instructions,
         tools=all_tools
     )
     agent.transcript_capture = transcript_capture

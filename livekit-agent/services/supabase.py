@@ -171,6 +171,8 @@ async def record_interaction(
         'tool_count': len(tool_calls_made),
         'prompt_version': prompt_version,
         'platform': 'livekit',
+        'template_id': phone_config.get('template_id'),
+        'template_name': phone_config.get('template_name'),
     }
     
     # Build interaction record
