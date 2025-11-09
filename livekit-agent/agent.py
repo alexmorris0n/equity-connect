@@ -118,6 +118,7 @@ async def entrypoint(ctx: JobContext):
         if template.data:
             from services.templates import template_to_phone_config
             phone_config = template_to_phone_config(template.data)
+            logger.info(f"🔍 DEBUG: Template loaded - tts_provider='{phone_config.get('tts_provider')}', tts_edenai_provider='{phone_config.get('tts_edenai_provider')}'")
             
             # Use generic test prompt
             prompt_metadata = {
@@ -253,6 +254,7 @@ async def entrypoint(ctx: JobContext):
     # Helper function to create TTS provider (returns LiveKit plugin)
     async def create_tts(provider_name: str, config: Dict[str, Any]):
         """Create TTS provider as LiveKit plugin"""
+        logger.info(f"🔍 DEBUG: create_tts called with provider_name='{provider_name}'")
         if provider_name == "elevenlabs":
             if not Config.ELEVENLABS_API_KEY:
                 raise ValueError("ELEVENLABS_API_KEY not set")
