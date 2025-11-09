@@ -411,7 +411,14 @@ def get_fallback_voices(provider: str) -> List[Dict[str, Any]]:
     """Fallback hardcoded voices if API fails"""
     voices_db = {
         "elevenlabs": [
+            # Custom Voices
             {"voice_id": "6aDn1KB0hjpdcocrUkmq", "display_name": "Tiffany (Custom)", "name": "Tiffany", "gender": "female", "accent": "American", "age": "young"},
+            {"voice_id": "P7x743VjyZEOihNNygQ9", "display_name": "Dakota (Premium)", "name": "Dakota", "gender": "female", "accent": "American", "age": "young"},
+            {"voice_id": "DLsHlh26Ugcm6ELvS0qi", "display_name": "Ms. Walker (Custom)", "name": "Ms. Walker", "gender": "female", "accent": "American", "age": "middle"},
+            {"voice_id": "DTKMou8ccj1ZaWGBiotd", "display_name": "Jamahal (Custom)", "name": "Jamahal", "gender": "male", "accent": "American", "age": "young"},
+            {"voice_id": "9T9vSqRrPPxIs5wpyZfK", "display_name": "Eric B (Custom)", "name": "Eric B", "gender": "male", "accent": "American", "age": "middle"},
+            {"voice_id": "UgBBYS2sOqTuMpoF3BR0", "display_name": "Mark (Custom)", "name": "Mark", "gender": "male", "accent": "American", "age": "middle"},
+            # Standard ElevenLabs Voices
             {"voice_id": "21m00Tcm4TlvDq8ikWAM", "display_name": "Rachel", "name": "Rachel", "gender": "female", "accent": "American", "age": "young"},
             {"voice_id": "AZnzlk1XvdvUeBnXmlld", "display_name": "Domi", "name": "Domi", "gender": "female", "accent": "American", "age": "young"},
             {"voice_id": "EXAVITQu4vr4xnSDxMaL", "display_name": "Bella", "name": "Bella", "gender": "female", "accent": "American", "age": "middle"},

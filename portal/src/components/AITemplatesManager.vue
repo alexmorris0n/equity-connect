@@ -44,6 +44,10 @@
                 <span class="config-value">{{ template.tts_model }}</span>
               </div>
               <div class="config-row">
+                <span class="config-label">Voice:</span>
+                <span class="config-value">{{ getVoiceName(template.tts_voice_id) }}</span>
+              </div>
+              <div class="config-row">
                 <span class="config-label">LLM:</span>
                 <span class="config-value">{{ template.llm_model }}</span>
               </div>
@@ -102,6 +106,10 @@
               <div class="config-row">
                 <span class="config-label">TTS:</span>
                 <span class="config-value">{{ template.tts_model }}</span>
+              </div>
+              <div class="config-row">
+                <span class="config-label">Voice:</span>
+                <span class="config-value">{{ getVoiceName(template.tts_voice_id) }}</span>
               </div>
               <div class="config-row">
                 <span class="config-label">LLM:</span>
@@ -204,6 +212,35 @@ const systemTemplates = computed(() =>
 const customTemplates = computed(() => 
   templates.value.filter(t => !t.is_system_default && t.broker_id === props.brokerId)
 )
+
+function getVoiceName(voiceId) {
+  // Map common voice IDs to friendly names
+  const voiceMap = {
+    // Custom voices
+    '6aDn1KB0hjpdcocrUkmq': 'Tiffany',
+    'P7x743VjyZEOihNNygQ9': 'Dakota',
+    'DLsHlh26Ugcm6ELvS0qi': 'Ms. Walker',
+    'DTKMou8ccj1ZaWGBiotd': 'Jamahal',
+    '9T9vSqRrPPxIs5wpyZfK': 'Eric B',
+    'UgBBYS2sOqTuMpoF3BR0': 'Mark',
+    // ElevenLabs standard
+    '21m00Tcm4TlvDq8ikWAM': 'Rachel',
+    'EXAVITQu4vr4xnSDxMaL': 'Bella',
+    'ErXwobaYiN019PkySvjV': 'Antoni',
+    'pNInz6obpgDQGcFmaJgB': 'Adam',
+    'AZnzlk1XvdvUeBnXmlld': 'Domi',
+    // OpenAI Realtime
+    'alloy': 'Alloy',
+    'echo': 'Echo',
+    'shimmer': 'Shimmer',
+    'ash': 'Ash',
+    'ballad': 'Ballad',
+    'coral': 'Coral',
+    'sage': 'Sage',
+    'verse': 'Verse'
+  }
+  return voiceMap[voiceId] || voiceId
+}
 
 async function loadTemplates() {
   loading.value = true
