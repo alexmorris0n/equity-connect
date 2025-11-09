@@ -234,7 +234,7 @@ async def entrypoint(ctx: JobContext):
                 raise ValueError("OPENAI_API_KEY not set")
             from livekit.plugins import openai
             return openai.STT(api_key=Config.OPENAI_API_KEY)
-        elif provider_name == "edenai":
+        elif provider_name == "edenai" or provider_name == "eden_ai":
             # Use Eden AI REST API wrapper (implements LiveKit STT plugin interface)
             # Provides unified API key management and provider switching via config
             if not Config.EDENAI_API_KEY:
@@ -269,7 +269,7 @@ async def entrypoint(ctx: JobContext):
                 api_key=Config.OPENAI_API_KEY,
                 voice=config.get("tts_voice", "alloy")
             )
-        elif provider_name == "edenai":
+        elif provider_name == "edenai" or provider_name == "eden_ai":
             # Use Eden AI REST API wrapper (implements LiveKit TTS plugin interface)
             # Provides unified API key management and provider switching via config
             if not Config.EDENAI_API_KEY:
