@@ -18,27 +18,26 @@ class Config:
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
     
-    # STT Providers
+    # STT Providers (Native LiveKit Plugins)
     DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ASSEMBLYAI_API_KEY: str = os.getenv("ASSEMBLYAI_API_KEY", "")
     
-    # TTS Providers
+    # TTS Providers (Native LiveKit Plugins)
     ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
-    PLAYHT_API_KEY: str = os.getenv("PLAYHT_API_KEY", "")
+    SPEECHIFY_API_KEY: str = os.getenv("SPEECHIFY_API_KEY", "")
     
     # LLM Providers
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     GOOGLE_AI_API_KEY: str = os.getenv("GOOGLE_AI_API_KEY", "")
     
-    # Eden AI (for STT/TTS only, not LLM)
-    EDENAI_API_KEY: str = os.getenv("EDENAI_API_KEY", "")
+    # Google Cloud (STT/TTS)
+    GOOGLE_APPLICATION_CREDENTIALS_JSON: Optional[str] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    GOOGLE_PROJECT_ID: str = os.getenv("GOOGLE_PROJECT_ID", "barbara-475319")
     
     # Business Logic
     NYLAS_API_KEY: str = os.getenv("NYLAS_API_KEY", "")
-    GOOGLE_APPLICATION_CREDENTIALS_JSON: Optional[str] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-    GOOGLE_PROJECT_ID: str = os.getenv("GOOGLE_PROJECT_ID", "barbara-475319")
     
     # SignalWire (for outbound calls)
     SIGNALWIRE_PROJECT_ID: str = os.getenv("SIGNALWIRE_PROJECT_ID", "")
