@@ -279,13 +279,30 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                                 else:
                                     raise Exception("No audio data in Eden AI response")
 
-                            # Return the audio as a single frame
-                            logger.error(f"🚨 Creating AudioFrame: {len(audio_data)} bytes")
+                            # Decode MP3 to PCM using av (pyav)
+                            import av
+                            import io
+                            logger.error(f"🚨 Decoding MP3: {len(audio_data)} bytes")
+                            
+                            # Decode MP3 audio to PCM
+                            container = av.open(io.BytesIO(audio_data))
+                            audio_frames = []
+                            for frame in container.decode(audio=0):
+                                audio_frames.append(frame.to_ndarray())
+                            
+                            # Concatenate all frames
+                            import numpy as np
+                            pcm_data = np.concatenate(audio_frames).flatten()
+                            
+                            # Convert to bytes
+                            pcm_bytes = pcm_data.tobytes()
+                            
+                            logger.error(f"🚨 Creating AudioFrame: {len(pcm_bytes)} bytes PCM")
                             audio_frame = rtc.AudioFrame(
-                                data=audio_data,
+                                data=pcm_bytes,
                                 sample_rate=self._sample_rate,
                                 num_channels=self._num_channels,
-                                samples_per_channel=len(audio_data) // (2 * self._num_channels)  # 16-bit = 2 bytes
+                                samples_per_channel=len(pcm_bytes) // (2 * self._num_channels)  # 16-bit = 2 bytes
                             )
                             logger.error(f"🚨 Yielding SynthesizedAudio...")
                             yield lk_tts.SynthesizedAudio(
