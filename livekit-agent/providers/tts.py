@@ -219,12 +219,15 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         'providers': self.edenai_provider,
                         'text': text,
                         'language': language,
+                        'option': 'MALE',  # Required by EdenAI: MALE or FEMALE
                     }
                     
                     if self.voice:
                         # Different providers use different parameter names
                         if self.edenai_provider == 'elevenlabs':
-                            provider_settings = {'voice_id': self.voice}
+                            provider_settings = {
+                                'voice_id': self.voice,
+                            }
                         elif self.edenai_provider == 'openai':
                             provider_settings = {'voice': self.voice}
                         elif self.edenai_provider == 'playht':
