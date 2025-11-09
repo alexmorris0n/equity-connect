@@ -220,8 +220,8 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                         'text': text,
                         'language': language,
                         'option': 'MALE',  # Required by EdenAI: MALE or FEMALE
-                        'audio_format': 'wav',  # Request WAV format (contains PCM)
-                        'sampling_rate': self._sample_rate,  # Request target sample rate
+                        # Note: ElevenLabs only supports mp3, not wav
+                        # Other providers may support 'audio_format': 'wav'
                     }
                     
                     if self.voice:
