@@ -10,7 +10,7 @@ async def detect_call_type(
     caller_phone: Optional[str] = None,
     called_phone: Optional[str] = None,
     lead_id: Optional[str] = None
-) -> str:
+) -> Dict[str, Any]:
     """
     Detect call type based on direction and lead qualification
     
@@ -21,8 +21,7 @@ async def detect_call_type(
         lead_id: Optional lead ID if already known
     
     Returns:
-        Call type: 'inbound-qualified', 'inbound-unqualified', 'inbound-unknown',
-                   'outbound-warm', 'outbound-cold'
+        Dict with: call_type, lead, broker
     """
     if direction == 'inbound':
         # For inbound, caller_phone is the lead's phone
@@ -32,12 +31,16 @@ async def detect_call_type(
         lead_phone = called_phone
     else:
         logger.warning(f"⚠️ Unknown direction: {direction}, defaulting to inbound-unknown")
-        return 'inbound-unknown'
+        return {"call_type": "inbound-unknown", "lead": None, "broker": None}
     
     # Look up lead if we have a phone number
     lead = None
+    broker = None
     if lead_phone:
         lead = await get_lead_by_phone(lead_phone)
+        # Extract broker if lead has assigned_broker_id
+        if lead and lead.get('assigned_broker_id'):
+            broker = lead.get('brokers')  # Broker data from join query
     elif lead_id:
         # If we have lead_id, we could fetch directly, but for now use phone lookup
         # This could be optimized later
@@ -47,22 +50,22 @@ async def detect_call_type(
         if lead:
             if lead.get('qualified') is True:
                 logger.info(f"✅ Lead found and qualified - using inbound-qualified prompt")
-                return 'inbound-qualified'
+                return {"call_type": "inbound-qualified", "lead": lead, "broker": broker}
             else:
                 logger.info(f"✅ Lead found but not qualified - using inbound-unqualified prompt")
-                return 'inbound-unqualified'
+                return {"call_type": "inbound-unqualified", "lead": lead, "broker": broker}
         else:
             logger.info(f"⚠️ Lead not found in system - using inbound-unknown prompt")
-            return 'inbound-unknown'
+            return {"call_type": "inbound-unknown", "lead": None, "broker": None}
     
     elif direction == 'outbound':
         if lead:
             logger.info(f"✅ Lead found in system - using outbound-warm prompt")
-            return 'outbound-warm'
+            return {"call_type": "outbound-warm", "lead": lead, "broker": broker}
         else:
             logger.info(f"⚠️ Lead not found in system - using outbound-cold prompt")
-            return 'outbound-cold'
+            return {"call_type": "outbound-cold", "lead": None, "broker": None}
     
     # Fallback
-    return 'inbound-unknown'
+    return {"call_type": "inbound-unknown", "lead": None, "broker": None}
 
