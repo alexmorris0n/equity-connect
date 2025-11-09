@@ -198,8 +198,9 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
             self.voice = voice
             self.base_url = 'https://api.edenai.run/v2'
         
-        async def synthesize(self, text: str, *, language: str = "en-US") -> tts.SynthesizeStream:
+        async def synthesize(self, text: str, *, language: str = "en-US", **kwargs) -> tts.SynthesizeStream:
             """Synthesize speech from text"""
+            # Note: LiveKit may pass conn_options and other kwargs, we accept them with **kwargs
             try:
                 import httpx
                 import json
