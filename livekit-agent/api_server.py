@@ -1259,7 +1259,7 @@ async def generate_test_token(request: Request):
         await lkapi.room.create_room(api.CreateRoomRequest(
             name=room_name,
             empty_timeout=300,  # 5 minutes
-            metadata=str({
+            metadata=json.dumps({
                 "template_id": template_id,
                 "template_name": template.data.get("name"),
                 "is_test": True

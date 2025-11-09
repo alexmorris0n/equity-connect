@@ -120,8 +120,20 @@ class EdenAITTS(TTSProvider):
             
             # Add provider-specific settings (voice)
             if self.voice:
-                provider_settings = {'voice': self.voice}
-                data[f'{self.provider}_settings'] = json.dumps(provider_settings)
+                # Different providers use different parameter names
+                if self.provider == 'elevenlabs':
+                    provider_settings = {'voice_id': self.voice}
+                elif self.provider == 'openai':
+                    provider_settings = {'voice': self.voice}
+                elif self.provider == 'playht':
+                    provider_settings = {'voice': self.voice}
+                elif self.provider == 'google':
+                    provider_settings = {'voice_name': self.voice}
+                else:
+                    provider_settings = {'voice': self.voice}  # Default
+                
+                # Pass dict object (not JSON string) since we use json=data
+                data[f'{self.provider}_settings'] = provider_settings
             
             headers = {
                 'Authorization': f'Bearer {self.api_key}',
@@ -194,8 +206,20 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 }
                 
                 if self.voice:
-                    provider_settings = {'voice': self.voice}
-                    data[f'{self.provider}_settings'] = json.dumps(provider_settings)
+                    # Different providers use different parameter names
+                    if self.provider == 'elevenlabs':
+                        provider_settings = {'voice_id': self.voice}
+                    elif self.provider == 'openai':
+                        provider_settings = {'voice': self.voice}
+                    elif self.provider == 'playht':
+                        provider_settings = {'voice': self.voice}
+                    elif self.provider == 'google':
+                        provider_settings = {'voice_name': self.voice}
+                    else:
+                        provider_settings = {'voice': self.voice}  # Default
+                    
+                    # Pass dict object (not JSON string) since we use json=data
+                    data[f'{self.provider}_settings'] = provider_settings
                 
                 logger.debug(f"🎤 Eden AI TTS request: provider={self.provider}, voice={self.voice}, text_len={len(text)}")
                 
