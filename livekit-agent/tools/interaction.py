@@ -1,5 +1,5 @@
 """Interaction and tracking tools"""
-from typing import Optional, Dict, Any
+from typing import Optional
 from livekit.agents.llm import function_tool
 from services.supabase import get_supabase_client
 import logging
@@ -16,7 +16,7 @@ async def save_interaction(
     outcome: str,
     content: str,
     recording_url: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[str] = None
 ) -> str:
     """Save call interaction details at the end of the call. Include transcript summary and outcome.
     
@@ -27,18 +27,26 @@ async def save_interaction(
         outcome: Call outcome (appointment_booked, not_interested, no_response, positive, neutral, negative)
         content: Brief summary of the conversation
         recording_url: SignalWire recording URL if available
-        metadata: Additional call metadata (transcript, tool calls, etc.)
+        metadata: Additional call metadata as JSON string
     """
     sb = get_supabase_client()
     
     try:
         logger.info(f"💾 Saving interaction for lead: {lead_id}")
         
+        # Parse metadata JSON if provided
+        metadata_dict = None
+        if metadata:
+            try:
+                metadata_dict = json.loads(metadata) if isinstance(metadata, str) else metadata
+            except:
+                metadata_dict = {}
+        
         # Check if lead should be marked as qualified
         qualifies_by_metadata = (
-            (metadata and metadata.get('qualified') == True) or
-            (metadata and metadata.get('met_qualification_requirements') == True) or
-            (metadata and metadata.get('qualification_status') == 'qualified')
+            (metadata_dict and metadata_dict.get('qualified') == True) or
+            (metadata_dict and metadata_dict.get('met_qualification_requirements') == True) or
+            (metadata_dict and metadata_dict.get('qualification_status') == 'qualified')
         )
         qualifies_by_outcome = outcome in ['appointment_booked', 'positive']
         
@@ -56,37 +64,37 @@ async def save_interaction(
         interaction_metadata = {
             "ai_agent": "livekit-agent",
             "version": "1.0",
-            "conversation_transcript": metadata.get("conversation_transcript") if metadata else None,
-            "prompt_version_id": metadata.get("prompt_version_id") if metadata else None,
-            "prompt_version_number": metadata.get("prompt_version_number") if metadata else None,
-            "prompt_call_type": metadata.get("prompt_call_type") if metadata else None,
-            "prompt_source": metadata.get("prompt_source", "unknown") if metadata else "unknown",
-            "money_purpose": metadata.get("money_purpose") if metadata else None,
-            "specific_need": metadata.get("specific_need") if metadata else None,
-            "amount_needed": metadata.get("amount_needed") if metadata else None,
-            "timeline": metadata.get("timeline") if metadata else None,
-            "objections": metadata.get("objections", []),
-            "objections_count": len(metadata.get("objections", [])) if metadata else 0,
-            "questions_asked": metadata.get("questions_asked", []),
-            "questions_count": len(metadata.get("questions_asked", [])) if metadata else 0,
-            "key_details": metadata.get("key_details", []),
-            "key_details_count": len(metadata.get("key_details", [])) if metadata else 0,
-            "appointment_scheduled": metadata.get("appointment_scheduled", False) if metadata else False,
-            "appointment_datetime": metadata.get("appointment_datetime") if metadata else None,
-            "email_verified": metadata.get("email_verified", False) if metadata else False,
-            "phone_verified": metadata.get("phone_verified", False) if metadata else False,
-            "email_collected": metadata.get("email_collected", False) if metadata else False,
-            "commitment_points_completed": metadata.get("commitment_points_completed", 0) if metadata else 0,
-            "text_reminder_consented": metadata.get("text_reminder_consented", False) if metadata else False,
-            "interruptions": metadata.get("interruptions", 0) if metadata else 0,
-            "tool_calls_made": metadata.get("tool_calls_made", []) if metadata else [],
+            "conversation_transcript": metadata_dict.get("conversation_transcript") if metadata_dict else None,
+            "prompt_version_id": metadata_dict.get("prompt_version_id") if metadata_dict else None,
+            "prompt_version_number": metadata_dict.get("prompt_version_number") if metadata_dict else None,
+            "prompt_call_type": metadata_dict.get("prompt_call_type") if metadata_dict else None,
+            "prompt_source": metadata_dict.get("prompt_source", "unknown") if metadata_dict else "unknown",
+            "money_purpose": metadata_dict.get("money_purpose") if metadata_dict else None,
+            "specific_need": metadata_dict.get("specific_need") if metadata_dict else None,
+            "amount_needed": metadata_dict.get("amount_needed") if metadata_dict else None,
+            "timeline": metadata_dict.get("timeline") if metadata_dict else None,
+            "objections": metadata_dict.get("objections", []),
+            "objections_count": len(metadata_dict.get("objections", [])) if metadata_dict else 0,
+            "questions_asked": metadata_dict.get("questions_asked", []),
+            "questions_count": len(metadata_dict.get("questions_asked", [])) if metadata_dict else 0,
+            "key_details": metadata_dict.get("key_details", []),
+            "key_details_count": len(metadata_dict.get("key_details", [])) if metadata_dict else 0,
+            "appointment_scheduled": metadata_dict.get("appointment_scheduled", False) if metadata_dict else False,
+            "appointment_datetime": metadata_dict.get("appointment_datetime") if metadata_dict else None,
+            "email_verified": metadata_dict.get("email_verified", False) if metadata_dict else False,
+            "phone_verified": metadata_dict.get("phone_verified", False) if metadata_dict else False,
+            "email_collected": metadata_dict.get("email_collected", False) if metadata_dict else False,
+            "commitment_points_completed": metadata_dict.get("commitment_points_completed", 0) if metadata_dict else 0,
+            "text_reminder_consented": metadata_dict.get("text_reminder_consented", False) if metadata_dict else False,
+            "interruptions": metadata_dict.get("interruptions", 0) if metadata_dict else 0,
+            "tool_calls_made": metadata_dict.get("tool_calls_made", []) if metadata_dict else [],
             "saved_at": datetime.utcnow().isoformat()
         }
         
         # Build transcript text if available
         transcript_text = None
-        if metadata and metadata.get("conversation_transcript"):
-            transcript = metadata["conversation_transcript"]
+        if metadata_dict and metadata_dict.get("conversation_transcript"):
+            transcript = metadata_dict["conversation_transcript"]
             transcript_text = "\n".join([
                 f"{msg.get('role', 'unknown')}: {msg.get('text', msg.get('content', ''))}"
                 for msg in transcript
@@ -97,13 +105,13 @@ async def save_interaction(
             "lead_id": lead_id,
             "broker_id": broker_id,
             "type": "ai_call",
-            "direction": metadata.get("direction", "outbound") if metadata else "outbound",
+            "direction": metadata_dict.get("direction", "outbound") if metadata_dict else "outbound",
             "content": content,
             "duration_seconds": duration_seconds,
             "outcome": outcome,
             "recording_url": recording_url,
             "transcript_text": transcript_text,
-            "transcript": {"conversation_transcript": metadata.get("conversation_transcript")} if metadata and metadata.get("conversation_transcript") else None,
+            "transcript": {"conversation_transcript": metadata_dict.get("conversation_transcript")} if metadata_dict and metadata_dict.get("conversation_transcript") else None,
             "metadata": interaction_metadata
         }
         
