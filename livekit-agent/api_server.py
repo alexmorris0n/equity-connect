@@ -1090,12 +1090,17 @@ async def get_tts_voices(provider: str, model: str):
             
             return JSONResponse(content={"voices": voices})
         
-        # Fallback: hardcoded voices for non-Eden AI providers
+        # OpenAI Realtime voices (hardcoded - no API available)
         elif provider == "openai_realtime":
             voices = [
-                {"id": "alloy", "name": "Alloy (Neutral)", "gender": "neutral", "accent": "American"},
-                {"id": "echo", "name": "Echo (Male)", "gender": "male", "accent": "American"},
-                {"id": "shimmer", "name": "Shimmer (Female)", "gender": "female", "accent": "American"},
+                {"id": "alloy", "name": "Alloy", "gender": "neutral", "accent": "American", "age": "young"},
+                {"id": "ash", "name": "Ash", "gender": "neutral", "accent": "American", "age": "young"},
+                {"id": "ballad", "name": "Ballad", "gender": "neutral", "accent": "American", "age": "middle"},
+                {"id": "coral", "name": "Coral", "gender": "female", "accent": "American", "age": "young"},
+                {"id": "echo", "name": "Echo", "gender": "male", "accent": "American", "age": "middle"},
+                {"id": "sage", "name": "Sage", "gender": "neutral", "accent": "American", "age": "young"},
+                {"id": "shimmer", "name": "Shimmer", "gender": "female", "accent": "American", "age": "young"},
+                {"id": "verse", "name": "Verse", "gender": "neutral", "accent": "American", "age": "middle"},
             ]
             return JSONResponse(content={"voices": voices})
         
