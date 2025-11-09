@@ -411,6 +411,7 @@ def get_fallback_voices(provider: str) -> List[Dict[str, Any]]:
     """Fallback hardcoded voices if API fails"""
     voices_db = {
         "elevenlabs": [
+            {"voice_id": "6aDn1KB0hjpdcocrUkmq", "display_name": "Tiffany (Custom)", "name": "Tiffany", "gender": "female", "accent": "American", "age": "young"},
             {"voice_id": "21m00Tcm4TlvDq8ikWAM", "display_name": "Rachel", "name": "Rachel", "gender": "female", "accent": "American", "age": "young"},
             {"voice_id": "AZnzlk1XvdvUeBnXmlld", "display_name": "Domi", "name": "Domi", "gender": "female", "accent": "American", "age": "young"},
             {"voice_id": "EXAVITQu4vr4xnSDxMaL", "display_name": "Bella", "name": "Bella", "gender": "female", "accent": "American", "age": "middle"},

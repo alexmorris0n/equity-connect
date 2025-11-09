@@ -94,6 +94,9 @@
             v-model:value="formData.tts_voice_id"
             :options="ttsVoiceOptions"
             :loading="loadingTTSVoices"
+            tag
+            filterable
+            placeholder="Select or paste custom voice ID"
           >
             <template #label="{ option }">
               <div class="voice-option">
@@ -113,6 +116,10 @@
             </template>
           </n-select>
         </n-form-item>
+
+        <n-alert type="info" size="small" style="margin-bottom: 16px">
+          💡 You can paste any custom voice ID directly into the Voice dropdown (e.g., from ElevenLabs Voice Lab)
+        </n-alert>
 
         <n-form-item label="Voice Speed">
           <n-slider 
@@ -346,8 +353,8 @@ const llmModelOptions = ref([])
 // Preset options
 const presetOptions = ref([
   { label: 'OpenAI Realtime (Best Quality)', value: 'openai_realtime' },
-  { label: 'Budget Friendly', value: 'budget' },
-  { label: 'Spanish Language', value: 'spanish' }
+  { label: 'ElevenLabs Best Quality', value: 'elevenlabs_best' },
+  { label: 'Budget Friendly', value: 'budget' }
 ])
 
 // Form validation rules
@@ -541,29 +548,36 @@ async function onLLMProviderChange(provider) {
 
 function applyPreset(presetValue) {
   if (presetValue === 'openai_realtime') {
+    // OpenAI Best Quality - GPT-4o Realtime (bundled STT+LLM+TTS)
     formData.value.stt_provider = 'openai_realtime'
     formData.value.stt_model = 'bundled'
     formData.value.tts_provider = 'openai_realtime'
     formData.value.tts_model = 'bundled'
-    formData.value.tts_voice_id = 'alloy'
+    formData.value.tts_voice_id = 'shimmer'  // Female, natural
     formData.value.llm_provider = 'openai_realtime'
     formData.value.llm_model = 'gpt-4o-realtime-preview'
-  } else if (presetValue === 'budget') {
+  } else if (presetValue === 'elevenlabs_best') {
+    // ElevenLabs Best Quality - Turbo v2.5 + Deepgram + GPT-5
     formData.value.stt_provider = 'eden_ai'
     formData.value.stt_model = 'deepgram-nova-2'
+    formData.value.stt_edenai_provider = 'deepgram'
+    formData.value.tts_provider = 'eden_ai'
+    formData.value.tts_model = 'elevenlabs-turbo-v2.5'
+    formData.value.tts_edenai_provider = 'elevenlabs'
+    formData.value.tts_voice_id = '6aDn1KB0hjpdcocrUkmq'  // Custom ElevenLabs voice
+    formData.value.llm_provider = 'openrouter'
+    formData.value.llm_model = 'openai/gpt-5'
+  } else if (presetValue === 'budget') {
+    // Budget Friendly - PlayHT + Deepgram + Llama 3.1
+    formData.value.stt_provider = 'eden_ai'
+    formData.value.stt_model = 'deepgram-nova-2'
+    formData.value.stt_edenai_provider = 'deepgram'
     formData.value.tts_provider = 'eden_ai'
     formData.value.tts_model = 'playht-2.0-turbo'
-    formData.value.tts_voice_id = 's3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json'
+    formData.value.tts_edenai_provider = 'playht'
+    formData.value.tts_voice_id = 's3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json'  // Charlotte
     formData.value.llm_provider = 'openrouter'
     formData.value.llm_model = 'meta-llama/llama-3.1-70b-instruct'
-  } else if (presetValue === 'spanish') {
-    formData.value.stt_provider = 'eden_ai'
-    formData.value.stt_model = 'deepgram-nova-2'
-    formData.value.tts_provider = 'eden_ai'
-    formData.value.tts_model = 'elevenlabs-multilingual-v2'
-    formData.value.tts_voice_id = '21m00Tcm4TlvDq8ikWAM'
-    formData.value.llm_provider = 'openrouter'
-    formData.value.llm_model = 'anthropic/claude-3.5-sonnet'
   }
 }
 
