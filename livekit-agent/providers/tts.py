@@ -194,7 +194,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 num_channels=1
             )
             self.api_key = api_key
-            self.provider = provider
+            self.edenai_provider = provider  # Use different name to avoid conflict with base class
             self.voice = voice
             self.base_url = 'https://api.edenai.run/v2'
         
@@ -205,28 +205,28 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                 import json
                 
                 data = {
-                    'providers': self.provider,
+                    'providers': self.edenai_provider,
                     'text': text,
                     'language': language,
                 }
                 
                 if self.voice:
                     # Different providers use different parameter names
-                    if self.provider == 'elevenlabs':
+                    if self.edenai_provider == 'elevenlabs':
                         provider_settings = {'voice_id': self.voice}
-                    elif self.provider == 'openai':
+                    elif self.edenai_provider == 'openai':
                         provider_settings = {'voice': self.voice}
-                    elif self.provider == 'playht':
+                    elif self.edenai_provider == 'playht':
                         provider_settings = {'voice': self.voice}
-                    elif self.provider == 'google':
+                    elif self.edenai_provider == 'google':
                         provider_settings = {'voice_name': self.voice}
                     else:
                         provider_settings = {'voice': self.voice}  # Default
                     
                     # Pass dict object (not JSON string) since we use json=data
-                    data[f'{self.provider}_settings'] = provider_settings
+                    data[f'{self.edenai_provider}_settings'] = provider_settings
                 
-                logger.debug(f"🎤 Eden AI TTS request: provider={self.provider}, voice={self.voice}, text_len={len(text)}")
+                logger.debug(f"🎤 Eden AI TTS request: provider={self.edenai_provider}, voice={self.voice}, text_len={len(text)}")
                 
                 headers = {
                     'Authorization': f'Bearer {self.api_key}',
@@ -242,7 +242,7 @@ def create_edenai_tts_plugin(api_key: str, provider: str = 'elevenlabs', voice: 
                     response.raise_for_status()
                     result = response.json()
                     
-                    provider_result = result.get(self.provider, {})
+                    provider_result = result.get(self.edenai_provider, {})
                     if provider_result.get('status') == 'success':
                         audio_url = provider_result.get('audio_resource_url')
                         if audio_url:
