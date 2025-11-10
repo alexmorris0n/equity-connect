@@ -157,23 +157,15 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
     # Load turn detector (must be done in entrypoint, not prewarm)
-    # Pass inference_executor from job context to avoid "no inference executor" error
     turn_detector = None
     if use_turn_detector:
-        inference_executor = ctx.proc.userdata.get("inference_executor") or ctx.inference_executor
         if turn_detector_model == "multilingual":
             from livekit.plugins.turn_detector.multilingual import MultilingualModel
-            turn_detector = MultilingualModel(
-                unlikely_threshold=turn_detector_threshold,
-                inference_executor=inference_executor
-            )
+            turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
             logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
         else:
             from livekit.plugins.turn_detector.english import EnglishModel
-            turn_detector = EnglishModel(
-                unlikely_threshold=turn_detector_threshold,
-                inference_executor=inference_executor
-            )
+            turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
             logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
     else:
         logger.info(f"🎯 Turn Detector: DISABLED (using STT provider VAD)")
