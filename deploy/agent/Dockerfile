@@ -29,6 +29,7 @@ COPY livekit-agent/services services
 COPY livekit-agent/providers providers
 COPY livekit-agent/tools tools
 COPY livekit-agent/workflows workflows
+COPY livekit-agent/prompts prompts
 
 # Set HuggingFace cache directory
 ENV HF_HOME=/root/.cache/huggingface
