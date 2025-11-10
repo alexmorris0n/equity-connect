@@ -94,14 +94,19 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"📞 Regular call - using default template")
         template = await load_default_template()
     
+    # Get VAD settings FIRST (used by both STT and AgentSession)
+    # CRITICAL: vad_silence_duration_ms is passed to both STT provider AND AgentSession
+    # to ensure they work in harmony, not conflict. Both layers should agree on when
+    # a user's turn is complete.
+    vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
+    
     # Build plugin instances from template (required for self-hosted)
-    stt_plugin = build_stt_plugin(template)
+    stt_plugin = build_stt_plugin(template, vad_silence_duration_ms)  # ← Gets same value
     llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
     
-    # Get VAD settings from template
+    # Get remaining VAD settings
     vad_prefix_padding_ms = template.get("vad_prefix_padding_ms", 300)
-    vad_silence_duration_ms = template.get("vad_silence_duration_ms", 200)
     
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
@@ -133,7 +138,7 @@ async def entrypoint(ctx: JobContext):
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
         min_endpointing_delay=vad_prefix_padding_ms / 1000.0,  # Convert ms to seconds
-        max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # Convert ms to seconds
+        max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # ← Same value as STT endpointing (aligned!)
     )
     
     # Start the agent
@@ -182,16 +187,18 @@ def get_hardcoded_fallback() -> dict:
     }
 
 
-def build_stt_plugin(template: dict):
-    """Build STT plugin instance from template, mapping VAD settings to provider-specific parameters"""
+def build_stt_plugin(template: dict, vad_silence_duration_ms: int):
+    """Build STT plugin instance from template, mapping VAD settings to provider-specific parameters
+    
+    Args:
+        template: Template configuration dict
+        vad_silence_duration_ms: Silence duration in ms (passed from entrypoint to ensure alignment)
+    """
     from livekit.plugins import deepgram, openai, assemblyai
     
     provider = template.get("stt_provider", "deepgram")
     model = template.get("stt_model", "nova-2")
     language = template.get("stt_language", "en-US")
-    
-    # Get VAD settings from template
-    vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
     if provider == "deepgram":
         # Map vad_silence_duration_ms to Deepgram's endpointing_ms
