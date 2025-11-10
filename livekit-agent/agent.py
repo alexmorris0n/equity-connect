@@ -14,8 +14,8 @@ from livekit.agents import (
 )
 from livekit.plugins import silero
 
-# Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
-from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
+# Turn detector temporarily disabled for debugging
+# from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
 
 # Import your custom tools
 from tools import all_tools
