@@ -7,8 +7,9 @@ if [ -z "$LIVEKIT_API_KEY" ] || [ -z "$LIVEKIT_API_SECRET" ]; then
   exit 1
 fi
 
-# Northflank auto-injects REDIS_HOST and REDIS_PASSWORD environment variables
-# LiveKit will use them automatically - no need to parse or pass flags
+# Northflank provides REDIS_HOST (hostname) and REDIS_PORT separately
+# LiveKit expects REDIS_HOST to include port, so we combine them
+export REDIS_HOST="${REDIS_HOST}:${REDIS_PORT}"
 
 cat <<EOF >/tmp/livekit.yaml
 port: 7880
