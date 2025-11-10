@@ -435,5 +435,6 @@ def build_tts_plugin(template: dict):
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        prewarm_fnc=prewarm
+        prewarm_fnc=prewarm,
+        initialize_process_timeout=60.0  # Increase timeout for ONNX model loading (default: 10s)
     ))
