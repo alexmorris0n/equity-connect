@@ -14,6 +14,10 @@ from livekit.agents import (
 )
 from livekit.plugins import silero
 
+# Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
+# This ensures the inference executor can handle turn detector requests from job subprocesses
+from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
+
 # Import your custom tools
 from tools import all_tools
 
@@ -60,10 +64,7 @@ class EquityConnectAgent(Agent):
 def prewarm(proc: JobProcess):
     """Load models before first call"""
     proc.userdata["vad"] = silero.VAD.load()
-    
-    # Import turn detector modules to register inference runners
-    # (actual instances are created in entrypoint, not here, to avoid job context issues)
-    from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
+    # Turn detector modules imported at top level to register in main worker process
 
 
 async def entrypoint(ctx: JobContext):
