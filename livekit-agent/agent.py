@@ -74,13 +74,16 @@ async def entrypoint(ctx: JobContext):
     room_metadata = {}
     try:
         room_metadata_str = room.metadata or "{}"
+        logger.info(f"🔍 Raw room.metadata: {room_metadata_str}")
         room_metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
+        logger.info(f"🔍 Parsed metadata: {room_metadata}")
     except Exception as e:
         logger.warning(f"Failed to parse room metadata: {e}")
     
     # Check if this is a test room with template
     is_test = room_metadata.get("is_test", False)
     template_id = room_metadata.get("template_id")
+    logger.info(f"🔍 is_test={is_test}, template_id={template_id}")
     
     if is_test and template_id:
         # Load template from Supabase
