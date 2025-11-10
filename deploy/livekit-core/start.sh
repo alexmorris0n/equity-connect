@@ -17,6 +17,10 @@ bind_addresses:
   - 0.0.0.0
 keys:
   "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"
+redis:
+  address: "${REDIS_ADDR}"
+  password: "${REDIS_PASSWORD}"
+  use_tls: true
 rtc:
   port_range_start: 50000
   port_range_end: 60000
@@ -31,7 +35,6 @@ echo "Generated LiveKit config (YAML):"
 cat /tmp/livekit.yaml
 echo ""
 echo "REDIS_ADDR (host:port): ${REDIS_ADDR}"
-echo "REDIS_PASSWORD: ${REDIS_PASSWORD}"
 
-# Pass Redis connection explicitly
-/livekit-server --config /tmp/livekit.yaml --redis-host="${REDIS_ADDR}" --redis-password="${REDIS_PASSWORD}"
+# Redis configured in YAML with TLS support
+/livekit-server --config /tmp/livekit.yaml
