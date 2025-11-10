@@ -14,7 +14,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-    from livekit.plugins import silero
+from livekit.plugins import silero
 
 # Import English turn detector only to avoid registering multilingual runner at startup
 from livekit.plugins.turn_detector import english  # noqa: F401
