@@ -18,7 +18,10 @@ bind_addresses:
 keys:
   "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"
 redis:
-  address: "${REDIS_MASTER_URL}"
+  address: "${REDIS_ADDR}"
+  password: "${REDIS_PASSWORD}"
+  tls:
+    enabled: true
 rtc:
   port_range_start: 50000
   port_range_end: 60000
