@@ -8,14 +8,15 @@ from livekit.agents import (
     Agent,
     AgentSession,
     JobContext,
+    JobExecutorType,
     JobProcess,
     WorkerOptions,
     cli,
 )
 from livekit.plugins import silero
 
-# Turn detector temporarily disabled for debugging
-# from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
+# Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
+from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
 
 # Import your custom tools
 from tools import all_tools
@@ -436,5 +437,6 @@ if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         prewarm_fnc=prewarm,
-        initialize_process_timeout=60.0  # Increase timeout for ONNX model loading (default: 10s)
+        initialize_process_timeout=60.0,  # Increase timeout for ONNX model loading (default: 10s)
+        job_executor_type=JobExecutorType.THREAD  # Use threads to bypass Fly.io IPC restrictions
     ))
