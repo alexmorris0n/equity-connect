@@ -205,7 +205,7 @@ def build_tts_plugin(template: dict):
     voice_id = template.get("tts_voice_id", "21m00Tcm4TlvDq8ikWAM")
     
     if provider == "elevenlabs":
-        return elevenlabs.TTS(voice=voice_id, model=model)
+        return elevenlabs.TTS(voice_id=voice_id, model=model)
     elif provider == "openai":
         voice = template.get("tts_voice", "alloy")
         return openai.TTS(voice=voice)
@@ -214,7 +214,7 @@ def build_tts_plugin(template: dict):
         language = template.get("stt_language", "en-US")
         return google.TTS(voice=voice, language=language)
     else:
-        return elevenlabs.TTS(voice=voice_id, model="eleven_turbo_v2_5")  # Safe fallback
+        return elevenlabs.TTS(voice_id=voice_id, model="eleven_turbo_v2_5")  # Safe fallback
 
 
 if __name__ == "__main__":
