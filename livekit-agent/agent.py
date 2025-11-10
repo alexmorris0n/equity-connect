@@ -22,11 +22,7 @@ from livekit.plugins.turn_detector import english  # noqa: F401
 # Import ALL plugins at TOP LEVEL (required for plugin registration on main thread)
 from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
 from livekit.plugins import noise_cancellation
-from livekit.plugins import langchain as livekit_langchain
-
-# Import LangChain and workflow modules at top level
-from langchain_openai import ChatOpenAI
-from workflows import create_conversation_graph
+from livekit.plugins import langchain as livekit_langchain  # Only the plugin itself
 
 # Import your custom tools
 from tools import all_tools
@@ -176,6 +172,10 @@ async def entrypoint(ctx: JobContext):
     tts_plugin = build_tts_plugin(template)
     
     # Build LangGraph workflow for LLM (replaces direct LLM plugin)
+    # Import non-plugin dependencies here (after workflows/ is available)
+    from langchain_openai import ChatOpenAI
+    from workflows import create_conversation_graph
+    
     # Create base LLM for LangGraph nodes
     base_llm = ChatOpenAI(
         model=template.get("llm_model", "gpt-4o"),

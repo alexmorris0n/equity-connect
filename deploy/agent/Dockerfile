@@ -28,6 +28,7 @@ COPY livekit-agent/api_server.py api_server.py
 COPY livekit-agent/services services
 COPY livekit-agent/providers providers
 COPY livekit-agent/tools tools
+COPY livekit-agent/workflows workflows
 
 # Set HuggingFace cache directory
 ENV HF_HOME=/root/.cache/huggingface
