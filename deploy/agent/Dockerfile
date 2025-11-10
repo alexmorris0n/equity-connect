@@ -17,17 +17,17 @@ RUN mkdir -p /tmp /root/.cache/huggingface && \
     chmod 1777 /tmp && \
     chmod -R 777 /root/.cache
 
-# Copy from livekit-agent folder (2 levels up from build context /deploy/agent)
-COPY ../../livekit-agent/requirements.txt requirements.txt
+# Copy from livekit-agent folder (build context is repo root /)
+COPY livekit-agent/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application
-COPY ../../livekit-agent/config.py config.py
-COPY ../../livekit-agent/agent.py agent.py
-COPY ../../livekit-agent/api_server.py api_server.py
-COPY ../../livekit-agent/services services
-COPY ../../livekit-agent/providers providers
-COPY ../../livekit-agent/tools tools
+COPY livekit-agent/config.py config.py
+COPY livekit-agent/agent.py agent.py
+COPY livekit-agent/api_server.py api_server.py
+COPY livekit-agent/services services
+COPY livekit-agent/providers providers
+COPY livekit-agent/tools tools
 
 # Set HuggingFace cache directory
 ENV HF_HOME=/root/.cache/huggingface
