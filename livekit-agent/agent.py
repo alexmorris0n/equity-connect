@@ -14,7 +14,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-from livekit.plugins import silero
+    from livekit.plugins import silero
 
 # Import English turn detector only to avoid registering multilingual runner at startup
 from livekit.plugins.turn_detector import english  # noqa: F401
@@ -78,7 +78,7 @@ class EquityConnectAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Load models before first call"""
-    proc.userdata["vad"] = silero.VAD.load()
+        proc.userdata["vad"] = silero.VAD.load()
     # Turn detector modules imported at top level to register in main worker process
 
 
@@ -96,7 +96,7 @@ async def entrypoint(ctx: JobContext):
     
     # Try room metadata first
     try:
-        room_metadata_str = room.metadata or "{}"
+    room_metadata_str = room.metadata or "{}"
         logger.info(f"🔍 Raw room.metadata: {room_metadata_str}")
         if room_metadata_str and room_metadata_str != "{}":
             metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
@@ -509,6 +509,7 @@ if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         prewarm_fnc=prewarm,
+        agent_name="inbound-agent",  # Register with LiveKit Cloud for dispatch routing
         initialize_process_timeout=120.0,  # Increase timeout for ONNX model loading (default: 10s)
         job_executor_type=JobExecutorType.THREAD  # Use threads to bypass Fly.io IPC restrictions
     ))
