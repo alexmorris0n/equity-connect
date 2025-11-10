@@ -32,9 +32,9 @@ COPY livekit-agent/tools tools
 # Set HuggingFace cache directory
 ENV HF_HOME=/root/.cache/huggingface
 
-# Download model weights
-# Turn detector - manual download from Hugging Face
-# Downloads English model (v1.2.2-en) including ONNX weights, tokenizer, and languages.json
+# Download model weights for LiveKit turn detector to avoid first-boot download
+# 1) English model (v1.2.2-en)
+# 2) Multilingual model (v1.2.2-multilingual)
 # Using HF_HOME ensures files persist in the cache directory
 RUN HF_HOME=/root/.cache/huggingface python -c "\
 from huggingface_hub import hf_hub_download; \
@@ -43,6 +43,14 @@ hf_hub_download(repo_id='livekit/turn-detector', filename='model_q8.onnx', subfo
 hf_hub_download(repo_id='livekit/turn-detector', filename='languages.json', revision='v1.2.2-en'); \
 AutoTokenizer.from_pretrained('livekit/turn-detector', revision='v1.2.2-en'); \
 print('✅ Turn detector model downloaded successfully'); \
+"
+RUN HF_HOME=/root/.cache/huggingface python -c "\
+from huggingface_hub import hf_hub_download; \
+from transformers import AutoTokenizer; \
+hf_hub_download(repo_id='livekit/turn-detector', filename='model_q8.onnx', subfolder='onnx', revision='v1.2.2-multilingual'); \
+hf_hub_download(repo_id='livekit/turn-detector', filename='languages.json', revision='v1.2.2-multilingual'); \
+AutoTokenizer.from_pretrained('livekit/turn-detector', revision='v1.2.2-multilingual'); \
+print('✅ Turn detector multilingual model downloaded successfully'); \
 "
 
 ENV PYTHONUNBUFFERED=1
