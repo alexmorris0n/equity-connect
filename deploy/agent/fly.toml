@@ -13,8 +13,12 @@ primary_region = "lax"
   AWS_BUCKET_NAME = "recordings"
 
 [[vm]]
-  memory = "1gb"
-  cpus = 1
+  memory = "2gb"
+  cpus = 2
+
+# Enable init for proper subprocess handling (required for inference executor)
+[init]
+  enabled = true
 
 [processes]
   worker = "python agent.py start"

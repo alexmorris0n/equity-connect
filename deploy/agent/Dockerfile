@@ -3,11 +3,16 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system packages (ffmpeg needed for PyAV audio decoding)
+# tini for proper subprocess/signal handling
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     ffmpeg \
+    tini \
   && rm -rf /var/lib/apt/lists/*
+
+# Ensure proper permissions for temp directories (needed for subprocess creation)
+RUN mkdir -p /tmp && chmod 1777 /tmp
 
 # livekit-agent folder is copied into deploy/agent/ by GitHub Actions
 COPY livekit-agent/requirements.txt requirements.txt
@@ -42,5 +47,9 @@ print('✅ Turn detector model downloaded successfully'); \
 
 ENV PYTHONUNBUFFERED=1
 
+# Use tini as entrypoint for proper subprocess/signal handling (critical for inference executor)
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# Run the agent
 CMD ["python", "agent.py", "start"]
 
