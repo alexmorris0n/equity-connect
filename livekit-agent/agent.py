@@ -99,16 +99,17 @@ async def entrypoint(ctx: JobContext):
     llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
     
-    logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
-    logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')}")
-    logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')}")
-    
-    # Get instructions
-    instructions = template.get("instructions", "You are Barbara, a friendly AI assistant for Equity Connect.")
-    
     # Get VAD settings from template
     vad_prefix_padding_ms = template.get("vad_prefix_padding_ms", 300)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 200)
+    
+    logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
+    logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')}")
+    logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')}")
+    logger.info(f"🎛️ VAD: prefix_padding={vad_prefix_padding_ms}ms, silence={vad_silence_duration_ms}ms")
+    
+    # Get instructions
+    instructions = template.get("instructions", "You are Barbara, a friendly AI assistant for Equity Connect.")
     
     # Create session with plugin instances (required for self-hosted LiveKit)
     session = AgentSession(
@@ -174,21 +175,36 @@ def get_hardcoded_fallback() -> dict:
 
 
 def build_stt_plugin(template: dict):
-    """Build STT plugin instance from template"""
+    """Build STT plugin instance from template, mapping VAD settings to provider-specific parameters"""
     from livekit.plugins import deepgram, openai, assemblyai
     
     provider = template.get("stt_provider", "deepgram")
     model = template.get("stt_model", "nova-2")
     language = template.get("stt_language", "en-US")
     
+    # Get VAD settings from template
+    vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
+    
     if provider == "deepgram":
-        return deepgram.STT(model=model, language=language)
+        # Map vad_silence_duration_ms to Deepgram's endpointing_ms
+        # Deepgram's endpointing detects end of speech based on silence
+        return deepgram.STT(
+            model=model, 
+            language=language,
+            endpointing_ms=vad_silence_duration_ms
+        )
     elif provider == "assemblyai":
-        return assemblyai.STT()
+        # AssemblyAI has built-in turn detection
+        # Map our silence duration to their max_turn_silence parameter
+        return assemblyai.STT(
+            max_turn_silence=vad_silence_duration_ms
+        )
     elif provider == "openai":
+        # OpenAI STT uses turn_detection parameter
+        # For now, use default turn detection (LiveKit manages VAD)
         return openai.STT()
     else:
-        return deepgram.STT(model="nova-2")  # Safe fallback
+        return deepgram.STT(model="nova-2", endpointing_ms=500)  # Safe fallback
 
 
 def build_llm_plugin(template: dict):
