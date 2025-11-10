@@ -36,7 +36,7 @@ async def create_tts_plugin(provider_name: str, config: Dict[str, Any]):
         return elevenlabs.TTS(
             api_key=Config.ELEVENLABS_API_KEY,
             voice=voice,
-            model_id=model
+            model=model
         )
     
     elif provider_name == "openai" or provider_name == "openai_tts":
