@@ -98,22 +98,30 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.warning(f"Failed to parse participant metadata: {e}")
     
-    # Check if this is a test room with template
+    # Check if this is a test room with template + prompt
     is_test = metadata.get("is_test", False)
-    template_id = metadata.get("template_id")
-    logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}")
+    template_id = metadata.get("template_id")  # Config: STT/TTS/LLM/voice
+    call_type = metadata.get("call_type", "test-demo")  # Prompt: instructions
+    logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}, call_type={call_type}")
     
     if is_test and template_id:
-        # Load template from Supabase
-        logger.info(f"🎮 Test room - loading template {template_id}")
+        # Load template (configuration) from Supabase
+        logger.info(f"🎮 Test room - loading template {template_id} + prompt {call_type}")
         template = await load_template(template_id)
         if not template:
             logger.error(f"❌ Template {template_id} not found")
             return
+        
+        # Load prompt (instructions) from prompts table
+        instructions = await load_prompt_instructions(call_type)
+        if not instructions:
+            logger.warning(f"⚠️ Prompt {call_type} not found, using fallback")
+            instructions = "You are Barbara, a warm voice assistant for Equity Connect. Be friendly and helpful."
     else:
-        # Regular call - use default template
-        logger.info(f"📞 Regular call - using default template")
+        # Regular call - use default template + prompt
+        logger.info(f"📞 Regular call - using defaults")
         template = await load_default_template()
+        instructions = "You are Barbara, a warm voice assistant for Equity Connect. Be friendly and helpful."
     
     # Get VAD settings FIRST (used by both STT and AgentSession)
     # CRITICAL: vad_silence_duration_ms is passed to both STT provider AND AgentSession
@@ -140,9 +148,7 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
     logger.info(f"🎛️ VAD: silence_threshold={vad_silence_duration_ms}ms (min=200ms, max={vad_silence_duration_ms}ms)")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
-    
-    # Get instructions
-    instructions = template.get("instructions", "You are Barbara, a friendly AI assistant for Equity Connect.")
+    logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
     # Create session with plugin instances (required for self-hosted LiveKit)
     session = AgentSession(
@@ -190,6 +196,64 @@ async def load_default_template() -> dict:
     except Exception as e:
         logger.warning(f"Failed to load default template: {e}")
         return get_hardcoded_fallback()
+
+
+async def load_prompt_instructions(call_type: str) -> Optional[str]:
+    """Load prompt instructions from prompts table and format from JSONB sections"""
+    try:
+        from services.templates import get_supabase_client
+        supabase = get_supabase_client()
+        
+        # Get prompt with active version
+        result = supabase.table("prompts").select("""
+            id,
+            prompt_versions!inner(
+                id,
+                content,
+                is_active,
+                version_number
+            )
+        """).eq("call_type", call_type).eq("is_active", True).eq("prompt_versions.is_active", True).single().execute()
+        
+        if not result.data:
+            logger.warning(f"No prompt found for call_type: {call_type}")
+            return None
+        
+        # Get the active version's content (JSONB with 9 sections)
+        version = result.data.get("prompt_versions")
+        if isinstance(version, list):
+            version = version[0] if version else None
+        
+        if not version or not version.get("content"):
+            logger.warning(f"No active version found for {call_type}")
+            return None
+        
+        # Format JSONB sections into single prompt string
+        sections = version["content"]
+        parts = []
+        
+        # Assemble sections in order (like barbara-v3 formatPromptContent)
+        if sections.get("role"):
+            parts.append(sections["role"])
+        if sections.get("personality"):
+            parts.append(f"PERSONALITY & STYLE:\n{sections['personality']}")
+        if sections.get("context"):
+            parts.append(f"CONTEXT:\n{sections['context']}")
+        if sections.get("conversation_flow"):
+            parts.append(f"CONVERSATION FLOW:\n{sections['conversation_flow']}")
+        if sections.get("instructions"):
+            parts.append(f"RULES & CONSTRAINTS:\n{sections['instructions']}")
+        if sections.get("output_format"):
+            parts.append(f"OUTPUT FORMAT:\n{sections['output_format']}")
+        
+        formatted = "\n\n".join(parts).strip()
+        logger.info(f"✅ Loaded prompt {call_type} v{version.get('version_number')} ({len(formatted)} chars)")
+        
+        return formatted
+        
+    except Exception as e:
+        logger.error(f"Failed to load prompt {call_type}: {e}")
+        return None
 
 
 def get_hardcoded_fallback() -> dict:
