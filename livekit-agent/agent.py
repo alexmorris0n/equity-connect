@@ -94,23 +94,23 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"📞 Regular call - using default template")
         template = await load_default_template()
     
-    # Build model strings from template
-    stt_string = build_stt_string(template)
-    llm_string = build_llm_string(template)
-    tts_string = build_tts_string(template)
+    # Build plugin instances from template (required for self-hosted)
+    stt_plugin = build_stt_plugin(template)
+    llm_plugin = build_llm_plugin(template)
+    tts_plugin = build_tts_plugin(template)
     
-    logger.info(f"🎙️ STT: {stt_string}")
-    logger.info(f"🧠 LLM: {llm_string}")
-    logger.info(f"🔊 TTS: {tts_string}")
+    logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
+    logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')}")
+    logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')}")
     
     # Get instructions
     instructions = template.get("instructions", "You are Barbara, a friendly AI assistant for Equity Connect.")
     
-    # Create session with simple string-based model selection
+    # Create session with plugin instances (required for self-hosted LiveKit)
     session = AgentSession(
-        stt=stt_string,
-        llm=llm_string,
-        tts=tts_string,
+        stt=stt_plugin,
+        llm=llm_plugin,
+        tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
     )
     
@@ -160,59 +160,61 @@ def get_hardcoded_fallback() -> dict:
     }
 
 
-def build_stt_string(template: dict) -> str:
-    """Build STT model string from template"""
+def build_stt_plugin(template: dict):
+    """Build STT plugin instance from template"""
+    from livekit.plugins import deepgram, openai, assemblyai
+    
     provider = template.get("stt_provider", "deepgram")
     model = template.get("stt_model", "nova-2")
     language = template.get("stt_language", "en-US")
     
     if provider == "deepgram":
-        return f"deepgram/{model}"
+        return deepgram.STT(model=model, language=language)
     elif provider == "assemblyai":
-        return f"assemblyai/universal-streaming:{language.split('-')[0]}"
+        return assemblyai.STT()
     elif provider == "openai":
-        return "openai/whisper-1"
+        return openai.STT()
     else:
-        return "deepgram/nova-2"  # Safe fallback
+        return deepgram.STT(model="nova-2")  # Safe fallback
 
 
-def build_llm_string(template: dict) -> str:
-    """Build LLM model string from template
+def build_llm_plugin(template: dict):
+    """Build LLM plugin instance from template"""
+    from livekit.plugins import openai
     
-    Returns either a string or LLM instance for OpenRouter
-    """
     provider = template.get("llm_provider", "openai")
     model = template.get("llm_model", "gpt-4o")
     
     if provider == "openrouter":
-        # OpenRouter needs explicit plugin instance
-        from livekit.plugins import openai
         return openai.LLM.with_openrouter(
             model=model,
             api_key=Config.OPENROUTER_API_KEY
         )
     elif provider == "openai":
-        return f"openai/{model}"
+        return openai.LLM(model=model)
     else:
-        return "openai/gpt-4o"  # Safe fallback
+        return openai.LLM(model="gpt-4o")  # Safe fallback
 
 
-def build_tts_string(template: dict) -> str:
-    """Build TTS model string from template"""
+def build_tts_plugin(template: dict):
+    """Build TTS plugin instance from template"""
+    from livekit.plugins import elevenlabs, openai, google
+    
     provider = template.get("tts_provider", "elevenlabs")
     model = template.get("tts_model", "eleven_turbo_v2_5")
     voice_id = template.get("tts_voice_id", "21m00Tcm4TlvDq8ikWAM")
     
     if provider == "elevenlabs":
-        return f"elevenlabs/{model}:{voice_id}"
+        return elevenlabs.TTS(voice=voice_id, model=model)
     elif provider == "openai":
         voice = template.get("tts_voice", "alloy")
-        return f"openai/tts-1:{voice}"
+        return openai.TTS(voice=voice)
     elif provider == "google":
         voice = template.get("tts_voice_id", "en-US-Neural2-A")
-        return f"google/{voice}"
+        language = template.get("stt_language", "en-US")
+        return google.TTS(voice=voice, language=language)
     else:
-        return f"elevenlabs/eleven_turbo_v2_5:{voice_id}"  # Safe fallback
+        return elevenlabs.TTS(voice=voice_id, model="eleven_turbo_v2_5")  # Safe fallback
 
 
 if __name__ == "__main__":
