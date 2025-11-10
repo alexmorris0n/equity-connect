@@ -35,6 +35,7 @@ logger = logging.getLogger("livekit-agent")
 load_dotenv()
 
 # Set environment variables for LiveKit plugins to auto-discover
+# Also ensure HuggingFace caches are consistent across subprocesses
 # STT Providers
 os.environ["DEEPGRAM_API_KEY"] = Config.DEEPGRAM_API_KEY
 os.environ["ASSEMBLYAI_API_KEY"] = Config.ASSEMBLYAI_API_KEY
@@ -46,6 +47,11 @@ os.environ["SPEECHIFY_API_KEY"] = Config.SPEECHIFY_API_KEY
 # LLM Providers
 os.environ["OPENAI_API_KEY"] = Config.OPENAI_API_KEY
 os.environ["OPENROUTER_API_KEY"] = Config.OPENROUTER_API_KEY
+
+# HF cache locations (inference subprocess inherits these)
+os.environ.setdefault("HF_HOME", "/root/.cache/huggingface")
+os.environ.setdefault("HF_HUB_CACHE", os.path.join(os.environ["HF_HOME"], "hub"))
+os.environ.setdefault("TRANSFORMERS_CACHE", os.environ["HF_HOME"])
 
 # Google Cloud (if JSON credentials are set)
 if Config.GOOGLE_APPLICATION_CREDENTIALS_JSON:
@@ -205,14 +211,24 @@ async def entrypoint(ctx: JobContext):
     # Load turn detector (must be done in entrypoint, not prewarm)
     turn_detector = None
     if use_turn_detector:
-        if turn_detector_model == "multilingual":
-            from livekit.plugins.turn_detector.multilingual import MultilingualModel
-            turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
-        else:
-            from livekit.plugins.turn_detector.english import EnglishModel
-            turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
+        try:
+            if turn_detector_model == "multilingual":
+                from livekit.plugins.turn_detector.multilingual import MultilingualModel
+                turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
+                logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
+            else:
+                from livekit.plugins.turn_detector.english import EnglishModel
+                turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
+                logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
+        except Exception as e:
+            logger.warning(f"⚠️ Turn detector init failed ({e}); falling back to ENGLISH model")
+            try:
+                from livekit.plugins.turn_detector.english import EnglishModel
+                turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
+                logger.info("🎯 Turn Detector fallback: ENGLISH")
+            except Exception as e2:
+                logger.warning(f"⚠️ English fallback failed ({e2}); disabling turn detector")
+                turn_detector = None
     else:
         logger.info(f"🎯 Turn Detector: DISABLED (using STT provider VAD)")
     

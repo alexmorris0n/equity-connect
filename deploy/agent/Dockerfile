@@ -31,6 +31,8 @@ COPY livekit-agent/tools tools
 
 # Set HuggingFace cache directory
 ENV HF_HOME=/root/.cache/huggingface
+ENV HF_HUB_CACHE=/root/.cache/huggingface/hub
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
 
 # Pre-download plugin assets using the LiveKit Agents CLI hook
 RUN python agent.py download-files
