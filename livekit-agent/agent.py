@@ -111,8 +111,8 @@ async def entrypoint(ctx: JobContext):
     false_interruption_timeout = template.get("false_interruption_timeout", 1.0)
     
     logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
-    logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')}")
-    logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')}")
+    logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')} (temp={template.get('llm_temperature', 0.7)}, top_p={template.get('llm_top_p', 1.0)})")
+    logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
     logger.info(f"🎛️ VAD: prefix_padding={vad_prefix_padding_ms}ms, silence={vad_silence_duration_ms}ms")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     
@@ -216,40 +216,74 @@ def build_stt_plugin(template: dict):
 
 
 def build_llm_plugin(template: dict):
-    """Build LLM plugin instance from template"""
+    """Build LLM plugin instance from template with all LLM parameters"""
     from livekit.plugins import openai
     
     provider = template.get("llm_provider", "openai")
     model = template.get("llm_model", "gpt-4o")
     
+    # Get LLM parameters from template
+    temperature = template.get("llm_temperature", 0.7)
+    max_tokens = template.get("llm_max_tokens", 4096)
+    top_p = template.get("llm_top_p", 1.0)
+    frequency_penalty = template.get("llm_frequency_penalty", 0.0)
+    presence_penalty = template.get("llm_presence_penalty", 0.0)
+    
     if provider == "openrouter":
         return openai.LLM.with_openrouter(
             model=model,
-            api_key=Config.OPENROUTER_API_KEY
+            api_key=Config.OPENROUTER_API_KEY,
+            temperature=temperature,
+            top_p=top_p,
         )
     elif provider == "openai":
-        return openai.LLM(model=model)
+        return openai.LLM(
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+        )
     else:
-        return openai.LLM(model="gpt-4o")  # Safe fallback
+        return openai.LLM(model="gpt-4o", temperature=0.7)  # Safe fallback
 
 
 def build_tts_plugin(template: dict):
-    """Build TTS plugin instance from template"""
+    """Build TTS plugin instance from template with provider-specific settings"""
     from livekit.plugins import elevenlabs, openai, google
+    from livekit.agents.types import NOT_GIVEN
     
     provider = template.get("tts_provider", "elevenlabs")
     model = template.get("tts_model", "eleven_turbo_v2_5")
     voice_id = template.get("tts_voice_id", "21m00Tcm4TlvDq8ikWAM")
     
+    # Get TTS parameters from template
+    tts_speed = template.get("tts_speed", 1.0)
+    tts_stability = template.get("tts_stability", 0.5)
+    
     if provider == "elevenlabs":
-        return elevenlabs.TTS(voice_id=voice_id, model=model)
+        # ElevenLabs supports stability and other voice settings
+        voice_settings = elevenlabs.VoiceSettings(
+            stability=tts_stability,
+            similarity_boost=0.75,  # Good default
+        )
+        return elevenlabs.TTS(
+            voice_id=voice_id, 
+            model=model,
+            voice_settings=voice_settings
+        )
     elif provider == "openai":
         voice = template.get("tts_voice", "alloy")
-        return openai.TTS(voice=voice)
+        return openai.TTS(
+            voice=voice,
+            speed=tts_speed
+        )
     elif provider == "google":
         voice_name = template.get("tts_voice_id", "en-US-Neural2-A")
         language = template.get("stt_language", "en-US")
-        return google.TTS(voice_name=voice_name, language=language)
+        return google.TTS(
+            voice_name=voice_name, 
+            language=language,
+            speaking_rate=tts_speed
+        )
     else:
         return elevenlabs.TTS(voice_id=voice_id, model="eleven_turbo_v2_5")  # Safe fallback
 
