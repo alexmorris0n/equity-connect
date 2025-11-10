@@ -21,6 +21,9 @@ COPY livekit-agent/services services
 COPY livekit-agent/providers providers
 COPY livekit-agent/tools tools
 
+# Download turn detector model weights
+RUN python agent.py download-files
+
 ENV PYTHONUNBUFFERED=1
 
 CMD ["python", "agent.py", "start"]

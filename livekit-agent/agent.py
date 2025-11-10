@@ -59,7 +59,10 @@ class EquityConnectAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Load models before first call"""
+    from livekit.plugins.turn_detector.english import EnglishModel
+    
     proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["turn_detector"] = EnglishModel()
 
 
 async def entrypoint(ctx: JobContext):
@@ -156,6 +159,7 @@ async def entrypoint(ctx: JobContext):
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
+        turn_detection=ctx.proc.userdata["turn_detector"],  # Context-aware turn detection
         # Interruption settings from template
         allow_interruptions=allow_interruptions,
         min_interruption_duration=min_interruption_duration,
@@ -163,8 +167,8 @@ async def entrypoint(ctx: JobContext):
         false_interruption_timeout=false_interruption_timeout,
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
-        min_endpointing_delay=0.2,  # Fixed: standard LiveKit value (200ms min silence)
-        max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # ← Aligned with STT endpointing!
+        min_endpointing_delay=0.2,  # Fast initial check
+        max_endpointing_delay=6.0,  # Trust turn detector to wait up to 6s if user will continue
     )
     
     # Start the agent
@@ -285,25 +289,21 @@ def build_stt_plugin(template: dict, vad_silence_duration_ms: int):
     language = template.get("stt_language", "en-US")
     
     if provider == "deepgram":
-        # Map vad_silence_duration_ms to Deepgram's endpointing_ms
-        # Deepgram's endpointing detects end of speech based on silence
+        # Disable Deepgram endpointing - Turn Detector handles it
         return deepgram.STT(
             model=model, 
             language=language,
-            endpointing_ms=vad_silence_duration_ms
+            endpointing_ms=0
         )
     elif provider == "assemblyai":
-        # AssemblyAI has built-in turn detection
-        # Map our silence duration to their max_turn_silence parameter
-        return assemblyai.STT(
-            max_turn_silence=vad_silence_duration_ms
-        )
+        # Disable AssemblyAI turn detection - Turn Detector handles it
+        return assemblyai.STT()  # Use defaults, no endpointing
     elif provider == "openai":
         # OpenAI STT uses turn_detection parameter
         # For now, use default turn detection (LiveKit manages VAD)
         return openai.STT()
     else:
-        return deepgram.STT(model="nova-2", endpointing_ms=500)  # Safe fallback
+        return deepgram.STT(model="nova-2", endpointing_ms=0)  # Safe fallback, no endpointing
 
 
 def build_llm_plugin(template: dict):
