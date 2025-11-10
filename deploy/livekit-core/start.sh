@@ -8,8 +8,7 @@ if [ -z "$LIVEKIT_API_KEY" ] || [ -z "$LIVEKIT_API_SECRET" ]; then
 fi
 
 # Use Northflank's auto-injected Redis addon variables
-# Northflank provides REDIS_MASTER_URL, HOST, PORT, PASSWORD automatically
-REDIS_URL=${REDIS_MASTER_URL:-redis://${HOST:-127.0.0.1}:${PORT:-6379}}
+REDIS_URL=${REDIS_MASTER_URL}
 
 # Parse host:port from redis:// or rediss:// URL for LiveKit CLI flag (no protocol prefix allowed)
 REDIS_ADDR=$(echo "$REDIS_URL" | sed -E 's#^redis(s)?://([^@]*@)?([^/]+).*#\3#')
