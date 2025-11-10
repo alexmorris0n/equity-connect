@@ -59,10 +59,8 @@ class EquityConnectAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Load models before first call"""
-    from livekit.plugins.turn_detector.english import EnglishModel
-    
     proc.userdata["vad"] = silero.VAD.load()
-    proc.userdata["turn_detector"] = EnglishModel()
+    # Note: Turn detector is loaded in entrypoint, not here
 
 
 async def entrypoint(ctx: JobContext):
@@ -153,13 +151,17 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
+    # Load turn detector (must be done in entrypoint, not prewarm)
+    from livekit.plugins.turn_detector.english import EnglishModel
+    turn_detector = EnglishModel()
+    
     # Create session with plugin instances (required for self-hosted LiveKit)
     session = AgentSession(
         stt=stt_plugin,
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
-        turn_detection=ctx.proc.userdata["turn_detector"],  # Context-aware turn detection
+        turn_detection=turn_detector,  # Context-aware turn detection
         # Interruption settings from template
         allow_interruptions=allow_interruptions,
         min_interruption_duration=min_interruption_duration,
