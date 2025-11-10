@@ -130,8 +130,13 @@ async def entrypoint(ctx: JobContext):
     # a user's turn is complete.
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
+    # Get turn detector settings
+    use_turn_detector = template.get("use_turn_detector", True)
+    turn_detector_model = template.get("turn_detector_model", "english")
+    turn_detector_threshold = template.get("turn_detector_threshold")  # Optional override
+    
     # Build plugin instances from template (required for self-hosted)
-    stt_plugin = build_stt_plugin(template, vad_silence_duration_ms)  # ← Gets same value
+    stt_plugin = build_stt_plugin(template, vad_silence_duration_ms, use_turn_detector)
     llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
     
@@ -152,16 +157,31 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
     # Load turn detector (must be done in entrypoint, not prewarm)
-    from livekit.plugins.turn_detector.english import EnglishModel
-    turn_detector = EnglishModel()
+    turn_detector = None
+    if use_turn_detector:
+        if turn_detector_model == "multilingual":
+            from livekit.plugins.turn_detector.multilingual import MultilingualModel
+            turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
+        else:
+            from livekit.plugins.turn_detector.english import EnglishModel
+            turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
+            logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
+    else:
+        logger.info(f"🎯 Turn Detector: DISABLED (using STT provider VAD)")
     
     # Create session with plugin instances (required for self-hosted LiveKit)
+    # Adjust max_endpointing_delay based on turn detector usage:
+    # - With turn detector: Long delay (6s) to allow context-aware decision
+    # - Without turn detector: Match STT provider VAD timing (align layers)
+    max_endpointing = 6.0 if use_turn_detector else (vad_silence_duration_ms / 1000)
+    
     session = AgentSession(
         stt=stt_plugin,
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
-        turn_detection=turn_detector,  # Context-aware turn detection
+        turn_detection=turn_detector,  # None if disabled, EnglishModel/MultilingualModel if enabled
         # Interruption settings from template
         allow_interruptions=allow_interruptions,
         min_interruption_duration=min_interruption_duration,
@@ -170,7 +190,7 @@ async def entrypoint(ctx: JobContext):
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
         min_endpointing_delay=0.2,  # Fast initial check
-        max_endpointing_delay=6.0,  # Trust turn detector to wait up to 6s if user will continue
+        max_endpointing_delay=max_endpointing,  # 6s if turn detector, or match VAD timing
     )
     
     # Start the agent
@@ -277,12 +297,13 @@ def get_hardcoded_fallback() -> dict:
     }
 
 
-def build_stt_plugin(template: dict, vad_silence_duration_ms: int):
+def build_stt_plugin(template: dict, vad_silence_duration_ms: int, use_turn_detector: bool = True):
     """Build STT plugin instance from template, mapping VAD settings to provider-specific parameters
     
     Args:
         template: Template configuration dict
         vad_silence_duration_ms: Silence duration in ms (passed from entrypoint to ensure alignment)
+        use_turn_detector: Whether turn detector is enabled (affects STT provider VAD)
     """
     from livekit.plugins import deepgram, openai, assemblyai
     
@@ -291,21 +312,27 @@ def build_stt_plugin(template: dict, vad_silence_duration_ms: int):
     language = template.get("stt_language", "en-US")
     
     if provider == "deepgram":
-        # Disable Deepgram endpointing - Turn Detector handles it
+        # If turn detector enabled: Disable Deepgram endpointing (turn detector handles it)
+        # If turn detector disabled: Use template's VAD setting (harmonized with AgentSession)
+        endpointing = 0 if use_turn_detector else vad_silence_duration_ms
         return deepgram.STT(
             model=model, 
             language=language,
-            endpointing_ms=0
+            endpointing_ms=endpointing
         )
     elif provider == "assemblyai":
-        # Disable AssemblyAI turn detection - Turn Detector handles it
-        return assemblyai.STT()  # Use defaults, no endpointing
+        # If turn detector enabled: Disable AssemblyAI turn detection
+        # If turn detector disabled: Use template's VAD setting
+        max_silence = 0 if use_turn_detector else vad_silence_duration_ms
+        return assemblyai.STT(max_turn_silence=max_silence)
     elif provider == "openai":
         # OpenAI STT uses turn_detection parameter
         # For now, use default turn detection (LiveKit manages VAD)
         return openai.STT()
     else:
-        return deepgram.STT(model="nova-2", endpointing_ms=0)  # Safe fallback, no endpointing
+        # Safe fallback with conditional endpointing
+        endpointing = 0 if use_turn_detector else vad_silence_duration_ms
+        return deepgram.STT(model="nova-2", endpointing_ms=endpointing)
 
 
 def build_llm_plugin(template: dict):
