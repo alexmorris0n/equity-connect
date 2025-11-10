@@ -15,7 +15,6 @@ from livekit.agents import (
 from livekit.plugins import silero
 
 # Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
-# This ensures the inference executor can handle turn detector requests from job subprocesses
 from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
 
 # Import your custom tools
