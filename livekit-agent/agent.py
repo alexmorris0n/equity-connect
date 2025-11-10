@@ -1,5 +1,6 @@
 """LiveKit Voice Agent - Clean rebuild with native plugins"""
 import logging
+import os
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -21,6 +22,23 @@ from config import Config
 
 logger = logging.getLogger("livekit-agent")
 load_dotenv()
+
+# Set environment variables for LiveKit plugins to auto-discover
+# STT Providers
+os.environ["DEEPGRAM_API_KEY"] = Config.DEEPGRAM_API_KEY
+os.environ["ASSEMBLYAI_API_KEY"] = Config.ASSEMBLYAI_API_KEY
+
+# TTS Providers  
+os.environ["ELEVEN_API_KEY"] = Config.ELEVENLABS_API_KEY  # ElevenLabs uses ELEVEN_API_KEY
+os.environ["SPEECHIFY_API_KEY"] = Config.SPEECHIFY_API_KEY
+
+# LLM Providers
+os.environ["OPENAI_API_KEY"] = Config.OPENAI_API_KEY
+os.environ["OPENROUTER_API_KEY"] = Config.OPENROUTER_API_KEY
+
+# Google Cloud (if JSON credentials are set)
+if Config.GOOGLE_APPLICATION_CREDENTIALS_JSON:
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"] = Config.GOOGLE_APPLICATION_CREDENTIALS_JSON
 
 
 class EquityConnectAgent(Agent):
@@ -159,12 +177,20 @@ def build_stt_string(template: dict) -> str:
 
 
 def build_llm_string(template: dict) -> str:
-    """Build LLM model string from template"""
+    """Build LLM model string from template
+    
+    Returns either a string or LLM instance for OpenRouter
+    """
     provider = template.get("llm_provider", "openai")
     model = template.get("llm_model", "gpt-4o")
     
     if provider == "openrouter":
-        return model  # Already in "provider/model" format
+        # OpenRouter needs explicit plugin instance
+        from livekit.plugins import openai
+        return openai.LLM.with_openrouter(
+            model=model,
+            api_key=Config.OPENROUTER_API_KEY
+        )
     elif provider == "openai":
         return f"openai/{model}"
     else:
