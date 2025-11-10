@@ -25,8 +25,15 @@ COPY livekit-agent/tools tools
 # 1. Silero VAD (via agent.py download-files)
 RUN python agent.py download-files
 
-# 2. Turn detector (explicit download - not auto-discovered by download-files)
-RUN python -c "from livekit.plugins.turn_detector.base import _download_model_files; _download_model_files('en')"
+# 2. Turn detector - manual download from Hugging Face
+# Downloads English model (v1.2.2-en) including ONNX weights, tokenizer, and languages.json
+RUN python -c "\
+from huggingface_hub import hf_hub_download; \
+from transformers import AutoTokenizer; \
+hf_hub_download(repo_id='livekit/turn-detector', filename='model_q8.onnx', subfolder='onnx', revision='v1.2.2-en'); \
+hf_hub_download(repo_id='livekit/turn-detector', filename='languages.json', revision='v1.2.2-en'); \
+AutoTokenizer.from_pretrained('livekit/turn-detector', revision='v1.2.2-en'); \
+"
 
 ENV PYTHONUNBUFFERED=1
 
