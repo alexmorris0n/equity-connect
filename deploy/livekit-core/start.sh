@@ -8,8 +8,8 @@ if [ -z "$LIVEKIT_API_KEY" ] || [ -z "$LIVEKIT_API_SECRET" ]; then
 fi
 
 # Northflank provides REDIS_HOST (hostname) and REDIS_PORT separately
-# LiveKit expects REDIS_HOST to include port, so we combine them
-export REDIS_HOST="${REDIS_HOST}:${REDIS_PORT}"
+# Combine them for LiveKit
+REDIS_ADDR="${REDIS_HOST}:${REDIS_PORT}"
 
 cat <<EOF >/tmp/livekit.yaml
 port: 7880
@@ -30,8 +30,8 @@ EOF
 echo "Generated LiveKit config (YAML):"
 cat /tmp/livekit.yaml
 echo ""
-echo "REDIS_HOST (from Northflank): ${REDIS_HOST}"
-echo "REDIS_PASSWORD (from Northflank): ${REDIS_PASSWORD}"
+echo "REDIS_ADDR (host:port): ${REDIS_ADDR}"
+echo "REDIS_PASSWORD: ${REDIS_PASSWORD}"
 
-# LiveKit will automatically use $REDIS_HOST and $REDIS_PASSWORD env vars
-/livekit-server --config /tmp/livekit.yaml
+# Pass Redis connection explicitly
+/livekit-server --config /tmp/livekit.yaml --redis-host="${REDIS_ADDR}" --redis-password="${REDIS_PASSWORD}"
