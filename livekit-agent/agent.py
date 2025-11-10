@@ -437,6 +437,6 @@ if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         prewarm_fnc=prewarm,
-        initialize_process_timeout=60.0,  # Increase timeout for ONNX model loading (default: 10s)
+        initialize_process_timeout=120.0,  # Increase timeout for ONNX model loading (default: 10s)
         job_executor_type=JobExecutorType.THREAD  # Use threads to bypass Fly.io IPC restrictions
     ))
