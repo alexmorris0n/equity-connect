@@ -8,6 +8,7 @@ from livekit.agents import (
     Agent,
     AgentSession,
     JobContext,
+    RoomInputOptions,
     JobExecutorType,
     JobProcess,
     WorkerOptions,
@@ -20,6 +21,7 @@ from livekit.plugins.turn_detector import english  # noqa: F401
 
 # Import ALL plugins at TOP LEVEL (required for plugin registration on main thread)
 from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
+from livekit.plugins import noise_cancellation
 
 # Import your custom tools
 from tools import all_tools
@@ -266,7 +268,10 @@ async def entrypoint(ctx: JobContext):
     try:
         await session.start(
             agent=Agent(llm=llm_plugin),
-            room=ctx.room
+            room=ctx.room,
+            room_input_options=RoomInputOptions(
+                noise_cancellation=noise_cancellation.BVC()
+            ),
         )
         exit_reason = "hangup"
     except Exception as e:
