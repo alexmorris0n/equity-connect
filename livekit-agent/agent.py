@@ -152,7 +152,7 @@ async def entrypoint(ctx: JobContext):
     if template.get('enable_web_search', False):
         logger.info(f"🌐 Web Search: ENABLED (max_results={template.get('web_search_max_results', 5)})")
     logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
-    logger.info(f"🎛️ VAD: silence_threshold={vad_silence_duration_ms}ms (min=200ms, max={vad_silence_duration_ms}ms)")
+    logger.info(f"🎛️ VAD: silence_threshold={vad_silence_duration_ms}ms")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
@@ -171,15 +171,16 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🎯 Turn Detector: DISABLED (using STT provider VAD)")
     
     # Create session with plugin instances (required for self-hosted LiveKit)
-    # Adjust endpointing delays based on turn detector usage:
-    # - With turn detector: Moderate delays (0.5s min, 1.0s max) for context-aware decisions
-    # - Without turn detector: Match STT provider VAD timing (align layers)
-    if use_turn_detector:
-        min_endpointing = 0.4  # Natural, balanced (per LiveKit recommendations)
-        max_endpointing = 1.0  # Allow turn detector time, but not excessive
-    else:
-        min_endpointing = 0.3  # Fast initial check
-        max_endpointing = vad_silence_duration_ms / 1000  # Match STT VAD timing
+    # Get endpointing delays from template (configurable per template)
+    # These control how long the agent waits before/after detecting end-of-turn
+    min_endpointing = template.get("min_endpointing_delay", 0.4)
+    max_endpointing = template.get("max_endpointing_delay", 1.0)
+    
+    # If turn detector is disabled, override max_endpointing to match STT VAD timing
+    if not use_turn_detector:
+        max_endpointing = vad_silence_duration_ms / 1000
+    
+    logger.info(f"⏱️ Endpointing: min={min_endpointing}s, max={max_endpointing}s")
     
     session = AgentSession(
         stt=stt_plugin,
