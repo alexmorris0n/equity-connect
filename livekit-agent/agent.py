@@ -83,7 +83,7 @@ class EquityConnectAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Load models before first call"""
-        proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["vad"] = silero.VAD.load()
     # Turn detector modules imported at top level to register in main worker process
 
 
