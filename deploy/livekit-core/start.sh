@@ -8,7 +8,7 @@ if [ -z "$LIVEKIT_API_KEY" ] || [ -z "$LIVEKIT_API_SECRET" ]; then
 fi
 
 # Northflank provides REDIS_HOST and REDIS_PORT separately
-# Combine them as host:port (no rediss:// scheme - TLS configured separately)
+# Combine them as host:port for LiveKit command-line flag
 REDIS_ADDR="${REDIS_HOST}:${REDIS_PORT}"
 
 cat <<EOF >/tmp/livekit.yaml
@@ -17,11 +17,6 @@ bind_addresses:
   - 0.0.0.0
 keys:
   "${LIVEKIT_API_KEY}": "${LIVEKIT_API_SECRET}"
-redis:
-  address: "${REDIS_ADDR}"
-  password: "${REDIS_PASSWORD}"
-  tls:
-    enabled: false
 rtc:
   port_range_start: 50000
   port_range_end: 60000
@@ -35,7 +30,8 @@ EOF
 echo "Generated LiveKit config (YAML):"
 cat /tmp/livekit.yaml
 echo ""
-echo "REDIS_MASTER_URL: ${REDIS_MASTER_URL}"
+echo "REDIS_ADDR (host:port): ${REDIS_ADDR}"
+echo "REDIS_PASSWORD: ${REDIS_PASSWORD}"
 
-# Redis configured in YAML
-/livekit-server --config /tmp/livekit.yaml
+# Pass Redis via command-line flags instead of YAML (YAML parsing strips port)
+/livekit-server --config /tmp/livekit.yaml --redis-host="${REDIS_ADDR}" --redis-password="${REDIS_PASSWORD}"
