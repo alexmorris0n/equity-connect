@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.10
 
 WORKDIR /app
 
@@ -9,10 +9,13 @@ RUN apt-get update && apt-get install -y \
     g++ \
     ffmpeg \
     tini \
+    procps \
   && rm -rf /var/lib/apt/lists/*
 
-# Ensure proper permissions for temp directories (needed for subprocess creation)
-RUN mkdir -p /tmp && chmod 1777 /tmp
+# Ensure proper permissions for temp and cache directories (needed for subprocess creation)
+RUN mkdir -p /tmp /root/.cache/huggingface && \
+    chmod 1777 /tmp && \
+    chmod -R 777 /root/.cache
 
 # livekit-agent folder is copied into deploy/agent/ by GitHub Actions
 COPY livekit-agent/requirements.txt requirements.txt

@@ -17,8 +17,8 @@ primary_region = "lax"
   cpus = 2
 
 # Enable init for proper subprocess handling (required for inference executor)
-[init]
-  enabled = true
+[experimental]
+  init = true
 
 [processes]
   worker = "python agent.py start"
