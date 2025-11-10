@@ -18,6 +18,9 @@ from livekit.plugins import silero
 # Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
 from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
 
+# Import ALL plugins at TOP LEVEL (required for plugin registration on main thread)
+from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
+
 # Import your custom tools
 from tools import all_tools
 
@@ -315,8 +318,6 @@ def build_stt_plugin(template: dict, vad_silence_duration_ms: int, use_turn_dete
         vad_silence_duration_ms: Silence duration in ms (passed from entrypoint to ensure alignment)
         use_turn_detector: Whether turn detector is enabled (affects STT provider VAD)
     """
-    from livekit.plugins import deepgram, openai, assemblyai
-    
     provider = template.get("stt_provider", "deepgram")
     model = template.get("stt_model", "nova-2")
     language = template.get("stt_language", "en-US")
@@ -347,8 +348,6 @@ def build_stt_plugin(template: dict, vad_silence_duration_ms: int, use_turn_dete
 
 def build_llm_plugin(template: dict):
     """Build LLM plugin instance from template with all LLM parameters"""
-    from livekit.plugins import openai
-    
     provider = template.get("llm_provider", "openai")
     model = template.get("llm_model", "gpt-4o")
     
@@ -393,7 +392,6 @@ def build_llm_plugin(template: dict):
 
 def build_tts_plugin(template: dict):
     """Build TTS plugin instance from template with provider-specific settings"""
-    from livekit.plugins import elevenlabs, openai, google
     from livekit.agents.types import NOT_GIVEN
     
     provider = template.get("tts_provider", "elevenlabs")
