@@ -69,21 +69,39 @@ async def entrypoint(ctx: JobContext):
     room = ctx.room
     room_name = room.name
     
-    # Parse room metadata to check for test template
+    # Parse metadata - check BOTH room metadata AND participant metadata
     import json
-    room_metadata = {}
+    metadata = {}
+    
+    # Try room metadata first
     try:
         room_metadata_str = room.metadata or "{}"
         logger.info(f"🔍 Raw room.metadata: {room_metadata_str}")
-        room_metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
-        logger.info(f"🔍 Parsed metadata: {room_metadata}")
+        if room_metadata_str and room_metadata_str != "{}":
+            metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
+            logger.info(f"✅ Using room metadata: {metadata}")
     except Exception as e:
         logger.warning(f"Failed to parse room metadata: {e}")
     
+    # If no room metadata, check participant metadata (from token)
+    if not metadata or not metadata.get("template_id"):
+        try:
+            # Get the first participant's metadata (should be the test user)
+            participants = list(room.remote_participants.values())
+            if participants:
+                participant = participants[0]
+                participant_metadata_str = participant.metadata or "{}"
+                logger.info(f"🔍 Raw participant.metadata: {participant_metadata_str}")
+                if participant_metadata_str and participant_metadata_str != "{}":
+                    metadata = json.loads(participant_metadata_str) if isinstance(participant_metadata_str, str) else participant_metadata_str
+                    logger.info(f"✅ Using participant metadata: {metadata}")
+        except Exception as e:
+            logger.warning(f"Failed to parse participant metadata: {e}")
+    
     # Check if this is a test room with template
-    is_test = room_metadata.get("is_test", False)
-    template_id = room_metadata.get("template_id")
-    logger.info(f"🔍 is_test={is_test}, template_id={template_id}")
+    is_test = metadata.get("is_test", False)
+    template_id = metadata.get("template_id")
+    logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}")
     
     if is_test and template_id:
         # Load template from Supabase
