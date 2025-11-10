@@ -114,6 +114,8 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
     logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')} (temp={template.get('llm_temperature', 0.7)}, top_p={template.get('llm_top_p', 1.0)})")
+    if template.get('enable_web_search', False):
+        logger.info(f"🌐 Web Search: ENABLED (max_results={template.get('web_search_max_results', 5)})")
     logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
     logger.info(f"🎛️ VAD: silence_threshold={vad_silence_duration_ms}ms (min=200ms, max={vad_silence_duration_ms}ms)")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
@@ -233,12 +235,27 @@ def build_llm_plugin(template: dict):
     frequency_penalty = template.get("llm_frequency_penalty", 0.0)
     presence_penalty = template.get("llm_presence_penalty", 0.0)
     
+    # Get web search settings
+    enable_web_search = template.get("enable_web_search", False)
+    web_search_max_results = template.get("web_search_max_results", 5)
+    
     if provider == "openrouter":
+        # Build plugins list if web search is enabled
+        plugins = []
+        if enable_web_search:
+            plugins.append(
+                openai.OpenRouterWebPlugin(
+                    max_results=web_search_max_results,
+                    search_prompt="Search for relevant real-time information to answer the user's question"
+                )
+            )
+        
         return openai.LLM.with_openrouter(
             model=model,
             api_key=Config.OPENROUTER_API_KEY,
             temperature=temperature,
             top_p=top_p,
+            plugins=plugins if plugins else None,
         )
     elif provider == "openai":
         return openai.LLM(
