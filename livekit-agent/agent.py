@@ -60,7 +60,10 @@ class EquityConnectAgent(Agent):
 def prewarm(proc: JobProcess):
     """Load models before first call"""
     proc.userdata["vad"] = silero.VAD.load()
-    # Note: Turn detector is loaded in entrypoint, not here
+    
+    # Import turn detector modules to register inference runners
+    # (actual instances are created in entrypoint, not here, to avoid job context issues)
+    from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
 
 
 async def entrypoint(ctx: JobContext):
