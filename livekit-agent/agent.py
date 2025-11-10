@@ -103,10 +103,18 @@ async def entrypoint(ctx: JobContext):
     vad_prefix_padding_ms = template.get("vad_prefix_padding_ms", 300)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 200)
     
+    # Get interruption settings from template
+    allow_interruptions = template.get("allow_interruptions", True)
+    min_interruption_duration = template.get("min_interruption_duration", 0.5)
+    preemptive_generation = template.get("preemptive_generation", True)
+    resume_false_interruption = template.get("resume_false_interruption", True)
+    false_interruption_timeout = template.get("false_interruption_timeout", 1.0)
+    
     logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
     logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')}")
     logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')}")
     logger.info(f"🎛️ VAD: prefix_padding={vad_prefix_padding_ms}ms, silence={vad_silence_duration_ms}ms")
+    logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     
     # Get instructions
     instructions = template.get("instructions", "You are Barbara, a friendly AI assistant for Equity Connect.")
@@ -117,13 +125,13 @@ async def entrypoint(ctx: JobContext):
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
-        # Turn detection and interruption settings from template
-        allow_interruptions=True,
-        min_interruption_duration=0.5,
-        resume_false_interruption=True,
-        false_interruption_timeout=1.0,
-        # Response timing from template VAD settings
-        preemptive_generation=True,
+        # Interruption settings from template
+        allow_interruptions=allow_interruptions,
+        min_interruption_duration=min_interruption_duration,
+        resume_false_interruption=resume_false_interruption,
+        false_interruption_timeout=false_interruption_timeout,
+        # Response generation settings from template
+        preemptive_generation=preemptive_generation,
         min_endpointing_delay=vad_prefix_padding_ms / 1000.0,  # Convert ms to seconds
         max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # Convert ms to seconds
     )
