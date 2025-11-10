@@ -49,14 +49,6 @@ hf_hub_download(repo_id='livekit/turn-detector', filename='languages.json', revi
 AutoTokenizer.from_pretrained('livekit/turn-detector', revision='v1.2.2-en'); \
 print('✅ Turn detector model downloaded successfully'); \
 "
-RUN HF_HOME=/root/.cache/huggingface python -c "\
-from huggingface_hub import hf_hub_download; \
-from transformers import AutoTokenizer; \
-hf_hub_download(repo_id='livekit/turn-detector', filename='model_q8.onnx', subfolder='onnx', revision='v1.2.2-multilingual'); \
-hf_hub_download(repo_id='livekit/turn-detector', filename='languages.json', revision='v1.2.2-multilingual'); \
-AutoTokenizer.from_pretrained('livekit/turn-detector', revision='v1.2.2-multilingual'); \
-print('✅ Turn detector multilingual model downloaded successfully'); \
-"
 
 ENV PYTHONUNBUFFERED=1
 

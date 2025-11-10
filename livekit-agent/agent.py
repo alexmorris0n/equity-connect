@@ -13,10 +13,10 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-from livekit.plugins import silero
+    from livekit.plugins import silero
 
-# Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
-from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
+# Import English turn detector only to avoid registering multilingual runner at startup
+from livekit.plugins.turn_detector import english  # noqa: F401
 
 # Import ALL plugins at TOP LEVEL (required for plugin registration on main thread)
 from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
@@ -76,7 +76,7 @@ class EquityConnectAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Load models before first call"""
-    proc.userdata["vad"] = silero.VAD.load()
+        proc.userdata["vad"] = silero.VAD.load()
     # Turn detector modules imported at top level to register in main worker process
 
 
@@ -94,7 +94,7 @@ async def entrypoint(ctx: JobContext):
     
     # Try room metadata first
     try:
-        room_metadata_str = room.metadata or "{}"
+    room_metadata_str = room.metadata or "{}"
         logger.info(f"🔍 Raw room.metadata: {room_metadata_str}")
         if room_metadata_str and room_metadata_str != "{}":
             metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
