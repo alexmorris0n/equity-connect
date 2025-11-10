@@ -21,8 +21,12 @@ COPY livekit-agent/services services
 COPY livekit-agent/providers providers
 COPY livekit-agent/tools tools
 
-# Download turn detector model weights
+# Download model weights
+# 1. Silero VAD (via agent.py download-files)
 RUN python agent.py download-files
+
+# 2. Turn detector (explicit download - not auto-discovered by download-files)
+RUN python -c "from livekit.plugins.turn_detector.base import _download_model_files; _download_model_files('en')"
 
 ENV PYTHONUNBUFFERED=1
 
