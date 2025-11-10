@@ -1,4 +1,17 @@
-"""FastAPI server for outbound call API endpoint"""
+"""FastAPI server for outbound call API endpoint
+
+IMPORTANT - OPTIONAL COMPONENT
+This API server is NOT required for our current LiveKit Cloud + SignalWire Pattern A
+(SWML connect to LiveKit SIP Ingress with headers). The agent service runs privately
+on Northflank and joins rooms created by LiveKit Cloud; no public API is needed.
+
+Keep this file only if you plan to expose convenience endpoints:
+- /api/livekit/test-token (generate test tokens/rooms)
+- /api/swml-inbound or /api/swml-outbound (serve SWML dynamically instead of inline)
+- webhooks or admin tooling
+
+If you are not using these features, do not deploy this service publicly.
+"""
 import logging
 import uuid
 import re
@@ -16,6 +29,7 @@ from services.supabase import get_supabase_client, get_lead_by_phone
 from services.signalwire import SignalWireClient
 import boto3
 from botocore.exceptions import ClientError
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +38,28 @@ app = FastAPI(title="LiveKit Agent API", version="1.0.0")
 
 # Initialize SignalWire client
 signalwire_client = SignalWireClient()
+
+def build_participant_metadata(request_data: Dict[str, Any], lead: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+	"""
+	Build participant metadata from SignalWire SWML webhook-style payload.
+	Expected fields (per SignalWire docs):
+	- call.from: E.164 phone number of caller
+	- call.to: Your SignalWire number
+	- call.call_id: Unique call identifier
+	"""
+	call_info = (request_data or {}).get("call", {})
+	from_number = call_info.get("from")
+	to_number = call_info.get("to")
+	call_id = call_info.get("call_id") or call_info.get("sid") or call_info.get("CallSid")
+	return {
+		"phone_number": from_number,
+		"signalwire_number": to_number,
+		"call_id": call_id,
+		"lead_id": str(lead.get("id")) if lead else None,
+		"qualified": bool(lead.get("qualified")) if lead else False,
+		"call_type": "inbound",
+		"timestamp": datetime.utcnow().isoformat(),
+	}
 
 
 class OutboundCallRequest(BaseModel):
@@ -1259,14 +1295,19 @@ async def generate_test_token(request: Request):
         )
         
         # Create room with template metadata (agent will load template directly)
+        participant_meta = build_participant_metadata({"call": body.get("call", {})}, body.get("lead")) if body.get("call") else {}
+        room_meta = {
+            "template_id": template_id,
+            "template_name": template.data.get("name"),
+            "is_test": True,
+            **({"phone_number": participant_meta.get("phone_number")} if participant_meta.get("phone_number") else {}),
+            **({"lead_id": participant_meta.get("lead_id")} if participant_meta.get("lead_id") else {}),
+            **({"qualified": participant_meta.get("qualified")} if "qualified" in participant_meta else {}),
+        }
         await lkapi.room.create_room(api.CreateRoomRequest(
             name=room_name,
             empty_timeout=300,  # 5 minutes
-            metadata=json.dumps({
-                "template_id": template_id,
-                "template_name": template.data.get("name"),
-                "is_test": True
-            })
+            metadata=json.dumps(room_meta)
         ))
         
         await lkapi.aclose()

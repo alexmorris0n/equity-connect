@@ -13,7 +13,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-from livekit.plugins import silero
+    from livekit.plugins import silero
 
 # Import turn detector modules at TOP LEVEL to register inference runners in MAIN worker process
 from livekit.plugins.turn_detector import english, multilingual  # noqa: F401
@@ -26,6 +26,10 @@ from tools import all_tools
 
 # Import config
 from config import Config
+from services.conversation_state import (
+    start_call as cs_start_call,
+    mark_call_completed as cs_mark_call_completed,
+)
 
 logger = logging.getLogger("livekit-agent")
 load_dotenv()
@@ -66,7 +70,7 @@ class EquityConnectAgent(Agent):
 
 def prewarm(proc: JobProcess):
     """Load models before first call"""
-    proc.userdata["vad"] = silero.VAD.load()
+        proc.userdata["vad"] = silero.VAD.load()
     # Turn detector modules imported at top level to register in main worker process
 
 
@@ -76,6 +80,7 @@ async def entrypoint(ctx: JobContext):
     
     room = ctx.room
     room_name = room.name
+    caller_phone: Optional[str] = None
     
     # Parse metadata - check BOTH room metadata AND participant metadata
     import json
@@ -83,7 +88,7 @@ async def entrypoint(ctx: JobContext):
     
     # Try room metadata first
     try:
-        room_metadata_str = room.metadata or "{}"
+    room_metadata_str = room.metadata or "{}"
         logger.info(f"🔍 Raw room.metadata: {room_metadata_str}")
         if room_metadata_str and room_metadata_str != "{}":
             metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
@@ -105,12 +110,23 @@ async def entrypoint(ctx: JobContext):
                     logger.info(f"✅ Using participant metadata: {metadata}")
         except Exception as e:
             logger.warning(f"Failed to parse participant metadata: {e}")
-    
+            
     # Check if this is a test room with template + prompt
     is_test = metadata.get("is_test", False)
     template_id = metadata.get("template_id")  # Config: STT/TTS/LLM/voice
     call_type = metadata.get("call_type", "test-demo")  # Prompt: instructions
     logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}, call_type={call_type}")
+    
+    # Extract phone metadata for conversation state
+    caller_phone = metadata.get("phone_number") or metadata.get("from") or metadata.get("caller")
+    lead_id = metadata.get("lead_id")
+    qualified = metadata.get("qualified", False)
+    if caller_phone:
+        try:
+            cs_start_call(str(caller_phone), {"lead_id": lead_id, "qualified": bool(qualified)})
+            logger.info(f"📒 start_call recorded for {caller_phone}")
+        except Exception as e:
+            logger.warning(f"Failed to start_call for {caller_phone}: {e}")
     
     if is_test and template_id:
         # Load template (configuration) from Supabase
@@ -144,9 +160,32 @@ async def entrypoint(ctx: JobContext):
     
     # Build plugin instances from template (required for self-hosted)
     stt_plugin = build_stt_plugin(template, vad_silence_duration_ms, use_turn_detector)
-    llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
     
+    # Build LangGraph workflow for LLM (replaces direct LLM plugin)
+    from langchain_openai import ChatOpenAI
+    from livekit.plugins import langchain as livekit_langchain
+    from workflows import create_conversation_graph
+    from tools import all_tools
+    
+    # Create base LLM for LangGraph nodes
+    base_llm = ChatOpenAI(
+        model=template.get("llm_model", "gpt-4o"),
+        temperature=template.get("llm_temperature", 0.8),
+        max_tokens=template.get("llm_max_tokens", 4096),
+        model_kwargs={
+            "top_p": template.get("llm_top_p", 1.0),
+            "frequency_penalty": template.get("llm_frequency_penalty", 0.0),
+            "presence_penalty": template.get("llm_presence_penalty", 0.0),
+        }
+    )
+    
+    # Create LangGraph workflow
+    conversation_graph = create_conversation_graph(base_llm, all_tools)
+    
+    # Wrap graph in LiveKit LLMAdapter (per official PyPI docs)
+    llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
+        
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
     min_interruption_duration = template.get("min_interruption_duration", 0.5)
@@ -206,11 +245,25 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=max_endpointing,  # 1.0s with turn detector, or match VAD
     )
     
-    # Start the agent
-    await session.start(
-        agent=EquityConnectAgent(instructions=instructions),
-        room=ctx.room,
-    )
+    # Start the session with Agent wrapping the LangGraph workflow
+    exit_reason: Optional[str] = None
+    try:
+        await session.start(
+            agent=Agent(llm=llm_plugin),
+            room=ctx.room
+        )
+        exit_reason = "hangup"
+    except Exception as e:
+        logger.error(f"Session error: {e}")
+        exit_reason = "error"
+        raise
+    finally:
+        if caller_phone:
+            try:
+                cs_mark_call_completed(caller_phone, exit_reason=exit_reason)
+                logger.info(f"📒 mark_call_completed for {caller_phone} ({exit_reason})")
+            except Exception as e:
+                logger.warning(f"Failed to mark_call_completed for {caller_phone}: {e}")
 
 
 async def load_template(template_id: str) -> Optional[dict]:
