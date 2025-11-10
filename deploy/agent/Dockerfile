@@ -21,18 +21,23 @@ COPY livekit-agent/services services
 COPY livekit-agent/providers providers
 COPY livekit-agent/tools tools
 
+# Set HuggingFace cache directory
+ENV HF_HOME=/root/.cache/huggingface
+
 # Download model weights
 # 1. Silero VAD (via agent.py download-files)
 RUN python agent.py download-files
 
 # 2. Turn detector - manual download from Hugging Face
 # Downloads English model (v1.2.2-en) including ONNX weights, tokenizer, and languages.json
-RUN python -c "\
+# Using HF_HOME ensures files persist in the cache directory
+RUN HF_HOME=/root/.cache/huggingface python -c "\
 from huggingface_hub import hf_hub_download; \
 from transformers import AutoTokenizer; \
 hf_hub_download(repo_id='livekit/turn-detector', filename='model_q8.onnx', subfolder='onnx', revision='v1.2.2-en'); \
 hf_hub_download(repo_id='livekit/turn-detector', filename='languages.json', revision='v1.2.2-en'); \
 AutoTokenizer.from_pretrained('livekit/turn-detector', revision='v1.2.2-en'); \
+print('✅ Turn detector model downloaded successfully'); \
 "
 
 ENV PYTHONUNBUFFERED=1
