@@ -171,10 +171,15 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🎯 Turn Detector: DISABLED (using STT provider VAD)")
     
     # Create session with plugin instances (required for self-hosted LiveKit)
-    # Adjust max_endpointing_delay based on turn detector usage:
-    # - With turn detector: Long delay (6s) to allow context-aware decision
+    # Adjust endpointing delays based on turn detector usage:
+    # - With turn detector: Moderate delays (0.5s min, 1.0s max) for context-aware decisions
     # - Without turn detector: Match STT provider VAD timing (align layers)
-    max_endpointing = 6.0 if use_turn_detector else (vad_silence_duration_ms / 1000)
+    if use_turn_detector:
+        min_endpointing = 0.4  # Natural, balanced (per LiveKit recommendations)
+        max_endpointing = 1.0  # Allow turn detector time, but not excessive
+    else:
+        min_endpointing = 0.3  # Fast initial check
+        max_endpointing = vad_silence_duration_ms / 1000  # Match STT VAD timing
     
     session = AgentSession(
         stt=stt_plugin,
@@ -189,8 +194,8 @@ async def entrypoint(ctx: JobContext):
         false_interruption_timeout=false_interruption_timeout,
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
-        min_endpointing_delay=0.2,  # Fast initial check
-        max_endpointing_delay=max_endpointing,  # 6s if turn detector, or match VAD timing
+        min_endpointing_delay=min_endpointing,  # 0.4s with turn detector, 0.3s without
+        max_endpointing_delay=max_endpointing,  # 1.0s with turn detector, or match VAD
     )
     
     # Start the agent
