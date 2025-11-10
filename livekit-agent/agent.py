@@ -101,7 +101,7 @@ async def entrypoint(ctx: JobContext):
     
     # Try room metadata first
     try:
-    room_metadata_str = room.metadata or "{}"
+        room_metadata_str = room.metadata or "{}"
         logger.info(f"🔍 Raw room.metadata: {room_metadata_str}")
         if room_metadata_str and room_metadata_str != "{}":
             metadata = json.loads(room_metadata_str) if isinstance(room_metadata_str, str) else room_metadata_str
