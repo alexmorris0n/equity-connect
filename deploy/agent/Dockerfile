@@ -32,7 +32,10 @@ COPY livekit-agent/tools tools
 # Set HuggingFace cache directory
 ENV HF_HOME=/root/.cache/huggingface
 
-# Download model weights for LiveKit turn detector to avoid first-boot download
+# Pre-download plugin assets using the LiveKit Agents CLI hook
+RUN python agent.py download-files
+
+# Download model weights for LiveKit turn detector to avoid first-boot download (belt & suspenders)
 # 1) English model (v1.2.2-en)
 # 2) Multilingual model (v1.2.2-multilingual)
 # Using HF_HOME ensures files persist in the cache directory
