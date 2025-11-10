@@ -106,12 +106,25 @@ async def entrypoint(ctx: JobContext):
     # Get instructions
     instructions = template.get("instructions", "You are Barbara, a friendly AI assistant for Equity Connect.")
     
+    # Get VAD settings from template
+    vad_prefix_padding_ms = template.get("vad_prefix_padding_ms", 300)
+    vad_silence_duration_ms = template.get("vad_silence_duration_ms", 200)
+    
     # Create session with plugin instances (required for self-hosted LiveKit)
     session = AgentSession(
         stt=stt_plugin,
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
+        # Turn detection and interruption settings from template
+        allow_interruptions=True,
+        min_interruption_duration=0.5,
+        resume_false_interruption=True,
+        false_interruption_timeout=1.0,
+        # Response timing from template VAD settings
+        preemptive_generation=True,
+        min_endpointing_delay=vad_prefix_padding_ms / 1000.0,  # Convert ms to seconds
+        max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # Convert ms to seconds
     )
     
     # Start the agent
