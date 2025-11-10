@@ -7,11 +7,8 @@ if [ -z "$LIVEKIT_API_KEY" ] || [ -z "$LIVEKIT_API_SECRET" ]; then
   exit 1
 fi
 
-# Use Northflank's auto-injected Redis addon variables
-REDIS_URL=${REDIS_MASTER_URL}
-
-# Parse host:port from redis:// or rediss:// URL for LiveKit CLI flag (no protocol prefix allowed)
-REDIS_ADDR=$(echo "$REDIS_URL" | sed -E 's#^redis(s)?://([^@]*@)?([^/]+).*#\3#')
+# Northflank auto-injects REDIS_HOST and REDIS_PASSWORD environment variables
+# LiveKit will use them automatically - no need to parse or pass flags
 
 cat <<EOF >/tmp/livekit.yaml
 port: 7880
@@ -32,7 +29,8 @@ EOF
 echo "Generated LiveKit config (YAML):"
 cat /tmp/livekit.yaml
 echo ""
-echo "REDIS_URL: ${REDIS_URL}"
-echo "REDIS_ADDR (host:port): ${REDIS_ADDR}"
+echo "REDIS_HOST (from Northflank): ${REDIS_HOST}"
+echo "REDIS_PASSWORD (from Northflank): ${REDIS_PASSWORD}"
 
-/livekit-server --config /tmp/livekit.yaml --redis-host="${REDIS_ADDR}"
+# LiveKit will automatically use $REDIS_HOST and $REDIS_PASSWORD env vars
+/livekit-server --config /tmp/livekit.yaml
