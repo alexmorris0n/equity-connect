@@ -105,9 +105,6 @@ async def entrypoint(ctx: JobContext):
     llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
     
-    # Get remaining VAD settings
-    vad_prefix_padding_ms = template.get("vad_prefix_padding_ms", 300)
-    
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
     min_interruption_duration = template.get("min_interruption_duration", 0.5)
@@ -118,7 +115,7 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
     logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')} (temp={template.get('llm_temperature', 0.7)}, top_p={template.get('llm_top_p', 1.0)})")
     logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
-    logger.info(f"🎛️ VAD: prefix_padding={vad_prefix_padding_ms}ms, silence={vad_silence_duration_ms}ms")
+    logger.info(f"🎛️ VAD: silence_threshold={vad_silence_duration_ms}ms (min=200ms, max={vad_silence_duration_ms}ms)")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     
     # Get instructions
@@ -137,8 +134,8 @@ async def entrypoint(ctx: JobContext):
         false_interruption_timeout=false_interruption_timeout,
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
-        min_endpointing_delay=vad_prefix_padding_ms / 1000.0,  # Convert ms to seconds
-        max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # ← Same value as STT endpointing (aligned!)
+        min_endpointing_delay=0.2,  # Fixed: standard LiveKit value (200ms min silence)
+        max_endpointing_delay=vad_silence_duration_ms / 1000.0,  # ← Aligned with STT endpointing!
     )
     
     # Start the agent
