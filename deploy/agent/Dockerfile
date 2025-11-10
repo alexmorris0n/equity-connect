@@ -33,10 +33,7 @@ COPY livekit-agent/tools tools
 ENV HF_HOME=/root/.cache/huggingface
 
 # Download model weights
-# 1. Silero VAD (via agent.py download-files)
-RUN python agent.py download-files
-
-# 2. Turn detector - manual download from Hugging Face
+# Turn detector - manual download from Hugging Face
 # Downloads English model (v1.2.2-en) including ONNX weights, tokenizer, and languages.json
 # Using HF_HOME ensures files persist in the cache directory
 RUN HF_HOME=/root/.cache/huggingface python -c "\
