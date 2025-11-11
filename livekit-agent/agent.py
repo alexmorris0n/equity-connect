@@ -237,6 +237,13 @@ async def entrypoint(ctx: JobContext):
     stt_plugin = build_stt_plugin(template, vad_silence_duration_ms, use_turn_detector)
     tts_plugin = build_tts_plugin(template)
     
+    # DEBUG: Check TTS streaming capability (workaround for LiveKit issue #3293)
+    # https://github.com/livekit/agents/issues/3293
+    if hasattr(tts_plugin, 'capabilities'):
+        logger.info(f"🎬 TTS Streaming Capability: {tts_plugin.capabilities.streaming}")
+    else:
+        logger.warning("⚠️ TTS plugin has no capabilities attribute!")
+    
     # Build LangGraph workflow for LLM (replaces direct LLM plugin)
     # Import non-plugin dependencies here (after workflows/ is available)
     from langchain_openai import ChatOpenAI
