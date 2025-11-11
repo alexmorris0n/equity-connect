@@ -305,20 +305,20 @@ const selectedPreset = ref(null)
 const saving = ref(false)
 const previewLoading = ref(null)
 
-// Form data
+// Form data - LiveKit Inference defaults
 const formData = ref({
   name: '',
   description: '',
-  stt_provider: 'eden_ai',
-  stt_model: 'deepgram-nova-2',
+  stt_provider: 'deepgram',
+  stt_model: 'nova-2',
   stt_language: 'en-US',
-  tts_provider: 'eden_ai',
-  tts_model: 'elevenlabs-multilingual-v2',
-  tts_voice_id: '21m00Tcm4TlvDq8ikWAM',
+  tts_provider: 'elevenlabs',
+  tts_model: 'eleven_turbo_v2_5',
+  tts_voice_id: '6aDn1KB0hjpdcocrUkmq', // Tiffany voice
   tts_speed: 1.0,
   tts_stability: 0.5,
-  llm_provider: 'openrouter',
-  llm_model: 'openai/gpt-4o',
+  llm_provider: 'openai',
+  llm_model: 'gpt-4o',
   llm_temperature: 0.7,
   llm_max_tokens: 4096,
   llm_top_p: 1.0,
@@ -351,11 +351,12 @@ const ttsModelOptions = ref([])
 const ttsVoiceOptions = ref([])
 const llmModelOptions = ref([])
 
-// Preset options
+// Preset options - LiveKit Inference
 const presetOptions = ref([
-  { label: 'OpenAI Realtime (Best Quality)', value: 'openai_realtime' },
-  { label: 'ElevenLabs Best Quality', value: 'elevenlabs_best' },
-  { label: 'Budget Friendly', value: 'budget' }
+  { label: 'Premium (ElevenLabs + GPT-4o)', value: 'premium' },
+  { label: 'Balanced (ElevenLabs + Claude Haiku)', value: 'balanced' },
+  { label: 'Budget (Cartesia + DeepSeek)', value: 'budget' },
+  { label: 'Ultra-Fast (ElevenLabs Turbo + Gemini Flash)', value: 'ultrafast' }
 ])
 
 // Form validation rules
@@ -366,45 +367,92 @@ const rules = {
   llm_provider: { required: true, message: 'Please select an LLM provider', trigger: 'change' }
 }
 
-// Cost calculation
+// Cost calculation - LiveKit Inference pricing (per minute, converted from hourly rates)
+// Source: https://livekit.io/pricing/inference
 const sttCost = computed(() => {
   const costs = {
-    'deepgram-nova-2': 0.0043,
-    'deepgram-base': 0.0036,
-    'assemblyai-best': 0.00037,
-    'google-latest': 0.006,
-    'whisper-1': 0.006,
+    // Deepgram models (per hour → per min)
+    'nova-3': 0.462 / 60,      // $0.462/hour = $0.0077/min (monolingual)
+    'nova-3-multi': 0.552 / 60, // $0.552/hour = $0.0092/min (multilingual)
+    'nova-3-medical': 0.462 / 60,
+    'nova-2': 0.348 / 60,      // $0.348/hour = $0.0058/min
+    'nova-2-medical': 0.348 / 60,
+    'nova-2-conversational': 0.348 / 60,
+    'nova-2-phonecall': 0.348 / 60,
+    // AssemblyAI
+    'universal-streaming': 0.150 / 60, // $0.150/hour = $0.0025/min
+    // Cartesia
+    'ink-whisper': 0.180 / 60, // $0.180/hour = $0.003/min
+    // Fallback
     'bundled': 0.0
   }
   return costs[formData.value.stt_model] || 0.005
 })
 
 const ttsCost = computed(() => {
+  // TTS pricing per 1M characters, converted to per minute
+  // Assume ~150 words/min speech × 5 chars/word = 750 chars/min = 0.00075M chars/min
+  const charsPerMin = 0.00075 // 750 characters per minute of speech
   const costs = {
-    'elevenlabs-multilingual-v2': 0.180,
-    'elevenlabs-turbo-v2.5': 0.090,
-    'playht-2.0-turbo': 0.040,
-    'google-neural2': 0.024,
-    'openai-tts-1': 0.015,
-    'openai-tts-1-hd': 0.030,
+    // ElevenLabs models (per 1M characters)
+    'eleven_flash_v2': 150 * charsPerMin,      // $150/1M chars = $0.1125/min
+    'eleven_flash_v2_5': 150 * charsPerMin,
+    'eleven_turbo_v2': 150 * charsPerMin,
+    'eleven_turbo_v2_5': 150 * charsPerMin,
+    'eleven_multilingual_v2': 300 * charsPerMin, // $300/1M chars = $0.225/min
+    // Cartesia (all models)
+    'sonic-3': 50 * charsPerMin,  // $50/1M chars = $0.0375/min
+    'sonic-2': 50 * charsPerMin,
+    'sonic-turbo': 50 * charsPerMin,
+    'sonic': 50 * charsPerMin,
+    // Inworld
+    'inworld-tts-max': 10 * charsPerMin, // $10/1M chars = $0.0075/min
+    'inworld-tts': 5 * charsPerMin,      // $5/1M chars = $0.00375/min
+    // Rime
+    'arcana': 50 * charsPerMin,    // $50/1M chars = $0.0375/min
+    'mistv2': 50 * charsPerMin,
+    'mist': 50 * charsPerMin,
+    // Fallback
     'bundled': 0.0
   }
   return costs[formData.value.tts_model] || 0.020
 })
 
 const llmCost = computed(() => {
+  // Cost per 1M tokens (input + output), converted to per minute
+  // Assume ~75 input tokens/min + ~75 output tokens/min = 150 total tokens/min
+  const inputTokensPerMin = 75
+  const outputTokensPerMin = 75
   const costs = {
-    'openai/gpt-4o': 0.001,
-    'openai/gpt-4o-mini': 0.00003,
-    'anthropic/claude-3.5-sonnet': 0.0006,
-    'anthropic/claude-3-haiku': 0.00005,
-    'meta-llama/llama-3.1-70b-instruct': 0.000176,
-    'meta-llama/llama-3.1-8b-instruct': 0.000014,
-    'google/gemini-pro-1.5': 0.0007,
-    'google/gemini-flash-1.5': 0.000015,
+    // OpenAI (Azure & OpenAI - same pricing)
+    'gpt-4o': (2.50 * inputTokensPerMin + 10.00 * outputTokensPerMin) / 1000, // $0.9375/min
+    'gpt-4o-mini': (0.15 * inputTokensPerMin + 0.60 * outputTokensPerMin) / 1000, // $0.05625/min
+    'gpt-4.1': (2.00 * inputTokensPerMin + 8.00 * outputTokensPerMin) / 1000,
+    'gpt-4.1-mini': (0.40 * inputTokensPerMin + 1.60 * outputTokensPerMin) / 1000,
+    'gpt-4.1-nano': (0.10 * inputTokensPerMin + 0.40 * outputTokensPerMin) / 1000,
+    'gpt-5': (1.25 * inputTokensPerMin + 10.00 * outputTokensPerMin) / 1000,
+    'gpt-5-mini': (0.25 * inputTokensPerMin + 2.00 * outputTokensPerMin) / 1000,
+    'gpt-5-nano': (0.05 * inputTokensPerMin + 0.40 * outputTokensPerMin) / 1000,
+    // GPT OSS 120B (multiple providers)
+    'gpt-oss-120b-baseten': (0.10 * inputTokensPerMin + 0.50 * outputTokensPerMin) / 1000,
+    'gpt-oss-120b-groq': (0.15 * inputTokensPerMin + 0.75 * outputTokensPerMin) / 1000,
+    'gpt-oss-120b-cerebras': (0.35 * inputTokensPerMin + 0.75 * outputTokensPerMin) / 1000,
+    // Google Gemini
+    'gemini-2.5-pro': (2.50 * inputTokensPerMin + 15.00 * outputTokensPerMin) / 1000,
+    'gemini-2.5-flash': (0.30 * inputTokensPerMin + 2.50 * outputTokensPerMin) / 1000,
+    'gemini-2.5-flash-lite': (0.10 * inputTokensPerMin + 0.40 * outputTokensPerMin) / 1000,
+    'gemini-2.0-flash': (0.10 * inputTokensPerMin + 0.40 * outputTokensPerMin) / 1000,
+    'gemini-2.0-flash-lite': (0.07 * inputTokensPerMin + 0.30 * outputTokensPerMin) / 1000,
+    // Qwen
+    'qwen3-235b': (0.22 * inputTokensPerMin + 0.80 * outputTokensPerMin) / 1000,
+    // Kimi
+    'kimi-k2': (0.60 * inputTokensPerMin + 2.50 * outputTokensPerMin) / 1000,
+    // DeepSeek
+    'deepseek-v3': (0.77 * inputTokensPerMin + 0.77 * outputTokensPerMin) / 1000,
+    // Fallback
     'gpt-4o-realtime-preview': 0.0025
   }
-  return costs[formData.value.llm_model] || 0.0002
+  return costs[formData.value.llm_model] || 0.03 // $0.03/min fallback
 })
 
 const totalCost = computed(() => {
@@ -548,37 +596,50 @@ async function onLLMProviderChange(provider) {
 }
 
 function applyPreset(presetValue) {
-  if (presetValue === 'openai_realtime') {
-    // OpenAI Best Quality - GPT-4o Realtime (bundled STT+LLM+TTS)
-    formData.value.stt_provider = 'openai_realtime'
-    formData.value.stt_model = 'bundled'
-    formData.value.tts_provider = 'openai_realtime'
-    formData.value.tts_model = 'bundled'
-    formData.value.tts_voice_id = 'shimmer'  // Female, natural
-    formData.value.llm_provider = 'openai_realtime'
-    formData.value.llm_model = 'gpt-4o-realtime-preview'
-  } else if (presetValue === 'elevenlabs_best') {
-    // ElevenLabs Best Quality - Turbo v2.5 + Deepgram + GPT-5
-    formData.value.stt_provider = 'eden_ai'
-    formData.value.stt_model = 'deepgram-nova-2'
-    formData.value.stt_edenai_provider = 'deepgram'
-    formData.value.tts_provider = 'eden_ai'
-    formData.value.tts_model = 'elevenlabs-turbo-v2.5'
-    formData.value.tts_edenai_provider = 'elevenlabs'
-    formData.value.tts_voice_id = '6aDn1KB0hjpdcocrUkmq'  // Custom ElevenLabs voice
-    formData.value.llm_provider = 'openrouter'
-    formData.value.llm_model = 'openai/gpt-5'
+  if (presetValue === 'premium') {
+    // Premium: Deepgram Nova-2 + ElevenLabs Turbo + GPT-4o (Best quality)
+    formData.value.stt_provider = 'deepgram'
+    formData.value.stt_model = 'nova-2'
+    formData.value.stt_language = 'en-US'
+    formData.value.tts_provider = 'elevenlabs'
+    formData.value.tts_model = 'eleven_turbo_v2_5'
+    formData.value.tts_voice_id = '6aDn1KB0hjpdcocrUkmq' // Tiffany
+    formData.value.llm_provider = 'openai'
+    formData.value.llm_model = 'gpt-4o'
+    formData.value.llm_temperature = 0.8
+  } else if (presetValue === 'balanced') {
+    // Balanced: Deepgram Nova-2 + ElevenLabs + Claude Haiku (Good quality, lower cost)
+    formData.value.stt_provider = 'deepgram'
+    formData.value.stt_model = 'nova-2'
+    formData.value.stt_language = 'en-US'
+    formData.value.tts_provider = 'elevenlabs'
+    formData.value.tts_model = 'eleven_turbo_v2_5'
+    formData.value.tts_voice_id = '6aDn1KB0hjpdcocrUkmq' // Tiffany
+    formData.value.llm_provider = 'anthropic'
+    formData.value.llm_model = 'claude-3-5-haiku-20241022'
+    formData.value.llm_temperature = 0.7
   } else if (presetValue === 'budget') {
-    // Budget Friendly - PlayHT + Deepgram + Llama 3.1
-    formData.value.stt_provider = 'eden_ai'
-    formData.value.stt_model = 'deepgram-nova-2'
-    formData.value.stt_edenai_provider = 'deepgram'
-    formData.value.tts_provider = 'eden_ai'
-    formData.value.tts_model = 'playht-2.0-turbo'
-    formData.value.tts_edenai_provider = 'playht'
-    formData.value.tts_voice_id = 's3://voice-cloning-zero-shot/d9ff78ba-d016-47f6-b0ef-dd630f59414e/female-cs/manifest.json'  // Charlotte
-    formData.value.llm_provider = 'openrouter'
-    formData.value.llm_model = 'meta-llama/llama-3.1-70b-instruct'
+    // Budget: AssemblyAI + Cartesia + DeepSeek (Most cost-effective)
+    formData.value.stt_provider = 'assemblyai'
+    formData.value.stt_model = 'universal-streaming'
+    formData.value.stt_language = 'en-US'
+    formData.value.tts_provider = 'cartesia'
+    formData.value.tts_model = 'sonic-2024-09'
+    formData.value.tts_voice_id = 'default' // Cartesia default voice
+    formData.value.llm_provider = 'deepseek'
+    formData.value.llm_model = 'deepseek-chat'
+    formData.value.llm_temperature = 0.7
+  } else if (presetValue === 'ultrafast') {
+    // Ultra-Fast: Deepgram Nova-3 + ElevenLabs Turbo + Gemini Flash (Lowest latency)
+    formData.value.stt_provider = 'deepgram'
+    formData.value.stt_model = 'nova-3'
+    formData.value.stt_language = 'en-US'
+    formData.value.tts_provider = 'elevenlabs'
+    formData.value.tts_model = 'eleven_turbo_v2_5'
+    formData.value.tts_voice_id = '6aDn1KB0hjpdcocrUkmq' // Tiffany
+    formData.value.llm_provider = 'google'
+    formData.value.llm_model = 'gemini-2.0-flash-exp'
+    formData.value.llm_temperature = 0.7
   }
 }
 
@@ -651,16 +712,16 @@ function resetForm() {
   formData.value = {
     name: '',
     description: '',
-    stt_provider: 'eden_ai',
-    stt_model: 'deepgram-nova-2',
+    stt_provider: 'deepgram',
+    stt_model: 'nova-2',
     stt_language: 'en-US',
-    tts_provider: 'eden_ai',
-    tts_model: 'elevenlabs-multilingual-v2',
-    tts_voice_id: '21m00Tcm4TlvDq8ikWAM',
+    tts_provider: 'elevenlabs',
+    tts_model: 'eleven_turbo_v2_5',
+    tts_voice_id: '6aDn1KB0hjpdcocrUkmq', // Tiffany voice
     tts_speed: 1.0,
     tts_stability: 0.5,
-    llm_provider: 'openrouter',
-    llm_model: 'openai/gpt-4o',
+    llm_provider: 'openai',
+    llm_model: 'gpt-4o',
     llm_temperature: 0.7,
     llm_max_tokens: 4096,
     llm_top_p: 1.0,
