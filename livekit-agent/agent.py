@@ -244,18 +244,19 @@ async def entrypoint(ctx: JobContext):
     # Create base LLM for LangGraph nodes
     # Supports OpenRouter (primary) or OpenAI direct (gpt-realtime only)
     llm_provider = template.get("llm_provider", "openrouter")
-    llm_base_url = template.get("llm_base_url")  # OpenRouter: https://openrouter.ai/api/v1
     llm_model = template.get("llm_model", "gpt-4o")
     
-    # Determine API key based on provider
+    # Determine API key and base URL based on provider
     if llm_provider == "openrouter":
         llm_api_key = os.getenv("OPENROUTER_API_KEY")
+        llm_base_url = "https://openrouter.ai/api/v1"  # OpenRouter endpoint
     else:
         llm_api_key = os.getenv("OPENAI_API_KEY")
+        llm_base_url = None  # Use default OpenAI endpoint
     
     base_llm = ChatOpenAI(
         model=llm_model,
-        base_url=llm_base_url,  # None for OpenAI direct, custom URL for OpenRouter/Azure
+        base_url=llm_base_url,
         api_key=llm_api_key,
         temperature=template.get("llm_temperature", 0.8),
         max_tokens=template.get("llm_max_tokens", 4096),
