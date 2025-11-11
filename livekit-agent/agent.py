@@ -269,26 +269,27 @@ async def entrypoint(ctx: JobContext):
     # EOU (semantic) would be ideal but may not be available in current plugin version
     turn_detector = None
     turn_detector_model = template.get("turn_detector_model", "english")
-    # AGGRESSIVE threshold for fast response (default 0.5 is too slow)
-    turn_detector_threshold = template.get("turn_detector_threshold", 0.1)  # Very aggressive
+    # Balanced threshold: Fast but not interrupting
+    turn_detector_threshold = template.get("turn_detector_threshold", 0.3)  # Sweet spot
     
     try:
         # Try EOU first (if available in plugin version)
         try:
-            from livekit.plugins import turn_detector as td
-            turn_detector = td.EOUModel()
+            from livekit.plugins.turn_detector.eou import EOUModel
+            turn_detector = EOUModel()
             logger.info(f"🎯 Turn Detector: EOU (semantic transformer)")
-        except (ImportError, AttributeError) as e:
+        except (ImportError, AttributeError, ModuleNotFoundError) as e:
             logger.warning(f"⚠️ EOU not available ({e}), falling back to VAD-only")
-            # Fall back to VAD-only with aggressive threshold
+            # Fall back to VAD-only with threshold
             if turn_detector_model == "multilingual":
                 from livekit.plugins.turn_detector.multilingual import MultilingualModel
                 turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
                 logger.info(f"🎯 Turn Detector: MULTILINGUAL VAD (threshold={turn_detector_threshold})")
             else:
                 from livekit.plugins.turn_detector.english import EnglishModel
+                # EnglishModel uses 'unlikely_threshold' parameter
                 turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-                logger.info(f"🎯 Turn Detector: ENGLISH VAD (threshold={turn_detector_threshold} - AGGRESSIVE)")
+                logger.info(f"🎯 Turn Detector: ENGLISH VAD (threshold={turn_detector_threshold})")
     except Exception as e:
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
