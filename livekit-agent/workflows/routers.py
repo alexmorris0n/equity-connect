@@ -1,6 +1,7 @@
 """Dynamic routing logic for conversation graph"""
 import logging
 from typing import Literal, Optional, Dict, Any
+from langgraph.graph import END
 from .state import ConversationState
 from services.conversation_state import get_conversation_state, extract_phone_from_messages
 
@@ -157,7 +158,7 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
 	return "answer"
 
 
-def route_after_exit(state: ConversationState) -> Literal["greet", "END"]:
+def route_after_exit(state: ConversationState):
 	"""
 	DB-driven router after exit node.
 	- If conversation_data.right_person_available → greet (re-greet spouse)
@@ -166,10 +167,10 @@ def route_after_exit(state: ConversationState) -> Literal["greet", "END"]:
 	row = _db(state)
 	if not row:
 		logger.info("🔚 No DB row → END")
-		return "END"
+		return END
 	cd = _cd(row)
 	if cd.get("right_person_available"):
 		logger.info("🔁 right_person_available → GREET")
 		return "greet"
-	return "END"
+	return END
 
