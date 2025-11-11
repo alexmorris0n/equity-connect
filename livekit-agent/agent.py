@@ -28,6 +28,22 @@ from livekit.plugins import langchain as livekit_langchain  # Only the plugin it
 # Import your custom tools
 from tools import all_tools
 
+
+class EquityConnectAgent(Agent):
+    """Voice agent for Equity Connect calls"""
+    
+    def __init__(self, instructions: str):
+        super().__init__(
+            instructions=instructions,
+        )
+    
+    async def on_enter(self):
+        """Called when agent joins - greet the user"""
+        self.session.generate_reply(
+            instructions="Greet the user warmly and ask how you can help them today."
+        )
+
+
 # Import config
 from config import Config
 from services.conversation_state import (
@@ -307,12 +323,11 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=max_endpointing,  # 1.0s with turn detector, or match VAD
     )
     
-    # Start the session with Agent (LLM is already in AgentSession, not in Agent)
-    # Agent class only needs instructions, the session handles STT→LLM→TTS pipeline
+    # Start the session with custom EquityConnectAgent that auto-greets on entry
     exit_reason: Optional[str] = None
     try:
         await session.start(
-            agent=Agent(instructions=instructions),  # Agent behavior only, LLM is in session
+            agent=EquityConnectAgent(instructions=instructions),  # Custom agent with on_enter() greeting
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC()
@@ -321,16 +336,6 @@ async def entrypoint(ctx: JobContext):
                 audio_enabled=True,  # CRITICAL: Enable audio output for TTS
             ),
         )
-        
-        # For inbound calls, agent should greet first (trigger initial greeting)
-        # This invokes the LangGraph workflow to generate the first message
-        # For LangGraph, we always want to greet first to start the conversation
-        if call_type in ["inbound-unknown", "inbound-callback", "inbound-qualified", "test-demo"]:
-            logger.info(f"🎙️ Triggering initial greeting for call_type={call_type}...")
-            # Wait a moment for the session to be fully ready before generating reply
-            import asyncio
-            await asyncio.sleep(0.5)  # Give audio pipeline time to initialize
-            await session.generate_reply(instructions="Greet the caller warmly and introduce yourself as Barbara.")
         
         exit_reason = "hangup"
     except Exception as e:
