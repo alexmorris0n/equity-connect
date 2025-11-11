@@ -212,7 +212,14 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
         
         # Invoke LLM (LiveKit LLMAdapter streams this automatically)
         logger.info(f"🗣️ CONVERSE node executing (phase: {conversation_data.get('current_phase', 'greeting')})")
-        ai_response = await llm_with_tools.ainvoke(messages)
+        logger.info(f"📨 Sending {len(messages)} messages to LLM...")
+        
+        try:
+            ai_response = await llm_with_tools.ainvoke(messages)
+            logger.info(f"✅ LLM response received: {len(getattr(ai_response, 'content', ''))} chars")
+        except Exception as e:
+            logger.error(f"❌ LLM invocation failed: {e}", exc_info=True)
+            raise
         
         # Update conversation state in Supabase (with graceful fallback)
         # Parse LLM response for phase transitions (optional - can also use tool calls)
