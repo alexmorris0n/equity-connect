@@ -92,6 +92,8 @@ async def entrypoint(ctx: JobContext):
     caller_phone: Optional[str] = None
     
     # Parse metadata - check BOTH room metadata AND participant metadata
+    # NOTE: LiveKit SIP dispatch rule "attributes" should be passed as room.metadata or participant.metadata
+    # Verify dispatch rule JSON includes: {"attributes": {"phone_number": "+1234567890", "lead_id": "...", ...}}
     import json
     metadata = {}
     
@@ -329,20 +331,24 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=max_endpointing,  # 1.0s with turn detector, or match VAD
     )
     
-    # Start the session with Agent wrapping the LangGraph workflow
+    # Start the session with Agent (LLM is already in AgentSession, not in Agent)
+    # Agent class only needs instructions, the session handles STT→LLM→TTS pipeline
     exit_reason: Optional[str] = None
     try:
         await session.start(
-            agent=Agent(
-                llm=llm_plugin,
-                instructions=instructions  # Pass loaded prompt instructions
-                # TODO: Figure out how to make agent greet first for inbound calls
-            ),
+            agent=Agent(instructions=instructions),  # Agent behavior only, LLM is in session
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC()
             ),
         )
+        
+        # For inbound calls, agent should greet first (trigger initial greeting)
+        # This invokes the LangGraph "greet" node to generate the first message
+        if call_type in ["inbound-unknown", "inbound-callback", "inbound-qualified"]:
+            logger.info("🎙️ Triggering initial greeting for inbound call...")
+            await session.generate_reply(instructions="Greet the caller warmly and introduce yourself.")
+        
         exit_reason = "hangup"
     except Exception as e:
         logger.error(f"Session error: {e}")
