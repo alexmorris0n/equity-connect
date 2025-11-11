@@ -285,23 +285,19 @@ async def entrypoint(ctx: JobContext):
         raise
     
     # Create session with plugin instances (required for self-hosted LiveKit)
-    # Get endpointing delays from template (configurable per template)
-    # These control how long the agent waits before/after detecting end-of-turn
+    # Endpointing delays are no longer needed (TurnDetector handles timing)
+    # Keeping for legacy template compatibility but not used
     min_endpointing = template.get("min_endpointing_delay", 0.2)
     max_endpointing = template.get("max_endpointing_delay", 0.6)
     
-    # If turn detector is disabled, override max_endpointing to match STT VAD timing
-    if not use_turn_detector:
-        max_endpointing = vad_silence_duration_ms / 1000
-    
-    logger.info(f"⏱️ Endpointing: min={min_endpointing}s, max={max_endpointing}s")
+    logger.info(f"⏱️ Endpointing delays: DEPRECATED (TurnDetector manages timing)")
     
     session = AgentSession(
         stt=stt_plugin,
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
-        turn_detection=turn_detector,  # None if disabled, EnglishModel/MultilingualModel if enabled
+        turn_detection=turn_detector,  # EnglishModel or MultilingualModel (ALWAYS enabled)
         # Interruption settings from template
         allow_interruptions=allow_interruptions,
         min_interruption_duration=min_interruption_duration,
