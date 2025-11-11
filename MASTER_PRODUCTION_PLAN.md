@@ -1088,7 +1088,7 @@ Call ends, metadata saved to interactions table
 **Next Steps:**
 - [ ] Test full call flow with LiveKit Inference providers
 - [ ] Monitor AI provider costs and latency via LiveKit dashboard
-- [ ] Re-integrate LangGraph after confirming stable streaming
+- [x] **BarbGraph Planning Complete** - 3 implementation plans ready for November 12, 2025
 - [ ] Implement conversation state persistence for multi-call tracking
 - [ ] A/B test different provider combinations (DeepSeek vs Claude, Cartesia vs ElevenLabs)
 - [ ] Configure LiveKit Cloud dispatch rule metadata optimization
@@ -1102,6 +1102,186 @@ Call ends, metadata saved to interactions table
 - `database/migrations/20251111_add_livekit_inference_providers.sql` - Schema update for new providers
 - `database/migrations/20251111_update_templates_for_livekit_inference.sql` - Template data migration
 - `portal/src/components/AITemplateForm.vue` - Vue form with LiveKit Inference pricing
+- `.cursor/plans/e-2ccbf679.plan.md` - BarbGraph Backend implementation plan
+
+---
+
+## 🎯 BarbGraph - Manual State Machine Architecture ⭐ **PLANNED (NOV 12, 2025)**
+
+**Status:** 📋 **3 IMPLEMENTATION PLANS READY - Architecture Validated**
+
+### Overview
+
+BarbGraph is our simplified alternative to LangGraph - a manual event-based state machine that provides the same conversational routing capabilities without the streaming audio bugs that plagued the LLMAdapter integration.
+
+**Why "BarbGraph"?**
+- LangGraph complexity caused "NO SOUND" bug (agent transcribed but didn't speak)
+- AgentSession conversation history is AUTOMATICALLY preserved across node switches
+- Manual routing is simpler, more debuggable, and production-proven (Vapi/Bland/Retell pattern)
+- Can re-integrate LangGraph later when streaming issues are resolved
+
+### Architecture Decision (November 11, 2025 - Evening)
+
+**Key Insight from Perplexity Research:**
+- ✅ **AgentSession maintains full conversation history automatically**
+- ✅ **Switching node prompts only updates system instructions, NOT conversation memory**
+- ✅ **LLM sees entire conversation context across all node transitions**
+- ✅ **No quality loss vs LangGraph** - same conversational coherence
+
+**Design Principles:**
+1. **7 node prompts per vertical** - One prompt per node (greet, verify, qualify, answer, objections, book, exit)
+2. **No call_type variants** - Context injection handles inbound/outbound/qualified/unqualified differences
+3. **ONE set of routers for reverse mortgage** - Dynamic routing based on DB state, not predetermined paths
+4. **Event-driven transitions** - Agent speech completion triggers routing checks
+5. **Tools update state flags** - LLM calls tools that set completion flags in DB
+6. **Router reads state** - Python logic checks flags and decides next node (prevents repetition)
+
+### Prompt Structure
+
+**Database Schema:**
+```sql
+prompts table:
+├─ vertical: "reverse_mortgage"
+├─ node_name: "greet" | "verify" | "qualify" | "answer" | "objections" | "book" | "exit"
+├─ content: TEXT (generic node instructions)
+└─ UNIQUE(vertical, node_name)
+```
+
+**7 Prompts Total (per vertical):**
+- `greet` - Warm introduction, set tone
+- `verify` - Confirm identity, gather basic info
+- `qualify` - Ask qualification questions naturally
+- `answer` - Respond to questions, address concerns
+- `objections` - Handle objections, reframe concerns
+- `book` - Secure appointment commitment
+- `exit` - Graceful conclusion or handoff
+
+**Context Injection (makes prompts dynamic):**
+```python
+context = f"""
+=== CALL CONTEXT ===
+Call Type: {call_type}
+Direction: {"Inbound" if inbound else "Outbound"}
+Lead Status: {"Known & Qualified" if lead_id and qualified else "Unknown"}
+Lead Name: {lead_name or "Unknown"}
+Property: {property_address}
+Est. Equity: ${estimated_equity:,}
+===================
+"""
+
+full_prompt = f"{context}\n\n{node_prompt}"
+```
+
+**Example: Same greet prompt adapts to all call types**
+```markdown
+# Greet Node
+
+Warmly greet the caller and establish the purpose of the conversation.
+
+**If this is an inbound call:** Thank them for calling and ask how you can help.
+**If this is an outbound call:** Verify you're speaking with the right person, introduce yourself, and ask if now is a good time.
+**If lead is qualified:** Reference their pre-qualification status.
+**If lead is unknown:** Keep greeting brief and ask for basic info.
+
+Be warm, professional, and adapt your greeting to the context provided above.
+```
+
+### Dynamic Routing Example
+
+**Scenario: Senior jumps ahead with questions**
+
+```
+Greet Node:
+  Barbara: "Hi John, this is Barbara from Equity Connect"
+  Lead: "Yeah hi, how much money can I get from my house?"
+  
+  Tool called: update_conversation_state(phone, {
+    "greeted": True,
+    "questions_asked": ["equity_amount"],
+    "ready_for_answers": True
+  })
+  
+Router checks after turn:
+  def route_after_greet(state):
+    if state.get("lead_id") and state.get("qualified") and state.get("ready_for_answers"):
+      return "answer"  # SKIP verify and qualify
+    elif state.get("lead_id"):
+      return "qualify"  # SKIP verify only
+    else:
+      return "verify"  # Normal flow
+      
+Result: Goes directly to "answer" node (skips 2 nodes based on context)
+```
+
+### Three Implementation Plans (November 12, 2025)
+
+**Plan 1: Backend Agent (Python/LiveKit)** - 7 steps, ~3 hours
+- Create node completion checker (`workflows/node_completion.py`)
+- Create prompt loader with context injection (`services/prompt_loader.py`)
+- Update tools to set state flags (lead.py, calendar.py)
+- Extend Agent class with routing logic (agent.py)
+- Hook event-based routing via `agent_speech_committed` event
+- Update tool exports (__init__.py)
+- Archive old LangGraph files (preserve for reference)
+
+**Plan 2: Database Schema Migration (Supabase)** - 4 steps, ~2 hours
+- Add `vertical` and `node_name` columns to `prompts` table
+- Create 7 reverse mortgage node prompts from existing markdown files
+- Migrate existing monolithic prompts to node-specific structure
+- Update RLS policies and indexes
+
+**Plan 3: Vue Portal UI (PromptManagement.vue)** - 5 steps, ~3 hours
+- Add vertical selector dropdown (reverse_mortgage, solar, hvac - future)
+- Add node selector/tabs (7 nodes per vertical)
+- Update prompt editor to show current node context
+- Add node preview/test flow UI (visualize conversation path)
+- Update deployment logic for node-based structure
+
+**Total Estimated Time:** 8 hours across 3 plans
+
+### Benefits Over LangGraph
+
+✅ **Simpler Architecture** - No LLMAdapter, no streaming bugs
+✅ **Same Conversation Quality** - AgentSession preserves full history automatically
+✅ **Easier Debugging** - Clear logs show current node and routing decisions
+✅ **Production-Proven Pattern** - Used by Vapi, Bland, Retell
+✅ **Flexible Routing** - Seniors can jump around, system adapts intelligently
+✅ **No Repetition** - Router checks state to avoid re-asking questions
+✅ **Reversible** - Can add LangGraph back when bugs fixed
+✅ **Platform-Ready** - Easy to add new verticals (solar, HVAC) with same pattern
+
+### Conversation History Preservation (Validated)
+
+**Critical Understanding:**
+- LiveKit `AgentSession` maintains full message history internally
+- Node switches only update the system message (instructions)
+- All user messages, assistant messages, and tool calls are preserved
+- LLM sees complete conversation context on every turn
+
+**Example:**
+```
+Messages array (preserved across nodes):
+├─ System: [Current node instructions] ← We update ONLY this
+├─ User: "Hi, I need help with my home"
+├─ Assistant: "I'd be happy to help! Can I get your name?"
+├─ User: "It's John Smith"
+├─ Tool: "Verified: John Smith"
+└─ Assistant: "Thanks John! Let me ask you a few questions..."
+
+All messages below system prompt stay intact.
+```
+
+**Validation Source:** Perplexity research confirmed by LiveKit documentation
+
+### Key Learnings (November 11, 2025)
+
+1. **Hybrid approach rejected** - No need for call_type-specific prompts; context injection handles all variations
+2. **7 prompts is optimal** - One per node, not 35 (7 nodes × 5 call types)
+3. **Routers are logic, not content** - ONE set of routers per vertical, not per call type
+4. **Call type affects initial DB state only** - Not the routing logic itself
+5. **Manual state machine is not a compromise** - It's the production-proven pattern
+
+**Status:** ✅ **ARCHITECTURE VALIDATED - Ready for implementation November 12, 2025**
 
 ---
 
