@@ -130,6 +130,59 @@ async def entrypoint(ctx: JobContext):
     caller_phone = metadata.get("phone_number") or metadata.get("from") or metadata.get("caller")
     lead_id = metadata.get("lead_id")
     qualified = metadata.get("qualified", False)
+    
+    # For inbound calls, query Supabase to get full lead context by phone number
+    lead_context = None
+    if caller_phone and not lead_id:
+        logger.info(f"🔍 Looking up lead by phone: {caller_phone}")
+        try:
+            # Query Supabase for lead by phone number
+            response = await supabase_client.from_("leads").select(
+                "*, brokers!assigned_broker_id(*)"
+            ).or_(
+                f"primary_phone.ilike.%{caller_phone}%,primary_phone_e164.eq.{caller_phone}"
+            ).limit(1).execute()
+            
+            if response.data and len(response.data) > 0:
+                lead = response.data[0]
+                lead_id = lead["id"]
+                broker = lead.get("brokers")
+                
+                # Determine qualification status
+                is_qualified = lead["status"] in ["qualified", "appointment_set", "showed", "application", "funded"]
+                qualified = is_qualified
+                
+                lead_context = {
+                    "lead_id": lead_id,
+                    "broker_id": lead.get("assigned_broker_id"),
+                    "first_name": lead.get("first_name"),
+                    "last_name": lead.get("last_name"),
+                    "email": lead.get("primary_email"),
+                    "phone": caller_phone,
+                    "property_city": lead.get("property_city"),
+                    "property_state": lead.get("property_state"),
+                    "property_value": lead.get("property_value"),
+                    "estimated_equity": lead.get("estimated_equity"),
+                    "age": lead.get("age"),
+                    "status": lead.get("status"),
+                    "qualified": is_qualified,
+                    "broker_name": broker.get("contact_name") if broker else None,
+                    "broker_company": broker.get("company_name") if broker else None,
+                }
+                logger.info(f"✅ Lead found: {lead.get('first_name')} {lead.get('last_name')} (Status: {lead.get('status')})")
+            else:
+                logger.info(f"⚠️ No lead found for phone: {caller_phone}")
+                lead_context = {
+                    "phone": caller_phone,
+                    "new_caller": True
+                }
+        except Exception as e:
+            logger.error(f"❌ Error looking up lead: {e}")
+            lead_context = {
+                "phone": caller_phone,
+                "lookup_error": str(e)
+            }
+    
     if caller_phone:
         try:
             cs_start_call(str(caller_phone), {"lead_id": lead_id, "qualified": bool(qualified)})
@@ -204,8 +257,31 @@ async def entrypoint(ctx: JobContext):
     # Create LangGraph workflow
     conversation_graph = create_conversation_graph(base_llm, all_tools)
     
+    # Prepare initial state for LangGraph (inject lead context)
+    initial_state = {
+        "call_type": call_type,
+        "room_name": ctx.room.name,
+        "participant_identity": ctx.participant.identity,
+        "phone_number": caller_phone,
+        "lead_id": lead_id,
+        "qualified": bool(qualified),
+        "is_new_lead": lead_context.get("new_caller", False) if lead_context else True,
+    }
+    
+    # Inject lead context if available
+    if lead_context and not lead_context.get("new_caller"):
+        initial_state.update({
+            "caller_name": f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip(),
+            "broker_id": lead_context.get("broker_id"),
+            "age": lead_context.get("age"),
+        })
+        logger.info(f"💉 Injecting lead context into LangGraph state: {lead_context.get('first_name')} {lead_context.get('last_name')}")
+    
     # Wrap graph in LiveKit LLMAdapter (per official PyPI docs)
-    llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
+    llm_plugin = livekit_langchain.LLMAdapter(
+        graph=conversation_graph,
+        initial_state=initial_state  # Pass lead context into graph
+    )
         
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
