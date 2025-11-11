@@ -27,8 +27,7 @@ BEGIN
         -- Update the prompt_version
         UPDATE prompt_versions
         SET content = updated_content,
-            change_summary = 'Removed personality (now in theme_prompts)',
-            updated_at = NOW()
+            change_summary = 'Removed personality (now in theme_prompts)'
         WHERE id = node_record.version_id;
         
         RAISE NOTICE 'Stripped personality from node: %', node_record.node_name;
