@@ -254,12 +254,11 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
     # Add single conversation node
     workflow.add_node("converse", converse_node)
     
-    # Set entry point
+    # Set entry point - LLMAdapter will invoke graph once per user turn
     workflow.add_edge(START, "converse")
     
-    # Loop back to converse for continued conversation
-    # The agent will continue until the user hangs up
-    workflow.add_edge("converse", "converse")
+    # NO LOOP EDGE! LLMAdapter handles multi-turn by calling graph.astream() repeatedly
+    # Adding converse → converse causes infinite loop instead of streaming to TTS
     
     return workflow.compile()
 
