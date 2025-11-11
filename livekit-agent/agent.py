@@ -256,19 +256,17 @@ async def entrypoint(ctx: JobContext):
         }
     )
     
-    # TEMPORARY TEST: Use simple OpenAI LLM instead of LangGraph to test audio
+    # TEMPORARY TEST: Use simple OpenRouter LLM instead of LangGraph to test audio
     # This bypasses the complex multi-node workflow to verify if STT->LLM->TTS works
     USE_SIMPLE_LLM_TEST = True  # Set to False to re-enable LangGraph
     
     if USE_SIMPLE_LLM_TEST:
-        logger.info("🧪 TEST MODE: Using simple LLM (bypassing LangGraph)")
-        # Use OpenAI plugin with OpenRouter base URL for basic conversation
-        # OpenAI plugin supports custom base_url, so we can use OpenRouter
-        llm_plugin = openai.LLM(
+        logger.info("🧪 TEST MODE: Using simple OpenRouter LLM (bypassing LangGraph)")
+        # Use OpenAI plugin's native OpenRouter support
+        # Reference: https://docs.livekit.io/agents/models/llm/plugins/openrouter/
+        llm_plugin = openai.LLM.with_openrouter(
             model=template.get("llm_model", "gpt-4o"),
             temperature=template.get("llm_temperature", 0.8),
-            base_url=template.get("llm_base_url", "https://openrouter.ai/api/v1"),
-            api_key=os.getenv("OPENROUTER_API_KEY"),
         )
     else:
         # Create LangGraph workflow with lead context injection
