@@ -35,6 +35,7 @@ class EquityConnectAgent(Agent):
     def __init__(self, instructions: str):
         super().__init__(
             instructions=instructions,
+            tools=all_tools,  # Your custom Supabase RAG/KB tools
         )
     
     async def on_enter(self):
