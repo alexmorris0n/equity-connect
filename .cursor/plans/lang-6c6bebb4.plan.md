@@ -10,22 +10,22 @@ We’ll implement the remaining foundations so calls never get stuck or skip, us
 ### A) Database Migration
 
 - Create `database/migrations/028_conversation_state.sql`:
-                                - Table `conversation_state` with:
-                                                                - `id uuid pk`
-                                                                - `phone_number text not null`
-                                                                - `lead_id uuid references leads(id)`
-                                                                - `qualified boolean default false`
-                                                                - `current_node text`
-                                                                - `conversation_data jsonb default '{}'`
-                                                                - `call_count int default 1`
-                                                                - `last_call_at timestamptz default now()`
-                                                                - `topics_discussed text[]`
-                                                                - `call_status text default 'active'`  (active | completed | abandoned)
-                                                                - `call_ended_at timestamptz`
-                                                                - `created_at timestamptz default now()`
-                                                                - `updated_at timestamptz default now()`
-                                - Indexes on `phone_number`, `call_status`, `lead_id`
-                                - Add `updated_at` trigger:
+                                                                                                                                                                                                                                                                - Table `conversation_state` with:
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `id uuid pk`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `phone_number text not null`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `lead_id uuid references leads(id)`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `qualified boolean default false`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `current_node text`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `conversation_data jsonb default '{}'`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `call_count int default 1`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `last_call_at timestamptz default now()`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `topics_discussed text[]`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `call_status text default 'active'`  (active | completed | abandoned)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `call_ended_at timestamptz`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `created_at timestamptz default now()`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `updated_at timestamptz default now()`
+                                                                                                                                                                                                                                                                - Indexes on `phone_number`, `call_status`, `lead_id`
+                                                                                                                                                                                                                                                                - Add `updated_at` trigger:
     ```sql
     CREATE OR REPLACE FUNCTION set_conversation_state_updated_at()
     RETURNS TRIGGER AS $$
@@ -47,14 +47,14 @@ We’ll implement the remaining foundations so calls never get stuck or skip, us
 ### B) Service Layer (Supabase)
 
 - New `livekit-agent/services/conversation_state.py`:
-                                - `start_call(phone, metadata)` — one active row per phone:
-                                                                - If no row → create with `call_count=1`, `call_status='active'`, `last_call_at=now()`
-                                                                - If row `completed` → reuse row, `call_count+=1`, `call_status='active'`, reset transients (see section C), preserve durables (see section C), `last_call_at=now()`
-                                                                - If row `active` at new session → set `call_status='completed'`, `exit_reason='interrupted_or_replaced'`, then apply reuse flow above (increment happens here only)
-                                - `get_conversation_state(phone)`
-                                - `update_conversation_state(phone, updates)` — deep-merge `conversation_data` (scalars overwrite; nested dicts merge; arrays append-unique; `null` deletes key if provided)
-                                - `mark_call_completed(phone, exit_reason)` — idempotent: only if current status is `active`; set `call_status='completed'`, `call_ended_at=now()`, `exit_reason=reason`; do NOT change `call_count`
-                                - `extract_phone_from_messages(messages)` — fallback parsing if metadata missing
+                                                                                                                                                                                                                                                                - `start_call(phone, metadata)` — one active row per phone:
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - If no row → create with `call_count=1`, `call_status='active'`, `last_call_at=now()`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - If row `completed` → reuse row, `call_count+=1`, `call_status='active'`, reset transients (see section C), preserve durables (see section C), `last_call_at=now()`
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - If row `active` at new session → set `call_status='completed'`, `exit_reason='interrupted_or_replaced'`, then apply reuse flow above (increment happens here only)
+                                                                                                                                                                                                                                                                - `get_conversation_state(phone)`
+                                                                                                                                                                                                                                                                - `update_conversation_state(phone, updates)` — deep-merge `conversation_data` (scalars overwrite; nested dicts merge; arrays append-unique; `null` deletes key if provided)
+                                                                                                                                                                                                                                                                - `mark_call_completed(phone, exit_reason)` — idempotent: only if current status is `active`; set `call_status='completed'`, `call_ended_at=now()`, `exit_reason=reason`; do NOT change `call_count`
+                                                                                                                                                                                                                                                                - `extract_phone_from_messages(messages)` — fallback parsing if metadata missing
 
 ### C) Durable vs Transient Fields (Reset Policy)
 
@@ -65,12 +65,12 @@ We’ll implement the remaining foundations so calls never get stuck or skip, us
 
 - Node prompts (verify/qualify/answer/objections/book/exit) instruct: “Return JSON only.”
 - Parse JSON in node handlers and write explicit flags to DB via `update_conversation_state`:
-                                - verify → `{ verified: bool, wrong_person: bool, right_person_available?: bool }`
-                                - qualify → `{ qualified: bool, age_verified: bool, homeowner: bool }`
-                                - answer → `{ ready_to_book: bool, has_objections: bool, topics_discussed: string[] }` plus RAG telemetry
-                                - objections → `{ has_objections: bool, ready_to_book: bool }`
-                                - book → `{ appointment_booked: bool, appointment_datetime: iso8601 }`
-                                - exit → `{ exit_reason: string, right_person_available?: bool }`
+                                                                                                                                                                                                                                                                - verify → `{ verified: bool, wrong_person: bool, right_person_available?: bool }`
+                                                                                                                                                                                                                                                                - qualify → `{ qualified: bool, age_verified: bool, homeowner: bool }`
+                                                                                                                                                                                                                                                                - answer → `{ ready_to_book: bool, has_objections: bool, topics_discussed: string[] }` plus RAG telemetry
+                                                                                                                                                                                                                                                                - objections → `{ has_objections: bool, ready_to_book: bool }`
+                                                                                                                                                                                                                                                                - book → `{ appointment_booked: bool, appointment_datetime: iso8601 }`
+                                                                                                                                                                                                                                                                - exit → `{ exit_reason: string, right_person_available?: bool }`
 
 ### E) Loop Guardrails
 
@@ -80,9 +80,9 @@ We’ll implement the remaining foundations so calls never get stuck or skip, us
 ### F) Exact DB Contract for Routers
 
 - Routers read keys only from DB (no heuristics):
-                                - Top-level: `lead_id`, `qualified`, `current_node`, `call_status`
-                                - `conversation_data` keys:
-                                                                - `verified`, `wrong_person`, `right_person_available`, `ready_to_book`, `has_objections`, `node_visits`, `appointment_booked`, `exit_reason`, `topics_discussed`
+                                                                                                                                                                                                                                                                - Top-level: `lead_id`, `qualified`, `current_node`, `call_status`
+                                                                                                                                                                                                                                                                - `conversation_data` keys:
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                - `verified`, `wrong_person`, `right_person_available`, `ready_to_book`, `has_objections`, `node_visits`, `appointment_booked`, `exit_reason`, `topics_discussed`
 
 ### G) Routers Implementation (`livekit-agent/workflows/routers.py`)
 
@@ -96,7 +96,7 @@ We’ll implement the remaining foundations so calls never get stuck or skip, us
 ### H) Exit Node Behavior (Wrong-Person Quick Fix)
 
 - Exit node prompt includes only behavior and flags; it does not route:
-                                - If wrong person but right person available: ask to transfer, wait ~10s, then set `right_person_available=true` in DB; router decides next hop
+                                                                                                                                                                                                                                                                - If wrong person but right person available: ask to transfer, wait ~10s, then set `right_person_available=true` in DB; router decides next hop
 - Graph change: `exit` no longer unconditional to END; add conditional edges wired to `route_after_exit`
 
 ### I) LangGraph Wiring (`livekit-agent/workflows/conversation_graph.py`)
@@ -151,7 +151,7 @@ def build_participant_metadata(request_data: dict, lead):
 ### L) RAG Telemetry
 
 - In `answer` and `objections` handlers, after RAG calls:
-                                - write `kb_sources_count`, `kb_latency_ms`, `topics_discussed` (append-unique) via `update_conversation_state`
+                                                                                                                                                                                                                                                                - write `kb_sources_count`, `kb_latency_ms`, `topics_discussed` (append-unique) via `update_conversation_state`
 
 ### M) Tests
 
