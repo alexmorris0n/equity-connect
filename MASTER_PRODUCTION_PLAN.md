@@ -1,9 +1,9 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 10, 2025  
-**Status:** Production Ready - LiveKit Cloud + Northflank Agent Worker Architecture  
-**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + LiveKit Cloud Migration Complete
-**Latest Updates:** 🚀 **LIVEKIT CLOUD MIGRATION COMPLETE (Nov 10, 2025)** – Successfully migrated to **LiveKit Cloud** architecture with **Northflank-hosted agent worker**. **Architecture:** LiveKit Cloud (SIP Bridge + Core + Dispatch) + Northflank Agent Worker + Supabase. **Multi-Provider AI:** Native LiveKit plugins (Deepgram STT, ElevenLabs TTS, OpenAI LLM) configurable per template via Supabase. **Template-Driven Configuration:** Each AI template defines STT/TTS/LLM/voice/endpointing settings. **LangGraph Integration:** Conversation flow managed by LangGraph workflow (verify → qualify → answer → book → exit nodes). **Simplified Infrastructure:** Reduced from 6 self-hosted Fly.io apps to 1 Northflank container + managed LiveKit Cloud services. **Cost Reduction:** ~60% infrastructure cost savings vs self-hosted. **SIP Integration:** SignalWire → LiveKit Cloud SIP → Dispatch rules with metadata → Northflank agent picks up job. **Status:** Agent worker deployed on Northflank, LiveKit Cloud dispatch configured.
+**Last Updated:** November 11, 2025  
+**Status:** Production Ready - LiveKit Cloud + Northflank Agent Worker + **LiveKit Inference**  
+**Current Phase:** Landing Page Live + Campaign Optimization + Portal Deployment + **LiveKit Inference Migration Complete**
+**Latest Updates:** 🚀 **LIVEKIT INFERENCE MIGRATION COMPLETE (Nov 11, 2025)** – Successfully migrated to **LiveKit Inference** for unified billing and lower latency. **Architecture:** LiveKit Cloud (SIP Bridge + Core + Dispatch) + Northflank Agent Worker + **LiveKit Inference Gateway** for all AI providers (STT/LLM/TTS). **Unified Billing:** Single invoice for Deepgram, ElevenLabs, OpenAI, Anthropic, Google, DeepSeek, Qwen, Kimi, Cartesia, Inworld, Rime. **String-Based Configuration:** Template-driven model selection via `"provider/model:parameters"` format. **Custom Voices:** ElevenLabs Tiffany voice working via `"elevenlabs/eleven_turbo_v2_5:6aDn1KB0hjpdcocrUkmq"`. **Turn Detection:** EnglishModel with built-in EOU (End of Utterance) for semantic turn detection. **Performance:** min_endpointing_delay=0.1s for instant responses. **Status:** Agent worker redeployed, Supabase schema updated, Vue portal updated with accurate pricing, 4 system presets migrated. **LangGraph:** Temporarily removed to isolate streaming issues; preserved for future re-integration.
 
 ---
 
@@ -22,14 +22,14 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 **Key Innovation:** Model Context Protocol (MCP) architecture enables one AI agent to orchestrate 4+ external services, replacing 135 deterministic workflow nodes with 13 intelligent nodes.
 
 **Tech Stack:**
-- **AI Voice:** LiveKit Cloud + Northflank Agent Worker (native LiveKit plugins)
+- **AI Voice:** LiveKit Cloud + Northflank Agent Worker + **LiveKit Inference** (unified billing gateway)
 - **Voice Infrastructure:** LiveKit Cloud (SIP Bridge + Core + Dispatch) + Northflank Python Agent Worker
-- **AI Providers:**
-  - **LLM:** OpenRouter (primary - supports ANY model: GPT-4o, Claude, Gemini, DeepSeek, etc.) via LangChain ChatOpenAI
-  - **Exception:** OpenAI direct ONLY for `gpt-realtime` model (all-in-one STT+LLM+TTS)
-  - **STT:** Native LiveKit plugins (Deepgram, AssemblyAI, Google, OpenAI Whisper) - requires direct API keys
-  - **TTS:** Native LiveKit plugins (ElevenLabs, Google, Speechify, OpenAI) - requires direct API keys
-  - **No Aggregator:** Each STT/TTS provider requires separate account and API key
+- **AI Providers (via LiveKit Inference):**
+  - **LLM:** OpenAI (GPT-4o), Anthropic (Claude), Google (Gemini), DeepSeek, Qwen, Kimi - ALL via LiveKit Inference
+  - **STT:** Deepgram (Nova-2/Nova-3), AssemblyAI, Cartesia, OpenAI Whisper - ALL via LiveKit Inference
+  - **TTS:** ElevenLabs (Tiffany voice), Cartesia, Inworld, Rime, OpenAI, Google - ALL via LiveKit Inference
+  - **Unified Billing:** Single invoice from LiveKit for all AI services
+  - **Co-located Infrastructure:** Models run on LiveKit's edge for lower latency
 - **AI Orchestration:** Gemini 2.5 Flash via OpenRouter (n8n workflows)
 - **AI Evaluation:** GPT-5 Mini (post-call quality scoring)
 - **Telephony:** SignalWire SIP trunk → LiveKit Cloud SIP Bridge
@@ -54,7 +54,7 @@ equity-connect/ (Git Monorepo)
 │   │   ├── conversation_graph.py → Node routing (verify→qualify→answer→book→exit)
 │   │   └── routers.py            → DB-driven decision logic
 │   ├── services/                 → Business logic
-│   │   ├── supabase.py          → Database client + utilities  
+│   │   ├── supabase.py          → Database client + utilities
 │   │   ├── conversation_state.py → Multi-call persistence
 │   │   ├── templates.py          → AI template loading (STT/TTS/LLM configs)
 │   │   └── prompts.py           → Dynamic prompt loading
@@ -895,18 +895,19 @@ Built comprehensive runtime configuration UI in Prompt Management portal enablin
 - **n8n Upload Workflow:** `kuDxW8kPndFKXZHP` configured to load only reverse mortgage KB files
 - **Status:** ✅ Cleaned, ready for proper KB upload from GitHub
 
-**5. LiveKit Cloud Voice System** ⭐ **PRODUCTION (NOV 10, 2025)** - **PRIMARY VOICE SYSTEM**
-- **Architecture:** LiveKit Cloud (managed) + Northflank Agent Worker + Template-driven AI configuration
+**5. LiveKit Cloud Voice System** ⭐ **PRODUCTION (NOV 11, 2025)** - **PRIMARY VOICE SYSTEM**
+- **Architecture:** LiveKit Cloud (managed) + Northflank Agent Worker + **LiveKit Inference** for unified billing
 - **Deployment:** Northflank container + LiveKit Cloud infrastructure (globally distributed)
 - **Repository:** `equity-connect/livekit-agent/` (monorepo, Northflank auto-deploy)
-- **Cost:** **LiveKit Cloud free tier** + AI provider costs (pay-as-you-go based on template selection)
-- **AI Provider Architecture:**
-  - **LLM:** OpenRouter (primary) via LangChain ChatOpenAI - supports ANY model (GPT-4o, Claude, Gemini, DeepSeek, etc.)
-  - **Exception:** OpenAI direct ONLY when using `gpt-realtime` model (all-in-one STT+LLM+TTS, not available on OpenRouter)
-  - **STT:** Native LiveKit plugins (Deepgram, AssemblyAI, Google, OpenAI Whisper) - each requires direct API key
-  - **TTS:** Native LiveKit plugins (ElevenLabs, Google, Speechify, OpenAI) - each requires direct API key
-  - **No Aggregator:** Unlike OpenRouter for LLMs, STT/TTS have no aggregator - must set up individual accounts
-- **Template-Driven Configuration:** Each AI template in Supabase defines complete voice pipeline
+- **Cost:** **LiveKit Inference unified billing** - All AI providers billed through single LiveKit invoice
+- **AI Provider Architecture (LiveKit Inference):**
+  - **LLM:** OpenAI, Anthropic, Google, DeepSeek, Qwen, Kimi - ALL via LiveKit Inference gateway
+  - **STT:** Deepgram, AssemblyAI, Cartesia, OpenAI Whisper - ALL via LiveKit Inference gateway
+  - **TTS:** ElevenLabs, Cartesia, Inworld, Rime, OpenAI, Google - ALL via LiveKit Inference gateway
+  - **Unified Billing:** Single invoice for all AI services through LiveKit
+  - **Co-located Infrastructure:** AI models run on LiveKit's edge network for lower latency
+  - **String-Based Configuration:** `"provider/model:parameters"` format (e.g., `"elevenlabs/eleven_turbo_v2_5:6aDn1KB0hjpdcocrUkmq"`)
+- **Template-Driven Configuration:** Each AI template in Supabase defines complete voice pipeline via LiveKit Inference
 
 **Key Components:**
 1. **LiveKit Cloud (Managed Services):**
@@ -924,21 +925,27 @@ Built comprehensive runtime configuration UI in Prompt Management portal enablin
    - Executes LangGraph conversation workflow
    - Tools: Lead lookup, calendar booking, knowledge search
 
-3. **Template System (`ai_templates` table):**
-   - STT Configuration: Provider (deepgram), model (nova-2), language
-   - TTS Configuration: Provider (elevenlabs), voice_id, model, speed, stability
-   - LLM Configuration: Provider (openrouter), model (any OpenRouter model), base_url, temperature, max_tokens
-   - **Exception:** Provider (openai) + model (gpt-realtime) for all-in-one mode
-   - VAD Settings: silence_duration_ms, use_turn_detector, threshold
-   - Interruption Settings: allow_interruptions, min_duration, preemptive_generation
-   - Endpointing: min/max delays for turn-taking
+3. **Template System (`ai_templates` table) - LiveKit Inference Format:**
+   - STT Configuration: Provider (deepgram/assemblyai/cartesia), model (nova-2/universal-streaming/ink-whisper), language (en-US → en)
+   - TTS Configuration: Provider (elevenlabs/cartesia/inworld/rime), voice_id (custom voices via `model:voice_id` format), model (eleven_turbo_v2_5/sonic-2)
+   - LLM Configuration: Provider (openai/anthropic/google/deepseek/qwen/kimi), model (gpt-4o/claude-3-5-sonnet/gemini-2.0-flash/deepseek-v3), temperature, max_tokens
+   - **String Format Examples:**
+     - STT: `"deepgram/nova-2:en"` or `"assemblyai/universal-streaming:en"`
+     - TTS: `"elevenlabs/eleven_turbo_v2_5:6aDn1KB0hjpdcocrUkmq"` (Tiffany voice) or `"cartesia/sonic-2:voice_id"`
+     - LLM: `"openai/gpt-4o"` or `"anthropic/claude-3-5-sonnet-20241022"` or `"deepseek/deepseek-v3"`
+   - VAD Settings: silence_duration_ms, vad_threshold, prefix_padding_ms
+   - Turn Detection: EnglishModel with built-in EOU (End of Utterance) for semantic turn detection
+   - Interruption Settings: allow_interruptions, min_duration, resume_false_interruption
+   - Endpointing: min/max delays for turn-taking (0.1s min, 3.0s max recommended)
 
-4. **LangGraph Conversation Flow:**
-   - File: `livekit-agent/workflows/conversation_graph.py`
-   - Nodes: greet → verify → qualify → answer → objections → book → exit
-   - Routers: DB-driven routing logic (`workflows/routers.py`)
-   - State: Managed in `conversation_state` table (multi-call persistence)
-   - Tools: Bound to LLM within graph, not agent-level
+4. **LangGraph Conversation Flow:** ⚠️ **TEMPORARILY REMOVED (NOV 11, 2025)**
+   - **Status:** Removed from active agent to isolate and fix streaming audio issues
+   - **Reason:** LLMAdapter integration was causing "NO SOUND" bug - agent transcribing but not speaking
+   - **Current Mode:** Direct AgentSession with turn-based conversation (no LangGraph orchestration)
+   - **Preserved Files:** `livekit-agent/workflows/conversation_graph.py`, `workflows/routers.py` (for future re-integration)
+   - **Documentation:** `docs/LANGGRAPH_VOICE_ARCHITECTURE_NOV_11_2025.md` - Complete implementation guide
+   - **Next Steps:** Fix LLMAdapter streaming issues, then re-integrate LangGraph for complex routing
+   - **Current Focus:** Basic voice connectivity working first (STT → LLM → TTS pipeline stable)
 
 5. **Conversation State Service:**
    - File: `livekit-agent/services/conversation_state.py`
@@ -962,94 +969,139 @@ LiveKit Dispatch Rule (with metadata)
     ↓
 Northflank Agent Worker picks up job
     ├─ Loads template from Supabase
-    ├─ Initializes STT (Deepgram nova-2)
-    ├─ Initializes TTS (ElevenLabs turbo_v2_5, Tiffany voice)
-    ├─ Initializes LLM (OpenAI gpt-4o) wrapped in LangGraph
+    ├─ Initializes STT via LiveKit Inference (e.g., "deepgram/nova-2:en")
+    ├─ Initializes TTS via LiveKit Inference (e.g., "elevenlabs/eleven_turbo_v2_5:6aDn1KB0hjpdcocrUkmq" - Tiffany voice)
+    ├─ Initializes LLM via LiveKit Inference (e.g., "openai/gpt-4o")
+    ├─ Configures turn detection (EnglishModel with EOU for semantic understanding)
     ├─ Loads dynamic prompt from prompts table
-    └─ Starts AgentSession with all components
+    └─ Starts AgentSession (turn-based conversation, NO LangGraph currently)
     ↓
-LangGraph Workflow Executes
-    ├─ start_call() records conversation_state
-    ├─ Node handlers execute (verify → qualify → answer → book)
-    ├─ Routers read DB for routing decisions
-    ├─ Tools execute (lead lookup, knowledge search, calendar)
-    └─ mark_call_completed() on disconnect
+Turn-Based Conversation Flow (Simplified)
+    ├─ User speaks → STT transcribes → LLM processes → TTS synthesizes → Agent responds
+    ├─ Tools available: lead lookup, knowledge search, calendar booking
+    ├─ Turn detector uses semantic understanding (not just VAD) for natural conversation
+    └─ Session ends on disconnect
     ↓
-Call ends, state persisted for next call
+Call ends, metadata saved to interactions table
 ```
+
+**Benefits of LiveKit Inference Migration (Nov 11, 2025):**
+- ✅ **Unified Billing** - Single invoice for all AI services (STT + LLM + TTS)
+- ✅ **Lower Latency** - Models co-located on LiveKit's edge network
+- ✅ **Custom Voice Support** - ElevenLabs custom voices via string format (Tiffany voice working)
+- ✅ **Flexible Provider Selection** - Easy switching between DeepSeek, Claude, Gemini, etc.
+- ✅ **Official Pricing Transparency** - Clear per-minute costs from LiveKit pricing page
+- ✅ **Simplified Configuration** - String-based model descriptors (no plugin imports)
+- ✅ **Tool/Function Calling Support** - All providers support tools through unified interface
 
 **Benefits of LiveKit Cloud:**
 - ✅ **Zero Infrastructure Management** - No servers, no ops, no DevOps
 - ✅ **Global Edge Network** - Low latency worldwide automatically
-- ✅ **Free Tier** - No base costs, only pay for AI providers
+- ✅ **Free Tier** - No base costs, only pay for AI providers via LiveKit Inference
 - ✅ **Auto-Scaling** - Handles traffic spikes automatically
 - ✅ **Built-in Redundancy** - High availability out of the box
 - ✅ **60% Cost Reduction** - vs self-hosted Fly.io infrastructure
 - ✅ **Template Flexibility** - Switch AI providers via Supabase UI
-- ✅ **Conversation Persistence** - Multi-call state in database
-- ✅ **LangGraph Control** - Complex conversation flows with routing
+- ✅ **Turn Detection with EOU** - Semantic understanding prevents interruptions
 
-**Template Configuration Example:**
+**Template Configuration Example (LiveKit Inference Format):**
 ```json
 {
-  "name": "barbara-standard",
+  "name": "Premium (ElevenLabs + GPT-4o)",
   "stt_provider": "deepgram",
   "stt_model": "nova-2",
   "stt_language": "en-US",
   "tts_provider": "elevenlabs",
   "tts_model": "eleven_turbo_v2_5",
   "tts_voice_id": "6aDn1KB0hjpdcocrUkmq",
-  "tts_speed": 0.85,
-  "tts_stability": 0.5,
-  "llm_provider": "openrouter",
-  "llm_model": "anthropic/claude-3-5-sonnet",
-  "llm_base_url": "https://openrouter.ai/api/v1",
+  "llm_provider": "openai",
+  "llm_model": "gpt-4o",
   "llm_temperature": 0.8,
   "llm_max_tokens": 4096,
+  "vad_threshold": 0.5,
+  "vad_prefix_padding_ms": 300,
   "vad_silence_duration_ms": 500,
-  "use_turn_detector": true,
+  "min_endpointing_delay": 0.1,
+  "max_endpointing_delay": 3.0,
   "allow_interruptions": true,
-  "min_interruption_duration": 0.5
+  "min_interruption_duration": 0.5,
+  "estimated_cost_per_minute": 1.06
 }
 ```
 
-**Alternative for GPT Realtime (all-in-one):**
+**Budget Template (AssemblyAI + Cartesia + DeepSeek):**
 ```json
 {
-  "name": "barbara-realtime",
-  "llm_provider": "openai",
-  "llm_model": "gpt-realtime",
-  "llm_temperature": 0.8,
-  "vad_silence_duration_ms": 500,
-  "use_turn_detector": true,
-  "allow_interruptions": true
+  "name": "Budget Friendly",
+  "stt_provider": "assemblyai",
+  "stt_model": "universal-streaming",
+  "stt_language": "en-US",
+  "tts_provider": "cartesia",
+  "tts_model": "sonic-2",
+  "tts_voice_id": "default",
+  "llm_provider": "deepseek",
+  "llm_model": "deepseek-v3",
+  "llm_temperature": 0.7,
+  "llm_max_tokens": 4096,
+  "estimated_cost_per_minute": 0.08
 }
 ```
-**Note:** When using `gpt-realtime`, STT/TTS config is ignored (model handles all)
 
-**Status:** ✅ **MIGRATED TO LIVEKIT CLOUD (Nov 10, 2025)** 🎉
-- ✅ Agent worker deployed to Northflank
+**Ultra-Fast Template (Nova-3 + ElevenLabs + Gemini Flash):**
+```json
+{
+  "name": "Ultra-Fast (Gemini Flash)",
+  "stt_provider": "deepgram",
+  "stt_model": "nova-3",
+  "stt_language": "en-US",
+  "tts_provider": "elevenlabs",
+  "tts_model": "eleven_turbo_v2_5",
+  "tts_voice_id": "6aDn1KB0hjpdcocrUkmq",
+  "llm_provider": "google",
+  "llm_model": "gemini-2.0-flash",
+  "llm_temperature": 0.7,
+  "llm_max_tokens": 4096,
+  "estimated_cost_per_minute": 0.15
+}
+```
+
+**Status:** ✅ **LIVEKIT INFERENCE MIGRATION COMPLETE (Nov 11, 2025)** 🎉
+- ✅ Agent worker deployed to Northflank with LiveKit Inference integration
 - ✅ LiveKit Cloud dispatch rules configured
-- ✅ Template system operational
-- ✅ LangGraph workflow integrated
-- ✅ Conversation state tracking ready
-- ✅ All self-hosted Fly.io infrastructure removed
-- ✅ ~60% cost reduction achieved
+- ✅ Template system migrated to LiveKit Inference string format
+- ✅ All AI providers now billed through unified LiveKit invoice
+- ✅ Custom ElevenLabs voice (Tiffany) working via string format
+- ✅ Turn detection with EnglishModel EOU for semantic understanding
+- ✅ Supabase schema updated with new providers (DeepSeek, Qwen, Kimi, Cartesia, Inworld, Rime)
+- ✅ Vue portal updated with accurate LiveKit Inference pricing
+- ✅ 4 system presets created: Premium, Budget, Spanish, Ultra-Fast
+- ✅ Database migration applied to update existing templates
+- ⚠️ LangGraph temporarily removed to isolate streaming issues
+- ✅ ~60% infrastructure cost reduction vs self-hosted Fly.io
+
+**Recent Performance Optimizations (Nov 11, 2025):**
+- ✅ **Response Timing:** min_endpointing_delay reduced to 0.1s (from 0.5s default) for faster responses
+- ✅ **Turn Detection:** EnglishModel with unlikely_threshold=0.3 for balanced performance
+- ✅ **Geographic Deployment:** Northflank moved to US West Coast for lower latency to US callers
+- ✅ **Streaming Fix:** Removed LLMAdapter to resolve "no sound" issue, focusing on stable voice pipeline first
 
 **Next Steps:**
-- [ ] Configure LiveKit Cloud dispatch rule metadata (template_id)
-- [ ] Test inbound calls via SignalWire → LiveKit Cloud → Northflank
-- [ ] Implement conversation state database migration
-- [ ] Complete LangGraph routing logic
-- [ ] Test multi-call persistence
-- [ ] Monitor AI provider costs per template
+- [ ] Test full call flow with LiveKit Inference providers
+- [ ] Monitor AI provider costs and latency via LiveKit dashboard
+- [ ] Re-integrate LangGraph after confirming stable streaming
+- [ ] Implement conversation state persistence for multi-call tracking
+- [ ] A/B test different provider combinations (DeepSeek vs Claude, Cartesia vs ElevenLabs)
+- [ ] Configure LiveKit Cloud dispatch rule metadata optimization
 
 **Documentation:**
+- `docs/LANGGRAPH_VOICE_ARCHITECTURE_NOV_11_2025.md` - Complete LangGraph architecture (preserved for future)
 - `CURRENT_ARCHITECTURE.md` - Complete architecture overview
 - `ARCHITECTURE_CLEANUP_NOV_2025.md` - Migration summary
-- `livekit-agent/workflows/conversation_graph.py` - LangGraph implementation
-- `livekit-agent/services/conversation_state.py` - State management
-- `.cursor/plans/lang-6c6bebb4.plan.md` - Complete implementation plan
+- `livekit-agent/agent.py` - Main agent with LiveKit Inference integration
+- `livekit-agent/services/conversation_state.py` - State management (ready for future use)
+- `database/migrations/20251111_add_livekit_inference_providers.sql` - Schema update for new providers
+- `database/migrations/20251111_update_templates_for_livekit_inference.sql` - Template data migration
+- `portal/src/components/AITemplateForm.vue` - Vue form with LiveKit Inference pricing
 
 ---
 
