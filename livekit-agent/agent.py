@@ -274,39 +274,27 @@ async def entrypoint(ctx: JobContext):
     else:
         llm_string = f"{llm_provider}/{llm_model}"
     
-    # TTS: For ElevenLabs, we need to use plugin mode to specify custom voice ID
-    # LiveKit Inference doesn't support custom voice IDs in string format yet
+    # TTS model string - LiveKit Inference supports custom voice IDs
+    # Format: "provider/model:voice_id"
     tts_provider = template.get("tts_provider", "elevenlabs")
     tts_voice_id = template.get("tts_voice_id", "6aDn1KB0hjpdcocrUkmq")
     tts_model = template.get("tts_model", "eleven_turbo_v2_5")
-    tts_speed = template.get("tts_speed", 1.0)
-    tts_stability = template.get("tts_stability", 0.5)
     
-    # Build TTS plugin directly to support custom voice
     if tts_provider == "elevenlabs":
-        from livekit.plugins import elevenlabs
-        voice_settings = elevenlabs.VoiceSettings(
-            stability=tts_stability,
-            similarity_boost=0.75,
-        )
-        tts_plugin = elevenlabs.TTS(
-            voice_id=tts_voice_id, 
-            model=tts_model,
-            voice_settings=voice_settings
-        )
-        logger.info(f"🔊 TTS: ElevenLabs plugin mode - voice={tts_voice_id}, model={tts_model}")
+        tts_string = f"elevenlabs/{tts_model}:{tts_voice_id}"
+        logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
+    elif tts_provider == "cartesia":
+        tts_string = f"cartesia/{tts_model}:{tts_voice_id}"
+        logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
     elif tts_provider == "openai":
-        tts_string = "openai/tts-1"
-        tts_plugin = tts_string
+        tts_string = f"openai/tts-1"
         logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
     elif tts_provider == "google":
-        tts_string = "google/neural2"
-        tts_plugin = tts_string
+        tts_string = f"google/neural2"
         logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
     else:
-        from livekit.plugins import elevenlabs
-        tts_plugin = elevenlabs.TTS(voice_id=tts_voice_id, model="eleven_turbo_v2_5")
-        logger.info(f"🔊 TTS: ElevenLabs fallback - voice={tts_voice_id}")
+        tts_string = f"elevenlabs/eleven_turbo_v2_5:{tts_voice_id}"
+        logger.info(f"🔊 TTS: {tts_string} fallback (LiveKit Inference)")
     
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
@@ -344,19 +332,18 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
     
-    # Create session with LiveKit Inference + custom ElevenLabs voice
-    # STT/LLM via LiveKit Inference (string format) for unified billing
-    # TTS via plugin mode to support custom ElevenLabs voice ID
+    # Create session with LiveKit Inference (full unified billing)
+    # Format: STT="provider/model", LLM="provider/model", TTS="provider/model:voice_id"
     min_endpointing_delay = 0.1  # Very aggressive - 100ms
     max_endpointing_delay = 3.0  # Prevent lengthy delays
     
     logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
-    logger.info(f"🚀 Using LiveKit Inference (STT/LLM) + Native Plugin (TTS)")
+    logger.info(f"🚀 Full LiveKit Inference mode - unified billing for STT/LLM/TTS")
     
     session = AgentSession(
         stt=stt_string,  # LiveKit Inference string format
         llm=llm_string,  # LiveKit Inference string format
-        tts=tts_plugin,  # Plugin object for custom voice support
+        tts=tts_string,  # LiveKit Inference string format with voice ID
         vad=ctx.proc.userdata["vad"],
         turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
         # Endpointing timing - faster response
