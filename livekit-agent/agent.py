@@ -256,11 +256,20 @@ async def entrypoint(ctx: JobContext):
         }
     )
     
-    # Create LangGraph workflow with lead context injection
-    conversation_graph = create_conversation_graph(base_llm, all_tools, lead_context=lead_context)
+    # TEMPORARY TEST: Use simple LLM instead of LangGraph to test audio
+    # This bypasses the complex multi-node workflow to verify if STT->LLM->TTS works
+    USE_SIMPLE_LLM_TEST = True  # Set to False to re-enable LangGraph
     
-    # Wrap graph in LiveKit LLMAdapter (verified parameter: graph only)
-    llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
+    if USE_SIMPLE_LLM_TEST:
+        logger.info("🧪 TEST MODE: Using simple LLM (bypassing LangGraph)")
+        # Use the base LLM directly with LiveKit's LangChain adapter
+        llm_plugin = livekit_langchain.LLM(llm=base_llm)
+    else:
+        # Create LangGraph workflow with lead context injection
+        conversation_graph = create_conversation_graph(base_llm, all_tools, lead_context=lead_context)
+        
+        # Wrap graph in LiveKit LLMAdapter (verified parameter: graph only)
+        llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
         
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
