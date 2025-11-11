@@ -268,17 +268,19 @@ async def entrypoint(ctx: JobContext):
     # Load TurnDetector (ALWAYS enabled - it's our sole source of truth)
     turn_detector = None
     turn_detector_model = template.get("turn_detector_model", "english")
-    turn_detector_threshold = template.get("turn_detector_threshold")  # Optional override
+    # CRITICAL: Default threshold (0.5) is TOO SLOW (~6 seconds)
+    # Override to 0.2 for faster, more natural conversation
+    turn_detector_threshold = template.get("turn_detector_threshold", 0.2)  # Aggressive by default
     
     try:
         if turn_detector_model == "multilingual":
             from livekit.plugins.turn_detector.multilingual import MultilingualModel
             turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold})")
         else:
             from livekit.plugins.turn_detector.english import EnglishModel
             turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
+            logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold})")
     except Exception as e:
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e}). Calls will not work properly!")
         # Don't fall back - this is essential for the new architecture
