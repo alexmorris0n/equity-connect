@@ -91,8 +91,9 @@ class EquityConnectAgent(Agent):
             phone_number=self.phone
         )
         
-        # Prepend context to node prompt
-        full_prompt = context + "\n\n" + node_prompt
+        # Combine: Theme → Call Context → Node Prompt
+        # (Theme is already included in node_prompt from load_node_prompt)
+        full_prompt = f"{context}\n\n{node_prompt}"
         
         self.current_node = node_name
         

@@ -11,6 +11,57 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def load_theme(vertical: str = "reverse_mortgage") -> str:
+    """Load universal theme prompt for a vertical from database
+    
+    Theme defines Barbara's core personality across ALL nodes.
+    Applied before every node prompt for consistency.
+    
+    Args:
+        vertical: Business vertical (default: "reverse_mortgage")
+    
+    Returns:
+        Theme prompt content defining core personality
+    """
+    # TRY DATABASE FIRST
+    try:
+        from services.supabase import get_supabase_client
+        
+        sb = get_supabase_client()
+        result = sb.table('theme_prompts').select('content').eq('vertical', vertical).eq('is_active', True).execute()
+        
+        if result.data and len(result.data) > 0:
+            theme = result.data[0].get('content', '')
+            if theme:
+                logger.info(f"✅ Loaded theme for {vertical}: {len(theme)} chars")
+                return theme
+            else:
+                logger.warning(f"Database returned empty theme for {vertical}, using fallback")
+        else:
+            logger.warning(f"No theme found in database for {vertical}, using fallback")
+    
+    except Exception as e:
+        logger.warning(f"Failed to load theme from database: {e}, using fallback")
+    
+    # FALLBACK: Basic theme if database fails
+    fallback_theme = """# Barbara - Core Personality
+
+You are Barbara, a warm and professional voice assistant.
+
+## Speaking Style
+- Brief, natural responses
+- Simple language, no jargon
+- Patient with seniors
+
+## Core Rules
+- Never pressure
+- Use tools for facts
+- Listen more than talk
+"""
+    logger.info(f"Using fallback theme for {vertical}: {len(fallback_theme)} chars")
+    return fallback_theme
+
+
 def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
     """Load node prompt from database or fallback to markdown file
     
@@ -48,9 +99,15 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
                 prompt_parts.append(f"## Instructions\n{content['instructions']}")
             
             if prompt_parts:
-                prompt = "\n".join(prompt_parts)
+                node_prompt = "\n".join(prompt_parts)
                 logger.info(f"✅ Loaded {node_name} from database (vertical={vertical})")
-                return prompt
+                
+                # Load theme and combine: Theme → Node
+                theme = load_theme(vertical)
+                combined_prompt = f"{theme}\n\n---\n\n{node_prompt}"
+                
+                logger.info(f"Combined theme ({len(theme)} chars) + node ({len(node_prompt)} chars) = {len(combined_prompt)} chars")
+                return combined_prompt
             else:
                 # Database returned a row but content is empty
                 logger.warning(f"Database returned empty content for {node_name}/{vertical}, falling back to file")
@@ -66,9 +123,14 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
     
     try:
         with open(prompt_path, 'r') as f:
-            prompt = f.read()
+            node_prompt = f.read()
             logger.info(f"✅ Loaded {node_name} from file: {prompt_path}")
-            return prompt
+            
+            # Load theme and combine
+            theme = load_theme(vertical)
+            combined_prompt = f"{theme}\n\n---\n\n{node_prompt}"
+            
+            return combined_prompt
     except FileNotFoundError:
         logger.warning(f"Prompt file not found: {prompt_path}")
         return f"You are in the {node_name} phase. Continue naturally."

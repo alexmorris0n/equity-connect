@@ -295,6 +295,65 @@ async function saveCurrentNode() {
 
 **Key Tables:**
 
+#### Theme Prompts System
+
+BarbGraph uses a two-layer prompt system:
+
+1. **Theme Layer (Universal):** Defines Barbara's core personality for the entire vertical
+2. **Node Layer (Specific):** Defines actions and goals for each conversation stage
+
+**Why Separate Themes?**
+- Eliminates duplication (personality defined once, not 8 times)
+- Easy to maintain (update personality in one place)
+- Consistency (all nodes use same core personality)
+- Flexibility (different verticals can have different personalities)
+
+**Theme Prompts Table:**
+
+```sql
+CREATE TABLE theme_prompts (
+    id UUID PRIMARY KEY,
+    vertical TEXT UNIQUE NOT NULL,
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+);
+```
+
+**Prompt Injection Order:**
+
+```
+Theme (from theme_prompts)
+  ↓
+Call Context (injected by agent)
+  ↓
+Node Prompt (from prompt_versions)
+  ↓
+Final Combined Prompt
+```
+
+**Example Combined Prompt:**
+
+```
+# Barbara - Core Personality
+[theme content here]
+
+---
+
+=== CALL CONTEXT ===
+Call Type: inbound-qualified
+...
+
+---
+
+## Role
+[node-specific role]
+
+## Instructions
+[node-specific instructions]
+```
+
 #### `prompts` Table
 Stores metadata for each conversation node prompt.
 

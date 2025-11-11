@@ -1,511 +1,528 @@
-<!-- b04c6f3c-f5d3-4bd3-b900-675c9a797325 281d5906-20d7-4e20-b223-01f42e9c3e9f -->
-# Vue Portal: Node-Based Prompt Editor (SIMPLIFIED)
+<!-- eeceeffe-e77b-480b-9c32-2fcd153a3b4f c44b944d-6608-4292-bcd2-9366e379dda1 -->
+# Theme Prompt System Implementation Plan
 
-## Architecture
+## Context
 
-- User picks a **vertical** (reverse_mortgage, solar, hvac)
-- UI shows **7 node tabs** (greet, verify, qualify, answer, objections, book, exit)
-- Each node has one generic prompt that works for all call types
-- Plain HTML + Tailwind CSS (no Naive UI)
+Currently, each BarbGraph node prompt contains its own personality section. This creates duplication and inconsistency. We need a universal "theme" that defines Barbara's core personality ONCE and applies across all nodes.
+
+**User Requirements (confirmed):**
+
+- 1b: Store themes in Supabase database
+- 2b: Separate theme per vertical (reverse_mortgage, solar, hvac)
+- 3b: Injection order: Theme → Call Context → Node Prompt
+- 4b: Remove personality sections from existing node prompts (avoid duplication)
+- 5b: Create test script to simulate loading
 
 ---
 
-## Step 1: Add Vertical Selector
+## Step 1: Create Database Migration for Themes Table
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `database/migrations/20251111_add_theme_prompts.sql`
 
-**Location:** At the top of the main content area (around line 10-50)
+**What to create:**
 
-**Action:** Replace or add before the existing prompts list:
+```sql
+-- Add themes table for vertical-specific personality definitions
+CREATE TABLE IF NOT EXISTS theme_prompts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vertical TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-```vue
-<!-- Vertical Selector -->
-<div class="mb-6">
-  <label class="block text-sm font-medium text-gray-700 mb-2">
-    Select Vertical:
-  </label>
-  <select
-    v-model="selectedVertical"
-    class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500"
-  >
-    <option value="">-- Choose a vertical --</option>
-    <option value="reverse_mortgage">Reverse Mortgage</option>
-    <option value="solar">Solar</option>
-    <option value="hvac">HVAC</option>
-  </select>
-</div>
+COMMENT ON TABLE theme_prompts IS 'Universal personality themes for each vertical (reverse_mortgage, solar, hvac). Applied to ALL nodes in that vertical.';
+COMMENT ON COLUMN theme_prompts.vertical IS 'Business vertical: reverse_mortgage, solar, hvac';
+COMMENT ON COLUMN theme_prompts.content IS 'Core personality prompt applied before every node prompt';
+
+-- Insert theme for reverse_mortgage vertical
+INSERT INTO theme_prompts (vertical, content)
+VALUES (
+    'reverse_mortgage',
+    E'# Barbara - Core Personality
+
+You are Barbara, a warm and professional voice assistant helping homeowners.
+
+## Speaking Style
+- Brief responses (1-2 sentences typical)
+- Natural conversational tone
+- Simple language, no jargon
+- Warm but professional
+
+## Core Rules
+- Never pressure or rush
+- Be patient with seniors (clear speech, willing to repeat)
+- Use tools for facts, don''t guess
+- If unsure, offer to connect with expert
+- Listen more than talk
+- Adapt to their pace
+
+## Response Format
+- Short sentences
+- One idea per sentence
+- Pause for responses
+- No info-dumping
+
+## Values
+- Honesty over salesmanship
+- Education over persuasion
+- Clarity over cleverness
+- Their comfort over goals'
+) ON CONFLICT (vertical) DO UPDATE 
+SET content = EXCLUDED.content, updated_at = NOW();
 ```
 
+**Why:** Stores theme prompts in database (consistent with node prompts architecture). One theme per vertical ensures personality consistency across all nodes.
+
 ---
 
-## Step 2: Add Node Tab Navigation
+## Step 2: Add Theme Loading Function to prompt_loader.py
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `livekit-agent/services/prompt_loader.py`
 
-**Location:** After the vertical selector, before the editor
+**Add this function BEFORE load_node_prompt:**
 
-**Action:** Add this HTML:
+```python
+def load_theme(vertical: str = "reverse_mortgage") -> str:
+    """Load universal theme prompt for a vertical from database
+    
+    Theme defines Barbara's core personality across ALL nodes.
+    Applied before every node prompt for consistency.
+    
+    Args:
+        vertical: Business vertical (default: "reverse_mortgage")
+    
+    Returns:
+        Theme prompt content defining core personality
+    """
+    # TRY DATABASE FIRST
+    try:
+        from services.supabase import get_supabase_client
+        
+        sb = get_supabase_client()
+        result = sb.table('theme_prompts').select('content').eq('vertical', vertical).eq('is_active', True).execute()
+        
+        if result.data and len(result.data) > 0:
+            theme = result.data[0].get('content', '')
+            if theme:
+                logger.info(f"✅ Loaded theme for {vertical}: {len(theme)} chars")
+                return theme
+            else:
+                logger.warning(f"Database returned empty theme for {vertical}, using fallback")
+        else:
+            logger.warning(f"No theme found in database for {vertical}, using fallback")
+    
+    except Exception as e:
+        logger.warning(f"Failed to load theme from database: {e}, using fallback")
+    
+    # FALLBACK: Basic theme if database fails
+    fallback_theme = """# Barbara - Core Personality
 
-```vue
-<!-- Node Tabs (only show if vertical is selected) -->
-<div v-if="selectedVertical" class="mb-6 bg-indigo-50 rounded-lg p-4">
-  <div class="flex items-center gap-2 overflow-x-auto pb-2">
-    <button
-      v-for="node in nodeList"
-      :key="node.name"
-      @click="selectedNode = node.name"
-      :class="[
-        'px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap',
-        selectedNode === node.name
-          ? 'bg-indigo-600 text-white shadow-md'
-          : 'bg-white text-gray-700 hover:bg-indigo-100'
-      ]"
-    >
-      {{ node.label }}
-    </button>
-  </div>
-  <div class="mt-3 text-sm text-gray-600 italic">
-    <strong>{{ selectedNode }}:</strong> {{ getCurrentNodeDescription() }}
-  </div>
-</div>
+You are Barbara, a warm and professional voice assistant.
+
+## Speaking Style
+- Brief, natural responses
+- Simple language, no jargon
+- Patient with seniors
+
+## Core Rules
+- Never pressure
+- Use tools for facts
+- Listen more than talk
+"""
+    logger.info(f"Using fallback theme for {vertical}: {len(fallback_theme)} chars")
+    return fallback_theme
 ```
 
+**Why:** Separates theme loading logic. Database-first with fallback ensures robustness.
+
 ---
 
-## Step 3: Add Data Variables
+## Step 3: Update load_node_prompt to Combine Theme + Node
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `livekit-agent/services/prompt_loader.py`
 
-**Location:** In `<script setup>`, near other ref declarations (around line 1810)
+**Modify the load_node_prompt function:**
 
-**Action:** Add these variables:
+Find the section where it builds the prompt (around line 50):
 
-```javascript
-// Vertical and node selection
-const selectedVertical = ref('')
-const selectedNode = ref('greet')
-const nodePrompts = ref({}) // { vertical: { greet: {...}, verify: {...}, ... } }
-const currentNodePrompt = ref(null)
-
-// Node configuration
-const nodeList = [
-  { name: 'greet', label: '1. Greet', desc: 'Initial greeting when call starts' },
-  { name: 'verify', label: '2. Verify', desc: 'Verify caller identity and get lead context' },
-  { name: 'qualify', label: '3. Qualify', desc: 'Ask qualifying questions to assess fit' },
-  { name: 'answer', label: '4. Answer', desc: 'Answer questions about the service' },
-  { name: 'objections', label: '5. Objections', desc: 'Handle objections and concerns' },
-  { name: 'book', label: '6. Book', desc: 'Schedule an appointment on the calendar' },
-  { name: 'exit', label: '7. Exit', desc: 'Say goodbye and end the call' }
-]
+```python
+if prompt_parts:
+    prompt = "\n".join(prompt_parts)
+    logger.info(f"✅ Loaded {node_name} from database (vertical={vertical})")
+    return prompt
 ```
 
----
+**Replace with:**
 
-## Step 4: Add Helper Function
-
-**File:** `portal/src/views/admin/PromptManagement.vue`
-
-**Location:** In the functions section (around line 2000+)
-
-**Action:** Add this function:
-
-```javascript
-function getCurrentNodeDescription() {
-  const node = nodeList.find(n => n.name === selectedNode.value)
-  return node ? node.desc : ''
-}
+```python
+if prompt_parts:
+    node_prompt = "\n".join(prompt_parts)
+    logger.info(f"✅ Loaded {node_name} from database (vertical={vertical})")
+    
+    # Load theme and combine: Theme → Node
+    theme = load_theme(vertical)
+    combined_prompt = f"{theme}\n\n---\n\n{node_prompt}"
+    
+    logger.info(f"Combined theme ({len(theme)} chars) + node ({len(node_prompt)} chars) = {len(combined_prompt)} chars")
+    return combined_prompt
 ```
 
----
+**Also update the file fallback section** (around line 70):
 
-## Step 5: Load Node Prompts From Database
-
-**File:** `portal/src/views/admin/PromptManagement.vue`
-
-**Location:** Find or create a `loadNodePrompts()` function
-
-**Action:** Add this function:
-
-```javascript
-async function loadNodePrompts() {
-  if (!selectedVertical.value) return
-  
-  loading.value = true
-  try {
-    // Query the active_node_prompts view (created in Plan 2)
-    const { data, error } = await supabase
-      .from('active_node_prompts')
-      .select('*')
-      .eq('vertical', selectedVertical.value)
-    
-    if (error) throw error
-    
-    // Group by node_name
-    const grouped = {}
-    for (const np of (data || [])) {
-      grouped[np.node_name] = {
-        id: np.id,
-        vertical: np.vertical,
-        node_name: np.node_name,
-        name: np.name,
-        version_number: np.version_number,
-        content: np.content // JSONB object with role, personality, instructions, tools
-      }
-    }
-    
-    nodePrompts.value[selectedVertical.value] = grouped
-    
-    // Load the first node (greet)
-    selectedNode.value = 'greet'
-    loadCurrentNode()
-    
-  } catch (error) {
-    console.error('Error loading node prompts:', error)
-    message.error('Failed to load node prompts: ' + error.message)
-  } finally {
-    loading.value = false
-  }
-}
+```python
+try:
+    with open(prompt_path, 'r') as f:
+        node_prompt = f.read()
+        logger.info(f"✅ Loaded {node_name} from file: {prompt_path}")
+        
+        # Load theme and combine
+        theme = load_theme(vertical)
+        combined_prompt = f"{theme}\n\n---\n\n{node_prompt}"
+        
+        return combined_prompt
 ```
 
+**Why:** Ensures theme is ALWAYS prepended to node prompt, whether from database or file. Separator `---` clearly delineates theme from node.
+
 ---
 
-## Step 6: Watch For Vertical Changes
+## Step 4: Update agent.py Prompt Injection Order
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `livekit-agent/agent.py`
 
-**Location:** In the watchers section (around line 6400)
+**Find the load_node method** (around line 115):
 
-**Action:** Add this watcher:
+Current code:
 
-```javascript
-// Load node prompts when vertical changes
-watch(selectedVertical, (newVertical) => {
-  if (!newVertical) return
-  
-  // Load node prompts for this vertical
-  if (!nodePrompts.value[newVertical]) {
-    loadNodePrompts()
-  } else {
-    // Already loaded, just switch to first node
-    selectedNode.value = 'greet'
-    loadCurrentNode()
-  }
-})
+```python
+# Prepend context to node prompt
+full_prompt = context + "\n\n" + node_prompt
 ```
 
----
+**Replace with:**
 
-## Step 7: Watch For Node Changes
-
-**File:** `portal/src/views/admin/PromptManagement.vue`
-
-**Location:** In the watchers section
-
-**Action:** Add this watcher:
-
-```javascript
-// Load node content when node changes
-watch(selectedNode, () => {
-  loadCurrentNode()
-})
+```python
+# Combine: Theme → Call Context → Node Prompt
+# (Theme is already included in node_prompt from load_node_prompt)
+full_prompt = f"{context}\n\n{node_prompt}"
 ```
 
+**Why:** Maintains correct injection order: Theme (embedded in node_prompt) → Call Context → Node Prompt. No code change needed since theme is already in node_prompt.
+
 ---
 
-## Step 8: Load Node Content Function
+## Step 5: Create Database Migration to Strip Personality from Nodes
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `database/migrations/20251111_strip_personality_from_nodes.sql`
 
-**Location:** Add near other functions
+**What to create:**
 
-**Action:** Add this function:
+```sql
+-- Remove personality sections from node prompts to avoid duplication with theme
+-- Personality is now defined ONCE in theme_prompts, not in each node
 
-```javascript
-function loadCurrentNode() {
-  if (!selectedVertical.value || !selectedNode.value) return
-  
-  const np = nodePrompts.value[selectedVertical.value]?.[selectedNode.value]
-  
-  if (np && np.content) {
-    // Node exists - load its content from JSONB
-    currentNodePrompt.value = np
-    
-    // Extract fields from JSONB content object
-    const content = np.content
-    draftContent.value = {
-      role: content.role || '',
-      personality: content.personality || '',
-      instructions: content.instructions || '',
-      tools: Array.isArray(content.tools) ? content.tools.join(', ') : (content.tools || '')
-    }
-  } else {
-    // Node doesn't exist - create empty template
-    currentNodePrompt.value = null
-    draftContent.value = {
-      role: '',
-      personality: '',
-      instructions: '',
-      tools: ''
-    }
-  }
-  
-  // Update the editor UI
-  nextTick(() => {
-    updateAllTextareas()
-  })
-}
+DO $$
+DECLARE
+    node_record RECORD;
+    updated_content JSONB;
+BEGIN
+    -- Loop through all active reverse_mortgage node prompts
+    FOR node_record IN 
+        SELECT p.id, p.node_name, pv.id as version_id, pv.content
+        FROM prompts p
+        JOIN prompt_versions pv ON p.id = pv.prompt_id AND p.current_version = pv.version_number
+        WHERE p.vertical = 'reverse_mortgage' AND p.is_active = true AND pv.is_active = true
+    LOOP
+        -- Remove 'personality' key from JSONB content
+        updated_content := node_record.content - 'personality';
+        
+        -- Update the prompt_version
+        UPDATE prompt_versions
+        SET content = updated_content,
+            change_summary = 'Removed personality (now in theme_prompts)',
+            updated_at = NOW()
+        WHERE id = node_record.version_id;
+        
+        RAISE NOTICE 'Stripped personality from node: %', node_record.node_name;
+    END LOOP;
+END $$;
+
+-- Refresh active_node_prompts view if it exists
+DO $$ 
+BEGIN 
+    IF EXISTS (
+        SELECT 1 FROM pg_matviews 
+        WHERE schemaname = 'public' AND matviewname = 'active_node_prompts'
+    ) THEN
+        REFRESH MATERIALIZED VIEW active_node_prompts;
+    END IF;
+END $$;
 ```
 
+**Why:** Removes duplication. Personality is now defined once in theme, not in every node.
+
 ---
 
-## Step 9: Save Node Prompt Function
+## Step 6: Create Test Script
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `livekit-agent/tests/test_theme_loading.py`
 
-**Location:** Add near other save functions
+**What to create:**
 
-**Action:** Add this function:
+```python
+"""Test script for theme prompt loading system"""
+import sys
+import os
 
-```javascript
-async function saveCurrentNode() {
-  if (!selectedVertical.value || !selectedNode.value) {
-    message.error('No vertical or node selected')
-    return
-  }
-  
-  try {
-    saving.value = true
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from services.prompt_loader import load_theme, load_node_prompt
+
+def test_theme_loading():
+    print("\n" + "="*60)
+    print("THEME LOADING TEST")
+    print("="*60)
     
-    // Build JSONB content object
-    const contentObj = {
-      role: draftContent.value.role || '',
-      personality: draftContent.value.personality || '',
-      instructions: draftContent.value.instructions || '',
-      tools: draftContent.value.tools ? draftContent.value.tools.split(',').map(t => t.trim()) : []
-    }
+    # Test 1: Load theme for reverse_mortgage
+    print("\n[TEST 1] Loading theme for reverse_mortgage vertical...")
+    theme = load_theme("reverse_mortgage")
+    print(f"✅ Theme loaded: {len(theme)} characters")
+    print(f"\nFirst 200 chars:\n{theme[:200]}...")
     
-    // Check if this node already exists
-    const existingNode = currentNodePrompt.value
+    # Test 2: Load node prompt (should include theme)
+    print("\n[TEST 2] Loading greet node (should include theme)...")
+    greet_prompt = load_node_prompt("greet", "reverse_mortgage")
+    print(f"✅ Greet prompt loaded: {len(greet_prompt)} characters")
     
-    if (existingNode) {
-      // UPDATE existing prompt version
-      // Increment version number and create new version
-      const newVersionNumber = existingNode.version_number + 1
-      
-      const { error: versionError } = await supabase
-        .from('prompt_versions')
-        .insert({
-          prompt_id: existingNode.id,
-          version_number: newVersionNumber,
-          content: contentObj,
-          is_active: true,
-          is_draft: false,
-          created_by: 'portal',
-          change_summary: `Updated ${selectedNode.value} node from Vue portal`
-        })
-      
-      if (versionError) throw versionError
-      
-      // Deactivate old version
-      await supabase
-        .from('prompt_versions')
-        .update({ is_active: false })
-        .eq('prompt_id', existingNode.id)
-        .eq('version_number', existingNode.version_number)
-      
-      // Update prompt current_version
-      await supabase
-        .from('prompts')
-        .update({ current_version: newVersionNumber })
-        .eq('id', existingNode.id)
-      
-    } else {
-      // INSERT new prompt + version
-      // First create the prompt record
-      const { data: newPrompt, error: promptError } = await supabase
-        .from('prompts')
-        .insert({
-          name: selectedNode.value.charAt(0).toUpperCase() + selectedNode.value.slice(1),
-          description: `${selectedNode.value} node for ${selectedVertical.value}`,
-          vertical: selectedVertical.value,
-          node_name: selectedNode.value,
-          current_version: 1,
-          is_active: true
-        })
-        .select()
-        .single()
-      
-      if (promptError) throw promptError
-      
-      // Then create the first version
-      const { error: versionError } = await supabase
-        .from('prompt_versions')
-        .insert({
-          prompt_id: newPrompt.id,
-          version_number: 1,
-          content: contentObj,
-          is_active: true,
-          is_draft: false,
-          created_by: 'portal',
-          change_summary: `Created ${selectedNode.value} node from Vue portal`
-        })
-      
-      if (versionError) throw versionError
-      
-      // Update local cache
-      if (!nodePrompts.value[selectedVertical.value]) {
-        nodePrompts.value[selectedVertical.value] = {}
-      }
-      nodePrompts.value[selectedVertical.value][selectedNode.value] = {
-        id: newPrompt.id,
-        vertical: selectedVertical.value,
-        node_name: selectedNode.value,
-        name: newPrompt.name,
-        version_number: 1,
-        content: contentObj
-      }
-      currentNodePrompt.value = nodePrompts.value[selectedVertical.value][selectedNode.value]
-    }
+    # Test 3: Verify theme is in combined prompt
+    print("\n[TEST 3] Verifying theme is included...")
+    if "Barbara - Core Personality" in greet_prompt:
+        print("✅ Theme found in combined prompt")
+    else:
+        print("❌ Theme NOT found in combined prompt")
+        return False
     
-    hasChanges.value = false
-    message.success(`Node "${selectedNode.value}" saved for ${selectedVertical.value}`)
+    # Test 4: Check structure
+    print("\n[TEST 4] Checking prompt structure...")
+    parts = greet_prompt.split("---")
+    if len(parts) >= 2:
+        print(f"✅ Prompt correctly separated into {len(parts)} parts (theme, node)")
+        print(f"   - Part 1 (theme): {len(parts[0])} chars")
+        print(f"   - Part 2 (node): {len(parts[1])} chars")
+    else:
+        print("❌ Prompt structure incorrect")
+        return False
     
-    // Reload to get latest version
-    await loadNodePrompts()
-    
-  } catch (error) {
-    console.error('Error saving node:', error)
-    message.error('Failed to save node: ' + error.message)
-  } finally {
-    saving.value = false
-  }
-}
+    print("\n" + "="*60)
+    print("ALL TESTS PASSED ✅")
+    print("="*60 + "\n")
+    return True
+
+if __name__ == "__main__":
+    test_theme_loading()
 ```
 
----
+**How to run:**
 
-## Step 10: Update Save Button
-
-**File:** `portal/src/views/admin/PromptManagement.vue`
-
-**Location:** Find the save button in the editor
-
-**Action:** Replace with this:
-
-```vue
-<button
-  @click="saveCurrentNode"
-  :disabled="!hasChanges || saving || !selectedVertical"
-  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
->
-  {{ saving ? 'Saving...' : 'Save Node' }}
-</button>
+```bash
+cd livekit-agent
+python tests/test_theme_loading.py
 ```
 
+**Why:** Verifies theme loading works correctly without needing a live call.
+
 ---
 
-## Step 11: Add CSS Styles
+## Step 7: Update Documentation
 
-**File:** `portal/src/views/admin/PromptManagement.vue`
+**File:** `BARBGRAPH_COMPREHENSIVE_GUIDE.md`
 
-**Location:** In the `<style scoped>` section at the bottom
+**Find the section about prompts** (search for "Component 2.1: Database Schema")
 
-**Action:** Add these styles:
+**Add this subsection BEFORE the prompts table section:**
 
-```css
-/* Tailwind fallback styles */
-.mb-6 { margin-bottom: 1.5rem; }
-.mb-2 { margin-bottom: 0.5rem; }
-.block { display: block; }
-.text-sm { font-size: 0.875rem; }
-.font-medium { font-weight: 500; }
-.text-gray-700 { color: rgb(55 65 81); }
-.w-full { width: 100%; }
-.px-4 { padding-left: 1rem; padding-right: 1rem; }
-.py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-.border { border-width: 1px; }
-.border-gray-300 { border-color: rgb(209 213 219); }
-.rounded-md { border-radius: 0.375rem; }
-.rounded-lg { border-radius: 0.5rem; }
-.bg-indigo-50 { background-color: rgb(238 242 255); }
-.bg-indigo-600 { background-color: rgb(79 70 229); }
-.bg-white { background-color: white; }
-.text-white { color: white; }
-.text-gray-600 { color: rgb(75 85 99); }
-.flex { display: flex; }
-.items-center { align-items: center; }
-.gap-2 { gap: 0.5rem; }
-.overflow-x-auto { overflow-x: auto; }
-.pb-2 { padding-bottom: 0.5rem; }
-.p-4 { padding: 1rem; }
-.mt-3 { margin-top: 0.75rem; }
-.whitespace-nowrap { white-space: nowrap; }
-.shadow-md { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-.hover\:bg-indigo-100:hover { background-color: rgb(224 231 255); }
-.hover\:bg-indigo-700:hover { background-color: rgb(67 56 202); }
-.transition { transition: all 0.2s; }
-.italic { font-style: italic; }
-.disabled\:opacity-50:disabled { opacity: 0.5; }
-.disabled\:cursor-not-allowed:disabled { cursor: not-allowed; }
+````markdown
+#### Theme Prompts System
+
+BarbGraph uses a two-layer prompt system:
+
+1. **Theme Layer (Universal):** Defines Barbara's core personality for the entire vertical
+2. **Node Layer (Specific):** Defines actions and goals for each conversation stage
+
+**Why Separate Themes?**
+- Eliminates duplication (personality defined once, not 8 times)
+- Easy to maintain (update personality in one place)
+- Consistency (all nodes use same core personality)
+- Flexibility (different verticals can have different personalities)
+
+**Theme Prompts Table:**
+
+```sql
+CREATE TABLE theme_prompts (
+    id UUID PRIMARY KEY,
+    vertical TEXT UNIQUE NOT NULL,
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ
+);
+````
+
+**Prompt Injection Order:**
+
+```
+Theme (from theme_prompts)
+  ↓
+Call Context (injected by agent)
+  ↓
+Node Prompt (from prompt_versions)
+  ↓
+Final Combined Prompt
 ```
 
----
+**Example Combined Prompt:**
 
-## Testing Steps
-
-1. Open PromptManagement.vue in browser
-2. Select "Reverse Mortgage" from vertical dropdown
-3. Verify 7 node tabs appear (1. Greet through 7. Exit)
-4. Click "1. Greet" tab
-5. Verify editor shows content with these fields:
-   - **Role:** "You are Barbara, a warm and helpful reverse mortgage assistant."
-   - **Personality:** "Brief, friendly, natural conversational style..."
-   - **Instructions:** "Warmly greet the caller..."
-   - **Tools:** (empty for greet)
-6. Edit the greet node content in the editor
-7. Click "Save Node" button
-8. Check Supabase `prompts` table:
-   - Should see row with `vertical='reverse_mortgage'` and `node_name='greet'`
-9. Check Supabase `prompt_versions` table:
-   - Should see new version with incremented `version_number`
-10. Switch to "2. Verify" tab
-11. Verify editor shows different content (verify_caller_identity tool)
-12. Reload page and verify content persists
+```
+# Barbara - Core Personality
+[theme content here]
 
 ---
 
-## Key Differences From Old Plan
-
-- ✅ **Uses `prompts` + `prompt_versions` tables** - not `node_prompts`
-- ✅ **JSONB content structure** - role, personality, instructions, tools
-- ✅ **Version control** - creates new version on each save
-- ✅ **Queries `active_node_prompts` view** - created in Plan 2
-- ✅ **No call_type selector** - just vertical
-- ✅ **7 prompts per vertical** - not 7 × call_types
-- ✅ **Context injection happens in agent** - not in UI
+=== CALL CONTEXT ===
+Call Type: inbound-qualified
+...
 
 ---
 
-## Bridge From Plan 2
+## Role
+[node-specific role]
 
-Plan 2 created:
-- `prompts` table with `vertical` + `node_name` columns
-- `prompt_versions` table with JSONB `content`
-- `active_node_prompts` view for easy queries
-- `get_node_prompt(vertical, node_name)` function
-- 7 prompts for `reverse_mortgage` vertical
+## Instructions
+[node-specific instructions]
+```
+````
 
-Plan 3 uses:
-- `active_node_prompts` view to load data
-- `prompts` + `prompt_versions` tables to save
-- Same JSONB structure (role, personality, instructions, tools)
-- Same vertical + node_name approach
-
-**No gaps!** Plan 3 works directly with Plan 2's database structure.
+**Why:** Documents the two-layer architecture for future developers.
 
 ---
 
-## Files Modified
+## Step 8: Apply Migrations in Correct Order
 
-- `portal/src/views/admin/PromptManagement.vue` (all changes in one file)
+**Run in Supabase SQL Editor (in this order):**
+
+1. `database/migrations/20251111_add_theme_prompts.sql`
+2. `database/migrations/20251111_strip_personality_from_nodes.sql`
+
+**Why:** Creates theme table first, then removes duplicate personality from nodes.
+
+---
+
+## Step 9: Test Everything
+
+**Steps:**
+
+1. Run test script:
+   ```bash
+   cd livekit-agent
+   python tests/test_theme_loading.py
+   ```
+
+2. Check logs for theme loading messages:
+   - "Loaded theme for reverse_mortgage: XXX chars"
+   - "Combined theme (XXX chars) + node (XXX chars) = XXX chars"
+
+3. Verify in Supabase:
+   ```sql
+   -- Check theme exists
+   SELECT * FROM theme_prompts WHERE vertical = 'reverse_mortgage';
+   
+   -- Check nodes no longer have personality key
+   SELECT p.node_name, pv.content->'personality' as personality
+   FROM prompts p
+   JOIN prompt_versions pv ON p.id = pv.prompt_id
+   WHERE p.vertical = 'reverse_mortgage' AND p.is_active = true;
+   -- Should return NULL for personality column
+   ```
+
+**Why:** Comprehensive testing ensures system works before deployment.
+
+---
+
+## Step 10: Commit and Deploy
+
+**Git commit message:**
+````
+
+feat: add theme prompt system to BarbGraph
+
+Two-layer prompt architecture:
+
+- Theme layer: Universal personality per vertical (theme_prompts table)
+- Node layer: Specific instructions per conversation stage
+
+Changes:
+
+1. Created theme_prompts table in Supabase
+2. Added load_theme() to prompt_loader.py
+3. Updated load_node_prompt() to combine theme + node
+4. Stripped personality from node prompts (avoid duplication)
+5. Added test script for verification
+6. Updated documentation
+
+Injection order: Theme → Call Context → Node Prompt
+
+Benefits:
+
+- No duplication (personality defined once)
+- Easy maintenance (update in one place)
+- Consistency across all nodes
+- Vertical-specific personalities (reverse_mortgage vs solar)
+
+```
+
+**Why:** Clear commit message explains architecture and benefits.
+
+---
+
+## Success Criteria
+
+- [ ] Theme loads from database for reverse_mortgage vertical
+- [ ] Node prompts no longer contain personality key
+- [ ] Combined prompts include both theme and node content
+- [ ] Test script passes all 4 tests
+- [ ] Logs show theme loading messages
+- [ ] Documentation updated
+- [ ] No errors in agent startup
+
+---
+
+## Rollback Plan
+
+If something breaks:
+
+1. Revert code changes to prompt_loader.py
+2. Drop theme_prompts table:
+   ```sql
+   DROP TABLE IF EXISTS theme_prompts;
+   ```
+
+3. Re-apply original node prompts (they still have personality)
+4. Agent continues working with old architecture
+
+**Why:** Safe rollback ensures production isn't broken.
+
+### To-dos
+
+- [ ] Create database/migrations/20251111_add_theme_prompts.sql migration
+- [ ] Add load_theme() function to livekit-agent/services/prompt_loader.py
+- [ ] Update load_node_prompt() to combine theme + node in prompt_loader.py
+- [ ] Verify agent.py prompt injection order (no changes needed)
+- [ ] Create database/migrations/20251111_strip_personality_from_nodes.sql migration
+- [ ] Create livekit-agent/tests/test_theme_loading.py test script
+- [ ] Update BARBGRAPH_COMPREHENSIVE_GUIDE.md with theme system documentation
+- [ ] Apply both migrations in Supabase SQL Editor
+- [ ] Run test script and verify logs
+- [ ] Commit and push all changes
