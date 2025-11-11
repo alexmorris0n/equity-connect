@@ -254,34 +254,11 @@ async def entrypoint(ctx: JobContext):
         }
     )
     
-    # Create LangGraph workflow
-    conversation_graph = create_conversation_graph(base_llm, all_tools)
+    # Create LangGraph workflow with lead context injection
+    conversation_graph = create_conversation_graph(base_llm, all_tools, lead_context=lead_context)
     
-    # Prepare initial state for LangGraph (inject lead context)
-    initial_state = {
-        "call_type": call_type,
-        "room_name": ctx.room.name,
-        "participant_identity": ctx.participant.identity,
-        "phone_number": caller_phone,
-        "lead_id": lead_id,
-        "qualified": bool(qualified),
-        "is_new_lead": lead_context.get("new_caller", False) if lead_context else True,
-    }
-    
-    # Inject lead context if available
-    if lead_context and not lead_context.get("new_caller"):
-        initial_state.update({
-            "caller_name": f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip(),
-            "broker_id": lead_context.get("broker_id"),
-            "age": lead_context.get("age"),
-        })
-        logger.info(f"💉 Injecting lead context into LangGraph state: {lead_context.get('first_name')} {lead_context.get('last_name')}")
-    
-    # Wrap graph in LiveKit LLMAdapter (per official PyPI docs)
-    llm_plugin = livekit_langchain.LLMAdapter(
-        graph=conversation_graph,
-        initial_state=initial_state  # Pass lead context into graph
-    )
+    # Wrap graph in LiveKit LLMAdapter (verified parameter: graph only)
+    llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
         
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)

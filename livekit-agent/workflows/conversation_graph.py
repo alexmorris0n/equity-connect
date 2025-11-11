@@ -105,13 +105,14 @@ def create_node_function(node_name: str, llm_with_tools):
     return node_function
 
 
-def create_conversation_graph(llm: ChatOpenAI, tools: list) -> StateGraph:
+def create_conversation_graph(llm: ChatOpenAI, tools: list, lead_context: dict = None) -> StateGraph:
     """
     Build the conversation graph with dynamic routing.
     
     Args:
         llm: ChatOpenAI instance (configured with model, temperature, etc.)
         tools: List of callable tools for the agent
+        lead_context: Optional lead context to inject (phone, name, qualified, etc.)
     
     Returns:
         Compiled LangGraph workflow
@@ -122,8 +123,46 @@ def create_conversation_graph(llm: ChatOpenAI, tools: list) -> StateGraph:
     # Create graph
     workflow = StateGraph(ConversationState)
     
-    # Add nodes using factory (ensures each node properly calls LLM)
-    workflow.add_node("greet", create_node_function("greet", llm_with_tools))
+    # Inject lead context as initial system message (if provided)
+    if lead_context:
+        def greet_with_context(state: ConversationState) -> dict:
+            # Build context message
+            context_parts = [f"[SYSTEM - Lead Context]"]
+            if lead_context.get("first_name"):
+                context_parts.append(f"- Caller Name: {lead_context.get('first_name')} {lead_context.get('last_name', '')}".strip())
+            if lead_context.get("phone"):
+                context_parts.append(f"- Phone: {lead_context['phone']}")
+            if lead_context.get("status"):
+                context_parts.append(f"- Status: {lead_context['status']}")
+            if lead_context.get("qualified"):
+                context_parts.append(f"- Qualified: {'Yes' if lead_context['qualified'] else 'No'}")
+            if lead_context.get("property_city") and lead_context.get("property_state"):
+                context_parts.append(f"- Location: {lead_context['property_city']}, {lead_context['property_state']}")
+            if lead_context.get("property_value"):
+                context_parts.append(f"- Property Value: ${lead_context['property_value']:,.0f}")
+            if lead_context.get("estimated_equity"):
+                context_parts.append(f"- Estimated Equity: ${lead_context['estimated_equity']:,.0f}")
+            if lead_context.get("broker_name"):
+                context_parts.append(f"- Assigned Broker: {lead_context['broker_name']}")
+            if lead_context.get("new_caller"):
+                context_parts.append("- This is a NEW CALLER (not in database)")
+            
+            context_message = "\n".join(context_parts)
+            
+            # Prepend context as system message, then run greet node
+            messages = state.get("messages", [])
+            messages.insert(0, SystemMessage(content=context_message))
+            logger.info(f"💉 Injected lead context: {lead_context.get('first_name', 'Unknown')}")
+            
+            # Now run the greet node logic
+            return create_node_function("greet", llm_with_tools)({"messages": messages})
+        
+        workflow.add_node("greet", greet_with_context)
+    else:
+        # No context - just add greet normally
+        workflow.add_node("greet", create_node_function("greet", llm_with_tools))
+    
+    # Add remaining nodes using factory (ensures each node properly calls LLM)
     workflow.add_node("verify", create_node_function("verify", llm_with_tools))
     workflow.add_node("qualify", create_node_function("qualify", llm_with_tools))
     workflow.add_node("answer", create_node_function("answer", llm_with_tools))
