@@ -256,14 +256,17 @@ async def entrypoint(ctx: JobContext):
         }
     )
     
-    # TEMPORARY TEST: Use simple LLM instead of LangGraph to test audio
+    # TEMPORARY TEST: Use simple OpenAI LLM instead of LangGraph to test audio
     # This bypasses the complex multi-node workflow to verify if STT->LLM->TTS works
     USE_SIMPLE_LLM_TEST = True  # Set to False to re-enable LangGraph
     
     if USE_SIMPLE_LLM_TEST:
-        logger.info("🧪 TEST MODE: Using simple LLM (bypassing LangGraph)")
-        # Use the base LLM directly with LiveKit's LangChain adapter
-        llm_plugin = livekit_langchain.LLM(llm=base_llm)
+        logger.info("🧪 TEST MODE: Using simple OpenAI LLM (bypassing LangGraph)")
+        # Use OpenAI plugin directly for basic conversation (this supports streaming)
+        llm_plugin = openai.LLM(
+            model=template.get("llm_model", "gpt-4o"),
+            temperature=template.get("llm_temperature", 0.8),
+        )
     else:
         # Create LangGraph workflow with lead context injection
         conversation_graph = create_conversation_graph(base_llm, all_tools, lead_context=lead_context)
