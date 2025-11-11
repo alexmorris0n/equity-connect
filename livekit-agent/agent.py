@@ -385,6 +385,9 @@ async def entrypoint(ctx: JobContext):
         # For LangGraph, we always want to greet first to start the conversation
         if call_type in ["inbound-unknown", "inbound-callback", "inbound-qualified", "test-demo"]:
             logger.info(f"🎙️ Triggering initial greeting for call_type={call_type}...")
+            # Wait a moment for the session to be fully ready before generating reply
+            import asyncio
+            await asyncio.sleep(0.5)  # Give audio pipeline time to initialize
             await session.generate_reply(instructions="Greet the caller warmly and introduce yourself as Barbara.")
         
         exit_reason = "hangup"
