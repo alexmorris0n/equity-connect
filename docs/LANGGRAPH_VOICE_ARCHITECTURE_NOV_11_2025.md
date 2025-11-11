@@ -454,9 +454,19 @@ def converse_node(state):
 ### 1. Subgraph Streaming
 If you nest graphs (subgraphs inside the main conversational graph), ensure the adapter supports `subgraphs=True` or handles the correct stream/tokens structure. Otherwise, tokens from child graphs may be dropped.
 
-**Reference:** [LiveKit Issue #3111](https://github.com/livekit/agents/issues/3111)
+**The Issue:**
+When LangGraph is invoked with `subgraphs=True`, it yields items shaped as `(namespace, (token, meta))` instead of `(token, meta)`. LiveKit's `LLMAdapter` currently expects the latter format, so it doesn't stream tokens from child graphs.
 
-**Impact:** Simple mode (single node) is not affected. Multi-node with nested graphs needs careful configuration.
+**Reference:** [LiveKit Issue #3111](https://github.com/livekit/agents/issues/3111) (Opened Aug 8, 2025)
+
+**Current Status:** Known issue, assigned to `@davidzhao`. The `LangGraphStream._run()` method needs to handle the namespace prefix when subgraphs are enabled.
+
+**Workaround:** Don't use nested subgraphs in your LangGraph workflow until this is resolved. Use a flat graph structure instead.
+
+**Impact:** 
+- ✅ **Simple mode (single node)** - Not affected, no subgraphs
+- ⚠️ **Multi-node with nested graphs** - Streaming will fail until fixed
+- ✅ **Multi-node without subgraphs** - Works normally
 
 ---
 
