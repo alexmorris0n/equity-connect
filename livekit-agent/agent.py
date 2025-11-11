@@ -98,6 +98,7 @@ class EquityConnectAgent(Agent):
 def prewarm(proc: JobProcess):
     """Load models before first call"""
     proc.userdata["vad"] = silero.VAD.load()
+    logger.info("✅ Silero VAD loaded (speech gate only)")
     # Turn detector modules imported at top level to register in main worker process
 
 
@@ -240,18 +241,10 @@ async def entrypoint(ctx: JobContext):
         instructions = "You are Barbara, a warm voice assistant for Equity Connect. Be friendly and helpful."
     
     # Get VAD settings FIRST (used by both STT and AgentSession)
-    # CRITICAL: vad_silence_duration_ms is passed to both STT provider AND AgentSession
-    # to ensure they work in harmony, not conflict. Both layers should agree on when
-    # a user's turn is complete.
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
-    # Get turn detector settings
-    use_turn_detector = template.get("use_turn_detector", True)
-    turn_detector_model = template.get("turn_detector_model", "english")
-    turn_detector_threshold = template.get("turn_detector_threshold")  # Optional override
-    
     # Build plugin instances from template (required for self-hosted)
-    stt_plugin = build_stt_plugin(template, vad_silence_duration_ms, use_turn_detector)
+    stt_plugin = build_stt_plugin(template, vad_silence_duration_ms)
     llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
         
@@ -262,38 +255,34 @@ async def entrypoint(ctx: JobContext):
     resume_false_interruption = template.get("resume_false_interruption", True)
     false_interruption_timeout = template.get("false_interruption_timeout", 1.0)
     
-    logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')}")
+    logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')} (endpointing=OFF)")
     logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')} (temp={template.get('llm_temperature', 0.7)}, top_p={template.get('llm_top_p', 1.0)})")
     if template.get('enable_web_search', False):
         logger.info(f"🌐 Web Search: ENABLED (max_results={template.get('web_search_max_results', 5)})")
     logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
-    logger.info(f"🎛️ VAD: silence_threshold={vad_silence_duration_ms}ms")
+    logger.info(f"🎛️ VAD: Silero (speech gate only)")
+    logger.info(f"🎯 TurnDetector: SOLE SOURCE OF TRUTH for turn ending")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
-    # Load turn detector (must be done in entrypoint, not prewarm)
+    # Load TurnDetector (ALWAYS enabled - it's our sole source of truth)
     turn_detector = None
-    if use_turn_detector:
-        try:
-            if turn_detector_model == "multilingual":
-                from livekit.plugins.turn_detector.multilingual import MultilingualModel
-                turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
-                logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
-            else:
-                from livekit.plugins.turn_detector.english import EnglishModel
-                turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-                logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
-        except Exception as e:
-            logger.warning(f"⚠️ Turn detector init failed ({e}); falling back to ENGLISH model")
-            try:
-                from livekit.plugins.turn_detector.english import EnglishModel
-                turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-                logger.info("🎯 Turn Detector fallback: ENGLISH")
-            except Exception as e2:
-                logger.warning(f"⚠️ English fallback failed ({e2}); disabling turn detector")
-                turn_detector = None
-    else:
-        logger.info(f"🎯 Turn Detector: DISABLED (using STT provider VAD)")
+    turn_detector_model = template.get("turn_detector_model", "english")
+    turn_detector_threshold = template.get("turn_detector_threshold")  # Optional override
+    
+    try:
+        if turn_detector_model == "multilingual":
+            from livekit.plugins.turn_detector.multilingual import MultilingualModel
+            turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold or 'default'})")
+        else:
+            from livekit.plugins.turn_detector.english import EnglishModel
+            turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
+            logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold or 'default'})")
+    except Exception as e:
+        logger.error(f"❌ CRITICAL: Turn detector init failed ({e}). Calls will not work properly!")
+        # Don't fall back - this is essential for the new architecture
+        raise
     
     # Create session with plugin instances (required for self-hosted LiveKit)
     # Get endpointing delays from template (configurable per template)
@@ -450,39 +439,33 @@ def get_hardcoded_fallback() -> dict:
 
 
 def build_stt_plugin(template: dict, vad_silence_duration_ms: int, use_turn_detector: bool = True):
-    """Build STT plugin instance from template, mapping VAD settings to provider-specific parameters
+    """Build STT plugin instance from template - NO endpointing (TurnDetector handles it)
     
     Args:
         template: Template configuration dict
-        vad_silence_duration_ms: Silence duration in ms (passed from entrypoint to ensure alignment)
-        use_turn_detector: Whether turn detector is enabled (affects STT provider VAD)
+        vad_silence_duration_ms: DEPRECATED - kept for backwards compat
+        use_turn_detector: DEPRECATED - always True now
     """
     provider = template.get("stt_provider", "deepgram")
     model = template.get("stt_model", "nova-2")
     language = template.get("stt_language", "en-US")
     
     if provider == "deepgram":
-        # If turn detector enabled: Disable Deepgram endpointing (turn detector handles it)
-        # If turn detector disabled: Use template's VAD setting (harmonized with AgentSession)
-        endpointing = 0 if use_turn_detector else vad_silence_duration_ms
+        # NO endpointing - TurnDetector is sole source of truth
         return deepgram.STT(
             model=model, 
             language=language,
-            endpointing_ms=endpointing
+            endpointing_ms=0  # Disabled - TurnDetector handles this
         )
     elif provider == "assemblyai":
-        # If turn detector enabled: Disable AssemblyAI turn detection
-        # If turn detector disabled: Use template's VAD setting
-        max_silence = 0 if use_turn_detector else vad_silence_duration_ms
-        return assemblyai.STT(max_turn_silence=max_silence)
+        # NO turn detection - TurnDetector handles this
+        return assemblyai.STT(max_turn_silence=0)
     elif provider == "openai":
-        # OpenAI STT uses turn_detection parameter
-        # For now, use default turn detection (LiveKit manages VAD)
+        # OpenAI STT - LiveKit VAD + TurnDetector manage turns
         return openai.STT()
     else:
-        # Safe fallback with conditional endpointing
-        endpointing = 0 if use_turn_detector else vad_silence_duration_ms
-        return deepgram.STT(model="nova-2", endpointing_ms=endpointing)
+        # Safe fallback - NO endpointing
+        return deepgram.STT(model="nova-2", endpointing_ms=0)
 
 
 def build_llm_plugin(template: dict):
