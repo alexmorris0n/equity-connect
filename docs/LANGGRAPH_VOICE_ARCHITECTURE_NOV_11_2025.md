@@ -452,21 +452,30 @@ def converse_node(state):
 ## ⚠️ Important Nuances & Edge Cases
 
 ### 1. Subgraph Streaming
-If you nest graphs (subgraphs inside the main conversational graph), ensure the adapter supports `subgraphs=True` or handles the correct stream/tokens structure. Otherwise, tokens from child graphs may be dropped.
+If you nest graphs (subgraphs inside the main conversational graph), the adapter now supports `subgraphs=True` and correctly handles the stream/tokens structure from child graphs.
 
-**The Issue:**
-When LangGraph is invoked with `subgraphs=True`, it yields items shaped as `(namespace, (token, meta))` instead of `(token, meta)`. LiveKit's `LLMAdapter` currently expects the latter format, so it doesn't stream tokens from child graphs.
+**The Issue (RESOLVED):**
+When LangGraph is invoked with `subgraphs=True`, it yields items shaped as `(namespace, (token, meta))` instead of `(token, meta)`. This caused LiveKit's `LLMAdapter` to drop tokens from child graphs.
 
 **Reference:** [LiveKit Issue #3111](https://github.com/livekit/agents/issues/3111) (Opened Aug 8, 2025)
 
-**Current Status:** Known issue, assigned to `@davidzhao`. The `LangGraphStream._run()` method needs to handle the namespace prefix when subgraphs are enabled.
+**Status:** ✅ **FIXED** - Merged via branch `bnovik0v:feat/langgraph-subgraphs`
 
-**Workaround:** Don't use nested subgraphs in your LangGraph workflow until this is resolved. Use a flat graph structure instead.
+**Solution:** The `LangGraphStream._run()` method now correctly unpacks the namespace prefix when subgraphs are enabled, allowing tokens from all graph levels to stream through.
 
 **Impact:** 
-- ✅ **Simple mode (single node)** - Not affected, no subgraphs
-- ⚠️ **Multi-node with nested graphs** - Streaming will fail until fixed
+- ✅ **Simple mode (single node)** - Works (no subgraphs needed)
+- ✅ **Multi-node with nested graphs** - Now works with proper streaming
 - ✅ **Multi-node without subgraphs** - Works normally
+
+**Usage:**
+```python
+# You can now safely use subgraphs with streaming
+adapter = LLMAdapter(
+    graph=parent_graph_with_subgraphs,
+    config={"configurable": {"subgraphs": True}}  # Enable subgraph streaming
+)
+```
 
 ---
 

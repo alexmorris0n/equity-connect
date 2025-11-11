@@ -168,12 +168,22 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
         # Extract phone number from messages for state lookup
         phone = extract_phone_from_messages(messages)
         
-        # Load current conversation state from Supabase
+        # Load current conversation state from Supabase (with graceful fallback)
         conversation_data = {}
         if phone:
-            row = get_conversation_state(phone)
-            if row:
-                conversation_data = row.get("conversation_data", {})
+            try:
+                row = get_conversation_state(phone)
+                if row:
+                    conversation_data = row.get("conversation_data", {})
+                logger.info(f"✅ Loaded conversation state for {phone}: phase={conversation_data.get('current_phase', 'greeting')}")
+            except Exception as e:
+                # Gracefully degrade if Supabase is unavailable
+                logger.warning(f"⚠️ Supabase unavailable, using fallback state: {e}")
+                conversation_data = {
+                    "current_phase": "greeting",
+                    "turn_count": 0,
+                    "fallback_mode": True  # Flag that we're operating without DB
+                }
         
         # Inject lead context on first turn (if provided)
         if lead_context and len(messages) <= 1:
@@ -204,10 +214,10 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
         logger.info(f"🗣️ CONVERSE node executing (phase: {conversation_data.get('current_phase', 'greeting')})")
         ai_response = await llm_with_tools.ainvoke(messages)
         
-        # Update conversation state in Supabase
+        # Update conversation state in Supabase (with graceful fallback)
         # Parse LLM response for phase transitions (optional - can also use tool calls)
         try:
-            if phone:
+            if phone and not conversation_data.get("fallback_mode"):
                 # Increment turn count
                 turn_count = conversation_data.get("turn_count", 0) + 1
                 
@@ -233,8 +243,11 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
                 }
                 update_conversation_state(phone, update_data)
                 logger.info(f"📊 Updated state: phase={current_phase}, turns={turn_count}")
+            elif phone and conversation_data.get("fallback_mode"):
+                logger.info(f"⚠️ Fallback mode active - state updates skipped (will retry on next turn)")
         except Exception as e:
-            logger.warning(f"Failed to update conversation state: {e}")
+            logger.warning(f"⚠️ Failed to update conversation state: {e}")
+            # Continue gracefully - don't fail the call over DB issues
         
         return {"messages": [ai_response]}
     
