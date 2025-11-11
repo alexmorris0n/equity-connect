@@ -266,21 +266,30 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
     # Load TurnDetector (ALWAYS enabled - it's our sole source of truth)
+    # Using LiveKit's NEW EOU (End of Utterance) model - 135M parameter transformer
+    # that uses SEMANTIC UNDERSTANDING (not just silence detection)
+    # https://blog.livekit.io/using-a-transformer-to-improve-end-of-turn-detection/
     turn_detector = None
-    turn_detector_model = template.get("turn_detector_model", "english")
-    # CRITICAL: Default threshold (0.5) is TOO SLOW (~6 seconds)
-    # Override to 0.2 for faster, more natural conversation
-    turn_detector_threshold = template.get("turn_detector_threshold", 0.2)  # Aggressive by default
+    turn_detector_model = template.get("turn_detector_model", "eou")  # Default to EOU (best performance)
     
     try:
-        if turn_detector_model == "multilingual":
+        if turn_detector_model == "eou":
+            # NEW: Semantic turn detection (85% fewer interruptions!)
+            from livekit.plugins import turn_detector as td
+            turn_detector = td.EOUModel()
+            logger.info(f"🎯 Turn Detector: EOU (semantic transformer - 85% fewer interruptions)")
+        elif turn_detector_model == "multilingual":
+            # OLD: VAD-only (for non-English)
             from livekit.plugins.turn_detector.multilingual import MultilingualModel
+            turn_detector_threshold = template.get("turn_detector_threshold", 0.2)
             turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: MULTILINGUAL (threshold={turn_detector_threshold})")
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL VAD-only (threshold={turn_detector_threshold})")
         else:
+            # OLD: VAD-only (English)
             from livekit.plugins.turn_detector.english import EnglishModel
+            turn_detector_threshold = template.get("turn_detector_threshold", 0.2)
             turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: ENGLISH (threshold={turn_detector_threshold})")
+            logger.info(f"🎯 Turn Detector: ENGLISH VAD-only (threshold={turn_detector_threshold})")
     except Exception as e:
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e}). Calls will not work properly!")
         # Don't fall back - this is essential for the new architecture
