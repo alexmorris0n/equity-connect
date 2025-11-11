@@ -270,7 +270,7 @@ async def entrypoint(ctx: JobContext):
     # unlikely_threshold: Lower = faster turn detection, Higher = more cautious
     turn_detector = None
     turn_detector_model = template.get("turn_detector_model", "english")
-    unlikely_threshold = 0.3  # Balanced threshold for responsive conversation
+    unlikely_threshold = 0.25  # Aggressive for faster turn detection
     
     try:
         if turn_detector_model == "multilingual":
@@ -285,10 +285,10 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
     
-    # Create session with TurnDetector + optimized timing
-    # unlikely_threshold=0.3 controls turn detection sensitivity
+    # Create session with TurnDetector + aggressive timing for snappy responses
+    # unlikely_threshold=0.25 controls turn detection sensitivity (lower = faster)
     # min_endpointing_delay controls response speed after turn detected
-    min_endpointing_delay = 0.2  # Aggressive for snappy responses
+    min_endpointing_delay = 0.1  # Very aggressive - 100ms
     max_endpointing_delay = 3.0  # Prevent lengthy delays
     
     logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
