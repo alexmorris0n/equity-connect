@@ -265,31 +265,22 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
     logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
     
-    # Load TurnDetector - Use fastest available model
-    # EOU (semantic) would be ideal but may not be available in current plugin version
+    # Load TurnDetector with EOU built-in
+    # EnglishModel and MultilingualModel have EOU integrated (no separate class needed)
     turn_detector = None
     turn_detector_model = template.get("turn_detector_model", "english")
     # Balanced threshold: Fast but not interrupting
     turn_detector_threshold = template.get("turn_detector_threshold", 0.3)  # Sweet spot
     
     try:
-        # Try EOU first (if available in plugin version)
-        try:
-            from livekit.plugins.turn_detector.eou import EOUModel
-            turn_detector = EOUModel()
-            logger.info(f"🎯 Turn Detector: EOU (semantic transformer)")
-        except (ImportError, AttributeError, ModuleNotFoundError) as e:
-            logger.warning(f"⚠️ EOU not available ({e}), falling back to VAD-only")
-            # Fall back to VAD-only with threshold
-            if turn_detector_model == "multilingual":
-                from livekit.plugins.turn_detector.multilingual import MultilingualModel
-                turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
-                logger.info(f"🎯 Turn Detector: MULTILINGUAL VAD (threshold={turn_detector_threshold})")
-            else:
-                from livekit.plugins.turn_detector.english import EnglishModel
-                # EnglishModel uses 'unlikely_threshold' parameter
-                turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-                logger.info(f"🎯 Turn Detector: ENGLISH VAD (threshold={turn_detector_threshold})")
+        if turn_detector_model == "multilingual":
+            from livekit.plugins.turn_detector.multilingual import MultilingualModel
+            turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU (threshold={turn_detector_threshold})")
+        else:
+            from livekit.plugins.turn_detector.english import EnglishModel
+            turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
+            logger.info(f"🎯 Turn Detector: ENGLISH with EOU (threshold={turn_detector_threshold})")
     except Exception as e:
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
