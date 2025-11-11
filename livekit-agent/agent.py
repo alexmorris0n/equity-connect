@@ -335,7 +335,8 @@ async def entrypoint(ctx: JobContext):
         await session.start(
             agent=Agent(
                 llm=llm_plugin,
-                instructions=instructions  # Pass loaded prompt instructions
+                instructions=instructions,  # Pass loaded prompt instructions
+                will_speak_on_connect=True  # Barbara speaks first on inbound calls
             ),
             room=ctx.room,
             room_input_options=RoomInputOptions(
