@@ -261,11 +261,14 @@ async def entrypoint(ctx: JobContext):
     USE_SIMPLE_LLM_TEST = True  # Set to False to re-enable LangGraph
     
     if USE_SIMPLE_LLM_TEST:
-        logger.info("🧪 TEST MODE: Using simple OpenAI LLM (bypassing LangGraph)")
-        # Use OpenAI plugin directly for basic conversation (this supports streaming)
+        logger.info("🧪 TEST MODE: Using simple LLM (bypassing LangGraph)")
+        # Use OpenAI plugin with OpenRouter base URL for basic conversation
+        # OpenAI plugin supports custom base_url, so we can use OpenRouter
         llm_plugin = openai.LLM(
             model=template.get("llm_model", "gpt-4o"),
             temperature=template.get("llm_temperature", 0.8),
+            base_url=template.get("llm_base_url", "https://openrouter.ai/api/v1"),
+            api_key=os.getenv("OPENROUTER_API_KEY"),
         )
     else:
         # Create LangGraph workflow with lead context injection
