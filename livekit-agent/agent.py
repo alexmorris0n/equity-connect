@@ -9,6 +9,7 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     RoomInputOptions,
+    RoomOutputOptions,
     JobExecutorType,
     JobProcess,
     WorkerOptions,
@@ -377,6 +378,9 @@ async def entrypoint(ctx: JobContext):
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC()
+            ),
+            room_output_options=RoomOutputOptions(
+                audio_enabled=True,  # CRITICAL: Enable audio output for TTS
             ),
         )
         
