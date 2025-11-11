@@ -275,10 +275,11 @@ async def entrypoint(ctx: JobContext):
     try:
         # Try EOU first (if available in plugin version)
         try:
-            from livekit.plugins.turn_detector import EOUModel
-            turn_detector = EOUModel()
+            from livekit.plugins import turn_detector as td
+            turn_detector = td.EOUModel()
             logger.info(f"🎯 Turn Detector: EOU (semantic transformer)")
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError) as e:
+            logger.warning(f"⚠️ EOU not available ({e}), falling back to VAD-only")
             # Fall back to VAD-only with aggressive threshold
             if turn_detector_model == "multilingual":
                 from livekit.plugins.turn_detector.multilingual import MultilingualModel
