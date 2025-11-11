@@ -275,8 +275,8 @@ async def entrypoint(ctx: JobContext):
     try:
         if turn_detector_model == "eou":
             # NEW: Semantic turn detection (85% fewer interruptions!)
-            from livekit.plugins import turn_detector as td
-            turn_detector = td.EOUModel()
+            from livekit.plugins.turn_detector import EOUModel
+            turn_detector = EOUModel()
             logger.info(f"🎯 Turn Detector: EOU (semantic transformer - 85% fewer interruptions)")
         elif turn_detector_model == "multilingual":
             # OLD: VAD-only (for non-English)
