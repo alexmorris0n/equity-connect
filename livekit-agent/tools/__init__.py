@@ -24,6 +24,7 @@ from .conversation_flags import (
     mark_has_objection,
     mark_objection_handled,
     mark_questions_answered,
+    mark_quote_presented,
     mark_wrong_person,
     clear_conversation_flags
 )
@@ -53,6 +54,7 @@ __all__ = [
     "mark_has_objection",
     "mark_objection_handled",
     "mark_questions_answered",
+    "mark_quote_presented",
     "mark_wrong_person",
     "clear_conversation_flags",
 ]
@@ -78,6 +80,7 @@ all_tools = [
     mark_has_objection,
     mark_objection_handled,
     mark_questions_answered,
+    mark_quote_presented,
     mark_wrong_person,
     clear_conversation_flags,
 ]

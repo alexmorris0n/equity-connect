@@ -121,6 +121,34 @@ async def mark_questions_answered(phone: str) -> str:
 
 
 @function_tool
+async def mark_quote_presented(phone: str, quote_reaction: str) -> str:
+    """Mark that a financial quote has been presented and record the caller's reaction.
+    
+    Use this when:
+    - You've shown them estimated loan amounts
+    - You've explained what they could access financially
+    - They've responded to the numbers
+    
+    Args:
+        phone: Caller's phone number
+        quote_reaction: Reaction to quote (positive, skeptical, not_interested, needs_more, etc.)
+    
+    Returns:
+        Confirmation message
+    """
+    logger.info(f"💰 Quote presented to {phone} with reaction: {quote_reaction}")
+    
+    update_conversation_state(phone, {
+        "conversation_data": {
+            "quote_presented": True,
+            "quote_reaction": quote_reaction,
+        }
+    })
+    
+    return f"Quote marked as presented with reaction: {quote_reaction}. Will route based on reaction."
+
+
+@function_tool
 async def mark_wrong_person(phone: str, right_person_available: bool = False) -> str:
     """Mark that you're speaking with the wrong person.
     

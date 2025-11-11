@@ -34,15 +34,16 @@ Previously, Barbara used one giant instruction manual for the entire call. This 
 
 ### The Solution
 
-BarbGraph breaks the conversation into **7 clear stages** (like chapters in a book):
+BarbGraph breaks the conversation into **8 clear stages** (like chapters in a book):
 
 1. **Greet** - Say hello and build rapport
 2. **Verify** - Confirm who's calling
 3. **Qualify** - Check if they're a good fit
-4. **Answer** - Address their questions
-5. **Objections** - Handle concerns
-6. **Book** - Schedule an appointment
-7. **Exit** - Say goodbye gracefully
+4. **Quote** - Show them financial estimates
+5. **Answer** - Address their questions
+6. **Objections** - Handle concerns
+7. **Book** - Schedule an appointment
+8. **Exit** - Say goodbye gracefully
 
 Each stage has its own focused instructions, and Barbara automatically moves between stages based on what the caller says and does.
 
@@ -71,7 +72,7 @@ Think of it like a GPS for conversations:
 
 | Feature | Mono-Prompting | BarbGraph |
 |---------|---------------|-----------|
-| **Instructions** | One giant prompt trying to do everything | 7 focused prompts, each with clear objectives |
+| **Instructions** | One giant prompt trying to do everything | 8 focused prompts, each with clear objectives |
 | **Conversation Flow** | Hope the AI follows the plan | Enforced structure with flexibility |
 | **Memory** | AI must remember what's been done | Database tracks progress automatically |
 | **Adaptability** | Hard to handle unexpected turns | Dynamically routes based on actual conversation state |
@@ -224,7 +225,7 @@ BarbGraph is a **3-layer architecture**:
 
 **Key Features:**
 - **Vertical Selector:** Choose business vertical (reverse_mortgage, solar, hvac)
-- **7-Node Tabs:** Greet, Verify, Qualify, Answer, Objections, Book, Exit
+- **8-Node Tabs:** Greet, Verify, Qualify, Quote, Answer, Objections, Book, Exit
 - **JSONB Content Editor:** 4 fields per node:
   - `role` - Who is Barbara in this stage?
   - `personality` - How should she sound?
@@ -353,6 +354,8 @@ CREATE TABLE conversation_state (
   "greeted": true,
   "verified": true,
   "qualified": true,
+  "quote_presented": true,
+  "quote_reaction": "positive",
   "questions_answered": false,
   "ready_to_book": false,
   "has_objection": false,
@@ -1006,12 +1009,12 @@ async def mark_wrong_person(phone: str, right_person_available: bool = False) ->
 
 **Use Case 1: Multi-Call Sales Cycle**
 ```
-Day 1: Call arrives → Greet → Verify → Qualify → Answer → Exit (not ready)
-       DB stores: qualified=true, questions_answered=true, ready_to_book=false
+Day 1: Call arrives → Greet → Verify → Qualify → Quote → Answer → Exit (not ready)
+       DB stores: qualified=true, quote_presented=true, questions_answered=true, ready_to_book=false
 
 Day 7: Same caller calls back
        → Agent loads conversation_state
-       → Skips Greet/Verify/Qualify (already complete)
+       → Skips Greet/Verify/Qualify/Quote (already complete)
        → Jumps to Answer: "Hi John! Have you had time to think it over?"
 ```
 

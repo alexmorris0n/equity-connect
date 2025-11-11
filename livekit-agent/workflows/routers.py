@@ -85,10 +85,10 @@ def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "
 	return "qualify"
 
 
-def route_after_qualify(state: ConversationState) -> Literal["answer", "exit"]:
+def route_after_qualify(state: ConversationState) -> Literal["quote", "exit"]:
 	"""
 	DB-driven routing after qualification.
-	- If qualified → answer
+	- If qualified → quote (present financial estimates)
 	- Else → exit
 	"""
 	row = _db(state)
@@ -97,11 +97,40 @@ def route_after_qualify(state: ConversationState) -> Literal["answer", "exit"]:
 		return "exit"
 
 	if row.get("qualified"):
-		logger.info("✅ Qualified → ANSWER")
-		return "answer"
+		logger.info("✅ Qualified → QUOTE")
+		return "quote"
 
 	logger.info("🚪 Not qualified → EXIT")
 	return "exit"
+
+
+def route_after_quote(state: ConversationState) -> Literal["answer", "book", "exit"]:
+	"""
+	DB-driven routing after quote presentation.
+	- If quote_reaction == "not_interested" → exit
+	- If ready_to_book → book
+	- If has_questions → answer
+	- Default → answer
+	"""
+	row = _db(state)
+	if not row:
+		logger.info("🔍 No DB row → ANSWER")
+		return "answer"
+	cd = _cd(row)
+
+	# Check if they're not interested (explicit exit)
+	if cd.get("quote_reaction") == "not_interested":
+		logger.info("🚪 Not interested in quote → EXIT")
+		return "exit"
+
+	# Check if ready to book immediately
+	if cd.get("ready_to_book"):
+		logger.info("📅 Ready to book after quote → BOOK")
+		return "book"
+
+	# Default to answer node for questions or further discussion
+	logger.info("❓ Questions about quote → ANSWER")
+	return "answer"
 
 
 def route_after_answer(state: ConversationState) -> Literal["answer", "objections", "book", "exit"]:

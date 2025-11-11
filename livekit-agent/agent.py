@@ -33,6 +33,7 @@ from workflows.routers import (
     route_after_greet,
     route_after_verify,
     route_after_qualify,
+    route_after_quote,
     route_after_answer,
     route_after_objections,
     route_after_book,
@@ -151,7 +152,7 @@ class EquityConnectAgent(Agent):
         - If ready to book anytime → book
         - If wrong person → exit
         
-        All 7 nodes are ALWAYS available. The router decides based on conversation_data flags.
+        All 8 nodes are ALWAYS available. The router decides based on conversation_data flags.
         """
         # Build LangGraph-style state for compatibility with existing routers
         state = {
@@ -169,7 +170,9 @@ class EquityConnectAgent(Agent):
         elif self.current_node == "verify":
             return route_after_verify(state)  # Can go to: qualify, exit, or greet (spouse available)
         elif self.current_node == "qualify":
-            return route_after_qualify(state)  # Can go to: answer or exit
+            return route_after_qualify(state)  # Can go to: quote or exit
+        elif self.current_node == "quote":
+            return route_after_quote(state)  # Can go to: answer, book, or exit
         elif self.current_node == "answer":
             return route_after_answer(state)  # Can go to: answer, objections, book, or exit
         elif self.current_node == "objections":
