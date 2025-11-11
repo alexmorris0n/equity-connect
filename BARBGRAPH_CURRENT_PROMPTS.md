@@ -252,7 +252,7 @@ Barbara: "Great question. The main 'risk' is that it reduces the equity you can 
 
 **Purpose:** Schedule appointment with broker  
 **Routes To:** exit  
-**Tools Available:** `book_appointment`, `find_broker_by_territory`
+**Tools Available:** `book_appointment`, `find_broker_by_territory`, `reschedule_appointment`, `cancel_appointment`
 
 ### Role
 ```
@@ -266,7 +266,19 @@ Helpful, efficient, positive.
 
 ### Instructions
 ```
-Ask for their preferred date and time. Use book_appointment tool to schedule. Confirm the appointment details clearly (date, time, broker name).
+Ask for their preferred date and time. Use book_appointment tool to schedule.
+
+**If they're calling to reschedule:**
+- Look up their existing appointment
+- Offer new times
+- Use reschedule_appointment tool with new date/time
+
+**If they're calling to cancel:**
+- Confirm they want to cancel
+- Use cancel_appointment tool
+- Ask if they want to reschedule later
+
+Confirm all appointment details clearly (date, time, broker name).
 ```
 
 ### Tools
@@ -282,9 +294,22 @@ book_appointment(
     notes: str
 )
 # Books the appointment in calendar
+
+reschedule_appointment(
+    appointment_id: str,
+    new_appointment_time: str,
+    notes: str
+)
+# Reschedules existing appointment to new time
+
+cancel_appointment(
+    appointment_id: str,
+    cancellation_reason: str
+)
+# Cancels existing appointment
 ```
 
-### Example Interaction
+### Example Interaction (New Booking)
 ```
 Barbara: "Great! Let me check what Mike has available. Do you have a preferred day or time?"
 Caller: "How about Monday afternoon?"
@@ -292,6 +317,29 @@ Barbara: [calls book_appointment with preferred_day="monday", preferred_time="af
 Barbara: "I have Monday at 2 PM and Monday at 4 PM available."
 Caller: "2 PM works."
 Barbara: "Perfect! I'll book you for Monday, November 13th at 2 PM with Mike Johnson. You'll receive a calendar invite at john@email.com."
+```
+
+### Example Interaction (Reschedule)
+```
+Barbara: "I can help you reschedule. Let me pull up your current appointment."
+Barbara: [looks up existing appointment]
+Barbara: "I see you're scheduled for Monday at 2 PM. What day works better for you?"
+Caller: "Can we do Wednesday instead?"
+Barbara: [calls reschedule_appointment]
+Barbara: "Absolutely! I have Wednesday at 10 AM and Wednesday at 3 PM available."
+Caller: "10 AM is perfect."
+Barbara: "All set! I've moved your appointment to Wednesday, November 15th at 10 AM. You'll get an updated calendar invite."
+```
+
+### Example Interaction (Cancel)
+```
+Barbara: "I can help with that. Just to confirm, you'd like to cancel your appointment with Mike?"
+Caller: "Yes, something came up."
+Barbara: "No problem at all. Let me cancel that for you."
+Barbara: [calls cancel_appointment]
+Barbara: "Done! Your appointment has been cancelled. Would you like to reschedule for a different time, or should we follow up later?"
+Caller: "I'll call back when things settle down."
+Barbara: "Perfect! Feel free to reach out whenever you're ready."
 ```
 
 ---
@@ -376,15 +424,15 @@ All prompts can be edited via the **Vue Portal**:
 | Qualify | 62 chars | 69 chars | 263 chars | 2 |
 | Answer | 62 chars | 63 chars | 445 chars | 1 |
 | Objections | 47 chars | 49 chars | 381 chars | 1 |
-| Book | 50 chars | 35 chars | 135 chars | 2 |
+| Book | 50 chars | 35 chars | 287 chars | 4 |
 | Exit | 33 chars | 48 chars | 96 chars | 0 |
 
-**Total Prompt Size:** ~2,247 characters across all 7 nodes  
-**Average per Node:** ~321 characters
+**Total Prompt Size:** ~2,399 characters across all 7 nodes  
+**Average per Node:** ~343 characters
 
 **Comparison to Mono-Prompting:**
 - Old system: ~2,000-3,000 characters in ONE prompt
-- BarbGraph: ~2,247 characters across 7 FOCUSED prompts
+- BarbGraph: ~2,399 characters across 7 FOCUSED prompts
 - Benefit: Same total size, but organized for clarity and maintainability
 
 ---
@@ -401,9 +449,10 @@ All prompts can be edited via the **Vue Portal**:
 
 ## 🔄 Version History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | Nov 11, 2025 | Initial seed prompts for reverse_mortgage vertical |
+| Version | Date | Node | Changes |
+|---------|------|------|---------|
+| 1.0 | Nov 11, 2025 | All | Initial seed prompts for reverse_mortgage vertical |
+| 2.0 | Nov 11, 2025 | Book | Added reschedule and cancel functionality with 3 example scenarios |
 
 ---
 
