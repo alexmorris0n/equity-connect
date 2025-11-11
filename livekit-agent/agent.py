@@ -91,9 +91,10 @@ async def entrypoint(ctx: JobContext):
     room_name = room.name
     caller_phone: Optional[str] = None
     
-    # Parse metadata - check BOTH room metadata AND participant metadata
-    # NOTE: LiveKit SIP dispatch rule "attributes" should be passed as room.metadata or participant.metadata
-    # Verify dispatch rule JSON includes: {"attributes": {"phone_number": "+1234567890", "lead_id": "...", ...}}
+    # Parse metadata - check BOTH room metadata AND participant metadata AND participant attributes
+    # NOTE: LiveKit SIP dispatch rule can pass data via:
+    # 1. "metadata" field → room.metadata (JSON string)
+    # 2. "attributes" field → participant.attributes (dict)
     import json
     metadata = {}
     
@@ -107,20 +108,29 @@ async def entrypoint(ctx: JobContext):
     except Exception as e:
         logger.warning(f"Failed to parse room metadata: {e}")
     
-    # If no room metadata, check participant metadata (from token)
+    # If no room metadata, check participant metadata (from token) or attributes (from SIP)
     if not metadata or not metadata.get("template_id"):
         try:
-            # Get the first participant's metadata (should be the test user)
+            # Get the first participant's metadata (should be the SIP participant)
             participants = list(room.remote_participants.values())
             if participants:
                 participant = participants[0]
+                
+                # Try participant.metadata first
                 participant_metadata_str = participant.metadata or "{}"
                 logger.info(f"🔍 Raw participant.metadata: {participant_metadata_str}")
                 if participant_metadata_str and participant_metadata_str != "{}":
                     metadata = json.loads(participant_metadata_str) if isinstance(participant_metadata_str, str) else participant_metadata_str
                     logger.info(f"✅ Using participant metadata: {metadata}")
+                
+                # Also try participant.attributes (SIP-specific)
+                if hasattr(participant, 'attributes') and participant.attributes:
+                    logger.info(f"🔍 Raw participant.attributes: {participant.attributes}")
+                    # Merge attributes into metadata (attributes take precedence)
+                    metadata.update(participant.attributes)
+                    logger.info(f"✅ Merged participant attributes: {metadata}")
         except Exception as e:
-            logger.warning(f"Failed to parse participant metadata: {e}")
+            logger.warning(f"Failed to parse participant metadata/attributes: {e}")
             
     # Check if this is a test room with template + prompt
     is_test = metadata.get("is_test", False)
