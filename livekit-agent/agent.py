@@ -280,7 +280,7 @@ async def entrypoint(ctx: JobContext):
     # - multi: Multi-node deterministic workflow (complex, needs manual turn orchestration)
     # - test: Simple OpenRouter LLM (for testing audio pipeline only)
     
-    LANGGRAPH_MODE = "simple"  # Options: "simple", "multi", "test"
+    LANGGRAPH_MODE = "test"  # Options: "simple", "multi", "test"
     
     if LANGGRAPH_MODE == "test":
         logger.info("🧪 TEST MODE: Using simple OpenRouter LLM (bypassing LangGraph)")
