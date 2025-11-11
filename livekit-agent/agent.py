@@ -247,23 +247,33 @@ async def entrypoint(ctx: JobContext):
     # Build model strings for LiveKit Inference (unified billing + lower latency)
     # Format: "provider/model-name"
     
-    # STT model string
+    # STT model string - LiveKit Inference format: "provider/model:language"
     stt_provider = template.get("stt_provider", "deepgram")
     stt_model = template.get("stt_model", "nova-2")
-    if stt_provider == "deepgram":
-        stt_string = f"deepgram/{stt_model}"
-    elif stt_provider == "assemblyai":
-        stt_string = "assemblyai/universal-streaming"
-    elif stt_provider == "openai":
-        stt_string = "openai/whisper-1"
-    else:
-        stt_string = "deepgram/nova-2"  # fallback
+    stt_language = template.get("stt_language", "en-US")
     
-    # LLM model string
+    # Convert language codes to LiveKit Inference format (e.g., "en-US" -> "en")
+    lang_code = stt_language.split("-")[0] if stt_language else "en"
+    
+    if stt_provider == "deepgram":
+        stt_string = f"deepgram/{stt_model}:{lang_code}"
+    elif stt_provider == "assemblyai":
+        stt_string = f"assemblyai/universal-streaming:{lang_code}"
+    elif stt_provider == "cartesia":
+        stt_string = f"cartesia/ink-whisper:{lang_code}"
+    elif stt_provider == "openai":
+        stt_string = "openai/whisper-1"  # OpenAI doesn't need language suffix
+    else:
+        stt_string = f"deepgram/nova-2:{lang_code}"  # fallback
+    
+    logger.info(f"🎙️ STT: {stt_string} (LiveKit Inference)")
+    
+    # LLM model string - LiveKit Inference supports multiple providers
     llm_provider = template.get("llm_provider", "openai")
     llm_model = template.get("llm_model", "gpt-4o")
+    
     if llm_provider == "openrouter":
-        # OpenRouter models - just use the model name without prefix
+        # OpenRouter models - use direct model name (will still go through OpenRouter)
         llm_string = llm_model  # e.g., "gpt-4o", "anthropic/claude-3-5-sonnet"
     elif llm_provider == "openai":
         llm_string = f"openai/{llm_model}"
@@ -271,8 +281,16 @@ async def entrypoint(ctx: JobContext):
         llm_string = f"anthropic/{llm_model}"
     elif llm_provider == "google":
         llm_string = f"google/{llm_model}"
+    elif llm_provider == "deepseek":
+        llm_string = f"deepseek/{llm_model}"
+    elif llm_provider == "qwen":
+        llm_string = f"qwen/{llm_model}"
+    elif llm_provider == "kimi":
+        llm_string = f"kimi/{llm_model}"
     else:
         llm_string = f"{llm_provider}/{llm_model}"
+    
+    logger.info(f"🧠 LLM: {llm_string} (LiveKit Inference)")
     
     # TTS model string - LiveKit Inference supports custom voice IDs
     # Format: "provider/model:voice_id"
