@@ -269,18 +269,16 @@ async def entrypoint(ctx: JobContext):
     # EnglishModel and MultilingualModel have EOU integrated (no separate class needed)
     turn_detector = None
     turn_detector_model = template.get("turn_detector_model", "english")
-    # Balanced threshold: Fast but not interrupting
-    turn_detector_threshold = template.get("turn_detector_threshold", 0.3)  # Sweet spot
     
     try:
         if turn_detector_model == "multilingual":
             from livekit.plugins.turn_detector.multilingual import MultilingualModel
-            turn_detector = MultilingualModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU (threshold={turn_detector_threshold})")
+            turn_detector = MultilingualModel()  # No threshold parameter - uses defaults
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU")
         else:
             from livekit.plugins.turn_detector.english import EnglishModel
-            turn_detector = EnglishModel(unlikely_threshold=turn_detector_threshold)
-            logger.info(f"🎯 Turn Detector: ENGLISH with EOU (threshold={turn_detector_threshold})")
+            turn_detector = EnglishModel()  # No threshold parameter - uses defaults
+            logger.info(f"🎯 Turn Detector: ENGLISH with EOU")
     except Exception as e:
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
