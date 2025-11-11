@@ -267,24 +267,30 @@ async def entrypoint(ctx: JobContext):
     
     # Load TurnDetector with EOU built-in
     # EnglishModel and MultilingualModel have EOU integrated (no separate class needed)
+    # unlikely_threshold: Lower = faster turn detection, Higher = more cautious
     turn_detector = None
     turn_detector_model = template.get("turn_detector_model", "english")
+    unlikely_threshold = 0.3  # Balanced threshold for responsive conversation
     
     try:
         if turn_detector_model == "multilingual":
             from livekit.plugins.turn_detector.multilingual import MultilingualModel
-            turn_detector = MultilingualModel()  # No threshold parameter - uses defaults
-            logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU")
+            turn_detector = MultilingualModel(unlikely_threshold=unlikely_threshold)
+            logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU (unlikely_threshold={unlikely_threshold})")
         else:
             from livekit.plugins.turn_detector.english import EnglishModel
-            turn_detector = EnglishModel()  # No threshold parameter - uses defaults
-            logger.info(f"🎯 Turn Detector: ENGLISH with EOU")
+            turn_detector = EnglishModel(unlikely_threshold=unlikely_threshold)
+            logger.info(f"🎯 Turn Detector: ENGLISH with EOU (unlikely_threshold={unlikely_threshold})")
     except Exception as e:
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
     
-    # Create session with TurnDetector ONLY (no endpointing delays)
-    logger.info(f"⏱️ TurnDetector will manage ALL timing (no artificial delays)")
+    # Create session with TurnDetector + recommended timing
+    # Per LiveKit best practices: min=0.5s for flow, max=3.0s to prevent lengthy delays
+    min_endpointing_delay = 0.5  # Recommended default for natural flow
+    max_endpointing_delay = 3.0  # Prevent lengthy delays
+    
+    logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
     
     session = AgentSession(
         stt=stt_plugin,
@@ -292,6 +298,9 @@ async def entrypoint(ctx: JobContext):
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
         turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
+        # Endpointing timing - faster response
+        min_endpointing_delay=min_endpointing_delay,
+        max_endpointing_delay=max_endpointing_delay,
         # Interruption settings from template
         allow_interruptions=allow_interruptions,
         min_interruption_duration=min_interruption_duration,
@@ -299,7 +308,6 @@ async def entrypoint(ctx: JobContext):
         false_interruption_timeout=false_interruption_timeout,
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
-        # NO min/max_endpointing_delay - TurnDetector handles this internally
     )
     
     # Start the session with custom EquityConnectAgent that auto-greets on entry
