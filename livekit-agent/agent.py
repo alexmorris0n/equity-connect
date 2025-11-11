@@ -298,8 +298,8 @@ async def entrypoint(ctx: JobContext):
     # Create session with plugin instances (required for self-hosted LiveKit)
     # Get endpointing delays from template (configurable per template)
     # These control how long the agent waits before/after detecting end-of-turn
-    min_endpointing = template.get("min_endpointing_delay", 0.4)
-    max_endpointing = template.get("max_endpointing_delay", 1.0)
+    min_endpointing = template.get("min_endpointing_delay", 0.2)
+    max_endpointing = template.get("max_endpointing_delay", 0.6)
     
     # If turn detector is disabled, override max_endpointing to match STT VAD timing
     if not use_turn_detector:
