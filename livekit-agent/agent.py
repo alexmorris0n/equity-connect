@@ -370,10 +370,11 @@ async def entrypoint(ctx: JobContext):
         )
         
         # For inbound calls, agent should greet first (trigger initial greeting)
-        # This invokes the LangGraph "greet" node to generate the first message
-        if call_type in ["inbound-unknown", "inbound-callback", "inbound-qualified"]:
-            logger.info("🎙️ Triggering initial greeting for inbound call...")
-            await session.generate_reply(instructions="Greet the caller warmly and introduce yourself.")
+        # This invokes the LangGraph workflow to generate the first message
+        # For LangGraph, we always want to greet first to start the conversation
+        if call_type in ["inbound-unknown", "inbound-callback", "inbound-qualified", "test-demo"]:
+            logger.info(f"🎙️ Triggering initial greeting for call_type={call_type}...")
+            await session.generate_reply(instructions="Greet the caller warmly and introduce yourself as Barbara.")
         
         exit_reason = "hangup"
     except Exception as e:
