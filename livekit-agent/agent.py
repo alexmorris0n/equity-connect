@@ -333,7 +333,10 @@ async def entrypoint(ctx: JobContext):
     exit_reason: Optional[str] = None
     try:
         await session.start(
-            agent=Agent(llm=llm_plugin),
+            agent=Agent(
+                llm=llm_plugin,
+                instructions=instructions  # Pass loaded prompt instructions
+            ),
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC()
