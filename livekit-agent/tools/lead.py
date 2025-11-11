@@ -2,6 +2,7 @@
 from typing import Optional, Dict, Any
 from livekit.agents.llm import function_tool
 from services.supabase import get_supabase_client, normalize_phone
+from services.conversation_state import update_conversation_state
 import logging
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,16 @@ async def get_lead_context(phone: str) -> str:
         
         logger.info(f"✅ Lead found: {lead.get('first_name')} {lead.get('last_name')} ({lead.get('status')})")
         
+        # Update conversation state to mark lead as found and verified
+        update_conversation_state(phone, {
+            "lead_id": str(lead['id']),  # Top-level DB column
+            "qualified": is_qualified,  # Top-level DB column
+            "conversation_data": {
+                "verified": True,  # Triggers routing from verify node
+                "greeted": True,   # Also marks greet as complete
+            }
+        })
+        
         import json
         return json.dumps({
             "found": True,
@@ -122,6 +133,74 @@ async def get_lead_context(phone: str) -> str:
             "found": False,
             "message": "Unable to retrieve lead information at this time."
         })
+
+@function_tool
+async def verify_caller_identity(first_name: str, phone: str) -> str:
+    """Verify caller identity by name and phone. Creates lead if new.
+    
+    Args:
+        first_name: Caller's first name
+        phone: Caller's phone number
+    """
+    logger.info(f"🔍 Verifying caller identity: {first_name}, {phone}")
+    
+    # First check if lead exists
+    lead_info = await get_lead_context(phone)
+    
+    import json
+    lead_data = json.loads(lead_info)
+    
+    if lead_data.get("found"):
+        # Mark as verified in conversation state
+        update_conversation_state(phone, {
+            "conversation_data": {
+                "verified": True,
+                "greeted": True,
+            }
+        })
+        return json.dumps({
+            "success": True,
+            "lead_id": lead_data["lead_id"],
+            "message": f"Verified: {first_name}"
+        })
+    else:
+        # Create new lead
+        sb = get_supabase_client()
+        try:
+            new_lead_response = sb.table('leads').insert({
+                "first_name": first_name,
+                "primary_phone": phone,
+                "status": "new"
+            }).execute()
+            
+            if new_lead_response.error:
+                raise Exception(new_lead_response.error)
+            
+            new_lead_id = str(new_lead_response.data[0]["id"])
+            
+            update_conversation_state(phone, {
+                "lead_id": new_lead_id,  # Top-level DB column
+                "conversation_data": {
+                    "verified": True,
+                    "greeted": True,
+                    "is_new_lead": True,
+                }
+            })
+            
+            logger.info(f"✅ New lead created: {first_name} ({new_lead_id})")
+            
+            return json.dumps({
+                "success": True,
+                "lead_id": new_lead_id,
+                "message": f"New lead created: {first_name}"
+            })
+        except Exception as e:
+            logger.error(f"❌ Error creating lead: {e}")
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "message": "Unable to verify or create lead."
+            })
 
 @function_tool
 async def check_consent_dnc(phone: str) -> str:

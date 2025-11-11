@@ -1,0 +1,120 @@
+"""Prompt loading service for node-based conversation flow.
+
+Loads node-specific prompts from database (Plan 2/3 integration) with fallback
+to markdown files for development/testing.
+"""
+
+import logging
+import os
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
+    """Load node prompt from database or fallback to markdown file
+    
+    This connects Plan 1 (backend) → Plan 2 (database) → Plan 3 (Vue portal).
+    Portal edits are immediately available to the agent runtime.
+    
+    Args:
+        node_name: Node name (e.g., "greet", "verify", "qualify")
+        vertical: Business vertical (default: "reverse_mortgage")
+    
+    Returns:
+        Node prompt content (generic instructions, no call-type branching)
+    """
+    # TRY DATABASE FIRST (Plan 2/3 integration)
+    try:
+        from services.supabase import get_supabase_client
+        
+        sb = get_supabase_client()
+        result = sb.rpc('get_node_prompt', {
+            'p_vertical': vertical,
+            'p_node_name': node_name
+        }).execute()
+        
+        if result.data and len(result.data) > 0:
+            # Extract JSONB content from Plan 2 structure
+            content = result.data[0].get('content', {})
+            
+            # Build prompt from JSONB fields (Plan 2 schema)
+            prompt_parts = []
+            if content.get('role'):
+                prompt_parts.append(f"## Role\n{content['role']}\n")
+            if content.get('personality'):
+                prompt_parts.append(f"## Personality\n{content['personality']}\n")
+            if content.get('instructions'):
+                prompt_parts.append(f"## Instructions\n{content['instructions']}")
+            
+            if prompt_parts:
+                prompt = "\n".join(prompt_parts)
+                logger.info(f"✅ Loaded {node_name} from database (vertical={vertical})")
+                return prompt
+            else:
+                # Database returned a row but content is empty
+                logger.warning(f"Database returned empty content for {node_name}/{vertical}, falling back to file")
+                # Fall through to file fallback
+    
+    except Exception as e:
+        logger.warning(f"Failed to load from database: {e}, falling back to file")
+    
+    # FALLBACK TO FILE (development/testing)
+    module_dir = os.path.dirname(__file__)
+    prompt_path = os.path.join(module_dir, "..", "prompts", vertical, "nodes", f"{node_name}.md")
+    prompt_path = os.path.abspath(prompt_path)
+    
+    try:
+        with open(prompt_path, 'r') as f:
+            prompt = f.read()
+            logger.info(f"✅ Loaded {node_name} from file: {prompt_path}")
+            return prompt
+    except FileNotFoundError:
+        logger.warning(f"Prompt file not found: {prompt_path}")
+        return f"You are in the {node_name} phase. Continue naturally."
+
+
+def build_context_injection(call_type: str, lead_context: dict, phone_number: str) -> str:
+    """Build context string to inject before node prompt
+    
+    This provides the LLM with situational awareness so the same node prompt
+    can adapt to different call types (inbound/outbound, qualified/unqualified).
+    
+    Args:
+        call_type: Type of call (inbound-qualified, outbound-warm, etc.)
+        lead_context: Dict with lead_id, name, qualified, property info, etc.
+        phone_number: Caller's phone number
+    
+    Returns:
+        Formatted context string to prepend to node prompt
+    """
+    # Determine call direction
+    is_inbound = call_type.startswith("inbound")
+    is_qualified = lead_context.get("qualified", False)
+    lead_id = lead_context.get("lead_id")
+    lead_name = lead_context.get("name", "Unknown")
+    
+    context_parts = [
+        "=== CALL CONTEXT ===",
+        f"Call Type: {call_type}",
+        f"Direction: {'Inbound' if is_inbound else 'Outbound'}",
+        f"Phone: {phone_number}",
+    ]
+    
+    if lead_id:
+        context_parts.append(f"Lead Status: Known (ID: {lead_id})")
+        context_parts.append(f"Lead Name: {lead_name}")
+        context_parts.append(f"Qualified: {'Yes' if is_qualified else 'No'}")
+        
+        # Add property context if available
+        if lead_context.get("property_address"):
+            context_parts.append(f"Property: {lead_context['property_address']}")
+        if lead_context.get("estimated_equity"):
+            context_parts.append(f"Est. Equity: ${lead_context['estimated_equity']:,}")
+    else:
+        context_parts.append("Lead Status: Unknown (new caller)")
+    
+    context_parts.append("===================\n")
+    
+    return "\n".join(context_parts)
+

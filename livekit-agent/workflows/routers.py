@@ -158,6 +158,26 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
 	return "answer"
 
 
+def route_after_book(state: ConversationState) -> Literal["exit", "answer"]:
+	"""
+	DB-driven routing after booking attempt.
+	- If appointment_booked → exit (success)
+	- Else → answer (booking failed, continue conversation)
+	"""
+	row = _db(state)
+	if not row:
+		logger.info("🔍 No DB row → EXIT")
+		return "exit"
+	cd = _cd(row)
+	
+	if cd.get("appointment_booked"):
+		logger.info("✅ Appointment booked → EXIT")
+		return "exit"
+	
+	logger.info("⚠️ Booking not completed → ANSWER")
+	return "answer"
+
+
 def route_after_exit(state: ConversationState):
 	"""
 	DB-driven router after exit node.

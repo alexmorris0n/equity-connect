@@ -163,7 +163,7 @@ def create_conversation_graph(llm: ChatOpenAI, tools: list, lead_context: dict =
         workflow.add_node("greet", greet_with_context)
     else:
         # No context - just add greet normally
-        workflow.add_node("greet", create_node_function("greet", llm_with_tools))
+    workflow.add_node("greet", create_node_function("greet", llm_with_tools))
     
     # Add remaining nodes using factory (ensures each node properly calls LLM)
     workflow.add_node("verify", create_node_function("verify", llm_with_tools))

@@ -154,11 +154,11 @@
             </template>
             Preview
           </n-button>
-          <n-button size="small" type="primary" round :disabled="loading || !hasChanges" @click="saveChanges">
+          <n-button size="small" type="primary" round :disabled="loading || !hasChanges" @click="selectedVertical ? saveCurrentNode() : saveChanges()">
             <template #icon>
               <n-icon><SaveOutline /></n-icon>
             </template>
-            Save
+            {{ selectedVertical ? 'Save Node' : 'Save' }}
           </n-button>
           <n-button size="small" round type="info" :disabled="loading || !currentVersion?.id || currentVersion?.is_active" @click="openDeployModal">
             <template #icon>
@@ -178,6 +178,51 @@
             </template>
             Clean Up
           </n-button>
+        </div>
+
+        <!-- Vertical Selector for Node-Based Routing -->
+        <div class="vertical-selector-section" style="margin: 1.5rem 0; padding: 1rem; background: #f8fafc; border-radius: 0.5rem;">
+          <label style="display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.5rem;">
+            Select Vertical:
+          </label>
+          <select
+            v-model="selectedVertical"
+            style="width: 100%; padding: 0.5rem 1rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 0.875rem; background: white;"
+          >
+            <option value="">-- Choose a vertical --</option>
+            <option value="reverse_mortgage">Reverse Mortgage</option>
+            <option value="solar">Solar</option>
+            <option value="hvac">HVAC</option>
+          </select>
+        </div>
+
+        <!-- Node Tabs (only show if vertical is selected) -->
+        <div v-if="selectedVertical" style="margin-bottom: 1.5rem; background: #eef2ff; border-radius: 0.5rem; padding: 1rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem;">
+            <button
+              v-for="node in nodeList"
+              :key="node.name"
+              @click="selectedNode = node.name"
+              :style="{
+                padding: '0.5rem 1rem',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s',
+                border: 'none',
+                cursor: 'pointer',
+                background: selectedNode === node.name ? '#4f46e5' : 'white',
+                color: selectedNode === node.name ? 'white' : '#374151',
+                boxShadow: selectedNode === node.name ? '0 4px 6px rgba(0,0,0,0.1)' : 'none'
+              }"
+            >
+              {{ node.label }}
+            </button>
+          </div>
+          <div style="margin-top: 0.75rem; font-size: 0.875rem; color: #4b5563; font-style: italic;">
+            <strong>{{ selectedNode }}:</strong> {{ getCurrentNodeDescription() }}
+          </div>
         </div>
 
         <n-tabs type="line" size="small" v-model:value="activeTab">
@@ -1690,6 +1735,24 @@ import {
 const loading = ref(false)
 const error = ref('')
 const activeTab = ref('performance')
+
+// Vertical and node selection for node-based routing
+const selectedVertical = ref('')
+const selectedNode = ref('greet')
+const nodePrompts = ref({}) // { vertical: { greet: {...}, verify: {...}, ... } }
+const currentNodePrompt = ref(null)
+
+// Node configuration
+const nodeList = [
+  { name: 'greet', label: '1. Greet', desc: 'Initial greeting when call starts' },
+  { name: 'verify', label: '2. Verify', desc: 'Verify caller identity and get lead context' },
+  { name: 'qualify', label: '3. Qualify', desc: 'Ask qualifying questions to assess fit' },
+  { name: 'answer', label: '4. Answer', desc: 'Answer questions about the service' },
+  { name: 'objections', label: '5. Objections', desc: 'Handle objections and concerns' },
+  { name: 'book', label: '6. Book', desc: 'Schedule an appointment on the calendar' },
+  { name: 'exit', label: '7. Exit', desc: 'Say goodbye and end the call' }
+]
+
 const versions = ref([])
 const showPreviewModal = ref(false)
 const showDeployModal = ref(false)
@@ -5173,6 +5236,240 @@ const cancelCleanup = () => {
   cleanupResults.value = []
   cleanupProgress.value = []
 }
+
+// =======================
+// NODE-BASED PROMPT MANAGEMENT
+// =======================
+
+function getCurrentNodeDescription() {
+  const node = nodeList.find(n => n.name === selectedNode.value)
+  return node ? node.desc : ''
+}
+
+async function loadNodePrompts() {
+  if (!selectedVertical.value) return
+  
+  loading.value = true
+  try {
+    // Query the active_node_prompts view (created in Plan 2)
+    const { data, error } = await supabase
+      .from('active_node_prompts')
+      .select('*')
+      .eq('vertical', selectedVertical.value)
+    
+    if (error) throw error
+    
+    // Group by node_name
+    const grouped = {}
+    for (const np of (data || [])) {
+      grouped[np.node_name] = {
+        id: np.id,
+        vertical: np.vertical,
+        node_name: np.node_name,
+        name: np.name,
+        version_number: np.version_number,
+        content: np.content // JSONB object with role, personality, instructions, tools
+      }
+    }
+    
+    nodePrompts.value[selectedVertical.value] = grouped
+    
+    // Load the first node (greet)
+    selectedNode.value = 'greet'
+    loadCurrentNode()
+    
+  } catch (error) {
+    console.error('Error loading node prompts:', error)
+    window.$message?.error('Failed to load node prompts: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+function loadCurrentNode() {
+  if (!selectedVertical.value || !selectedNode.value) return
+  
+  const np = nodePrompts.value[selectedVertical.value]?.[selectedNode.value]
+  
+  if (np && np.content) {
+    // Node exists - load its content from JSONB
+    currentNodePrompt.value = np
+    
+    // Extract fields from JSONB content object and populate currentVersion structure
+    const content = np.content
+    
+    // Initialize currentVersion if needed
+    if (!currentVersion.value) {
+      currentVersion.value = {
+        id: np.id,
+        version_number: np.version_number,
+        content: {}
+      }
+    }
+    
+    // Populate currentVersion.content with JSONB fields
+    currentVersion.value.content.role = content.role || ''
+    currentVersion.value.content.personality = content.personality || ''
+    currentVersion.value.content.instructions = content.instructions || ''
+    currentVersion.value.content.tools = Array.isArray(content.tools) ? content.tools.join(', ') : (content.tools || '')
+    
+  } else {
+    // Node doesn't exist - create empty template
+    currentNodePrompt.value = null
+    
+    if (!currentVersion.value) {
+      currentVersion.value = { content: {} }
+    }
+    
+    currentVersion.value.content.role = ''
+    currentVersion.value.content.personality = ''
+    currentVersion.value.content.instructions = ''
+    currentVersion.value.content.tools = ''
+  }
+  
+  // Update the editor UI
+  nextTick(() => {
+    populateContentEditableDivs()
+  })
+}
+
+async function saveCurrentNode() {
+  if (!selectedVertical.value || !selectedNode.value) {
+    window.$message?.error('No vertical or node selected')
+    return
+  }
+  
+  if (!currentVersion.value?.content) {
+    window.$message?.error('No content to save')
+    return
+  }
+  
+  try {
+    saving.value = true
+    
+    // Build JSONB content object from currentVersion.content
+    const contentObj = {
+      role: currentVersion.value.content.role || '',
+      personality: currentVersion.value.content.personality || '',
+      instructions: currentVersion.value.content.instructions || '',
+      tools: currentVersion.value.content.tools ? currentVersion.value.content.tools.split(',').map(t => t.trim()) : []
+    }
+    
+    // Check if this node already exists
+    const existingNode = currentNodePrompt.value
+    
+    if (existingNode) {
+      // UPDATE existing prompt version
+      // Increment version number and create new version
+      const newVersionNumber = existingNode.version_number + 1
+      
+      const { error: versionError } = await supabase
+        .from('prompt_versions')
+        .insert({
+          prompt_id: existingNode.id,
+          version_number: newVersionNumber,
+          content: contentObj,
+          is_active: true,
+          is_draft: false,
+          created_by: 'portal',
+          change_summary: `Updated ${selectedNode.value} node from Vue portal`
+        })
+      
+      if (versionError) throw versionError
+      
+      // Deactivate old version
+      await supabase
+        .from('prompt_versions')
+        .update({ is_active: false })
+        .eq('prompt_id', existingNode.id)
+        .eq('version_number', existingNode.version_number)
+      
+      // Update prompt current_version
+      await supabase
+        .from('prompts')
+        .update({ current_version: newVersionNumber })
+        .eq('id', existingNode.id)
+      
+    } else {
+      // INSERT new prompt + version
+      // First create the prompt record
+      const { data: newPrompt, error: promptError } = await supabase
+        .from('prompts')
+        .insert({
+          name: selectedNode.value.charAt(0).toUpperCase() + selectedNode.value.slice(1),
+          description: `${selectedNode.value} node for ${selectedVertical.value}`,
+          vertical: selectedVertical.value,
+          node_name: selectedNode.value,
+          current_version: 1,
+          is_active: true
+        })
+        .select()
+        .single()
+      
+      if (promptError) throw promptError
+      
+      // Then create the first version
+      const { error: versionError } = await supabase
+        .from('prompt_versions')
+        .insert({
+          prompt_id: newPrompt.id,
+          version_number: 1,
+          content: contentObj,
+          is_active: true,
+          is_draft: false,
+          created_by: 'portal',
+          change_summary: `Created ${selectedNode.value} node from Vue portal`
+        })
+      
+      if (versionError) throw versionError
+      
+      // Update local cache
+      if (!nodePrompts.value[selectedVertical.value]) {
+        nodePrompts.value[selectedVertical.value] = {}
+      }
+      nodePrompts.value[selectedVertical.value][selectedNode.value] = {
+        id: newPrompt.id,
+        vertical: selectedVertical.value,
+        node_name: selectedNode.value,
+        name: newPrompt.name,
+        version_number: 1,
+        content: contentObj
+      }
+      currentNodePrompt.value = nodePrompts.value[selectedVertical.value][selectedNode.value]
+    }
+    
+    hasChanges.value = false
+    window.$message?.success(`Node "${selectedNode.value}" saved for ${selectedVertical.value}`)
+    
+    // Reload to get latest version
+    await loadNodePrompts()
+    
+  } catch (error) {
+    console.error('Error saving node:', error)
+    window.$message?.error('Failed to save node: ' + error.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+// Watchers for node-based routing
+watch(selectedVertical, (newVertical) => {
+  if (!newVertical) return
+  
+  // Load node prompts for this vertical
+  if (!nodePrompts.value[newVertical]) {
+    loadNodePrompts()
+  } else {
+    // Already loaded, just switch to first node
+    selectedNode.value = 'greet'
+    loadCurrentNode()
+  }
+})
+
+watch(selectedNode, () => {
+  loadCurrentNode()
+})
+
 </script>
 
 <style scoped>

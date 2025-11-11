@@ -1,6 +1,7 @@
 """Tools module - Export all business tools for LiveKit agent"""
 from .lead import (
     get_lead_context,
+    verify_caller_identity,
     check_consent_dnc,
     update_lead_info,
     find_broker_by_territory
@@ -18,11 +19,20 @@ from .interaction import (
     send_appointment_confirmation,
     verify_appointment_confirmation
 )
+from .conversation_flags import (
+    mark_ready_to_book,
+    mark_has_objection,
+    mark_objection_handled,
+    mark_questions_answered,
+    mark_wrong_person,
+    clear_conversation_flags
+)
 
 # Export all tools as a list for the agent
 __all__ = [
     # Lead management
     "get_lead_context",
+    "verify_caller_identity",
     "check_consent_dnc",
     "update_lead_info",
     "find_broker_by_territory",
@@ -38,11 +48,19 @@ __all__ = [
     "assign_tracking_number",
     "send_appointment_confirmation",
     "verify_appointment_confirmation",
+    # Conversation flow flags (NEW)
+    "mark_ready_to_book",
+    "mark_has_objection",
+    "mark_objection_handled",
+    "mark_questions_answered",
+    "mark_wrong_person",
+    "clear_conversation_flags",
 ]
 
 # List of all tools for easy import
 all_tools = [
     get_lead_context,
+    verify_caller_identity,
     check_consent_dnc,
     update_lead_info,
     find_broker_by_territory,
@@ -55,4 +73,11 @@ all_tools = [
     assign_tracking_number,
     send_appointment_confirmation,
     verify_appointment_confirmation,
+    # Conversation flow flags (NEW)
+    mark_ready_to_book,
+    mark_has_objection,
+    mark_objection_handled,
+    mark_questions_answered,
+    mark_wrong_person,
+    clear_conversation_flags,
 ]

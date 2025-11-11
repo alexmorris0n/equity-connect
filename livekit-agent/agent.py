@@ -28,21 +28,159 @@ from livekit.plugins import langchain as livekit_langchain  # Only the plugin it
 # Import your custom tools
 from tools import all_tools
 
+# Import workflow components for event-based routing
+from workflows.routers import (
+    route_after_greet,
+    route_after_verify,
+    route_after_qualify,
+    route_after_answer,
+    route_after_objections,
+    route_after_book,
+    route_after_exit,
+)
+from workflows.node_completion import is_node_complete
+from services.conversation_state import get_conversation_state
+from services.prompt_loader import load_node_prompt
+
 
 class EquityConnectAgent(Agent):
-    """Voice agent for Equity Connect calls"""
+    """Voice agent with event-based node routing"""
     
-    def __init__(self, instructions: str):
+    def __init__(
+        self, 
+        instructions: str, 
+        phone_number: str, 
+        vertical: str = "reverse_mortgage",
+        call_type: str = "inbound-unknown",
+        lead_context: dict = None
+    ):
         super().__init__(
             instructions=instructions,
-            tools=all_tools,  # Your custom Supabase RAG/KB tools
+            tools=all_tools,
         )
+        self.phone = phone_number
+        self.vertical = vertical  # Business vertical for prompt loading
+        self.call_type = call_type  # For context injection
+        self.lead_context = lead_context or {}  # For context injection
+        self.current_node = "greet"
+        self.session = None  # Set after AgentSession creates it
     
     async def on_enter(self):
-        """Called when agent joins - greet the user"""
-        self.session.generate_reply(
-            instructions="Greet the user warmly and ask how you can help them today."
+        """Agent joins - start with greet node"""
+        logger.info("🎤 Agent joined - loading greet node")
+        await self.load_node("greet", speak_now=True)
+    
+    async def load_node(self, node_name: str, speak_now: bool = False):
+        """Load node prompt and optionally trigger immediate speech
+        
+        IMPORTANT: This only updates the system instructions, NOT the conversation history.
+        The agent retains full memory of the conversation across all nodes.
+        """
+        logger.info(f"📍 Loading node: {node_name} (vertical={self.vertical})")
+        
+        # Load prompt from database or file WITH vertical parameter
+        from services.prompt_loader import build_context_injection
+        
+        node_prompt = load_node_prompt(node_name, vertical=self.vertical)
+        
+        # Inject call context for situational awareness (Plan 1 requirement)
+        context = build_context_injection(
+            call_type=self.call_type,
+            lead_context=self.lead_context,
+            phone_number=self.phone
         )
+        
+        # Prepend context to node prompt
+        full_prompt = context + "\n\n" + node_prompt
+        
+        self.current_node = node_name
+        
+        # Update the agent's instructions WITHOUT clearing conversation history
+        # The session maintains the full conversation context (user messages, agent responses, tool calls)
+        # Only the system-level instructions change to guide the next phase
+        self.instructions = full_prompt  # CRITICAL: Persist instructions to Agent
+        
+        # If speak_now, generate immediate response with new instructions
+        if speak_now and self.session:
+            await self.session.generate_reply(instructions=full_prompt)
+    
+    async def check_and_route(self):
+        """Check if we should transition to next node"""
+        logger.info(f"🔍 Routing check from node: {self.current_node}")
+        
+        # Get conversation state from DB
+        state_row = get_conversation_state(self.phone)
+        if not state_row:
+            logger.warning("No state found in DB")
+            return
+        
+        # Extract conversation_data (contains flags)
+        state = state_row.get("conversation_data", {})
+        
+        # Check if current node is complete
+        if not is_node_complete(self.current_node, state):
+            logger.info(f"⏳ Node '{self.current_node}' not complete yet")
+            return
+        
+        # Route to next node using existing router logic
+        next_node = self.route_next(state_row, state)
+        
+        logger.info(f"🧭 Router: {self.current_node} → {next_node}")
+        
+        if next_node == "END":
+            logger.info("🏁 Conversation complete")
+            # Optionally say goodbye
+            if self.session:
+                await self.session.generate_reply(
+                    instructions="Say a warm goodbye and thank them for their time."
+                )
+        elif next_node != self.current_node:
+            # Transition to new node (don't speak immediately)
+            await self.load_node(next_node, speak_now=False)
+    
+    def route_next(self, state_row: dict, conversation_data: dict) -> str:
+        """Use existing router functions to determine next node
+        
+        CRITICAL: Routing is DYNAMIC, not fixed. The router examines actual DB state
+        to decide where to go next. Seniors are unpredictable - we adapt in real-time.
+        
+        Examples of dynamic routing:
+        - If senior says "my spouse handles this" → greet (re-greet spouse)
+        - If senior asks question mid-qualify → answer (skip ahead)
+        - If objection comes up during answer → objections
+        - If ready to book anytime → book
+        - If wrong person → exit
+        
+        All 7 nodes are ALWAYS available. The router decides based on conversation_data flags.
+        """
+        # Build LangGraph-style state for compatibility with existing routers
+        state = {
+            "phone_number": self.phone,
+            "messages": [],
+            # Add fields from DB row
+            "lead_id": state_row.get("lead_id"),
+            "qualified": state_row.get("qualified"),
+        }
+        
+        # Call appropriate router based on current node
+        # Each router checks DB flags and can route to ANY valid next node
+        if self.current_node == "greet":
+            return route_after_greet(state)  # Can go to: verify, qualify, answer, exit, or greet (re-greet)
+        elif self.current_node == "verify":
+            return route_after_verify(state)  # Can go to: qualify, exit, or greet (spouse available)
+        elif self.current_node == "qualify":
+            return route_after_qualify(state)  # Can go to: answer or exit
+        elif self.current_node == "answer":
+            return route_after_answer(state)  # Can go to: answer, objections, book, or exit
+        elif self.current_node == "objections":
+            return route_after_objections(state)  # Can go to: answer, objections, book, or exit
+        elif self.current_node == "book":
+            return route_after_book(state)  # Can go to: exit or answer (booking failed)
+        elif self.current_node == "exit":
+            return route_after_exit(state)  # Can go to: greet (spouse available) or END
+        else:
+            logger.warning(f"Unknown node: {self.current_node}")
+            return "END"
 
 
 # Import config
@@ -77,22 +215,6 @@ os.environ.setdefault("TRANSFORMERS_CACHE", os.environ["HF_HOME"])
 # Google Cloud (if JSON credentials are set)
 if Config.GOOGLE_APPLICATION_CREDENTIALS_JSON:
     os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"] = Config.GOOGLE_APPLICATION_CREDENTIALS_JSON
-
-
-class EquityConnectAgent(Agent):
-    """Voice agent for Equity Connect calls"""
-    
-    def __init__(self, instructions: str):
-        super().__init__(
-            instructions=instructions,
-            tools=all_tools,  # Your Supabase tools
-        )
-    
-    async def on_enter(self):
-        """Called when agent joins - greet the user"""
-        self.session.generate_reply(
-            instructions="Greet the user warmly and ask how you can help them today."
-        )
 
 
 def prewarm(proc: JobProcess):
@@ -168,7 +290,9 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🔍 Looking up lead by phone: {caller_phone}")
         try:
             # Query Supabase for lead by phone number
-            response = await supabase_client.from_("leads").select(
+            from services.supabase import get_supabase_client
+            supabase = get_supabase_client()
+            response = supabase.table("leads").select(
                 "*, brokers!assigned_broker_id(*)"
             ).or_(
                 f"primary_phone.ilike.%{caller_phone}%,primary_phone_e164.eq.{caller_phone}"
@@ -358,6 +482,25 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
     logger.info(f"🚀 Full LiveKit Inference mode - unified billing for STT/LLM/TTS")
     
+    # IMPORTANT: Ensure caller_phone is set before creating agent
+    # If caller_phone is None/empty, the agent won't be able to look up conversation state
+    if not caller_phone:
+        logger.warning("⚠️ No caller_phone available - using room_name as fallback identifier")
+        caller_phone = room_name  # Use room name as fallback for state tracking
+    
+    # Detect vertical from metadata (for multi-vertical support)
+    vertical = metadata.get("vertical", "reverse_mortgage")
+    logger.info(f"🏢 Vertical: {vertical}")
+    
+    # Create agent with phone number, vertical, call_type, and lead context for event-based routing
+    agent = EquityConnectAgent(
+        instructions=instructions,
+        phone_number=caller_phone,
+        vertical=vertical,
+        call_type=call_type,
+        lead_context=lead_context or {}
+    )
+    
     session = AgentSession(
         stt=stt_string,  # LiveKit Inference string format
         llm=llm_string,  # LiveKit Inference string format
@@ -376,11 +519,20 @@ async def entrypoint(ctx: JobContext):
         preemptive_generation=preemptive_generation,
     )
     
+    # Link session to agent (for generate_reply and node routing)
+    agent.session = session
+    
+    # Hook routing checks after each agent turn
+    @session.on("agent_speech_committed")
+    async def on_agent_finished_speaking():
+        """Agent finished speaking - check if we should route"""
+        await agent.check_and_route()
+    
     # Start the session with custom EquityConnectAgent that auto-greets on entry
     exit_reason: Optional[str] = None
     try:
         await session.start(
-            agent=EquityConnectAgent(instructions=instructions),  # Custom agent with on_enter() greeting
+            agent=agent,  # Pass our pre-created agent with phone number
             room=ctx.room,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC()

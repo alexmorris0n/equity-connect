@@ -185,9 +185,12 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
                     "fallback_mode": True  # Flag that we're operating without DB
                 }
         
-        # Inject lead context on first turn (if provided)
+        # Build dynamic system instructions based on current phase
+        instructions = build_unified_instructions(conversation_data)
+        
+        # Inject lead context into instructions on first turn (if provided)
         if lead_context and len(messages) <= 1:
-            context_parts = ["[LEAD CONTEXT]"]
+            context_parts = ["\n[LEAD CONTEXT]"]
             if lead_context.get("first_name"):
                 context_parts.append(f"Name: {lead_context['first_name']} {lead_context.get('last_name', '')}")
             if lead_context.get("phone"):
@@ -197,11 +200,9 @@ def create_simple_conversation_graph(llm, tools: list, lead_context: dict = None
             if lead_context.get("qualified") is not None:
                 context_parts.append(f"Qualified: {lead_context['qualified']}")
             
-            context_message = SystemMessage(content="\n".join(context_parts))
-            messages.insert(0, context_message)
+            # Append lead context to instructions (both in one SystemMessage)
+            instructions = instructions + "\n" + "\n".join(context_parts)
         
-        # Build dynamic system instructions based on current phase
-        instructions = build_unified_instructions(conversation_data)
         system_message = SystemMessage(content=instructions)
         
         # Update or prepend system message

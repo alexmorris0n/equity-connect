@@ -2,6 +2,7 @@
 from typing import Optional
 from livekit.agents.llm import function_tool
 from services.supabase import get_supabase_client
+from services.conversation_state import update_conversation_state
 from services.nylas import get_broker_events, find_free_slots, format_available_slots, create_calendar_event
 import logging
 import json
@@ -251,6 +252,16 @@ async def book_appointment(
         
         duration_ms = int((time.time() - start_time) * 1000)
         logger.info(f"✅ Appointment booked successfully in {duration_ms}ms")
+        
+        # Update conversation state to mark appointment as booked
+        phone_number = lead.get('primary_phone')
+        if phone_number:
+            update_conversation_state(phone_number, {
+                "conversation_data": {
+                    "appointment_booked": True,
+                    "appointment_id": nylas_event_id,
+                }
+            })
         
         appointment_display = appointment_date.strftime('%B %d, %Y at %I:%M %p')
         return json.dumps({
