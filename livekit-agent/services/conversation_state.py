@@ -252,15 +252,24 @@ def mark_call_completed(phone: str, exit_reason: Optional[str] = None) -> Option
 	return resp.data[0] if resp.data else None
 
 
-def extract_phone_from_messages(messages: List[Dict[str, Any]]) -> Optional[str]:
+def extract_phone_from_messages(messages: List[Any]) -> Optional[str]:
 	"""Best-effort extraction of a phone number from message stream metadata or text."""
-	# 1) Look for structured metadata
+	# Handle LangChain Message objects (have attributes, not dict keys)
 	for msg in messages or []:
-		meta = msg.get("metadata") or {}
-		if isinstance(meta, dict):
-			phone = meta.get("phone_number") or meta.get("from_number") or meta.get("caller")
-			if phone:
-				return phone
+		# Try to get metadata from LangChain Message object
+		if hasattr(msg, "additional_kwargs"):
+			meta = getattr(msg, "additional_kwargs", {})
+			if isinstance(meta, dict):
+				phone = meta.get("phone_number") or meta.get("from_number") or meta.get("caller")
+				if phone:
+					return phone
+		# Fallback: treat as dict (for backward compatibility)
+		elif isinstance(msg, dict):
+			meta = msg.get("metadata") or {}
+			if isinstance(meta, dict):
+				phone = meta.get("phone_number") or meta.get("from_number") or meta.get("caller")
+				if phone:
+					return phone
 	# 2) Search in content text for E.164
 	e164 = _search_e164(messages or [])
 	if e164:
@@ -268,15 +277,24 @@ def extract_phone_from_messages(messages: List[Dict[str, Any]]) -> Optional[str]
 	return None
 
 
-def _search_e164(messages: List[Dict[str, Any]]) -> Optional[str]:
+def _search_e164(messages: List[Any]) -> Optional[str]:
 	pattern = re.compile(r"(\+\d{10,15})")
 	for msg in messages:
-		for key in ("text", "content"):
-			val = msg.get(key)
-			if isinstance(val, str):
-				found = pattern.search(val)
+		# Handle LangChain Message objects
+		if hasattr(msg, "content"):
+			content = getattr(msg, "content", "")
+			if isinstance(content, str):
+				found = pattern.search(content)
 				if found:
 					return found.group(1)
+		# Fallback: treat as dict
+		elif isinstance(msg, dict):
+			for key in ("text", "content"):
+				val = msg.get(key)
+				if isinstance(val, str):
+					found = pattern.search(val)
+					if found:
+						return found.group(1)
 	return None
 
 
