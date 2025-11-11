@@ -284,20 +284,15 @@ async def entrypoint(ctx: JobContext):
         # Don't fall back - this is essential for the new architecture
         raise
     
-    # Create session with plugin instances (required for self-hosted LiveKit)
-    # Endpointing delays are no longer needed (TurnDetector handles timing)
-    # Keeping for legacy template compatibility but not used
-    min_endpointing = template.get("min_endpointing_delay", 0.2)
-    max_endpointing = template.get("max_endpointing_delay", 0.6)
-    
-    logger.info(f"⏱️ Endpointing delays: DEPRECATED (TurnDetector manages timing)")
+    # Create session with TurnDetector ONLY (no endpointing delays)
+    logger.info(f"⏱️ TurnDetector will manage ALL timing (no artificial delays)")
     
     session = AgentSession(
         stt=stt_plugin,
         llm=llm_plugin,
         tts=tts_plugin,
         vad=ctx.proc.userdata["vad"],
-        turn_detection=turn_detector,  # EnglishModel or MultilingualModel (ALWAYS enabled)
+        turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
         # Interruption settings from template
         allow_interruptions=allow_interruptions,
         min_interruption_duration=min_interruption_duration,
@@ -305,8 +300,7 @@ async def entrypoint(ctx: JobContext):
         false_interruption_timeout=false_interruption_timeout,
         # Response generation settings from template
         preemptive_generation=preemptive_generation,
-        min_endpointing_delay=min_endpointing,  # 0.4s with turn detector, 0.3s without
-        max_endpointing_delay=max_endpointing,  # 1.0s with turn detector, or match VAD
+        # NO min/max_endpointing_delay - TurnDetector handles this internally
     )
     
     # Start the session with custom EquityConnectAgent that auto-greets on entry
