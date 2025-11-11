@@ -335,8 +335,8 @@ async def entrypoint(ctx: JobContext):
         await session.start(
             agent=Agent(
                 llm=llm_plugin,
-                instructions=instructions,  # Pass loaded prompt instructions
-                generate_on_first_message=True  # Generate response immediately on session start
+                instructions=instructions  # Pass loaded prompt instructions
+                # TODO: Figure out how to make agent greet first for inbound calls
             ),
             room=ctx.room,
             room_input_options=RoomInputOptions(
