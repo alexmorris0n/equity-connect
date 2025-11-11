@@ -243,11 +243,50 @@ async def entrypoint(ctx: JobContext):
     # Get VAD settings FIRST (used by both STT and AgentSession)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
-    # Build plugin instances from template (required for self-hosted)
-    stt_plugin = build_stt_plugin(template, vad_silence_duration_ms)
-    llm_plugin = build_llm_plugin(template)
-    tts_plugin = build_tts_plugin(template)
-        
+    # === LIVEKIT INFERENCE MODE ===
+    # Build model strings for LiveKit Inference (unified billing + lower latency)
+    # Format: "provider/model-name"
+    
+    # STT model string
+    stt_provider = template.get("stt_provider", "deepgram")
+    stt_model = template.get("stt_model", "nova-2")
+    if stt_provider == "deepgram":
+        stt_string = f"deepgram/{stt_model}"
+    elif stt_provider == "assemblyai":
+        stt_string = "assemblyai/universal-streaming"
+    elif stt_provider == "openai":
+        stt_string = "openai/whisper-1"
+    else:
+        stt_string = "deepgram/nova-2"  # fallback
+    
+    # LLM model string
+    llm_provider = template.get("llm_provider", "openai")
+    llm_model = template.get("llm_model", "gpt-4o")
+    if llm_provider == "openrouter":
+        # OpenRouter models - just use the model name without prefix
+        llm_string = llm_model  # e.g., "gpt-4o", "anthropic/claude-3-5-sonnet"
+    elif llm_provider == "openai":
+        llm_string = f"openai/{llm_model}"
+    elif llm_provider == "anthropic":
+        llm_string = f"anthropic/{llm_model}"
+    elif llm_provider == "google":
+        llm_string = f"google/{llm_model}"
+    else:
+        llm_string = f"{llm_provider}/{llm_model}"
+    
+    # TTS model string
+    tts_provider = template.get("tts_provider", "elevenlabs")
+    tts_voice_id = template.get("tts_voice_id", "6aDn1KB0hjpdcocrUkmq")
+    tts_model = template.get("tts_model", "eleven_turbo_v2_5")
+    if tts_provider == "elevenlabs":
+        tts_string = f"elevenlabs/{tts_model}"
+    elif tts_provider == "openai":
+        tts_string = "openai/tts-1"
+    elif tts_provider == "google":
+        tts_string = "google/neural2"
+    else:
+        tts_string = "elevenlabs/eleven_turbo_v2_5"  # fallback
+    
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
     min_interruption_duration = template.get("min_interruption_duration", 0.5)
@@ -255,11 +294,11 @@ async def entrypoint(ctx: JobContext):
     resume_false_interruption = template.get("resume_false_interruption", True)
     false_interruption_timeout = template.get("false_interruption_timeout", 1.0)
     
-    logger.info(f"🎙️ STT: {template.get('stt_provider')} - {template.get('stt_model')} (endpointing=OFF)")
-    logger.info(f"🧠 LLM: {template.get('llm_provider')} - {template.get('llm_model')} (temp={template.get('llm_temperature', 0.7)}, top_p={template.get('llm_top_p', 1.0)})")
+    logger.info(f"🎙️ STT: {stt_string} (LiveKit Inference)")
+    logger.info(f"🧠 LLM: {llm_string} (LiveKit Inference)")
     if template.get('enable_web_search', False):
         logger.info(f"🌐 Web Search: ENABLED (max_results={template.get('web_search_max_results', 5)})")
-    logger.info(f"🔊 TTS: {template.get('tts_provider')} - {template.get('tts_voice_id')} (speed={template.get('tts_speed', 1.0)})")
+    logger.info(f"🔊 TTS: {tts_string} - voice={tts_voice_id} (LiveKit Inference)")
     logger.info(f"🎛️ VAD: Silero (speech gate only)")
     logger.info(f"🎯 TurnDetector: SOLE SOURCE OF TRUTH for turn ending")
     logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
@@ -285,18 +324,18 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
     
-    # Create session with TurnDetector + aggressive timing for snappy responses
-    # unlikely_threshold=0.25 controls turn detection sensitivity (lower = faster)
-    # min_endpointing_delay controls response speed after turn detected
+    # Create session with LiveKit Inference (string-based model specification)
+    # This provides unified billing and lower latency via co-located infrastructure
     min_endpointing_delay = 0.1  # Very aggressive - 100ms
     max_endpointing_delay = 3.0  # Prevent lengthy delays
     
     logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
+    logger.info(f"🚀 Using LiveKit Inference for unified billing and lower latency")
     
     session = AgentSession(
-        stt=stt_plugin,
-        llm=llm_plugin,
-        tts=tts_plugin,
+        stt=stt_string,  # LiveKit Inference string format
+        llm=llm_string,  # LiveKit Inference string format
+        tts=tts_string,  # LiveKit Inference string format
         vad=ctx.proc.userdata["vad"],
         turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
         # Endpointing timing - faster response
