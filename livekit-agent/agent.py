@@ -235,77 +235,8 @@ async def entrypoint(ctx: JobContext):
     
     # Build plugin instances from template (required for self-hosted)
     stt_plugin = build_stt_plugin(template, vad_silence_duration_ms, use_turn_detector)
+    llm_plugin = build_llm_plugin(template)
     tts_plugin = build_tts_plugin(template)
-    
-    # DEBUG: Check TTS streaming capability (workaround for LiveKit issue #3293)
-    # https://github.com/livekit/agents/issues/3293
-    if hasattr(tts_plugin, 'capabilities'):
-        logger.info(f"🎬 TTS Streaming Capability: {tts_plugin.capabilities.streaming}")
-    else:
-        logger.warning("⚠️ TTS plugin has no capabilities attribute!")
-    
-    # Build LangGraph workflow for LLM (replaces direct LLM plugin)
-    # Import non-plugin dependencies here (after workflows/ is available)
-    from langchain_openai import ChatOpenAI
-    from workflows import create_conversation_graph
-    
-    # Create base LLM for LangGraph nodes
-    # Supports OpenRouter (primary) or OpenAI direct (gpt-realtime only)
-    llm_provider = template.get("llm_provider", "openrouter")
-    llm_model = template.get("llm_model", "gpt-4o")
-    
-    # Determine API key and base URL based on provider
-    if llm_provider == "openrouter":
-        llm_api_key = os.getenv("OPENROUTER_API_KEY")
-        llm_base_url = "https://openrouter.ai/api/v1"  # OpenRouter endpoint
-    else:
-        llm_api_key = os.getenv("OPENAI_API_KEY")
-        llm_base_url = None  # Use default OpenAI endpoint
-    
-    base_llm = ChatOpenAI(
-        model=llm_model,
-        base_url=llm_base_url,
-        api_key=llm_api_key,
-        temperature=template.get("llm_temperature", 0.8),
-        max_tokens=template.get("llm_max_tokens", 4096),
-        model_kwargs={
-            "top_p": template.get("llm_top_p", 1.0),
-            "frequency_penalty": template.get("llm_frequency_penalty", 0.0),
-            "presence_penalty": template.get("llm_presence_penalty", 0.0),
-        }
-    )
-    
-    # Choose LangGraph architecture:
-    # - simple: Single-node with state-based routing (RECOMMENDED for voice, turn-based)
-    # - multi: Multi-node deterministic workflow (complex, needs manual turn orchestration)
-    # - test: Simple OpenRouter LLM (for testing audio pipeline only)
-    
-    LANGGRAPH_MODE = "test"  # Options: "simple", "multi", "test"
-    
-    if LANGGRAPH_MODE == "test":
-        logger.info("🧪 TEST MODE: Using simple OpenRouter LLM (bypassing LangGraph)")
-        # Use OpenAI plugin's native OpenRouter support
-        # Reference: https://docs.livekit.io/agents/models/llm/plugins/openrouter/
-        llm_plugin = openai.LLM.with_openrouter(
-            model=template.get("llm_model", "gpt-4o"),
-            temperature=template.get("llm_temperature", 0.8),
-        )
-    elif LANGGRAPH_MODE == "simple":
-        logger.info("🔷 LANGGRAPH SIMPLE MODE: Single-node conversation with state-based routing")
-        from workflows.conversation_graph_simple import create_simple_conversation_graph
-        conversation_graph = create_simple_conversation_graph(base_llm, all_tools, lead_context=lead_context)
-        
-        # Wrap graph in LiveKit LLMAdapter
-        # The adapter automatically calls graph.astream(stream_mode="messages") for token streaming
-        # Reference: https://docs.livekit.io/agents/models/llm/plugins/langchain/
-        llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
-    else:  # multi
-        logger.info("🔶 LANGGRAPH MULTI MODE: Multi-node deterministic workflow")
-        from workflows.conversation_graph import create_conversation_graph
-        conversation_graph = create_conversation_graph(base_llm, all_tools, lead_context=lead_context)
-        
-        # Wrap graph in LiveKit LLMAdapter
-        llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
         
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
@@ -590,6 +521,7 @@ def build_llm_plugin(template: dict):
         )
     else:
         return openai.LLM(model="gpt-4o", temperature=0.7)  # Safe fallback
+
 
 
 def build_tts_plugin(template: dict):
