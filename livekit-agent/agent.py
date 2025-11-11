@@ -285,9 +285,10 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
         raise
     
-    # Create session with TurnDetector + recommended timing
-    # Per LiveKit best practices: min=0.5s for flow, max=3.0s to prevent lengthy delays
-    min_endpointing_delay = 0.5  # Recommended default for natural flow
+    # Create session with TurnDetector + optimized timing
+    # unlikely_threshold=0.3 controls turn detection sensitivity
+    # min_endpointing_delay controls response speed after turn detected
+    min_endpointing_delay = 0.3  # Faster response (vs 0.5s default)
     max_endpointing_delay = 3.0  # Prevent lengthy delays
     
     logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
