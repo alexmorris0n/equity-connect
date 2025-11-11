@@ -256,11 +256,14 @@ async def entrypoint(ctx: JobContext):
         }
     )
     
-    # TEMPORARY TEST: Use simple OpenRouter LLM instead of LangGraph to test audio
-    # This bypasses the complex multi-node workflow to verify if STT->LLM->TTS works
-    USE_SIMPLE_LLM_TEST = True  # Set to False to re-enable LangGraph
+    # Choose LangGraph architecture:
+    # - simple: Single-node with state-based routing (RECOMMENDED for voice, turn-based)
+    # - multi: Multi-node deterministic workflow (complex, needs manual turn orchestration)
+    # - test: Simple OpenRouter LLM (for testing audio pipeline only)
     
-    if USE_SIMPLE_LLM_TEST:
+    LANGGRAPH_MODE = "simple"  # Options: "simple", "multi", "test"
+    
+    if LANGGRAPH_MODE == "test":
         logger.info("🧪 TEST MODE: Using simple OpenRouter LLM (bypassing LangGraph)")
         # Use OpenAI plugin's native OpenRouter support
         # Reference: https://docs.livekit.io/agents/models/llm/plugins/openrouter/
@@ -268,11 +271,21 @@ async def entrypoint(ctx: JobContext):
             model=template.get("llm_model", "gpt-4o"),
             temperature=template.get("llm_temperature", 0.8),
         )
-    else:
-        # Create LangGraph workflow with lead context injection
+    elif LANGGRAPH_MODE == "simple":
+        logger.info("🔷 LANGGRAPH SIMPLE MODE: Single-node conversation with state-based routing")
+        from workflows.conversation_graph_simple import create_simple_conversation_graph
+        conversation_graph = create_simple_conversation_graph(base_llm, all_tools, lead_context=lead_context)
+        
+        # Wrap graph in LiveKit LLMAdapter
+        # The adapter automatically calls graph.astream(stream_mode="messages") for token streaming
+        # Reference: https://docs.livekit.io/agents/models/llm/plugins/langchain/
+        llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
+    else:  # multi
+        logger.info("🔶 LANGGRAPH MULTI MODE: Multi-node deterministic workflow")
+        from workflows.conversation_graph import create_conversation_graph
         conversation_graph = create_conversation_graph(base_llm, all_tools, lead_context=lead_context)
         
-        # Wrap graph in LiveKit LLMAdapter (verified parameter: graph only)
+        # Wrap graph in LiveKit LLMAdapter
         llm_plugin = livekit_langchain.LLMAdapter(graph=conversation_graph)
         
     # Get interruption settings from template

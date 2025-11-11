@@ -48,8 +48,11 @@ def create_node_function(node_name: str, llm_with_tools):
     Each node:
     1. Loads its specific prompt
     2. Adds system message with persona + intent + node instructions
-    3. Invokes LLM with conversation history
+    3. Invokes LLM with conversation history (LiveKit LLMAdapter handles streaming)
     4. Returns updated state with new AI message
+    
+    NOTE: We use ainvoke() here, but LiveKit's LLMAdapter wraps the entire graph
+    and calls graph.astream(stream_mode="messages") which handles token streaming to TTS.
     """
     node_prompt = load_node_prompt(node_name)
     
@@ -68,7 +71,7 @@ def create_node_function(node_name: str, llm_with_tools):
         else:
             messages[0] = system_msg  # Update system message with node-specific instructions
         
-        # Invoke LLM with tools
+        # Invoke LLM with tools (LLMAdapter handles streaming at graph level)
         ai_response = await llm_with_tools.ainvoke(messages)
         
         # Persist deterministic JSON outputs and node_visits to Supabase
