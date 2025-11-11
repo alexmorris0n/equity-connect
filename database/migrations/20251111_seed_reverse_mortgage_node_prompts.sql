@@ -182,8 +182,13 @@ BEGIN
 
 END $$;
 
--- Refresh the active_node_prompts view to include new prompts
-REFRESH MATERIALIZED VIEW IF EXISTS active_node_prompts;
+-- Refresh the active_node_prompts view to include new prompts (if it exists)
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_matviews WHERE matviewname = 'active_node_prompts') THEN
+    REFRESH MATERIALIZED VIEW active_node_prompts;
+  END IF;
+END $$;
 
 -- Add comment
 COMMENT ON TABLE prompts IS 'BarbGraph node prompts seeded for reverse_mortgage vertical - edit via Vue Portal';
