@@ -16,11 +16,11 @@ def is_node_complete(node_name: str, state: dict) -> bool:
     """
     
     completion_criteria = {
-        "greet": lambda s: s.get("greeted") == True,
+		"greet": lambda s: True,
         "verify": lambda s: s.get("verified") == True,
         "qualify": lambda s: s.get("qualified") != None,
         "quote": lambda s: s.get("quote_presented") == True,
-        "answer": lambda s: s.get("questions_answered") or s.get("ready_to_book"),
+		"answer": lambda s: s.get("questions_answered") or s.get("ready_to_book") or s.get("has_objections"),
         "objections": lambda s: s.get("objection_handled") == True,
         "book": lambda s: s.get("appointment_booked") == True,
         "exit": lambda s: True,

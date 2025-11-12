@@ -38,12 +38,12 @@ BarbGraph breaks the conversation into **8 clear stages** (like chapters in a bo
 
 1. **Greet** - Say hello and build rapport
 2. **Verify** - Confirm who's calling
-3. **Qualify** - Check if they're a good fit
-4. **Quote** - Show them financial estimates
-5. **Answer** - Address their questions
-6. **Objections** - Handle concerns
-7. **Book** - Schedule an appointment
-8. **Exit** - Say goodbye gracefully
+3. **Qualify** - Check if they're a good fit (age, home ownership, equity)
+4. **Quote** - Show them personalized financial estimates (equity × 0.50 to 0.60)
+5. **Answer** - Address their questions, provide information
+6. **Objections** - Handle concerns, reframe negatives
+7. **Book** - Schedule an appointment with broker
+8. **Exit** - Say goodbye gracefully (can re-greet if spouse available)
 
 Each stage has its own focused instructions, and Barbara automatically moves between stages based on what the caller says and does.
 
@@ -61,7 +61,8 @@ Think of it like a GPS for conversations:
 
 ### Key Concepts
 
-- **Node:** A conversation stage with specific goals (e.g., "Greet", "Qualify")
+- **Node:** A conversation stage with specific goals (e.g., "Greet", "Qualify", "Quote")
+- **Theme:** Universal personality prompt applied to all nodes (eliminates duplication)
 - **State:** Data about the conversation stored in the database (e.g., "Has the caller been verified?")
 - **Router:** Decision-making logic that determines which node comes next
 - **Event:** A trigger that happens during the call (e.g., "Barbara finished speaking")
@@ -113,15 +114,16 @@ Barbara: [Router detects: right_person_available = true]
 
 ### The Conversation Journey
 
-Imagine Barbara is a tour guide taking callers through a museum with 7 rooms:
+Imagine Barbara is a tour guide taking callers through a museum with 8 rooms:
 
 1. **Lobby (Greet):** Welcome the visitor, introduce yourself
 2. **Security (Verify):** Check ID, get visitor badge
 3. **Assessment (Qualify):** "Are you interested in Egyptian artifacts or Renaissance art?"
-4. **Information Desk (Answer):** Answer specific questions about exhibits
-5. **Guest Relations (Objections):** Handle concerns ("Is the museum wheelchair accessible?")
-6. **Ticket Booth (Book):** Reserve a guided tour time
-7. **Exit (Exit):** Thank them for visiting, show them out
+4. **Financial Desk (Quote):** Show them estimated tour costs and benefits
+5. **Information Desk (Answer):** Answer specific questions about exhibits
+6. **Guest Relations (Objections):** Handle concerns ("Is the museum wheelchair accessible?")
+7. **Ticket Booth (Book):** Reserve a guided tour time
+8. **Exit (Exit):** Thank them for visiting, show them out
 
 ### Barbara's Job in Each Room
 
@@ -144,6 +146,7 @@ Instead, after each room, she checks:
 - Visitor asks a question in the Lobby → Jump to Information Desk
 - Wrong person at Security → Go to Exit (ask if right person is available)
 - Visitor ready to book in Assessment → Skip ahead to Ticket Booth
+- Visitor sees quote and is excited → Go to Information Desk (answer questions)
 - Visitor has concerns in Ticket Booth → Detour to Guest Relations
 - Right person becomes available at Exit → Return to Lobby (start fresh)
 
@@ -162,8 +165,9 @@ BarbGraph is a **3-layer architecture**:
 │                     LAYER 1: FRONTEND                        │
 │  Vue Portal - Node-Based Prompt Editor (PromptManagement.vue)│
 │  • Vertical selector (reverse_mortgage, solar, hvac)        │
-│  • 7-node tab navigation (greet, verify, qualify, etc.)     │
-│  • JSONB content editor (role, personality, instructions)   │
+│  • 8-node tab navigation (greet, verify, qualify, quote, etc.)     │
+│  • Theme editor (universal personality per vertical)        │
+│  • JSONB content editor (role, instructions, tools)         │
 │  • Save/Load via Supabase RPC                               │
 └─────────────────────────────────────────────────────────────┘
                               ▼ saves to
@@ -226,9 +230,9 @@ BarbGraph is a **3-layer architecture**:
 **Key Features:**
 - **Vertical Selector:** Choose business vertical (reverse_mortgage, solar, hvac)
 - **8-Node Tabs:** Greet, Verify, Qualify, Quote, Answer, Objections, Book, Exit
-- **JSONB Content Editor:** 4 fields per node:
+- **Theme Editor:** Universal personality per vertical (edits theme_prompts table)
+- **JSONB Content Editor:** 3 fields per node (personality moved to theme):
   - `role` - Who is Barbara in this stage?
-  - `personality` - How should she sound?
   - `instructions` - What should she do?
   - `tools` - Which tools can she use? (comma-separated)
 - **Smart Save Button:** Creates new version, deactivates old, updates current_version
@@ -241,11 +245,11 @@ async function saveCurrentNode() {
   // Build JSONB content object from form fields
   const contentObj = {
     role: currentVersion.value.content.role || '',
-    personality: currentVersion.value.content.personality || '',
     instructions: currentVersion.value.content.instructions || '',
     tools: currentVersion.value.content.tools 
       ? currentVersion.value.content.tools.split(',').map(t => t.trim()) 
       : []
+    // Note: personality moved to theme_prompts table (universal per vertical)
   }
   
   // Check if node already exists
@@ -295,7 +299,7 @@ async function saveCurrentNode() {
 
 **Key Tables:**
 
-#### Theme Prompts System
+#### Theme Prompts System ⭐ **ACTIVE (NOV 11, 2025)**
 
 BarbGraph uses a two-layer prompt system:
 
@@ -303,10 +307,10 @@ BarbGraph uses a two-layer prompt system:
 2. **Node Layer (Specific):** Defines actions and goals for each conversation stage
 
 **Why Separate Themes?**
-- Eliminates duplication (personality defined once, not 8 times)
-- Easy to maintain (update personality in one place)
-- Consistency (all nodes use same core personality)
-- Flexibility (different verticals can have different personalities)
+- ✅ Eliminates duplication (personality defined once, not 8 times)
+- ✅ Easy to maintain (update personality in one place)
+- ✅ Consistency (all nodes use same core personality)
+- ✅ Flexibility (different verticals can have different personalities)
 
 **Theme Prompts Table:**
 
@@ -321,14 +325,20 @@ CREATE TABLE theme_prompts (
 );
 ```
 
+**Current Status:**
+- ✅ `reverse_mortgage` theme seeded (695 characters)
+- ✅ All 8 node prompts stripped of personality (moved to theme)
+- ✅ Theme loading implemented in `prompt_loader.py`
+- ✅ Combined prompt injection working (Theme → Context → Node)
+
 **Prompt Injection Order:**
 
 ```
-Theme (from theme_prompts)
+Theme (from theme_prompts table)
   ↓
 Call Context (injected by agent)
   ↓
-Node Prompt (from prompt_versions)
+Node Prompt (from prompt_versions table)
   ↓
 Final Combined Prompt
 ```
@@ -337,13 +347,23 @@ Final Combined Prompt
 
 ```
 # Barbara - Core Personality
-[theme content here]
+[theme content - 695 chars for reverse_mortgage]
+- Warm, empathetic, patient
+- Senior-friendly communication style
+- Professional but approachable
+- Values: Trust, transparency, respect
+...
 
 ---
 
 === CALL CONTEXT ===
 Call Type: inbound-qualified
-...
+Direction: Inbound
+Lead Status: Known & Qualified
+Lead Name: John Smith
+Property: 123 Main St, Los Angeles, CA
+Est. Equity: $450,000
+===================
 
 ---
 
@@ -353,6 +373,12 @@ Call Type: inbound-qualified
 ## Instructions
 [node-specific instructions]
 ```
+
+**Implementation:**
+- `load_theme(vertical)` - Loads theme from database
+- `load_node_prompt(node_name, vertical)` - Loads node and combines with theme
+- Theme automatically prepended to every node prompt
+- Separator `---` inserted between theme and node for clarity
 
 #### `prompts` Table
 Stores metadata for each conversation node prompt.
@@ -426,6 +452,10 @@ CREATE TABLE conversation_state (
   "node_before_objection": "answer"
 }
 ```
+
+**QUOTE Node Flags:**
+- `quote_presented`: Boolean - Has the financial quote been presented?
+- `quote_reaction`: String - Caller's reaction ("positive", "skeptical", "needs_more", "not_interested")
 
 #### `active_node_prompts` View
 Pre-joins prompts with their active versions for fast queries.
@@ -583,7 +613,9 @@ class EquityConnectAgent(Agent):
         elif self.current_node == "verify":
             return route_after_verify(state)
         elif self.current_node == "qualify":
-            return route_after_qualify(state)
+            return route_after_qualify(state)  # Can go to: quote or exit
+        elif self.current_node == "quote":
+            return route_after_quote(state)  # Can go to: answer, book, or exit
         elif self.current_node == "answer":
             return route_after_answer(state)
         elif self.current_node == "objections":
@@ -639,10 +671,31 @@ await session.start(agent=agent, room=ctx.room)
 **Code Snippet:**
 
 ```python
-def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
-    """Load node prompt from database or fallback to markdown file"""
+def load_theme(vertical: str = "reverse_mortgage") -> str:
+    """Load universal theme prompt for a vertical from database"""
+    try:
+        sb = get_supabase_client()
+        result = sb.table('theme_prompts').select('content').eq('vertical', vertical).eq('is_active', True).single().execute()
+        
+        if result.data and result.data.get('content'):
+            logger.info(f"✅ Loaded theme for {vertical}: {len(result.data['content'])} chars")
+            return result.data['content']
+    except Exception as e:
+        logger.warning(f"Failed to load theme from database: {e}")
     
-    # TRY DATABASE FIRST
+    # FALLBACK: Basic theme if database fails
+    return """# Barbara - Core Personality
+[Fallback theme content]
+"""
+
+
+def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
+    """Load node prompt from database and combine with theme"""
+    
+    # 1. Load theme (universal personality)
+    theme = load_theme(vertical)
+    
+    # 2. Load node prompt from database
     try:
         sb = get_supabase_client()
         result = sb.rpc('get_node_prompt', {
@@ -653,19 +706,19 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
         if result.data and len(result.data) > 0:
             content = result.data[0].get('content', {})
             
-            # Build prompt from JSONB fields
+            # Build prompt from JSONB fields (NO personality - moved to theme)
             prompt_parts = []
             if content.get('role'):
                 prompt_parts.append(f"## Role\n{content['role']}\n")
-            if content.get('personality'):
-                prompt_parts.append(f"## Personality\n{content['personality']}\n")
             if content.get('instructions'):
                 prompt_parts.append(f"## Instructions\n{content['instructions']}")
             
             if prompt_parts:
-                prompt = "\n".join(prompt_parts)
-                logger.info(f"✅ Loaded {node_name} from database (vertical={vertical})")
-                return prompt
+                node_prompt = "\n".join(prompt_parts)
+                # Combine: Theme → Node (theme prepended, separator added)
+                combined_prompt = f"{theme}\n\n---\n\n{node_prompt}"
+                logger.info(f"✅ Combined theme ({len(theme)} chars) + node ({len(node_prompt)} chars) = {len(combined_prompt)} chars")
+                return combined_prompt
             else:
                 logger.warning(f"Database returned empty content for {node_name}/{vertical}")
     
@@ -679,9 +732,11 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
     
     try:
         with open(prompt_path, 'r') as f:
-            return f.read()
+            node_prompt = f.read()
+            # Combine with theme even in fallback
+            return f"{theme}\n\n---\n\n{node_prompt}"
     except FileNotFoundError:
-        return f"You are in the {node_name} phase. Continue naturally."
+        return f"{theme}\n\n---\n\nYou are in the {node_name} phase. Continue naturally."
 
 
 def build_context_injection(call_type: str, lead_context: dict, phone_number: str) -> str:
@@ -715,6 +770,22 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
     return "\n".join(context_parts)
 ```
 
+**Final Prompt Assembly (in agent.py load_node method):**
+```python
+# 1. Load node prompt (already includes theme: Theme --- Node)
+node_prompt = load_node_prompt(node_name, vertical=self.vertical)
+
+# 2. Build call context
+context = build_context_injection(call_type, lead_context, phone_number)
+
+# 3. Combine: Context → Theme → Node
+# Note: Current implementation prepends context to node_prompt
+# Final order: Call Context → Theme --- Node
+full_prompt = f"{context}\n\n{node_prompt}"
+```
+
+**Note:** The prompt_loader returns `Theme --- Node`, and agent.py prepends `Context`, resulting in `Context → Theme --- Node`. The intended order (Theme → Context → Node) could be optimized in the future for better LLM parsing, but current implementation works correctly.
+
 ---
 
 #### Component 3.3: Node Completion Checker
@@ -733,6 +804,7 @@ def is_node_complete(node_name: str, state: dict) -> bool:
         "greet": lambda s: s.get("greeted") == True,
         "verify": lambda s: s.get("verified") == True,
         "qualify": lambda s: s.get("qualified") != None,
+        "quote": lambda s: s.get("quote_presented") == True,
         "answer": lambda s: s.get("questions_answered") or s.get("ready_to_book"),
         "objections": lambda s: s.get("objection_handled") == True,
         "book": lambda s: s.get("appointment_booked") == True,
@@ -786,8 +858,13 @@ def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", 
     # Check if already verified and qualified
     if cd.get("verified"):
         if row.get("qualified"):
-            logger.info("✅ Already verified and qualified → ANSWER")
-            return "answer"
+            # If qualified but quote not presented, go to quote first
+            if not cd.get("quote_presented"):
+                logger.info("✅ Verified and qualified → QUOTE")
+                return "quote"
+            else:
+                logger.info("✅ Already verified, qualified, and quoted → ANSWER")
+                return "answer"
         else:
             logger.info("✅ Verified, not qualified → QUALIFY")
             return "qualify"
@@ -795,6 +872,38 @@ def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", 
     # Default: verify identity
     logger.info("🔍 Not verified → VERIFY")
     return "verify"
+```
+
+**Code Snippet: route_after_quote**
+
+```python
+def route_after_quote(state: ConversationState) -> Literal["answer", "book", "exit"]:
+    """
+    DB-driven routing after quote presentation.
+    - If quote_reaction == "not_interested" → exit
+    - If ready_to_book → book
+    - If has_questions → answer
+    - Default → answer
+    """
+    row = _db(state)
+    if not row:
+        return "answer"
+    cd = _cd(row)
+    
+    # Check reaction to quote
+    quote_reaction = cd.get("quote_reaction")
+    if quote_reaction == "not_interested":
+        logger.info("🚪 Not interested in quote → EXIT")
+        return "exit"
+    
+    # Check if ready to book
+    if cd.get("ready_to_book"):
+        logger.info("✅ Ready to book after quote → BOOK")
+        return "book"
+    
+    # Default: answer questions
+    logger.info("💬 Has questions about quote → ANSWER")
+    return "answer"
 ```
 
 **Code Snippet: route_after_objections**
@@ -900,11 +1009,12 @@ async def mark_wrong_person(phone: str, right_person_available: bool = False) ->
 
 **Available Tools:**
 1. `mark_ready_to_book(phone)` - Caller wants to book
-2. `mark_has_objection(phone, current_node)` - Caller has concerns
+2. `mark_has_objection(phone, objection_type)` - Caller has concerns
 3. `mark_objection_handled(phone)` - Objection resolved
 4. `mark_questions_answered(phone)` - All questions answered
-5. `mark_wrong_person(phone, right_person_available)` - Wrong person answered
-6. `clear_conversation_flags(phone)` - Reset routing flags (new call)
+5. `mark_quote_presented(phone, quote_reaction)` - Quote presented with reaction
+6. `mark_wrong_person(phone, right_person_available)` - Wrong person answered
+7. `clear_conversation_flags(phone)` - Reset routing flags (new call)
 
 ---
 
@@ -975,7 +1085,23 @@ async def mark_wrong_person(phone: str, right_person_available: bool = False) ->
   ↓
 🔍 check_and_route()
   ├─ is_node_complete("qualify", state) → True (qualified != null)
-  └─ route_after_qualify(state) → "answer" (qualified)
+  └─ route_after_qualify(state) → "quote" (qualified)
+  ↓
+📍 load_node("quote", speak_now=False)
+  ↓
+💬 "Perfect! Based on your equity of $450,000, you could access $225,000 to $270,000."
+  ↓
+👤 USER: "That sounds great! How does this work?"
+  ↓
+🛠️ LLM calls: mark_quote_presented(phone="+1234567890", quote_reaction="positive")
+  ↓
+💾 DB UPDATE: conversation_data.quote_presented = true, quote_reaction = "positive"
+  ↓
+🔔 agent_speech_committed event fires
+  ↓
+🔍 check_and_route()
+  ├─ is_node_complete("quote", state) → True (quote_presented == true)
+  └─ route_after_quote(state) → "answer" (has questions)
   ↓
 📍 load_node("answer", speak_now=False)
   ↓
@@ -984,7 +1110,56 @@ async def mark_wrong_person(phone: str, right_person_available: bool = False) ->
 
 ---
 
-### Example 3: Objection Interrupt
+### Example 3: Quote Presentation Flow
+
+```
+📍 QUALIFY NODE (completed)
+  ↓
+💾 DB: qualified = true
+  ↓
+🔍 route_after_qualify(state) → "quote"
+  ↓
+📍 QUOTE NODE
+  ↓
+💬 "Perfect! Based on your equity of $450,000, you could access $225,000 to $270,000."
+  ↓
+👤 USER: "That sounds interesting. Tell me more."
+  ↓
+🛠️ LLM calls: mark_quote_presented(phone="+1234567890", quote_reaction="positive")
+  ↓
+💾 DB UPDATE:
+    conversation_data.quote_presented = true
+    conversation_data.quote_reaction = "positive"
+  ↓
+🔔 agent_speech_committed event fires
+  ↓
+🔍 check_and_route()
+  ├─ is_node_complete("quote", state) → True (quote_presented == true)
+  └─ route_after_quote(state) → "answer" (has questions)
+  ↓
+📍 load_node("answer", speak_now=False)
+  ↓
+💬 "I'd be happy to explain! Reverse mortgages allow you to..."
+```
+
+**Alternative: Not Interested**
+```
+👤 USER: "No thanks, I'm not interested."
+  ↓
+🛠️ LLM calls: mark_quote_presented(phone="+1234567890", quote_reaction="not_interested")
+  ↓
+💾 DB UPDATE: quote_reaction = "not_interested"
+  ↓
+🔍 route_after_quote(state) → "exit" (not_interested)
+  ↓
+📍 load_node("exit", speak_now=False)
+  ↓
+💬 "I completely understand. Thank you for your time. Have a great day!"
+```
+
+---
+
+### Example 4: Objection Interrupt
 
 ```
 📍 ANSWER NODE (mid-conversation)
@@ -1069,12 +1244,14 @@ async def mark_wrong_person(phone: str, right_person_available: bool = False) ->
 **Use Case 1: Multi-Call Sales Cycle**
 ```
 Day 1: Call arrives → Greet → Verify → Qualify → Quote → Answer → Exit (not ready)
-       DB stores: qualified=true, quote_presented=true, questions_answered=true, ready_to_book=false
+       DB stores: qualified=true, quote_presented=true, quote_reaction="positive", 
+                  questions_answered=true, ready_to_book=false
 
 Day 7: Same caller calls back
        → Agent loads conversation_state
        → Skips Greet/Verify/Qualify/Quote (already complete)
        → Jumps to Answer: "Hi John! Have you had time to think it over?"
+       → Routes to Book if ready_to_book=true
 ```
 
 **Use Case 2: Spouse Handoff**
@@ -1086,7 +1263,20 @@ Call 1: Wife answers (wrong person) → Exit
         → Router detects right_person_available → Re-greet husband
 ```
 
-**Use Case 3: Objection During Qualification**
+**Use Case 3: Quote Presentation Flow**
+```
+Qualify node: "Perfect! Based on your equity of $450,000, you could access $225,000 to $270,000."
+→ LLM calls mark_quote_presented(phone, quote_reaction="positive")
+→ Router transitions to Quote node
+→ Agent presents detailed financial estimates
+→ Router checks quote_reaction:
+   - "positive" → Answer (they're interested, answer questions)
+   - "skeptical" → Answer (address concerns with information)
+   - "needs_more" → Answer (provide more details)
+   - "not_interested" → Exit (polite goodbye)
+```
+
+**Use Case 4: Objection During Qualification**
 ```
 Qualify node: "Are you 62+ years old?"
 Caller: "Why does that matter? Are you discriminating by age?"
@@ -1097,7 +1287,7 @@ Caller: "Why does that matter? Are you discriminating by age?"
 → Conversation resumes naturally
 ```
 
-**Use Case 4: Multi-Vertical Platform**
+**Use Case 5: Multi-Vertical Platform**
 ```
 Reverse Mortgage vertical:
   - Greet prompt emphasizes "senior homeowners"
@@ -1153,19 +1343,22 @@ Same agent code, different prompts loaded via vertical selector
 | `livekit-agent/agent.py` | EquityConnectAgent class + event hooks |
 | `livekit-agent/services/prompt_loader.py` | DB query + context injection |
 | `livekit-agent/workflows/node_completion.py` | Completion criteria checkers |
-| `livekit-agent/workflows/routers.py` | 7 dynamic routing functions |
-| `livekit-agent/tools/conversation_flags.py` | 6 state flag tools |
+| `livekit-agent/workflows/routers.py` | 8 dynamic routing functions (added route_after_quote) |
+| `livekit-agent/tools/conversation_flags.py` | 7 state flag tools (added mark_quote_presented) |
 | `livekit-agent/tools/lead.py` | Lead lookup + verification tools |
 | `livekit-agent/tools/calendar.py` | Appointment booking tools |
 | `portal/src/views/admin/PromptManagement.vue` | Node editor UI |
+| `database/migrations/20251111_add_theme_prompts.sql` | Theme table creation |
+| `database/migrations/20251111_add_quote_node_prompt.sql` | QUOTE node creation |
+| `database/migrations/20251111_strip_personality_from_nodes.sql` | Personality removal |
 | `database/migrations/20251111_add_vertical_node_to_prompts.sql` | Schema update |
-| `database/migrations/20251111_create_node_prompts.sql` | Initial prompt seeding |
+| `database/migrations/20251111_seed_reverse_mortgage_node_prompts.sql` | Initial prompt seeding |
 
 ---
 
 ## Summary
 
-**BarbGraph** transforms voice AI conversations from chaotic monologues into structured, adaptive dialogues. By breaking conversations into focused stages, persisting state in a database, and dynamically routing based on actual behavior, it delivers:
+**BarbGraph** transforms voice AI conversations from chaotic monologues into structured, adaptive dialogues. By breaking conversations into 8 focused stages, using a universal theme for personality consistency, persisting state in a database, and dynamically routing based on actual behavior, it delivers:
 
 - **Better Caller Experience:** Natural, progressive conversations that adapt to their needs
 - **Higher Conversion:** Structured flow ensures no critical steps are skipped
@@ -1178,8 +1371,10 @@ Whether you're a business owner looking to improve call quality or a developer b
 ---
 
 **Questions?** Contact the dev team or consult the implementation docs:
+- `BARBGRAPH_SYSTEM_VERIFICATION.md` - System verification results (21 tools, field names, data flow)
+- `THEME_AND_QUOTE_IMPLEMENTATION_COMPLETE.md` - Theme system + QUOTE node implementation
 - `BARBGRAPH_INTEGRATION_FIXES_COMPLETE.md` - Bug fixes log
 - `EVENT_BASED_STATE_MACHINE_IMPLEMENTATION.md` - Backend implementation
 - `PLAN_3_EXECUTION_COMPLETE.md` - Frontend implementation
-- `DATABASE_FIELD_MAPPING_VERIFICATION.md` - Schema reference
+- `MASTER_PRODUCTION_PLAN.md` - Complete system overview
 

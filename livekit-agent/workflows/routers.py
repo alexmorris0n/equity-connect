@@ -66,7 +66,7 @@ def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → VERIFY (implicit)")
-		return "qualify"  # optimistic path if verification succeeded in-node
+		return "verify"  # continue verification until flags are persisted
 	cd = _cd(row)
 
 	if cd.get("wrong_person") and cd.get("right_person_available"):
@@ -82,7 +82,7 @@ def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "
 
 	# Fallback: continue verification loop (node will apply visit cap)
 	logger.info("🔁 Continue VERIFY")
-	return "qualify"
+	return "verify"
 
 
 def route_after_qualify(state: ConversationState) -> Literal["quote", "exit"]:
@@ -163,11 +163,12 @@ def route_after_answer(state: ConversationState) -> Literal["answer", "objection
 	return "answer"
 
 
-def route_after_objections(state: ConversationState) -> Literal["answer", "objections", "book", "exit"]:
+def route_after_objections(state: ConversationState) -> Literal["answer", "objections", "book", "exit", "verify", "qualify", "quote", "greet"]:
 	"""
 	DB-driven routing after objections.
 	- If ready_to_book → book
-	- Elif has_objections → answer (acknowledge then continue)
+	- If objection_handled → return to previous node (default: answer)
+	- If has_objections → stay in objections
 	- Else → answer
 	"""
 	row = _db(state)
@@ -179,9 +180,22 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
 	if cd.get("ready_to_book"):
 		logger.info("📅 Ready after objections → BOOK")
 		return "book"
+
+	# If objection resolved, resume previous node (default to answer)
+	if cd.get("objection_handled"):
+		previous_node = cd.get("node_before_objection", "answer")
+		# Validate previous_node against allowed nodes to maintain type safety
+		allowed_nodes = {"answer", "objections", "book", "exit", "verify", "qualify", "quote", "greet"}
+		if previous_node not in allowed_nodes:
+			logger.warning(f"Unknown previous_node '{previous_node}', defaulting to ANSWER")
+			previous_node = "answer"
+		logger.info(f"✅ Objection handled → {previous_node.upper()}")
+		return previous_node
+
+	# If objections remain, stay in objections
 	if cd.get("has_objections"):
-		logger.info("↔️ Still objections → ANSWER")
-		return "answer"
+		logger.info("⏳ Objection not resolved → STAY IN OBJECTIONS")
+		return "objections"
 
 	logger.info("➡️ Continue ANSWER")
 	return "answer"

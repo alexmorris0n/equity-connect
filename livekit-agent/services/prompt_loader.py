@@ -93,8 +93,6 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
             prompt_parts = []
             if content.get('role'):
                 prompt_parts.append(f"## Role\n{content['role']}\n")
-            if content.get('personality'):
-                prompt_parts.append(f"## Personality\n{content['personality']}\n")
             if content.get('instructions'):
                 prompt_parts.append(f"## Instructions\n{content['instructions']}")
             
@@ -169,10 +167,28 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
         context_parts.append(f"Qualified: {'Yes' if is_qualified else 'No'}")
         
         # Add property context if available
+        property_parts = []
         if lead_context.get("property_address"):
-            context_parts.append(f"Property: {lead_context['property_address']}")
+            property_parts.append(lead_context['property_address'])
+        elif lead_context.get("property_city") or lead_context.get("property_state"):
+            # Construct address from city/state if address not available
+            addr_parts = []
+            if lead_context.get("property_city"):
+                addr_parts.append(lead_context['property_city'])
+            if lead_context.get("property_state"):
+                addr_parts.append(lead_context['property_state'])
+            if addr_parts:
+                property_parts.append(", ".join(addr_parts))
+        
+        if property_parts:
+            context_parts.append(f"Property: {', '.join(property_parts)}")
+        
         if lead_context.get("estimated_equity"):
             context_parts.append(f"Est. Equity: ${lead_context['estimated_equity']:,}")
+        
+        # Add email if available (for verification scenarios)
+        if lead_context.get("email") or lead_context.get("primary_email"):
+            context_parts.append(f"Email: {lead_context.get('email') or lead_context.get('primary_email')}")
     else:
         context_parts.append("Lead Status: Unknown (new caller)")
     

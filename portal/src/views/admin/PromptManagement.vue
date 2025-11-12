@@ -196,6 +196,39 @@
           </select>
         </div>
 
+        <!-- Theme Editor (only show if vertical is selected) -->
+        <div v-if="selectedVertical" style="margin: 1.5rem 0; padding: 1.5rem; background: #fff7ed; border: 2px solid #fb923c; border-radius: 0.5rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+            <div>
+              <h3 style="margin: 0; font-size: 1.1rem; font-weight: 600; color: #9a3412;">
+                🎨 Theme / Personality (Universal)
+              </h3>
+              <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: #7c2d12;">
+                This theme applies to ALL nodes in the <strong>{{ selectedVertical }}</strong> vertical. It defines Barbara's core personality, speaking style, and values.
+              </p>
+            </div>
+            <n-button 
+              type="primary" 
+              :loading="themeSaving" 
+              :disabled="!themeHasChanges || themeLoading"
+              @click="saveTheme"
+            >
+              Save Theme
+            </n-button>
+          </div>
+          <n-input
+            v-model:value="themeContent"
+            type="textarea"
+            placeholder="Enter theme/personality content here..."
+            :autosize="{ minRows: 8, maxRows: 20 }"
+            @update:value="themeHasChanges = true"
+            :disabled="themeLoading"
+          />
+          <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: #9a3412; font-style: italic;">
+            💡 Tip: This content is automatically prepended to every node prompt. Only include universal personality traits, speaking style, and core values—not node-specific instructions.
+          </p>
+        </div>
+
         <!-- Node Tabs (only show if vertical is selected) -->
         <div v-if="selectedVertical" style="margin-bottom: 1.5rem; background: #eef2ff; border-radius: 0.5rem; padding: 1rem;">
           <div style="display: flex; align-items: center; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem;">
@@ -475,7 +508,7 @@
 
                 <!-- Show full content if no comparison -->
                 <div class="preview-content" style="margin-top: 1.5rem;">
-                  <div class="preview-section" v-for="section in promptSections" :key="section.key">
+                  <div class="preview-section" v-for="section in (selectedVertical ? nodePromptSections : promptSections)" :key="section.key">
                     <h4 class="preview-section-title">{{ section.label }}</h4>
                     <pre class="preview-section-content">{{ currentVersion?.content[section.key] || '(empty)' }}</pre>
                   </div>
@@ -495,9 +528,10 @@
 
           <n-tab-pane name="editor" tab="Editor">
             <div v-if="currentVersion" class="editor-sections">
+              <!-- Show different sections for node-based (vertical selected) vs old prompt system -->
               <n-collapse display-directive="show" accordion v-model:expanded-names="expandedSections">
                 <n-collapse-item
-                  v-for="section in promptSections"
+                  v-for="section in (selectedVertical ? nodePromptSections : promptSections)"
                   :key="section.key"
                   :name="section.key"
                   :title="section.label"
@@ -1044,7 +1078,7 @@
     <n-modal v-model:show="showPreviewModal" preset="card" :style="{ width: '80%', maxWidth: '900px' }" title="Preview Prompt" :bordered="false">
       <n-scrollbar style="max-height: 70vh;">
         <div class="preview-content">
-          <div class="preview-section" v-for="section in promptSections" :key="section.key">
+          <div class="preview-section" v-for="section in (selectedVertical ? nodePromptSections : promptSections)" :key="section.key">
             <h4 class="preview-section-title">{{ section.label }}</h4>
             <pre class="preview-section-content">{{ currentVersion?.content[section.key] || '(empty)' }}</pre>
           </div>
@@ -1079,7 +1113,7 @@
 
           <div v-if="!activeVersion" class="preview-content">
             <p class="text-muted">No active version to compare. This will be the first deployment.</p>
-            <div class="preview-section" v-for="section in promptSections" :key="section.key">
+            <div class="preview-section" v-for="section in (selectedVertical ? nodePromptSections : promptSections)" :key="section.key">
               <h4 class="preview-section-title">{{ section.label }}</h4>
               <pre class="preview-section-content">{{ currentVersion?.content[section.key] || '(empty)' }}</pre>
             </div>
@@ -1742,15 +1776,22 @@ const selectedNode = ref('greet')
 const nodePrompts = ref({}) // { vertical: { greet: {...}, verify: {...}, ... } }
 const currentNodePrompt = ref(null)
 
+// Theme editing
+const themeContent = ref('')
+const themeLoading = ref(false)
+const themeSaving = ref(false)
+const themeHasChanges = ref(false)
+
 // Node configuration
 const nodeList = [
   { name: 'greet', label: '1. Greet', desc: 'Initial greeting when call starts' },
   { name: 'verify', label: '2. Verify', desc: 'Verify caller identity and get lead context' },
   { name: 'qualify', label: '3. Qualify', desc: 'Ask qualifying questions to assess fit' },
-  { name: 'answer', label: '4. Answer', desc: 'Answer questions about the service' },
-  { name: 'objections', label: '5. Objections', desc: 'Handle objections and concerns' },
-  { name: 'book', label: '6. Book', desc: 'Schedule an appointment on the calendar' },
-  { name: 'exit', label: '7. Exit', desc: 'Say goodbye and end the call' }
+  { name: 'quote', label: '4. Quote', desc: 'Present financial quote and gather reaction' },
+  { name: 'answer', label: '5. Answer', desc: 'Answer questions about the service' },
+  { name: 'objections', label: '6. Objections', desc: 'Handle objections and concerns' },
+  { name: 'book', label: '7. Book', desc: 'Schedule an appointment on the calendar' },
+  { name: 'exit', label: '8. Exit', desc: 'Say goodbye and end the call' }
 ]
 
 const versions = ref([])
@@ -2013,6 +2054,13 @@ const promptSections = [
   { key: 'conversation_flow', label: 'Conversation Flow', required: false, placeholder: 'Outline conversation states, transitions, and exit criteria...' },
   { key: 'output_format', label: 'Output Format', required: false, placeholder: 'Structured output requirements (JSON schema, message format)...' },
   { key: 'safety', label: 'Safety & Escalation', required: false, placeholder: 'When to handoff to a human, fallback behavior, compliance notes...' }
+]
+
+// Node-based prompt sections (NO personality - handled by theme_prompts table)
+const nodePromptSections = [
+  { key: 'role', label: 'Role & Objective', required: true, placeholder: 'Define the node\'s role and objective...' },
+  { key: 'instructions', label: 'Instructions & Rules', required: true, placeholder: 'Node-specific behavior, guardrails, completion criteria...' },
+  { key: 'tools', label: 'Tools', required: false, placeholder: 'Available tools (comma-separated): verify_caller_identity, mark_quote_presented, book_appointment...' },
 ]
 
 const guideContent = [
@@ -5246,6 +5294,107 @@ function getCurrentNodeDescription() {
   return node ? node.desc : ''
 }
 
+async function loadTheme() {
+  if (!selectedVertical.value) {
+    themeContent.value = ''
+    themeHasChanges.value = false
+    return
+  }
+  
+  themeLoading.value = true
+  try {
+    const { data, error } = await supabase
+      .from('theme_prompts')
+      .select('content')
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (error) throw error
+    
+    if (data && data.content) {
+      themeContent.value = data.content
+      themeHasChanges.value = false
+    } else {
+      // No theme exists - create default
+      themeContent.value = `# Barbara - Core Personality
+
+You are Barbara, a warm and professional voice assistant.
+
+## Speaking Style
+- Brief, natural responses
+- Simple language, no jargon
+- Patient with seniors
+
+## Core Rules
+- Never pressure
+- Use tools for facts
+- Listen more than talk`
+      themeHasChanges.value = false
+    }
+  } catch (error) {
+    console.error('Error loading theme:', error)
+    window.$message?.error('Failed to load theme: ' + error.message)
+  } finally {
+    themeLoading.value = false
+  }
+}
+
+async function saveTheme() {
+  if (!selectedVertical.value || !themeContent.value.trim()) {
+    window.$message?.warning('Please enter theme content')
+    return
+  }
+  
+  themeSaving.value = true
+  try {
+    // Check if theme exists
+    const { data: existing, error: checkError } = await supabase
+      .from('theme_prompts')
+      .select('id')
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (checkError) throw checkError
+    
+    if (existing) {
+      // Update existing theme
+      const { error: updateError } = await supabase
+        .from('theme_prompts')
+        .update({
+          content: themeContent.value,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+      
+      if (updateError) throw updateError
+      window.$message?.success('Theme updated successfully!')
+    } else {
+      // Create new theme
+      const { error: insertError } = await supabase
+        .from('theme_prompts')
+        .insert({
+          vertical: selectedVertical.value,
+          content: themeContent.value,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+      
+      if (insertError) throw insertError
+      window.$message?.success('Theme created successfully!')
+    }
+    
+    themeHasChanges.value = false
+  } catch (error) {
+    console.error('Error saving theme:', error)
+    window.$message?.error('Failed to save theme: ' + error.message)
+  } finally {
+    themeSaving.value = false
+  }
+}
+
 async function loadNodePrompts() {
   if (!selectedVertical.value) return
   
@@ -5268,7 +5417,7 @@ async function loadNodePrompts() {
         node_name: np.node_name,
         name: np.name,
         version_number: np.version_number,
-        content: np.content // JSONB object with role, personality, instructions, tools
+        content: np.content // JSONB object with role, instructions, tools (NO personality)
       }
     }
     
@@ -5308,8 +5457,8 @@ function loadCurrentNode() {
     }
     
     // Populate currentVersion.content with JSONB fields
+    // NOTE: personality is now handled by theme_prompts table, not individual nodes
     currentVersion.value.content.role = content.role || ''
-    currentVersion.value.content.personality = content.personality || ''
     currentVersion.value.content.instructions = content.instructions || ''
     currentVersion.value.content.tools = Array.isArray(content.tools) ? content.tools.join(', ') : (content.tools || '')
     
@@ -5322,7 +5471,7 @@ function loadCurrentNode() {
     }
     
     currentVersion.value.content.role = ''
-    currentVersion.value.content.personality = ''
+    // NOTE: personality is now handled by theme_prompts table, not individual nodes
     currentVersion.value.content.instructions = ''
     currentVersion.value.content.tools = ''
   }
@@ -5348,9 +5497,9 @@ async function saveCurrentNode() {
     saving.value = true
     
     // Build JSONB content object from currentVersion.content
+    // NOTE: personality is now handled by theme_prompts table, not individual nodes
     const contentObj = {
       role: currentVersion.value.content.role || '',
-      personality: currentVersion.value.content.personality || '',
       instructions: currentVersion.value.content.instructions || '',
       tools: currentVersion.value.content.tools ? currentVersion.value.content.tools.split(',').map(t => t.trim()) : []
     }
@@ -5453,12 +5602,19 @@ async function saveCurrentNode() {
 }
 
 // Watchers for node-based routing
-watch(selectedVertical, (newVertical) => {
-  if (!newVertical) return
+watch(selectedVertical, async (newVertical) => {
+  if (!newVertical) {
+    themeContent.value = ''
+    themeHasChanges.value = false
+    return
+  }
   
-  // Load node prompts for this vertical
+  // Load theme first (must complete before node prompts to ensure consistency)
+  await loadTheme()
+  
+  // Then load node prompts if not already loaded
   if (!nodePrompts.value[newVertical]) {
-    loadNodePrompts()
+    await loadNodePrompts()
   } else {
     // Already loaded, just switch to first node
     selectedNode.value = 'greet'

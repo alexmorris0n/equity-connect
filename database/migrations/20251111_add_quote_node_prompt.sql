@@ -22,7 +22,8 @@ INSERT INTO prompts (
     NOW(),
     NOW()
 )
-ON CONFLICT (vertical, node_name) DO UPDATE SET
+-- Use name (unique) for upsert to avoid missing unique index on (vertical, node_name)
+ON CONFLICT (name) DO UPDATE SET
     description = EXCLUDED.description,
     current_version = EXCLUDED.current_version,
     is_active = EXCLUDED.is_active,
@@ -31,7 +32,7 @@ ON CONFLICT (vertical, node_name) DO UPDATE SET
 -- Insert initial version into prompt_versions table
 INSERT INTO prompt_versions (
     prompt_id,
-    version,
+    version_number,
     content,
     created_by,
     is_active,
@@ -39,10 +40,9 @@ INSERT INTO prompt_versions (
 )
 SELECT 
     p.id as prompt_id,
-    1 as version,
+    1 as version_number,
     jsonb_build_object(
         'role', 'You are Barbara, presenting personalized financial estimates based on their property.',
-        'personality', 'Enthusiastic but professional. Make numbers feel real and exciting without being pushy.',
         'instructions', E'Your goal: Show them what''s financially possible with their specific home.
 
 STEP 1: Reference property data from lead context
@@ -113,7 +113,7 @@ CRITICAL:
 FROM prompts p
 WHERE p.vertical = 'reverse_mortgage' 
   AND p.node_name = 'quote'
-ON CONFLICT (prompt_id, version) DO UPDATE SET
+ON CONFLICT (prompt_id, version_number) DO UPDATE SET
     content = EXCLUDED.content,
     is_active = EXCLUDED.is_active;
 

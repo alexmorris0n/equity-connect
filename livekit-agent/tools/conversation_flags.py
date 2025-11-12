@@ -7,6 +7,7 @@ which triggers dynamic routing between conversation nodes.
 import logging
 from livekit.agents.llm import function_tool
 from services.conversation_state import update_conversation_state
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,32 +40,36 @@ async def mark_ready_to_book(phone: str) -> str:
 
 
 @function_tool
-async def mark_has_objection(phone: str, objection_type: str) -> str:
-    """Mark that the caller has raised an objection or concern.
-    
-    Use this when the caller:
-    - Expresses doubt or hesitation
-    - Raises concerns about cost, eligibility, or process
-    - Asks "what if" questions that show resistance
-    
-    Args:
-        phone: Caller's phone number
-        objection_type: Type of objection (cost, eligibility, trust, timing, family, etc.)
-    
-    Returns:
-        Confirmation message
-    """
-    logger.info(f"⚠️ Objection raised: {objection_type} for {phone}")
-    
-    update_conversation_state(phone, {
-        "conversation_data": {
-            "has_objections": True,
-            "last_objection_type": objection_type,
-            "node_before_objection": "answer",  # Track where we came from for resumption
-        }
-    })
-    
-    return f"Objection marked: {objection_type}. Will route to objection handling."
+async def mark_has_objection(phone: str, current_node: Optional[str] = None, objection_type: Optional[str] = None) -> str:
+	"""Mark that the caller has raised an objection or concern.
+	
+	Use this when the caller:
+	- Expresses doubt or hesitation
+	- Raises concerns about cost, eligibility, or process
+	- Asks "what if" questions that show resistance
+	
+	Args:
+		phone: Caller's phone number
+		current_node: The node where the objection was raised (e.g., 'answer', 'qualify', 'quote')
+		objection_type: Optional type of objection (cost, eligibility, trust, timing, family, etc.)
+	
+	Returns:
+		Confirmation message
+	"""
+	logger.info(f"⚠️ Objection raised for {phone} (node={current_node}, type={objection_type})")
+	
+	flags = {
+		"has_objections": True,
+		"node_before_objection": current_node or "answer",
+	}
+	if objection_type:
+		flags["last_objection_type"] = objection_type
+	
+	update_conversation_state(phone, {
+		"conversation_data": flags
+	})
+	
+	return "Objection noted. Will transition to objection handling."
 
 
 @function_tool
@@ -119,6 +124,24 @@ async def mark_questions_answered(phone: str) -> str:
     
     return "Questions marked as answered. Ready for next conversation phase."
 
+
+@function_tool
+async def mark_qualification_result(phone: str, qualified: bool) -> str:
+	"""Persist qualification outcome to conversation state.
+	
+	Sets both the top-level 'qualified' field (used by routers) and
+	conversation_data.qualified (used by node completion checks).
+	"""
+	logger.info(f"✅ Qualification result for {phone}: qualified={qualified}")
+	
+	update_conversation_state(phone, {
+		"qualified": bool(qualified),
+		"conversation_data": {
+			"qualified": bool(qualified)
+		}
+	})
+	
+	return f"Qualification status saved: {'qualified' if qualified else 'not qualified'}."
 
 @function_tool
 async def mark_quote_presented(phone: str, quote_reaction: str) -> str:

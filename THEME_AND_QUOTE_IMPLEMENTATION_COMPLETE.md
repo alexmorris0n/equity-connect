@@ -39,13 +39,11 @@ Present personalized financial estimates (equity × 0.50 to 0.60) to qualified l
 - Personality defined once in `theme_prompts` table
 - Automatically combined with every node prompt
 
-**Injection Order:**
+**Injection Order (as implemented now):**
 ```
-Theme (from theme_prompts)
-  ↓
 Call Context (from agent)
   ↓
-Node Prompt (from prompt_versions)
+Theme (from theme_prompts) --- Node Prompt (from prompt_versions)
   ↓
 Final Combined Prompt
 ```
@@ -91,10 +89,10 @@ SELECT node_name, content->'personality' FROM prompt_versions...
 2. **Call arrives** → Agent loads greet node
 3. **`load_node_prompt("greet", "reverse_mortgage")` called:**
    - Loads theme from `theme_prompts` table (695 chars)
-   - Loads greet node from `prompt_versions` (no personality)
+   - Loads greet node from `prompt_versions` (personality ignored in loader)
    - Combines: `theme + "---" + node`
    - Logs: `"Combined theme (695 chars) + node (XXX chars) = XXX chars"`
-4. **Agent receives combined prompt:**
+4. **Agent receives combined prompt (with context prepended):**
    ```
    # Barbara - Core Personality
    [theme content]
@@ -139,6 +137,7 @@ THEME LOADING TEST
 
 [TEST 3] Verifying theme is included...
 ✅ Theme found in combined prompt
+✅ Context correctly prepended before theme+node
 
 [TEST 4] Checking prompt structure...
 ✅ Prompt correctly separated into 2 parts (theme, node)

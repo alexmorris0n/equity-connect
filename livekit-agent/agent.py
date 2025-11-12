@@ -23,7 +23,6 @@ from livekit.plugins.turn_detector import english  # noqa: F401
 # Import ALL plugins at TOP LEVEL (required for plugin registration on main thread)
 from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
 from livekit.plugins import noise_cancellation
-from livekit.plugins import langchain as livekit_langchain  # Only the plugin itself
 
 # Import your custom tools
 from tools import all_tools
@@ -41,7 +40,9 @@ from workflows.routers import (
 )
 from workflows.node_completion import is_node_complete
 from services.conversation_state import get_conversation_state
+from services.conversation_state import update_conversation_state
 from services.prompt_loader import load_node_prompt
+from langgraph.graph import END
 
 
 class EquityConnectAgent(Agent):
@@ -116,6 +117,21 @@ class EquityConnectAgent(Agent):
             logger.warning("No state found in DB")
             return
         
+        # Increment node visit count for ANSWER node to enable loop cap logic
+        try:
+            if self.current_node == "answer":
+                cd = state_row.get("conversation_data") or {}
+                visits = ((cd.get("node_visits") or {}).get("answer") or 0) + 1
+                update_conversation_state(self.phone, {
+                    "conversation_data": {
+                        "node_visits": {
+                            "answer": visits
+                        }
+                    }
+                })
+        except Exception as e:
+            logger.warning(f"Failed to increment answer node visits: {e}")
+        
         # Extract conversation_data (contains flags)
         state = state_row.get("conversation_data", {})
         
@@ -129,7 +145,7 @@ class EquityConnectAgent(Agent):
         
         logger.info(f"🧭 Router: {self.current_node} → {next_node}")
         
-        if next_node == "END":
+        if next_node == END:
             logger.info("🏁 Conversation complete")
             # Optionally say goodbye
             if self.session:
@@ -140,7 +156,7 @@ class EquityConnectAgent(Agent):
             # Transition to new node (don't speak immediately)
             await self.load_node(next_node, speak_now=False)
     
-    def route_next(self, state_row: dict, conversation_data: dict) -> str:
+    def route_next(self, state_row: dict, conversation_data: dict):
         """Use existing router functions to determine next node
         
         CRITICAL: Routing is DYNAMIC, not fixed. The router examines actual DB state
@@ -184,7 +200,7 @@ class EquityConnectAgent(Agent):
             return route_after_exit(state)  # Can go to: greet (spouse available) or END
         else:
             logger.warning(f"Unknown node: {self.current_node}")
-            return "END"
+            return END
 
 
 # Import config
@@ -316,10 +332,14 @@ async def entrypoint(ctx: JobContext):
                     "broker_id": lead.get("assigned_broker_id"),
                     "first_name": lead.get("first_name"),
                     "last_name": lead.get("last_name"),
+                    "name": f"{lead.get('first_name', '')} {lead.get('last_name', '')}".strip(),  # Full name for context
                     "email": lead.get("primary_email"),
+                    "primary_email": lead.get("primary_email"),  # Alias for consistency
                     "phone": caller_phone,
+                    "property_address": lead.get("property_address"),
                     "property_city": lead.get("property_city"),
                     "property_state": lead.get("property_state"),
+                    "property_zip": lead.get("property_zip"),
                     "property_value": lead.get("property_value"),
                     "estimated_equity": lead.get("estimated_equity"),
                     "age": lead.get("age"),
