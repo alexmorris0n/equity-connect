@@ -16,14 +16,16 @@ except ImportError:
 	SWAIG_AVAILABLE = False
 	logger.warning("SwaigFunctionResult not available - UX actions disabled")
 
-async def search_knowledge(question: str) -> Union[str, 'SwaigFunctionResult']:
+async def search_knowledge(question: str, raw_data: dict = None) -> Union[str, 'SwaigFunctionResult']:
 	"""Search the reverse mortgage knowledge base for accurate information about eligibility, fees, objections, compliance, etc. Use this when leads ask complex questions beyond basic qualification.
 	
 	Returns SwaigFunctionResult with UX actions:
 	- say() to acknowledge search immediately
+	- update_metadata() to track search analytics
 	
 	Args:
 	    question: The question or topic to search for (e.g., "what if they still have a mortgage", "costs and fees", "will they lose their home")
+	    raw_data: SWAIG post_data with metadata and context (optional)
 	"""
 	sb = get_supabase_client()
 	import time
@@ -31,6 +33,15 @@ async def search_knowledge(question: str) -> Union[str, 'SwaigFunctionResult']:
 	
 	# Create result object for UX actions
 	result = SwaigFunctionResult() if SWAIG_AVAILABLE else None
+	
+	# Track search analytics via metadata
+	metadata = {}
+	if raw_data and result:
+		metadata = raw_data.get("meta_data", {})
+		search_count = metadata.get("search_count", 0)
+		last_question = metadata.get("last_question", "")
+		
+		logger.info(f"🔍 Knowledge search #{search_count + 1} (previous: '{last_question}')")
 	
 	# Immediate feedback - let caller know we're searching
 	if result:
@@ -126,6 +137,15 @@ async def search_knowledge(question: str) -> Union[str, 'SwaigFunctionResult']:
 		})
 		
 		if result:
+			# Update metadata with search analytics
+			if raw_data:
+				new_search_count = metadata.get("search_count", 0) + 1
+				result.update_metadata({
+					"search_count": new_search_count,
+					"last_question": question,
+					"last_search_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+				})
+			
 			result.set_response(success_msg)
 			return result
 		return success_msg

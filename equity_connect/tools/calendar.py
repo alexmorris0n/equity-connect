@@ -19,7 +19,8 @@ except ImportError:
 async def check_broker_availability(
 	broker_id: str,
 	preferred_day: Optional[str] = None,
-	preferred_time: Optional[str] = None
+	preferred_time: Optional[str] = None,
+	raw_data: dict = None
 ) -> Union[str, 'SwaigFunctionResult']:
 	"""Check broker calendar availability for appointment scheduling. Returns available time slots for the next 14 days.
 	
@@ -27,11 +28,13 @@ async def check_broker_availability(
 	- say() to acknowledge the request immediately
 	- play_background_audio() during slow Nylas API call
 	- stop_background_audio() when done
+	- update_metadata() to track availability check analytics
 	
 	Args:
 	    broker_id: Broker UUID to check availability for
 	    preferred_day: Preferred day of week if lead expressed preference (monday, tuesday, etc.)
 	    preferred_time: Preferred time of day if lead expressed preference (morning, afternoon, evening)
+	    raw_data: SWAIG post_data with metadata and context (optional)
 	"""
 	sb = get_supabase_client()
 	import time
@@ -39,6 +42,15 @@ async def check_broker_availability(
 	
 	# Create result object for UX actions
 	result = SwaigFunctionResult() if SWAIG_AVAILABLE else None
+	
+	# Track availability check analytics via metadata
+	metadata = {}
+	if raw_data and result:
+		metadata = raw_data.get("meta_data", {})
+		check_count = metadata.get("check_count", 0)
+		last_broker_id = metadata.get("last_broker_id", "")
+		
+		logger.info(f"📅 Availability check #{check_count + 1} (last broker: {last_broker_id})")
 	
 	# Immediate feedback - let caller know we're working
 	if result:
@@ -135,6 +147,17 @@ async def check_broker_availability(
 		# Stop background audio if playing
 		if result:
 			# result.stop_background_audio()  # Uncomment when using background audio
+			
+			# Update metadata with availability check analytics
+			if raw_data:
+				new_check_count = metadata.get("check_count", 0) + 1
+				result.update_metadata({
+					"check_count": new_check_count,
+					"last_broker_id": broker_id,
+					"last_check_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+					"slots_found": len(available_slots)
+				})
+			
 			result.set_response(success_msg)
 			return result
 		return success_msg
@@ -157,18 +180,21 @@ async def book_appointment(
 	lead_id: str,
 	broker_id: str,
 	scheduled_for: str,
-	notes: Optional[str] = None
+	notes: Optional[str] = None,
+	raw_data: dict = None
 ) -> Union[str, 'SwaigFunctionResult']:
 	"""Book an appointment with the broker after checking availability. Creates calendar event and auto-sends invite to lead email. Creates interaction record and billing event.
 	
 	Returns SwaigFunctionResult with UX actions:
 	- say() to acknowledge booking immediately
+	- update_metadata() to track booking analytics
 	
 	Args:
 	    lead_id: Lead UUID
 	    broker_id: Broker UUID
 	    scheduled_for: Appointment date/time in ISO 8601 format (e.g., "2025-10-20T10:00:00Z")
 	    notes: Any notes about the appointment or lead preferences
+	    raw_data: SWAIG post_data with metadata and context (optional)
 	"""
 	sb = get_supabase_client()
 	import time
@@ -176,6 +202,15 @@ async def book_appointment(
 	
 	# Create result object for UX actions
 	result = SwaigFunctionResult() if SWAIG_AVAILABLE else None
+	
+	# Track booking analytics via metadata
+	metadata = {}
+	if raw_data and result:
+		metadata = raw_data.get("meta_data", {})
+		booking_attempts = metadata.get("booking_attempts", 0)
+		successful_bookings = metadata.get("successful_bookings", 0)
+		
+		logger.info(f"📅 Booking attempt #{booking_attempts + 1} (successful: {successful_bookings})")
 	
 	# Immediate feedback - let caller know we're booking
 	if result:
@@ -322,6 +357,18 @@ async def book_appointment(
 		})
 		
 		if result:
+			# Update metadata with booking analytics
+			if raw_data:
+				new_booking_attempts = metadata.get("booking_attempts", 0) + 1
+				new_successful_bookings = metadata.get("successful_bookings", 0) + 1
+				result.update_metadata({
+					"booking_attempts": new_booking_attempts,
+					"successful_bookings": new_successful_bookings,
+					"last_booking_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+					"last_lead_id": lead_id,
+					"last_broker_id": broker_id
+				})
+			
 			result.set_response(success_msg)
 			return result
 		return success_msg
@@ -335,6 +382,15 @@ async def book_appointment(
 			"message": "Unable to book appointment. Please try again or book manually."
 		})
 		if result:
+			# Update metadata with failed attempt
+			if raw_data:
+				new_booking_attempts = metadata.get("booking_attempts", 0) + 1
+				result.update_metadata({
+					"booking_attempts": new_booking_attempts,
+					"last_error": str(e),
+					"last_error_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+				})
+			
 			result.set_response(error_msg)
 			return result
 		return error_msg

@@ -305,11 +305,12 @@ List specific actions needed based on conversation outcome.
 				"preferred_time": {"type": "string", "description": "Preferred time (morning|afternoon|evening)", "nullable": True},
 			},
 			"required": ["broker_id"],
-		}
+		},
+		meta_data_token="check_broker_availability_v1"
 	)
 	async def check_broker_availability(self, args, raw_data):
 		from equity_connect.tools.calendar import check_broker_availability
-		return await check_broker_availability(args.get("broker_id"), args.get("preferred_day"), args.get("preferred_time"))
+		return await check_broker_availability(args.get("broker_id"), args.get("preferred_day"), args.get("preferred_time"), raw_data)
 	
 	@AgentBase.tool(
 		description="Book an appointment and create calendar event.",
@@ -322,11 +323,12 @@ List specific actions needed based on conversation outcome.
 				"notes": {"type": "string", "description": "Notes", "nullable": True},
 			},
 			"required": ["lead_id", "broker_id", "scheduled_for"],
-		}
+		},
+		meta_data_token="book_appointment_v1"
 	)
 	async def book_appointment(self, args, raw_data):
 		from equity_connect.tools.calendar import book_appointment
-		return await book_appointment(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"))
+		return await book_appointment(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"), raw_data)
 	
 	@AgentBase.tool(
 		description="Reschedule an existing appointment.",
@@ -362,11 +364,12 @@ List specific actions needed based on conversation outcome.
 	# Knowledge (1)
 	@AgentBase.tool(
 		description="Search reverse mortgage knowledge base for accurate answers.",
-		parameters={"type": "object", "properties": {"question": {"type": "string", "description": "Question text"}}, "required": ["question"]}
+		parameters={"type": "object", "properties": {"question": {"type": "string", "description": "Question text"}}, "required": ["question"]},
+		meta_data_token="search_knowledge_v1"
 	)
 	async def search_knowledge(self, args, raw_data):
 		from equity_connect.tools.knowledge import search_knowledge
-		return await search_knowledge(args.get("question"))
+		return await search_knowledge(args.get("question"), raw_data)
 	
 	# Interaction (4)
 	@AgentBase.tool(
