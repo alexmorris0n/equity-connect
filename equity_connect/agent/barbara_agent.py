@@ -439,17 +439,21 @@ class BarbaraAgent(AgentBase):
 			# This is CRITICAL for SWML webhook flows - configure_per_call() is NOT called
 			# Apply ALL configuration BEFORE loading prompts
 			
-			# TTS: ElevenLabs Rachel voice + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
+			# TTS: ElevenLabs voice (use Voice ID from environment or default to Rachel)
+			# Get voice ID from environment (ElevenLabs uses voice IDs, not names)
+			elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default: Rachel
+			
+			# TTS: ElevenLabs + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
 			self.add_language(
 				name="English",
 				code="en-US",
-				voice="rachel",  # ElevenLabs Rachel voice
+				voice=elevenlabs_voice_id,  # ElevenLabs Voice ID
 				engine="elevenlabs",
 				model="eleven_turbo_v2_5",
 				speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
 				function_fillers=["Processing...", "Just a second...", "Looking that up..."]
 			)
-			logger.info("✅ Voice configured: ElevenLabs Rachel")
+			logger.info(f"✅ Voice configured: ElevenLabs voice_id={elevenlabs_voice_id}")
 			
 			# LLM and conversation parameters
 			self.set_params({
