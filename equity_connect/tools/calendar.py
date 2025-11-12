@@ -5,6 +5,7 @@ from equity_connect.services.conversation_state import update_conversation_state
 from equity_connect.services.nylas import get_broker_events, find_free_slots, format_available_slots, create_calendar_event
 import logging
 import json
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -347,12 +348,45 @@ async def book_appointment(
 				}
 			})
 		
+		# Send SMS confirmation if phone number available and result object exists
+		sms_sent = False
+		if result and phone_number:
+			try:
+				# Get SignalWire phone number from environment
+				from_number = os.getenv("SIGNALWIRE_PHONE_NUMBER")
+				
+				if from_number:
+					# Format appointment details for SMS
+					appointment_display_sms = appointment_date.strftime('%B %d, %Y at %I:%M %p')
+					sms_body = (
+						f"Hi {lead.get('first_name', '')}! Your reverse mortgage consultation "
+						f"is confirmed for {appointment_display_sms} with {broker.get('contact_name')}. "
+						f"Reply CANCEL to reschedule. - Barbara AI"
+					)
+					
+					# Send SMS using SWAIG action
+					result.send_sms(
+						to_number=phone_number,
+						from_number=from_number,
+						body=sms_body,
+						tags=["appointment", "confirmation", lead_id]
+					)
+					
+					sms_sent = True
+					logger.info(f"✅ SMS confirmation sent to {phone_number}")
+				else:
+					logger.warning("⚠️  SIGNALWIRE_PHONE_NUMBER not set - SMS confirmation skipped")
+			except Exception as sms_error:
+				logger.error(f"❌ Failed to send SMS confirmation: {sms_error}")
+				# Don't fail the whole booking if SMS fails
+		
 		appointment_display = appointment_date.strftime('%B %d, %Y at %I:%M %p')
 		success_msg = json.dumps({
 			"success": True,
 			"event_id": nylas_event_id,
 			"scheduled_for": scheduled_for,
 			"calendar_invite_sent": bool(lead_email),
+			"sms_confirmation_sent": sms_sent,
 			"message": f"Appointment booked successfully for {appointment_display}. Calendar invite sent to {lead_email}." if lead_email else f"Appointment booked successfully for {appointment_display} (no email for invite)."
 		})
 		
