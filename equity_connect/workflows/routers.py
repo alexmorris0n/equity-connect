@@ -1,7 +1,6 @@
 """Dynamic routing logic for conversation graph"""
 import logging
 from typing import Literal, Optional, Dict, Any
-from langgraph.graph import END
 from .state import ConversationState  # type: ignore
 from services.conversation_state import get_conversation_state, extract_phone_from_messages
 
@@ -229,12 +228,12 @@ def route_after_exit(state: ConversationState):
 	"""
 	row = _db(state)
 	if not row:
-		logger.info("🔚 No DB row → END")
-		return END
+		logger.info("🔚 No DB row → exit")
+		return "exit"
 	cd = _cd(row)
 	if cd.get("right_person_available"):
 		logger.info("🔁 right_person_available → GREET")
 		return "greet"
-	return END
+	return "exit"
 
 
