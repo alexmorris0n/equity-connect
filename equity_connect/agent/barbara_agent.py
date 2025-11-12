@@ -540,9 +540,17 @@ List specific actions needed based on conversation outcome.
 		"""
 		try:
 			# Extract call parameters from SignalWire
-			from_phone = request_data.get("From") if request_data else None
-			to_phone = request_data.get("To") if request_data else None
-			call_sid = request_data.get("CallSid") if request_data else None
+			# SignalWire sends: device.params.from_number, device.params.to_number, call_id
+			if request_data:
+				# Try nested structure first (new format)
+				device_params = request_data.get("device", {}).get("params", {})
+				from_phone = device_params.get("from_number") or request_data.get("From")
+				to_phone = device_params.get("to_number") or request_data.get("To")
+				call_sid = request_data.get("call_id") or request_data.get("CallSid")
+			else:
+				from_phone = None
+				to_phone = None
+				call_sid = None
 			
 			# Determine call direction
 			# For inbound: From = caller's number, To = our SignalWire number
