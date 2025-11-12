@@ -33,75 +33,104 @@ class BarbaraAgent(AgentBase):
 			record_format="mp3"
 		)
 		
-		# AI Configuration (SignalWire SDK)
-		# TTS: ElevenLabs + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
-		self.add_language(
-			name="English",
-			code="en-US",
-			voice="rachel",  # ElevenLabs Rachel voice (voice name only)
-			engine="elevenlabs",  # Specify ElevenLabs engine
-			model="eleven_turbo_v2_5",  # ElevenLabs turbo model for low latency
-			speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
-			function_fillers=["Processing...", "Just a second...", "Looking that up..."]
-		)
+		# Set up dynamic configuration (per-request)
+		# This replaces static config and enables multi-tenant, per-broker customization
+		self.set_dynamic_config_callback(self.configure_per_call)
 		
-		# LLM and conversation parameters
-		self.set_params({
-			"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
-			"wait_for_user": False,  # Barbara can proactively speak without waiting
-			"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
-			"attention_timeout": 30000,  # 30 seconds before timeout
-			"temperature": 0.7,  # Balanced creativity
-			"max_tokens": 150,  # Keep responses concise for voice
-			"top_p": 0.9,  # Nucleus sampling for natural responses
-			"ai_volume": 5,  # Default volume level
-			"local_tz": "America/Los_Angeles"  # Pacific time for CA customers
-		})
+		# BarbGraph routing state
+		self.current_node = "greet"
+		self.phone_number = None
+		self.call_type = "inbound"
 		
-		# Global data for AI to reference during conversations
-		self.set_global_data({
-			"company_name": "Barbara AI",
-			"service_type": "Reverse Mortgage Assistance",
-			"service_vertical": "Reverse Mortgage / HECM",
-			"business_hours": "9 AM - 5 PM Pacific Time",
-			"coverage_area": "California",
-			"conversation_system": "BarbGraph 8-node routing"
-		})
+		logger.info("✅ BarbaraAgent initialized with dynamic configuration and 21 tools")
+	
+	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
+		"""Configure agent dynamically per-request
 		
-		# Speech recognition hints for domain-specific terms
-		self.add_hints([
-			"reverse mortgage",
-			"HECM",
-			"home equity conversion",
-			"FHA",
-			"equity",
-			"lien",
-			"borrower",
-			"non-borrowing spouse",
-			"Barbara",
-			"EquityConnect"
-		])
+		This runs for EVERY incoming call and allows per-broker, per-call customization.
 		
-		# Pronunciation rules for acronyms and technical terms
-		self.add_pronunciation("HECM", "H E C M", ignore_case=False)
-		self.add_pronunciation("FHA", "F H A", ignore_case=False)
-		self.add_pronunciation("API", "A P I", ignore_case=False)
-		self.add_pronunciation("AI", "A I", ignore_case=False)
-		
-		# Pattern hints for common phrases
-		self.add_pattern_hint(
-			hint="AI Agent",
-			pattern="AI\\s+Agent",
-			replace="A.I. Agent",
-			ignore_case=True
-		)
-		
-		# Add datetime skill for appointment booking context
-		# LLMs have no concept of "now" - this gives Barbara temporal awareness
-		self.add_skill("datetime")
-		
-		# Set post-prompt for overall call summary (runs at end of call)
-		self.set_post_prompt("""
+		Args:
+			query_params: URL query parameters (e.g., ?broker_id=123)
+			body_params: POST body parameters (SignalWire call data)
+			headers: HTTP headers
+			agent: EphemeralAgentConfig for per-request configuration
+		"""
+		try:
+			# Extract call info from SignalWire request
+			phone = body_params.get('From') or query_params.get('phone')
+			broker_id = query_params.get('broker_id')  # Optional for multi-tenant
+			
+			logger.info(f"🔧 Configuring agent for call from {phone}, broker={broker_id}")
+			
+			# ==================== AI CONFIGURATION ====================
+			# TTS: ElevenLabs + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
+			# TODO: Load from broker_settings table in Phase 2
+			agent.add_language(
+				name="English",
+				code="en-US",
+				voice="rachel",  # ElevenLabs Rachel voice
+				engine="elevenlabs",
+				model="eleven_turbo_v2_5",
+				speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
+				function_fillers=["Processing...", "Just a second...", "Looking that up..."]
+			)
+			
+			# LLM and conversation parameters
+			agent.set_params({
+				"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
+				"wait_for_user": False,  # Barbara can proactively speak
+				"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
+				"attention_timeout": 30000,  # 30 seconds before timeout
+				"temperature": 0.7,  # Balanced creativity
+				"max_tokens": 150,  # Keep responses concise for voice
+				"top_p": 0.9,  # Nucleus sampling
+				"ai_volume": 5,
+				"local_tz": "America/Los_Angeles"  # Pacific time for CA customers
+			})
+			
+			# Global data for AI to reference
+			agent.set_global_data({
+				"company_name": "Barbara AI",
+				"service_type": "Reverse Mortgage Assistance",
+				"service_vertical": "Reverse Mortgage / HECM",
+				"business_hours": "9 AM - 5 PM Pacific Time",
+				"coverage_area": "California",
+				"conversation_system": "BarbGraph 8-node routing"
+			})
+			
+			# Speech recognition hints for domain-specific terms
+			agent.add_hints([
+				"reverse mortgage",
+				"HECM",
+				"home equity conversion",
+				"FHA",
+				"equity",
+				"lien",
+				"borrower",
+				"non-borrowing spouse",
+				"Barbara",
+				"EquityConnect"
+			])
+			
+			# Pronunciation rules for acronyms
+			agent.add_pronunciation("HECM", "H E C M", ignore_case=False)
+			agent.add_pronunciation("FHA", "F H A", ignore_case=False)
+			agent.add_pronunciation("API", "A P I", ignore_case=False)
+			agent.add_pronunciation("AI", "A I", ignore_case=False)
+			
+			# Pattern hints
+			agent.add_pattern_hint(
+				hint="AI Agent",
+				pattern="AI\\s+Agent",
+				replace="A.I. Agent",
+				ignore_case=True
+			)
+			
+			# Add datetime skill for appointment booking
+			agent.add_skill("datetime")
+			
+			# Set post-prompt for call summaries
+			agent.set_post_prompt("""
 Analyze the complete conversation and provide a structured summary:
 
 **BARBGRAPH PATH:**
@@ -126,19 +155,63 @@ Analyze the complete conversation and provide a structured summary:
 
 **FOLLOW-UP ACTIONS:**
 List specific actions needed based on conversation outcome.
-		""")
-		
-		# BarbGraph routing state
-		self.current_node = "greet"
-		self.phone_number = None
-		
-		# Load initial greet node prompt
-		self._load_initial_prompt()
-		
-		logger.info("✅ BarbaraAgent initialized with 21 tools and BarbGraph routing")
-	
-	# ==================== TOOL DEFINITIONS (21 tools) ====================
-	# All tools use @AgentBase.tool decorator for proper async handling
+			""")
+			
+			# ==================== LOAD INITIAL NODE ====================
+			# For returning callers, resume where they left off
+			current_node = "greet"  # Default for new callers
+			lead_context = None
+			
+			if phone:
+				state_row = get_conversation_state(phone)
+				
+				if state_row:
+					lead_id = state_row.get("lead_id")
+					if lead_id:
+						lead_context = {
+							"lead_id": lead_id,
+							"qualified": state_row.get("qualified"),
+							"conversation_data": state_row.get("conversation_data", {})
+						}
+					
+					# Check for returning caller (multi-call persistence)
+					cd = state_row.get("conversation_data", {})
+					if cd.get("appointment_booked"):
+						current_node = "exit"  # Already done
+						logger.info(f"🔄 Returning caller - appointment already booked")
+					elif cd.get("ready_to_book"):
+						current_node = "book"  # Pick up at booking
+						logger.info(f"🔄 Returning caller - resuming at 'book' node")
+					elif cd.get("qualified") is not None:
+						current_node = "answer"  # Already qualified, answer questions
+						logger.info(f"🔄 Returning caller - resuming at 'answer' node")
+			
+			# Load initial node prompt from Supabase
+			from equity_connect.services.prompt_loader import build_instructions_for_node
+			
+			instructions = build_instructions_for_node(
+				node_name=current_node,
+				call_type="inbound",  # Will be updated from SignalWire data later
+				lead_context=lead_context,
+				phone_number=phone,
+				vertical="reverse_mortgage"
+			)
+			
+			agent.set_prompt_text(instructions)
+			
+			# Store in instance for later use
+			self.current_node = current_node
+			self.phone_number = phone
+			self.call_type = "inbound"
+			
+			logger.info(f"✅ Agent configured: node='{current_node}', phone={phone}")
+			
+		except Exception as e:
+			logger.error(f"❌ Error in configure_per_call: {e}", exc_info=True)
+			# Fall back to default greet node
+			agent.add_language("English", "en-US", voice="rachel", engine="elevenlabs")
+			agent.set_params({"ai_model": "gpt-4o"})
+			agent.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries.")
 	
 	# Lead Management (5)
 	@AgentBase.tool(
@@ -408,28 +481,6 @@ List specific actions needed based on conversation outcome.
 		return await clear_conversation_flags(args.get("phone"))
 	
 	# ==================== END TOOL DEFINITIONS ====================
-	
-	def _load_initial_prompt(self):
-		"""Load the initial greet node prompt during initialization"""
-		try:
-			# Use build_instructions_for_node to correctly combine theme + node without duplication
-			# No context yet since we don't have call info at initialization
-			from equity_connect.services.prompt_loader import build_instructions_for_node
-			
-			instructions = build_instructions_for_node(
-				node_name="greet",
-				call_type="outbound",
-				lead_context=None,
-				phone_number=None,
-				vertical="reverse_mortgage"
-			)
-			
-			self.set_prompt_text(instructions)
-			logger.info("📝 Loaded initial greet prompt")
-		except Exception as e:
-			logger.error(f"❌ Failed to load initial prompt: {e}")
-			# Fallback prompt
-			self.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries.")
 	
 	def on_swml_request(
 		self,
