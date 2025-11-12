@@ -1,5 +1,5 @@
 """Calendar and appointment tools"""
-from typing import Optional
+from typing import Optional, Union
 from equity_connect.services.supabase import get_supabase_client
 from equity_connect.services.conversation_state import update_conversation_state
 from equity_connect.services.nylas import get_broker_events, find_free_slots, format_available_slots, create_calendar_event
@@ -8,12 +8,25 @@ import json
 
 logger = logging.getLogger(__name__)
 
+# Import SwaigFunctionResult for UX actions
+try:
+	from signalwire_agents.core import SwaigFunctionResult
+	SWAIG_AVAILABLE = True
+except ImportError:
+	SWAIG_AVAILABLE = False
+	logger.warning("SwaigFunctionResult not available - UX actions disabled")
+
 async def check_broker_availability(
 	broker_id: str,
 	preferred_day: Optional[str] = None,
 	preferred_time: Optional[str] = None
-) -> str:
+) -> Union[str, 'SwaigFunctionResult']:
 	"""Check broker calendar availability for appointment scheduling. Returns available time slots for the next 14 days.
+	
+	Returns SwaigFunctionResult with UX actions:
+	- say() to acknowledge the request immediately
+	- play_background_audio() during slow Nylas API call
+	- stop_background_audio() when done
 	
 	Args:
 	    broker_id: Broker UUID to check availability for
@@ -23,6 +36,15 @@ async def check_broker_availability(
 	sb = get_supabase_client()
 	import time
 	start_time = time.time()
+	
+	# Create result object for UX actions
+	result = SwaigFunctionResult() if SWAIG_AVAILABLE else None
+	
+	# Immediate feedback - let caller know we're working
+	if result:
+		result.say("One moment while I check the broker's calendar for available times.")
+		# Optional: Play subtle hold music during slow API call
+		# result.play_background_audio("https://your-cdn.com/hold-music.mp3", wait=True)
 	
 	try:
 		logger.info(f"📅 Checking availability for broker: {broker_id}")
@@ -35,21 +57,29 @@ async def check_broker_availability(
 			.execute()
 		
 		if not response.data:
-			return json.dumps({
+			error_msg = json.dumps({
 				"success": False,
 				"error": "Broker not found",
 				"message": "Unable to check availability - broker not found."
 			})
+			if result:
+				result.set_response(error_msg)
+				return result
+			return error_msg
 		
 		broker = response.data
 		
 		if not broker.get('nylas_grant_id'):
 			logger.warn('⚠️  Broker has no Nylas grant - calendar not connected')
-			return json.dumps({
+			error_msg = json.dumps({
 				"success": False,
 				"error": "Calendar not connected",
 				"message": f"{broker.get('contact_name')}'s calendar is not connected. Please schedule manually."
 			})
+			if result:
+				result.set_response(error_msg)
+				return result
+			return error_msg
 		
 		# Calculate time range (next 14 days)
 		now = int(time.time())
@@ -93,7 +123,7 @@ async def check_broker_availability(
 			else:
 				message = f"{broker.get('contact_name')} has {len(available_slots)} available times over the next 2 weeks."
 		
-		return json.dumps({
+		success_msg = json.dumps({
 			"success": True,
 			"available_slots": available_slots,
 			"broker_name": broker.get('contact_name'),
@@ -102,22 +132,37 @@ async def check_broker_availability(
 			"message": message
 		})
 		
+		# Stop background audio if playing
+		if result:
+			# result.stop_background_audio()  # Uncomment when using background audio
+			result.set_response(success_msg)
+			return result
+		return success_msg
+		
 	except Exception as e:
 		duration_ms = int((time.time() - start_time) * 1000)
 		logger.error(f"❌ Availability check failed after {duration_ms}ms: {e}")
-		return json.dumps({
+		error_msg = json.dumps({
 			"success": False,
 			"error": str(e),
 			"message": "Unable to check calendar availability. Please try scheduling manually."
 		})
+		if result:
+			# result.stop_background_audio()  # Uncomment when using background audio
+			result.set_response(error_msg)
+			return result
+		return error_msg
 
 async def book_appointment(
 	lead_id: str,
 	broker_id: str,
 	scheduled_for: str,
 	notes: Optional[str] = None
-) -> str:
+) -> Union[str, 'SwaigFunctionResult']:
 	"""Book an appointment with the broker after checking availability. Creates calendar event and auto-sends invite to lead email. Creates interaction record and billing event.
+	
+	Returns SwaigFunctionResult with UX actions:
+	- say() to acknowledge booking immediately
 	
 	Args:
 	    lead_id: Lead UUID
@@ -128,6 +173,13 @@ async def book_appointment(
 	sb = get_supabase_client()
 	import time
 	start_time = time.time()
+	
+	# Create result object for UX actions
+	result = SwaigFunctionResult() if SWAIG_AVAILABLE else None
+	
+	# Immediate feedback - let caller know we're booking
+	if result:
+		result.say("Perfect! Let me book that appointment for you.")
 	
 	try:
 		logger.info(f"📅 Booking appointment: {scheduled_for}")
@@ -261,7 +313,7 @@ async def book_appointment(
 			})
 		
 		appointment_display = appointment_date.strftime('%B %d, %Y at %I:%M %p')
-		return json.dumps({
+		success_msg = json.dumps({
 			"success": True,
 			"event_id": nylas_event_id,
 			"scheduled_for": scheduled_for,
@@ -269,14 +321,23 @@ async def book_appointment(
 			"message": f"Appointment booked successfully for {appointment_display}. Calendar invite sent to {lead_email}." if lead_email else f"Appointment booked successfully for {appointment_display} (no email for invite)."
 		})
 		
+		if result:
+			result.set_response(success_msg)
+			return result
+		return success_msg
+		
 	except Exception as e:
 		duration_ms = int((time.time() - start_time) * 1000)
 		logger.error(f"❌ Booking failed after {duration_ms}ms: {e}")
-		return json.dumps({
+		error_msg = json.dumps({
 			"success": False,
 			"error": str(e),
 			"message": "Unable to book appointment. Please try again or book manually."
 		})
+		if result:
+			result.set_response(error_msg)
+			return result
+		return error_msg
 
 async def cancel_appointment(interaction_id: str, reason: Optional[str] = None) -> str:
 	"""Cancel an existing appointment.

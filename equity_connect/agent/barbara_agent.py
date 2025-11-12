@@ -833,6 +833,16 @@ List specific actions needed based on conversation outcome.
 				consolidate=True  # Summarize previous conversation to save tokens
 			)
 			
+			# Dynamic VAD timeout based on node (seniors need different patience levels)
+			# More patient for complex nodes (verify, qualify, answer, objections)
+			# Faster response for simple nodes (greet, quote, book, exit)
+			if node_name in ["verify", "qualify", "answer", "objections"]:
+				result.set_end_of_speech_timeout(2000)  # 2 seconds - more patient for seniors
+				logger.debug(f"🎙️  VAD timeout set to 2000ms for node '{node_name}' (patient mode)")
+			elif node_name in ["greet", "quote", "book", "exit"]:
+				result.set_end_of_speech_timeout(800)  # 0.8 seconds - faster for simple responses
+				logger.debug(f"🎙️  VAD timeout set to 800ms for node '{node_name}' (responsive mode)")
+			
 			# Update tracking
 			self.current_node = node_name
 			self.phone_number = phone
