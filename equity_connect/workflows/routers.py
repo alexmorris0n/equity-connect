@@ -1,13 +1,12 @@
 """Dynamic routing logic for conversation graph"""
 import logging
 from typing import Literal, Optional, Dict, Any
-from .state import ConversationState  # type: ignore
 from services.conversation_state import get_conversation_state, extract_phone_from_messages
 
 logger = logging.getLogger(__name__)
 
 
-def _db(state: ConversationState) -> Optional[Dict[str, Any]]:
+def _db(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 	"""Fetch DB row based on state phone_number or messages fallback."""
 	phone = state.get("phone_number")  # Preferred if present in graph state
 	if not phone:
@@ -21,7 +20,7 @@ def _cd(row: Dict[str, Any]) -> Dict[str, Any]:
 	return (row or {}).get("conversation_data") or {}
 
 
-def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", "answer", "exit", "greet"]:
+def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "answer", "exit", "greet"]:
 	"""
 	DB-driven routing after greet.
 	- If wrong_person and right_person_available → greet (re-greet spouse)
@@ -54,7 +53,7 @@ def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", 
 	return "verify"
 
 
-def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "greet"]:
+def route_after_verify(state: Dict[str, Any]) -> Literal["qualify", "exit", "greet"]:
 	"""
 	DB-driven routing after verify.
 	- If wrong_person and right_person_available → greet
@@ -84,7 +83,7 @@ def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "
 	return "verify"
 
 
-def route_after_qualify(state: ConversationState) -> Literal["quote", "exit"]:
+def route_after_qualify(state: Dict[str, Any]) -> Literal["quote", "exit"]:
 	"""
 	DB-driven routing after qualification.
 	- If qualified → quote (present financial estimates)
@@ -103,7 +102,7 @@ def route_after_qualify(state: ConversationState) -> Literal["quote", "exit"]:
 	return "exit"
 
 
-def route_after_quote(state: ConversationState) -> Literal["answer", "book", "exit"]:
+def route_after_quote(state: Dict[str, Any]) -> Literal["answer", "book", "exit"]:
 	"""
 	DB-driven routing after quote presentation.
 	- If quote_reaction == "not_interested" → exit
@@ -132,7 +131,7 @@ def route_after_quote(state: ConversationState) -> Literal["answer", "book", "ex
 	return "answer"
 
 
-def route_after_answer(state: ConversationState) -> Literal["answer", "objections", "book", "exit"]:
+def route_after_answer(state: Dict[str, Any]) -> Literal["answer", "objections", "book", "exit"]:
 	"""
 	DB-driven routing after answer.
 	- If ready_to_book → book
@@ -162,7 +161,7 @@ def route_after_answer(state: ConversationState) -> Literal["answer", "objection
 	return "answer"
 
 
-def route_after_objections(state: ConversationState) -> Literal["answer", "objections", "book", "exit", "verify", "qualify", "quote", "greet"]:
+def route_after_objections(state: Dict[str, Any]) -> Literal["answer", "objections", "book", "exit", "verify", "qualify", "quote", "greet"]:
 	"""
 	DB-driven routing after objections.
 	- If ready_to_book → book
@@ -200,7 +199,7 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
 	return "answer"
 
 
-def route_after_book(state: ConversationState) -> Literal["exit", "answer"]:
+def route_after_book(state: Dict[str, Any]) -> Literal["exit", "answer"]:
 	"""
 	DB-driven routing after booking attempt.
 	- If appointment_booked → exit (success)
@@ -220,7 +219,7 @@ def route_after_book(state: ConversationState) -> Literal["exit", "answer"]:
 	return "answer"
 
 
-def route_after_exit(state: ConversationState):
+def route_after_exit(state: Dict[str, Any]):
 	"""
 	DB-driven router after exit node.
 	- If conversation_data.right_person_available → greet (re-greet spouse)
