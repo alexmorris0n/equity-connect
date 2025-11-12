@@ -1,8 +1,8 @@
 """Calendar and appointment tools"""
 from typing import Optional
-from services.supabase import get_supabase_client
-from services.conversation_state import update_conversation_state
-from services.nylas import get_broker_events, find_free_slots, format_available_slots, create_calendar_event
+from equity_connect.services.supabase import get_supabase_client
+from equity_connect.services.conversation_state import update_conversation_state
+from equity_connect.services.nylas import get_broker_events, find_free_slots, format_available_slots, create_calendar_event
 import logging
 import json
 

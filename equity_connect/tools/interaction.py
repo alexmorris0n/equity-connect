@@ -1,6 +1,6 @@
 """Interaction and tracking tools"""
 from typing import Optional
-from services.supabase import get_supabase_client
+from equity_connect.services.supabase import get_supabase_client
 import logging
 import json
 from datetime import datetime

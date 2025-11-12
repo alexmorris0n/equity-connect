@@ -1,6 +1,6 @@
 """Knowledge base search tool"""
-from services.supabase import get_supabase_client
-from services.vertex import generate_embedding
+from equity_connect.services.supabase import get_supabase_client
+from equity_connect.services.vertex import generate_embedding
 import logging
 import json
 import os

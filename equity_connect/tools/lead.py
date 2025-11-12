@@ -1,7 +1,7 @@
 """Lead management tools"""
 from typing import Optional, Dict, Any
-from services.supabase import get_supabase_client, normalize_phone
-from services.conversation_state import update_conversation_state
+from equity_connect.services.supabase import get_supabase_client, normalize_phone
+from equity_connect.services.conversation_state import update_conversation_state
 import logging
 
 logger = logging.getLogger(__name__)

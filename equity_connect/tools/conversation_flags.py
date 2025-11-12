@@ -5,7 +5,7 @@ which triggers dynamic routing between conversation nodes.
 """
 
 import logging
-from services.conversation_state import update_conversation_state
+from equity_connect.services.conversation_state import update_conversation_state
 from typing import Optional
 
 logger = logging.getLogger(__name__)
