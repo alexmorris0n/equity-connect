@@ -129,6 +129,10 @@ class BarbaraAgent(AgentBase):
 			# Add datetime skill for appointment booking
 			agent.add_skill("datetime")
 			
+			# Add math skill for equity calculations in quote node
+			# LLMs are terrible at arithmetic - let Python do the math
+			agent.add_skill("math")
+			
 			# Set post-prompt for call summaries
 			agent.set_post_prompt("""
 Analyze the complete conversation and provide a structured summary:
@@ -780,7 +784,8 @@ List specific actions needed based on conversation outcome.
 			"quote": [
 				"search_knowledge",  # Explain quote details
 				"mark_quote_presented",  # Track quote presentation
-				"mark_has_objection"  # Detect concerns about quote
+				"mark_has_objection",  # Detect concerns about quote
+				"calculate"  # Math skill for equity calculations (LLMs are bad at math)
 			],
 			"objections": [
 				"search_knowledge",  # Address objections with facts
