@@ -87,7 +87,12 @@ def _fetch_by_phone(phone: str) -> Optional[Dict[str, Any]]:
 		candidates.append(f"+1{normalized}")
 		candidates.append(normalized)
 	or_filter = ",".join([f"phone_number.eq.{c}" for c in candidates])
-	resp = supabase.table(TABLE_NAME).select("*").or_(or_filter).limit(1).execute()
+	# Fix: Call .select() first, THEN chain .or_() and .limit()
+	resp = (supabase.table(TABLE_NAME)
+	        .select("*")
+	        .or_(or_filter)
+	        .limit(1)
+	        .execute())
 	if resp.data:
 		return resp.data[0]
 	return None
@@ -164,8 +169,12 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			"call_ended_at": None,
 			"exit_reason": None,
 		}
-		resp = supabase.table(TABLE_NAME).insert(payload).select("*").execute()
-		return resp.data[0]
+		resp = supabase.table(TABLE_NAME).insert(payload).execute()
+		# Re-fetch to get the full row with defaults
+		if resp.data:
+			return resp.data[0]
+		# Fallback: fetch by phone
+		return _fetch_by_phone(phone_value)
 
 	# If an active call exists, mark as completed (interrupted) before reuse
 	if existing.get("call_status") == "active":
@@ -197,8 +206,11 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			continue
 		update_payload[k] = v
 
-	resp = supabase.table(TABLE_NAME).update(update_payload).eq("id", existing["id"]).select("*").execute()
-	return resp.data[0]
+	resp = supabase.table(TABLE_NAME).update(update_payload).eq("id", existing["id"]).execute()
+	# Re-fetch to get the updated row
+	if resp.data:
+		return resp.data[0]
+	return _fetch_by_phone(phone_value)
 
 
 def get_conversation_state(phone: str) -> Optional[Dict[str, Any]]:
@@ -226,7 +238,7 @@ def update_conversation_state(phone: str, updates: Dict[str, Any]) -> Optional[D
 	if incoming_cd or current_cd:
 		payload["conversation_data"] = merged_cd
 
-	resp = supabase.table(TABLE_NAME).update(payload).eq("id", row["id"]).select("*").execute()
+	resp = supabase.table(TABLE_NAME).update(payload).eq("id", row["id"]).execute()
 	return resp.data[0] if resp.data else None
 
 
@@ -248,7 +260,7 @@ def mark_call_completed(phone: str, exit_reason: Optional[str] = None) -> Option
 		"call_ended_at": datetime.now(timezone.utc).isoformat(),
 		"exit_reason": exit_reason,
 	}
-	resp = supabase.table(TABLE_NAME).update(payload).eq("id", row["id"]).select("*").execute()
+	resp = supabase.table(TABLE_NAME).update(payload).eq("id", row["id"]).execute()
 	return resp.data[0] if resp.data else None
 
 
