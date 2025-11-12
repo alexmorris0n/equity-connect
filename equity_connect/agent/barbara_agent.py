@@ -546,13 +546,12 @@ List specific actions needed based on conversation outcome.
 				logger.info(f"🔍 DEBUG request_data keys: {list(request_data.keys())}")
 			
 			# Extract call parameters from SignalWire
-			# SignalWire sends: device.params.from_number, device.params.to_number, call_id
+			# SignalWire sends data in nested 'call' dict
 			if request_data:
-				# Try nested structure first (new format)
-				device_params = request_data.get("device", {}).get("params", {})
-				from_phone = device_params.get("from_number") or request_data.get("From")
-				to_phone = device_params.get("to_number") or request_data.get("To")
-				call_sid = request_data.get("call_id") or request_data.get("CallSid")
+				call_data = request_data.get("call", {})
+				from_phone = call_data.get("from") or call_data.get("from_number")
+				to_phone = call_data.get("to") or call_data.get("to_number")
+				call_sid = call_data.get("call_id")
 			else:
 				from_phone = None
 				to_phone = None
@@ -561,7 +560,11 @@ List specific actions needed based on conversation outcome.
 			# Determine call direction
 			# For inbound: From = caller's number, To = our SignalWire number
 			# For outbound: From = our SignalWire number, To = lead's number
-			call_direction = request_data.get("Direction", "inbound").lower() if request_data else "inbound"
+			if request_data:
+				call_data = request_data.get("call", {})
+				call_direction = call_data.get("direction", "inbound").lower()
+			else:
+				call_direction = "inbound"
 			
 			# Determine which phone number to use for DB lookup
 			if call_direction == "inbound":
