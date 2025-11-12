@@ -1,9 +1,0 @@
-{
-  "ai": {
-    "stt": { "provider": "deepgram", "model": "nova-3", "language": "en" },
-    "llm": { "provider": "openai", "model": "gpt-4o" },
-    "tts": { "provider": "elevenlabs", "model": "eleven_turbo_v2_5", "voice_id": "VOICED_ID_HERE" }
-  }
-}
-
-
