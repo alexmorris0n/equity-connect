@@ -63,6 +63,10 @@ class BarbaraAgent(AgentBase):
 			"non-borrowing spouse"
 		])
 		
+		# Add datetime skill for appointment booking context
+		# LLMs have no concept of "now" - this gives Barbara temporal awareness
+		self.add_skill("datetime")
+		
 		# BarbGraph routing state
 		self.current_node = "greet"
 		self.phone_number = None
