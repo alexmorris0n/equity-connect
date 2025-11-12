@@ -37,6 +37,11 @@ class BarbaraAgent(AgentBase):
 		# This makes Barbara reachable at barbara-agent@domain and /agent@domain
 		self.enable_sip_routing(auto_map=True)
 		
+		# Set webhook URL for Fly.io deployment (fixes proxy detection issues)
+		# This tells Agent SDK the correct public URL for SWAIG functions
+		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
+		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
+		
 		# Set up dynamic configuration (per-request)
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
