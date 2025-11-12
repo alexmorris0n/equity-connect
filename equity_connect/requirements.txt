@@ -1,0 +1,28 @@
+# SignalWire Agent SDK
+signalwire-agents>=0.1.0
+
+# Database
+supabase>=2.0.0
+
+# AI Providers
+openai>=1.0.0
+anthropic>=0.18.0
+google-cloud-aiplatform>=1.38.0
+google-auth>=2.23.0
+
+# Calendar Integration
+nylas>=6.0.0
+
+# Cloud Storage (for recordings)
+boto3>=1.28.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+httpx>=0.25.0
+aiofiles>=25.0.0
+
