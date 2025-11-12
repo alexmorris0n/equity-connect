@@ -2,7 +2,6 @@
 import logging
 from typing import Optional, Dict, Any
 from signalwire_agents import AgentBase
-from equity_connect.tools.registry import register_all_tools
 from equity_connect.services.prompt_loader import load_theme, load_node_prompt, build_context_injection
 from equity_connect.services.conversation_state import get_conversation_state
 from equity_connect.workflows.routers import (
@@ -59,9 +58,6 @@ class BarbaraAgent(AgentBase):
 			"non-borrowing spouse"
 		])
 		
-		# Register all 21 tools (business logic unchanged)
-		register_all_tools(self)
-		
 		# BarbGraph routing state
 		self.current_node = "greet"
 		self.phone_number = None
@@ -70,6 +66,278 @@ class BarbaraAgent(AgentBase):
 		self._load_initial_prompt()
 		
 		logger.info("✅ BarbaraAgent initialized with 21 tools and BarbGraph routing")
+	
+	# ==================== TOOL DEFINITIONS (21 tools) ====================
+	# All tools use @AgentBase.tool decorator for proper async handling
+	
+	# Lead Management (5)
+	@AgentBase.tool(
+		description="Get lead information by phone number; returns lead, broker, property context.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number of the lead (any format)"}}, "required": ["phone"]}
+	)
+	async def get_lead_context(self, args, raw_data):
+		from equity_connect.tools.lead import get_lead_context
+		return await get_lead_context(args.get("phone"))
+	
+	@AgentBase.tool(
+		description="Verify caller identity by name and phone. Creates lead if new.",
+		parameters={"type": "object", "properties": {"first_name": {"type": "string", "description": "Caller first name"}, "phone": {"type": "string", "description": "Caller phone"}}, "required": ["first_name", "phone"]}
+	)
+	async def verify_caller_identity(self, args, raw_data):
+		from equity_connect.tools.lead import verify_caller_identity
+		return await verify_caller_identity(args.get("first_name"), args.get("phone"))
+	
+	@AgentBase.tool(
+		description="Check consent and DNC status for a phone number.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number to check"}}, "required": ["phone"]}
+	)
+	async def check_consent_dnc(self, args, raw_data):
+		from equity_connect.tools.lead import check_consent_dnc
+		return await check_consent_dnc(args.get("phone"))
+	
+	@AgentBase.tool(
+		description="Update lead fields gathered during the call.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"lead_id": {"type": "string", "description": "Lead UUID"},
+				"first_name": {"type": "string", "description": "First name", "nullable": True},
+				"last_name": {"type": "string", "description": "Last name", "nullable": True},
+				"email": {"type": "string", "description": "Email", "nullable": True},
+				"phone": {"type": "string", "description": "Phone", "nullable": True},
+				"property_address": {"type": "string", "description": "Property address", "nullable": True},
+				"property_city": {"type": "string", "description": "Property city", "nullable": True},
+				"property_state": {"type": "string", "description": "Property state", "nullable": True},
+				"property_zip": {"type": "string", "description": "Property ZIP", "nullable": True},
+				"age": {"type": "integer", "description": "Age"},
+				"money_purpose": {"type": "string", "description": "Money purpose", "nullable": True},
+				"amount_needed": {"type": "number", "description": "Amount needed"},
+				"timeline": {"type": "string", "description": "Timeline", "nullable": True},
+			},
+			"required": ["lead_id"],
+		}
+	)
+	async def update_lead_info(self, args, raw_data):
+		from equity_connect.tools.lead import update_lead_info
+		return await update_lead_info(
+			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
+			args.get("email"), args.get("phone"), args.get("property_address"),
+			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
+			args.get("age"), args.get("money_purpose"), args.get("amount_needed"), args.get("timeline")
+		)
+	
+	@AgentBase.tool(
+		description="Find a broker by ZIP/city/state.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"zip_code": {"type": "string", "description": "ZIP code", "nullable": True},
+				"city": {"type": "string", "description": "City", "nullable": True},
+				"state": {"type": "string", "description": "State abbreviation", "nullable": True},
+			},
+			"required": [],
+		}
+	)
+	async def find_broker_by_territory(self, args, raw_data):
+		from equity_connect.tools.lead import find_broker_by_territory
+		return await find_broker_by_territory(args.get("zip_code"), args.get("city"), args.get("state"))
+	
+	# Calendar (4)
+	@AgentBase.tool(
+		description="Check broker calendar availability for next 14 days.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"broker_id": {"type": "string", "description": "Broker UUID"},
+				"preferred_day": {"type": "string", "description": "Preferred day (monday..sunday)", "nullable": True},
+				"preferred_time": {"type": "string", "description": "Preferred time (morning|afternoon|evening)", "nullable": True},
+			},
+			"required": ["broker_id"],
+		}
+	)
+	async def check_broker_availability(self, args, raw_data):
+		from equity_connect.tools.calendar import check_broker_availability
+		return await check_broker_availability(args.get("broker_id"), args.get("preferred_day"), args.get("preferred_time"))
+	
+	@AgentBase.tool(
+		description="Book an appointment and create calendar event.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"lead_id": {"type": "string", "description": "Lead UUID"},
+				"broker_id": {"type": "string", "description": "Broker UUID"},
+				"scheduled_for": {"type": "string", "description": "ISO 8601 datetime"},
+				"notes": {"type": "string", "description": "Notes", "nullable": True},
+			},
+			"required": ["lead_id", "broker_id", "scheduled_for"],
+		}
+	)
+	async def book_appointment(self, args, raw_data):
+		from equity_connect.tools.calendar import book_appointment
+		return await book_appointment(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"))
+	
+	@AgentBase.tool(
+		description="Reschedule an existing appointment.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"interaction_id": {"type": "string", "description": "Appointment interaction ID"},
+				"new_scheduled_for": {"type": "string", "description": "New ISO 8601 datetime"},
+				"reason": {"type": "string", "description": "Reason", "nullable": True},
+			},
+			"required": ["interaction_id", "new_scheduled_for"],
+		}
+	)
+	async def reschedule_appointment(self, args, raw_data):
+		from equity_connect.tools.calendar import reschedule_appointment
+		return await reschedule_appointment(args.get("interaction_id"), args.get("new_scheduled_for"), args.get("reason"))
+	
+	@AgentBase.tool(
+		description="Cancel an existing appointment.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"interaction_id": {"type": "string", "description": "Appointment interaction ID"},
+				"reason": {"type": "string", "description": "Reason", "nullable": True},
+			},
+			"required": ["interaction_id"],
+		}
+	)
+	async def cancel_appointment(self, args, raw_data):
+		from equity_connect.tools.calendar import cancel_appointment
+		return await cancel_appointment(args.get("interaction_id"), args.get("reason"))
+	
+	# Knowledge (1)
+	@AgentBase.tool(
+		description="Search reverse mortgage knowledge base for accurate answers.",
+		parameters={"type": "object", "properties": {"question": {"type": "string", "description": "Question text"}}, "required": ["question"]}
+	)
+	async def search_knowledge(self, args, raw_data):
+		from equity_connect.tools.knowledge import search_knowledge
+		return await search_knowledge(args.get("question"))
+	
+	# Interaction (4)
+	@AgentBase.tool(
+		description="Save a call interaction summary and outcome.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"lead_id": {"type": "string", "description": "Lead UUID"},
+				"broker_id": {"type": "string", "description": "Broker UUID", "nullable": True},
+				"duration_seconds": {"type": "integer", "description": "Call duration (seconds)"},
+				"outcome": {"type": "string", "description": "Outcome"},
+				"content": {"type": "string", "description": "Summary content"},
+				"recording_url": {"type": "string", "description": "Recording URL", "nullable": True},
+				"metadata": {"type": "string", "description": "JSON metadata string", "nullable": True},
+			},
+			"required": ["lead_id", "outcome", "content"],
+		}
+	)
+	async def save_interaction(self, args, raw_data):
+		from equity_connect.tools.interaction import save_interaction
+		return await save_interaction(
+			args.get("lead_id"), args.get("broker_id"), args.get("duration_seconds"),
+			args.get("outcome"), args.get("content"), args.get("recording_url"), args.get("metadata")
+		)
+	
+	@AgentBase.tool(
+		description="Assign a SignalWire tracking number to a lead for attribution.",
+		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
+	)
+	async def assign_tracking_number(self, args, raw_data):
+		from equity_connect.tools.interaction import assign_tracking_number
+		return await assign_tracking_number(args.get("lead_id"), args.get("broker_id"))
+	
+	@AgentBase.tool(
+		description="Send appointment confirmation via SMS.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "appointment_datetime": {"type": "string", "description": "ISO 8601 datetime"}}, "required": ["phone", "appointment_datetime"]}
+	)
+	async def send_appointment_confirmation(self, args, raw_data):
+		from equity_connect.tools.interaction import send_appointment_confirmation
+		return await send_appointment_confirmation(args.get("phone"), args.get("appointment_datetime"))
+	
+	@AgentBase.tool(
+		description="Verify appointment confirmation code from SMS.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "code": {"type": "string", "description": "Code to verify"}}, "required": ["phone", "code"]}
+	)
+	async def verify_appointment_confirmation(self, args, raw_data):
+		from equity_connect.tools.interaction import verify_appointment_confirmation
+		return await verify_appointment_confirmation(args.get("phone"), args.get("code"))
+	
+	# Conversation Flags (7)
+	@AgentBase.tool(
+		description="Mark caller as ready to book an appointment.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
+	)
+	async def mark_ready_to_book(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_ready_to_book
+		return await mark_ready_to_book(args.get("phone"))
+	
+	@AgentBase.tool(
+		description="Mark that the caller raised an objection.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"phone": {"type": "string", "description": "Caller phone"},
+				"current_node": {"type": "string", "description": "Node where objection raised", "nullable": True},
+				"objection_type": {"type": "string", "description": "Type of objection", "nullable": True},
+			},
+			"required": ["phone"],
+		}
+	)
+	async def mark_has_objection(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_has_objection
+		return await mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+	
+	@AgentBase.tool(
+		description="Mark that an objection has been resolved.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
+	)
+	async def mark_objection_handled(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_objection_handled
+		return await mark_objection_handled(args.get("phone"))
+	
+	@AgentBase.tool(
+		description="Mark that caller's questions have been answered.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
+	)
+	async def mark_questions_answered(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_questions_answered
+		return await mark_questions_answered(args.get("phone"))
+	
+	@AgentBase.tool(
+		description="Persist qualification outcome.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
+	)
+	async def mark_qualification_result(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_qualification_result
+		return await mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
+	
+	@AgentBase.tool(
+		description="Mark that a quote has been presented with reaction.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
+	)
+	async def mark_quote_presented(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_quote_presented
+		return await mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
+	
+	@AgentBase.tool(
+		description="Mark wrong person; optionally indicate if right person is available.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
+	)
+	async def mark_wrong_person(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import mark_wrong_person
+		return await mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
+	
+	@AgentBase.tool(
+		description="Clear all conversation flags for a fresh start.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
+	)
+	async def clear_conversation_flags(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import clear_conversation_flags
+		return await clear_conversation_flags(args.get("phone"))
+	
+	# ==================== END TOOL DEFINITIONS ====================
 	
 	def _load_initial_prompt(self):
 		"""Load the initial greet node prompt during initialization"""
