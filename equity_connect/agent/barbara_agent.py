@@ -539,6 +539,12 @@ List specific actions needed based on conversation outcome.
 			Optional SWML modifications (None = use defaults)
 		"""
 		try:
+			# DEBUG: Log what we're receiving
+			logger.info(f"🔍 DEBUG on_swml_request called with request_data: {request_data}")
+			logger.info(f"🔍 DEBUG request_data type: {type(request_data)}")
+			if request_data:
+				logger.info(f"🔍 DEBUG request_data keys: {list(request_data.keys())}")
+			
 			# Extract call parameters from SignalWire
 			# SignalWire sends: device.params.from_number, device.params.to_number, call_id
 			if request_data:
@@ -611,11 +617,9 @@ List specific actions needed based on conversation outcome.
 			else:
 				logger.warning("⚠️ No phone number found in request - using default greet prompt")
 			
-			# Return SWML modifications to add ring delay (gives time for DB queries)
-			# This simulates natural ring time while we set up the agent
-			return {
-				"pre_answer_delay": 3000  # 3 second delay before answering (in milliseconds)
-			}
+			# Return None - no SWML modifications needed
+			# The pre_answer_delay from __init__ will be used automatically
+			return None
 			
 		except Exception as e:
 			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
