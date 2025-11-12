@@ -549,8 +549,23 @@ List specific actions needed based on conversation outcome.
 			lead_context = None
 			
 			if phone:
+				# CRITICAL: Initialize or reuse conversation_state row for this call
+				# This MUST happen before get_conversation_state() to ensure the row exists
+				from equity_connect.services.conversation_state import start_call, get_conversation_state
+				
+				# Build call metadata for initialization
+				call_metadata = {
+					"call_sid": call_sid,
+					"from_phone": from_phone,
+					"to_phone": to_phone,
+					"direction": call_direction
+				}
+				
+				# Start call session (creates row if new, reuses if returning caller)
+				start_call(phone, metadata=call_metadata)
+				logger.info(f"📞 Call session initialized for {phone}")
+				
 				# Query Supabase for lead context and current conversation state
-				from equity_connect.services.conversation_state import get_conversation_state
 				state_row = get_conversation_state(phone)
 				
 				if state_row:
