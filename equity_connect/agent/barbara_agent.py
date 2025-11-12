@@ -31,23 +31,24 @@ class BarbaraAgent(AgentBase):
 			record_format="mp3"
 		)
 		
-		# AI Configuration (using SignalWire's API)
-		# LLM: OpenAI GPT-4o + TTS: ElevenLabs
+		# AI Configuration (SignalWire SDK)
+		# TTS: ElevenLabs + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
 		self.add_language(
-			"English", 
-			"en-US", 
-			"Rachel",  # ElevenLabs Rachel voice
+			name="English",
+			code="en-US",
+			voice="elevenlabs.rachel",  # ElevenLabs Rachel voice
 			speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
-			function_fillers=["Processing...", "Just a second...", "Looking that up..."],
-			engine="elevenlabs",
-			model="gpt-4o"  # OpenAI LLM model
+			function_fillers=["Processing...", "Just a second...", "Looking that up..."]
 		)
 		
+		# LLM and conversation parameters
 		self.set_params({
 			"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
-			"end_of_speech_timeout": 800,  # 800ms for natural pauses
-			"attention_timeout": 30000,  # 30 seconds
-			"temperature": 0.7  # Balanced creativity
+			"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
+			"attention_timeout": 30000,  # 30 seconds before timeout
+			"temperature": 0.7,  # Balanced creativity
+			"max_tokens": 150,  # Keep responses concise for voice
+			"top_p": 0.9  # Nucleus sampling for natural responses
 		})
 		
 		# Speech recognition hints for domain-specific terms
