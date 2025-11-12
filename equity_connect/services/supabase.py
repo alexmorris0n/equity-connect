@@ -1,7 +1,7 @@
 """Supabase service for database operations"""
 from typing import Optional, Dict, Any, List
 from supabase import create_client, Client
-from config import Config
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,10 +12,11 @@ def get_supabase_client() -> Client:
 	"""Get or create Supabase client singleton"""
 	global _supabase_client
 	if _supabase_client is None:
-		_supabase_client = create_client(
-			Config.SUPABASE_URL,
-			Config.SUPABASE_SERVICE_KEY
-		)
+		supabase_url = os.getenv("SUPABASE_URL")
+		supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+		if not supabase_url or not supabase_key:
+			raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables required")
+		_supabase_client = create_client(supabase_url, supabase_key)
 	return _supabase_client
 
 async def get_phone_config(called_number: str) -> Dict[str, Any]:
