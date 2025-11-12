@@ -70,8 +70,15 @@ class BarbaraAgent(AgentBase):
 			agent: EphemeralAgentConfig for per-request configuration
 		"""
 		try:
+			# DEBUG: Log what we're receiving
+			logger.info(f"🔍 DEBUG configure_per_call called")
+			logger.info(f"🔍 DEBUG query_params: {query_params}")
+			logger.info(f"🔍 DEBUG body_params keys: {list(body_params.keys()) if body_params else None}")
+			
 			# Extract call info from SignalWire request
-			phone = body_params.get('From') or query_params.get('phone')
+			# SignalWire sends nested structure: body_params['call']['from']
+			call_data = body_params.get('call', {}) if body_params else {}
+			phone = call_data.get('from') or call_data.get('from_number') or query_params.get('phone')
 			broker_id = query_params.get('broker_id')  # Optional for multi-tenant
 			
 			logger.info(f"🔧 Configuring agent for call from {phone}, broker={broker_id}")
