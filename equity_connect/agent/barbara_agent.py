@@ -38,7 +38,9 @@ class BarbaraAgent(AgentBase):
 		self.add_language(
 			name="English",
 			code="en-US",
-			voice="elevenlabs.rachel",  # ElevenLabs Rachel voice
+			voice="rachel",  # ElevenLabs Rachel voice (voice name only)
+			engine="elevenlabs",  # Specify ElevenLabs engine
+			model="eleven_turbo_v2_5",  # ElevenLabs turbo model for low latency
 			speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
 			function_fillers=["Processing...", "Just a second...", "Looking that up..."]
 		)
@@ -46,11 +48,24 @@ class BarbaraAgent(AgentBase):
 		# LLM and conversation parameters
 		self.set_params({
 			"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
+			"wait_for_user": False,  # Barbara can proactively speak without waiting
 			"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
 			"attention_timeout": 30000,  # 30 seconds before timeout
 			"temperature": 0.7,  # Balanced creativity
 			"max_tokens": 150,  # Keep responses concise for voice
-			"top_p": 0.9  # Nucleus sampling for natural responses
+			"top_p": 0.9,  # Nucleus sampling for natural responses
+			"ai_volume": 5,  # Default volume level
+			"local_tz": "America/Los_Angeles"  # Pacific time for CA customers
+		})
+		
+		# Global data for AI to reference during conversations
+		self.set_global_data({
+			"company_name": "Barbara AI",
+			"service_type": "Reverse Mortgage Assistance",
+			"service_vertical": "Reverse Mortgage / HECM",
+			"business_hours": "9 AM - 5 PM Pacific Time",
+			"coverage_area": "California",
+			"conversation_system": "BarbGraph 8-node routing"
 		})
 		
 		# Speech recognition hints for domain-specific terms
@@ -62,8 +77,24 @@ class BarbaraAgent(AgentBase):
 			"equity",
 			"lien",
 			"borrower",
-			"non-borrowing spouse"
+			"non-borrowing spouse",
+			"Barbara",
+			"EquityConnect"
 		])
+		
+		# Pronunciation rules for acronyms and technical terms
+		self.add_pronunciation("HECM", "H E C M", ignore_case=False)
+		self.add_pronunciation("FHA", "F H A", ignore_case=False)
+		self.add_pronunciation("API", "A P I", ignore_case=False)
+		self.add_pronunciation("AI", "A I", ignore_case=False)
+		
+		# Pattern hints for common phrases
+		self.add_pattern_hint(
+			hint="AI Agent",
+			pattern="AI\\s+Agent",
+			replace="A.I. Agent",
+			ignore_case=True
+		)
 		
 		# Add datetime skill for appointment booking context
 		# LLMs have no concept of "now" - this gives Barbara temporal awareness
