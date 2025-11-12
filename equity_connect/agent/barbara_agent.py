@@ -31,37 +31,20 @@ class BarbaraAgent(AgentBase):
 			record_format="mp3"
 		)
 		
-		# AI Provider Configuration
-		# STT: Deepgram Nova-2 (best for real-time voice)
-		self.set_stt_engine({
-			"engine": "deepgram",
-			"model": "nova-2",
-			"language": "en-US"
-		})
-		
-		# LLM: OpenAI GPT-4o (fast, supports tool calling)
-		self.set_llm_engine({
-			"engine": "openai",
-			"model": "gpt-4o"
-		})
-		
-		# TTS: ElevenLabs (natural voice, low latency)
-		self.set_tts_engine({
-			"engine": "elevenlabs",
-			"voice": "Rachel",  # Professional female voice
-			"model": "eleven_turbo_v2_5"  # Fast model
-		})
-		
-		# Voice configuration
+		# AI Configuration (using SignalWire's API)
+		# LLM: OpenAI GPT-4o + TTS: ElevenLabs
 		self.add_language(
 			"English", 
 			"en-US", 
-			code="en-US",
+			"Rachel",  # ElevenLabs Rachel voice
 			speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
-			function_fillers=["Processing...", "Just a second...", "Looking that up..."]
+			function_fillers=["Processing...", "Just a second...", "Looking that up..."],
+			engine="elevenlabs",
+			model="gpt-4o"  # OpenAI LLM model
 		)
 		
 		self.set_params({
+			"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
 			"end_of_speech_timeout": 800,  # 800ms for natural pauses
 			"attention_timeout": 30000,  # 30 seconds
 			"temperature": 0.7  # Balanced creativity
