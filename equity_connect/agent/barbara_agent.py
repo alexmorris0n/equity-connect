@@ -1,4 +1,5 @@
 """Barbara - AI Voice Agent for EquityConnect using SignalWire SDK"""
+import os
 import logging
 from typing import Optional, Dict, Any
 from signalwire_agents import AgentBase
@@ -30,7 +31,11 @@ class BarbaraAgent(AgentBase):
 			use_pom=True,  # Enable Prompt Object Model for structured prompts
 			auto_answer=True,
 			record_call=True,
-			record_format="mp3"
+			record_format="mp3",
+			basic_auth=(
+				os.getenv("AGENT_USERNAME", "barbara"),
+				os.getenv("AGENT_PASSWORD", "rained1MANU.endured5juices")
+			)
 		)
 		
 		# Enable SIP routing - REQUIRED for SignalWire to route calls to this agent
