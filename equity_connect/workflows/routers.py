@@ -1,7 +1,7 @@
 """Dynamic routing logic for conversation graph"""
 import logging
 from typing import Literal, Optional, Dict, Any
-from services.conversation_state import get_conversation_state, extract_phone_from_messages
+from equity_connect.services.conversation_state import get_conversation_state, extract_phone_from_messages
 
 logger = logging.getLogger(__name__)
 
