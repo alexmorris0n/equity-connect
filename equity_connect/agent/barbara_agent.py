@@ -687,9 +687,81 @@ List specific actions needed based on conversation outcome.
 			self.current_node = node_name
 			self.phone_number = phone
 			
+			# Apply function restrictions per node (hybrid SignalWire + BarbGraph)
+			self._apply_node_function_restrictions(node_name)
+			
 			logger.info(f"📝 Loaded prompt for node '{node_name}'")
 		except Exception as e:
 			logger.error(f"❌ Failed to route to node '{node_name}': {e}")
+	
+	def _apply_node_function_restrictions(self, node_name: str):
+		"""Restrict available functions based on current BarbGraph node
+		
+		This is the hybrid approach: BarbGraph routing + SignalWire function restrictions.
+		Each node only gets access to relevant tools for security and performance.
+		
+		Args:
+			node_name: Current BarbGraph node
+		"""
+		# Map nodes to allowed functions
+		function_map = {
+			"greet": [
+				"mark_wrong_person",  # Can identify wrong person early
+				"get_lead_context"  # Can lookup who they're calling
+			],
+			"verify": [
+				"verify_caller_identity",  # Core verification
+				"check_consent_dnc",  # Legal compliance
+				"get_lead_context"  # Lookup existing lead
+			],
+			"qualify": [
+				"update_lead_info",  # Collect qualification data
+				"find_broker_by_territory",  # Find broker by location
+				"mark_qualification_result",  # Set qualified flag
+				"mark_ready_to_book"  # Can move to booking
+			],
+			"answer": [
+				"search_knowledge",  # Answer questions from knowledge base
+				"mark_questions_answered",  # Track completion
+				"mark_has_objection",  # Detect objections
+				"mark_ready_to_book"  # Can progress to booking
+			],
+			"quote": [
+				"search_knowledge",  # Explain quote details
+				"mark_quote_presented",  # Track quote presentation
+				"mark_has_objection"  # Detect concerns about quote
+			],
+			"objections": [
+				"search_knowledge",  # Address objections with facts
+				"mark_objection_handled",  # Mark as resolved
+				"mark_has_objection"  # Track new objections
+			],
+			"book": [
+				"check_broker_availability",  # Check calendar
+				"book_appointment",  # Create appointment
+				"reschedule_appointment",  # Modify existing
+				"cancel_appointment",  # Cancel if needed
+				"send_appointment_confirmation",  # Send SMS
+				"verify_appointment_confirmation"  # Verify code
+			],
+			"exit": []  # No functions needed at exit
+		}
+		
+		# Get allowed functions for this node
+		allowed_functions = function_map.get(node_name, [])
+		
+		if allowed_functions:
+			# Set only these functions as available
+			self.set_functions(allowed_functions)
+			logger.info(f"🔒 Node '{node_name}' restricted to {len(allowed_functions)} functions")
+		elif node_name == "exit":
+			# Exit node has no functions
+			self.set_functions("none")
+			logger.info(f"🔒 Node '{node_name}' has no functions (exit)")
+		else:
+			# Unknown node - log warning but allow all functions (fail open)
+			logger.warning(f"⚠️ Unknown node '{node_name}' - allowing all functions")
+			# Don't call set_functions() to allow all
 	
 	def _save_node_summary(self, node_name: str, phone: str):
 		"""Save a summary of what happened in this node
