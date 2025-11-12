@@ -59,9 +59,19 @@ class BarbaraAgent(AgentBase):
 		logger.info("✅ BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
-		"""Configure agent dynamically per-request
+		"""Dynamic configuration callback - NOT USED for SWML webhook flows
 		
-		This runs for EVERY incoming call and allows per-broker, per-call customization.
+		⚠️ IMPORTANT: This callback is NOT invoked when calls come via SWML webhooks (our deployment pattern).
+		
+		All configuration has been moved to on_swml_request() which IS called for webhook flows.
+		That method handles:
+		- Voice/LLM/STT configuration (ElevenLabs Rachel, GPT-4o)
+		- Multi-call persistence (resume where caller left off)
+		- BarbGraph node selection and prompt loading
+		- Skills, hints, pronunciations, global data
+		
+		This stub is kept for SDK compatibility in case future SDK versions or
+		alternative flow types (e.g., SIP direct routing) invoke this callback.
 		
 		Args:
 			query_params: URL query parameters (e.g., ?broker_id=123)
@@ -69,175 +79,8 @@ class BarbaraAgent(AgentBase):
 			headers: HTTP headers
 			agent: EphemeralAgentConfig for per-request configuration
 		"""
-		try:
-			# DEBUG: Log what we're receiving
-			logger.info(f"🔍 DEBUG configure_per_call called")
-			logger.info(f"🔍 DEBUG query_params: {query_params}")
-			logger.info(f"🔍 DEBUG body_params keys: {list(body_params.keys()) if body_params else None}")
-			
-			# Extract call info from SignalWire request
-			# SignalWire sends nested structure: body_params['call']['from']
-			call_data = body_params.get('call', {}) if body_params else {}
-			phone = call_data.get('from') or call_data.get('from_number') or query_params.get('phone')
-			broker_id = query_params.get('broker_id')  # Optional for multi-tenant
-			
-			logger.info(f"🔧 Configuring agent for call from {phone}, broker={broker_id}")
-			
-			# ==================== AI CONFIGURATION ====================
-			# TTS: ElevenLabs + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
-			# TODO: Load from broker_settings table in Phase 2
-			agent.add_language(
-				name="English",
-				code="en-US",
-				voice="rachel",  # ElevenLabs Rachel voice
-				engine="elevenlabs",
-				model="eleven_turbo_v2_5",
-				speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
-				function_fillers=["Processing...", "Just a second...", "Looking that up..."]
-			)
-			
-			# LLM and conversation parameters
-			agent.set_params({
-				"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
-				"wait_for_user": False,  # Barbara can proactively speak
-				"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
-				"attention_timeout": 30000,  # 30 seconds before timeout
-				"temperature": 0.7,  # Balanced creativity
-				"max_tokens": 150,  # Keep responses concise for voice
-				"top_p": 0.9,  # Nucleus sampling
-				"ai_volume": 5,
-				"local_tz": "America/Los_Angeles",  # Pacific time for CA customers
-				"swaig_post_conversation": True  # Send conversation history to tools
-			})
-			
-			# Global data for AI to reference
-			agent.set_global_data({
-				"company_name": "Barbara AI",
-				"service_type": "Reverse Mortgage Assistance",
-				"service_vertical": "Reverse Mortgage / HECM",
-				"business_hours": "9 AM - 5 PM Pacific Time",
-				"coverage_area": "California",
-				"conversation_system": "BarbGraph 8-node routing"
-			})
-			
-			# Speech recognition hints for domain-specific terms
-			agent.add_hints([
-				"reverse mortgage",
-				"HECM",
-				"home equity conversion",
-				"FHA",
-				"equity",
-				"lien",
-				"borrower",
-				"non-borrowing spouse",
-				"Barbara",
-				"EquityConnect"
-			])
-			
-			# Pronunciation rules for acronyms
-			agent.add_pronunciation("HECM", "H E C M", ignore_case=False)
-			agent.add_pronunciation("FHA", "F H A", ignore_case=False)
-			agent.add_pronunciation("API", "A P I", ignore_case=False)
-			agent.add_pronunciation("AI", "A I", ignore_case=False)
-			
-			# Pattern hints
-			agent.add_pattern_hint(
-				hint="AI Agent",
-				pattern="AI\\s+Agent",
-				replace="A.I. Agent",
-				ignore_case=True
-			)
-			
-			# Add datetime skill for appointment booking
-			agent.add_skill("datetime")
-			
-			# Add math skill for equity calculations in quote node
-			# LLMs are terrible at arithmetic - let Python do the math
-			agent.add_skill("math")
-			
-			# Set post-prompt for call summaries
-			agent.set_post_prompt("""
-Analyze the complete conversation and provide a structured summary:
-
-**BARBGRAPH PATH:**
-- Nodes visited in order: [list all nodes traversed]
-- Where conversation ended: [final node]
-- Successful completion: [Yes/No]
-
-**OVERALL OUTCOME:**
-- Primary goal achieved: [Yes/No/Partial]
-- Next action required: [Specific action or "None"]
-- Caller sentiment: [Positive/Neutral/Negative]
-
-**KEY INFORMATION GATHERED:**
-- Main data points collected across all nodes
-- Questions asked by caller
-- Objections or concerns raised
-
-**CONVERSATION QUALITY:**
-- Rapport established: [Excellent/Good/Fair/Poor]
-- Flow smoothness: [Smooth/Some issues/Problematic]
-- All caller questions answered: [Yes/No/Partial]
-
-**FOLLOW-UP ACTIONS:**
-List specific actions needed based on conversation outcome.
-			""")
-			
-			# ==================== LOAD INITIAL NODE ====================
-			# For returning callers, resume where they left off
-			current_node = "greet"  # Default for new callers
-			lead_context = None
-			
-			if phone:
-				state_row = get_conversation_state(phone)
-				
-				if state_row:
-					lead_id = state_row.get("lead_id")
-					if lead_id:
-						lead_context = {
-							"lead_id": lead_id,
-							"qualified": state_row.get("qualified"),
-							"conversation_data": state_row.get("conversation_data", {})
-						}
-					
-					# Check for returning caller (multi-call persistence)
-					cd = state_row.get("conversation_data", {})
-					if cd.get("appointment_booked"):
-						current_node = "exit"  # Already done
-						logger.info(f"🔄 Returning caller - appointment already booked")
-					elif cd.get("ready_to_book"):
-						current_node = "book"  # Pick up at booking
-						logger.info(f"🔄 Returning caller - resuming at 'book' node")
-					elif cd.get("qualified") is not None:
-						current_node = "answer"  # Already qualified, answer questions
-						logger.info(f"🔄 Returning caller - resuming at 'answer' node")
-			
-			# Load initial node prompt from Supabase
-			from equity_connect.services.prompt_loader import build_instructions_for_node
-			
-			instructions = build_instructions_for_node(
-				node_name=current_node,
-				call_type="inbound",  # Will be updated from SignalWire data later
-				lead_context=lead_context,
-				phone_number=phone,
-				vertical="reverse_mortgage"
-			)
-			
-			agent.set_prompt_text(instructions)
-			
-			# Store in instance for later use
-			self.current_node = current_node
-			self.phone_number = phone
-			self.call_type = "inbound"
-			
-			logger.info(f"✅ Agent configured: node='{current_node}', phone={phone}")
-			
-		except Exception as e:
-			logger.error(f"❌ Error in configure_per_call: {e}", exc_info=True)
-			# Fall back to default greet node
-			agent.add_language("English", "en-US", voice="rachel", engine="elevenlabs")
-			agent.set_params({"ai_model": "gpt-4o"})
-			agent.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries.")
+		logger.debug("configure_per_call called (not used for SWML webhooks - see on_swml_request instead)")
+		pass
 	
 	# Lead Management (5)
 	@AgentBase.tool(
@@ -528,14 +371,14 @@ List specific actions needed based on conversation outcome.
 		callback_path: Optional[str] = None,
 		request: Optional[Any] = None
 	) -> Optional[Dict[str, Any]]:
-		"""Handle incoming call - extract phone number and load BarbGraph context
+		"""Handle incoming call - configure agent dynamically and load BarbGraph context
 		
-		SignalWire calls this BEFORE the agent starts talking.
+		SignalWire calls this BEFORE the agent starts talking for SWML webhook flows.
 		This is where we:
 		1. Extract phone number from request_data
-		2. Query Supabase for lead context
-		3. Load the correct BarbGraph node prompt with context injected
-		4. Add ring delay to give time for setup
+		2. Configure AI (voice, LLM, skills, hints, etc.) - CRITICAL for webhook flows
+		3. Query Supabase for lead context and multi-call persistence
+		4. Load the correct BarbGraph node prompt with context injected
 		
 		Args:
 			request_data: Call parameters from SignalWire (From, To, CallSid, etc.)
@@ -552,6 +395,7 @@ List specific actions needed based on conversation outcome.
 			if request_data:
 				logger.info(f"🔍 DEBUG request_data keys: {list(request_data.keys())}")
 			
+			# ==================== STEP 1: EXTRACT CALL CONTEXT ====================
 			# Extract call parameters from SignalWire
 			# SignalWire sends data in nested 'call' dict
 			if request_data:
@@ -584,13 +428,123 @@ List specific actions needed based on conversation outcome.
 			
 			logger.info(f"📞 {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
 			
+			# ==================== STEP 2: CONFIGURE AI ====================
+			# This is CRITICAL for SWML webhook flows - configure_per_call() is NOT called
+			# Apply ALL configuration BEFORE loading prompts
+			
+			# TTS: ElevenLabs Rachel voice + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
+			self.add_language(
+				name="English",
+				code="en-US",
+				voice="rachel",  # ElevenLabs Rachel voice
+				engine="elevenlabs",
+				model="eleven_turbo_v2_5",
+				speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
+				function_fillers=["Processing...", "Just a second...", "Looking that up..."]
+			)
+			logger.info("✅ Voice configured: ElevenLabs Rachel")
+			
+			# LLM and conversation parameters
+			self.set_params({
+				"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
+				"wait_for_user": False,  # Barbara can proactively speak
+				"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
+				"attention_timeout": 30000,  # 30 seconds before timeout
+				"temperature": 0.7,  # Balanced creativity
+				"max_tokens": 150,  # Keep responses concise for voice
+				"top_p": 0.9,  # Nucleus sampling
+				"ai_volume": 5,
+				"local_tz": "America/Los_Angeles",  # Pacific time for CA customers
+				"swaig_post_conversation": True  # Send conversation history to tools
+			})
+			logger.info("✅ AI params configured: GPT-4o, VAD=800ms")
+			
+			# Global data for AI to reference
+			self.set_global_data({
+				"company_name": "Barbara AI",
+				"service_type": "Reverse Mortgage Assistance",
+				"service_vertical": "Reverse Mortgage / HECM",
+				"business_hours": "9 AM - 5 PM Pacific Time",
+				"coverage_area": "California",
+				"conversation_system": "BarbGraph 8-node routing"
+			})
+			
+			# Speech recognition hints for domain-specific terms
+			self.add_hints([
+				"reverse mortgage",
+				"HECM",
+				"home equity conversion",
+				"FHA",
+				"equity",
+				"lien",
+				"borrower",
+				"non-borrowing spouse",
+				"Barbara",
+				"EquityConnect"
+			])
+			
+			# Pronunciation rules for acronyms
+			self.add_pronunciation("HECM", "H E C M", ignore_case=False)
+			self.add_pronunciation("FHA", "F H A", ignore_case=False)
+			self.add_pronunciation("API", "A P I", ignore_case=False)
+			self.add_pronunciation("AI", "A I", ignore_case=False)
+			
+			# Pattern hints
+			self.add_pattern_hint(
+				hint="AI Agent",
+				pattern="AI\\s+Agent",
+				replace="A.I. Agent",
+				ignore_case=True
+			)
+			
+			# Add datetime skill for appointment booking
+			self.add_skill("datetime")
+			
+			# Add math skill for equity calculations in quote node
+			# LLMs are terrible at arithmetic - let Python do the math
+			self.add_skill("math")
+			
+			logger.info("✅ Skills configured: datetime, math")
+			
+			# Set post-prompt for call summaries
+			self.set_post_prompt("""
+Analyze the complete conversation and provide a structured summary:
+
+**BARBGRAPH PATH:**
+- Nodes visited in order: [list all nodes traversed]
+- Where conversation ended: [final node]
+- Successful completion: [Yes/No]
+
+**OVERALL OUTCOME:**
+- Primary goal achieved: [Yes/No/Partial]
+- Next action required: [Specific action or "None"]
+- Caller sentiment: [Positive/Neutral/Negative]
+
+**KEY INFORMATION GATHERED:**
+- Main data points collected across all nodes
+- Questions asked by caller
+- Objections or concerns raised
+
+**CONVERSATION QUALITY:**
+- Rapport established: [Excellent/Good/Fair/Poor]
+- Flow smoothness: [Smooth/Some issues/Problematic]
+- All caller questions answered: [Yes/No/Partial]
+
+**FOLLOW-UP ACTIONS:**
+List specific actions needed based on conversation outcome.
+			""")
+			
+			logger.info("✅ All AI configuration applied successfully")
+			
+			# ==================== STEP 3: MULTI-CALL PERSISTENCE ====================
+			# For returning callers, resume where they left off
+			current_node = "greet"  # Default for new callers
+			lead_context = None
+			
 			if phone:
 				# Query Supabase for lead context and current conversation state
 				from equity_connect.services.conversation_state import get_conversation_state
 				state_row = get_conversation_state(phone)
-				
-				lead_context = None
-				current_node = "greet"  # Default starting node
 				
 				if state_row:
 					lead_id = state_row.get("lead_id")
@@ -603,11 +557,22 @@ List specific actions needed based on conversation outcome.
 						logger.info(f"👤 Found lead context: lead_id={lead_id}")
 					
 					# Check if this is a returning caller (multi-call persistence)
-					last_node = state_row.get("current_node")
-					if last_node and last_node != "greet":
-						current_node = last_node
-						logger.info(f"🔄 Returning caller - resuming at node '{current_node}'")
+					cd = state_row.get("conversation_data", {})
+					if cd.get("appointment_booked"):
+						current_node = "exit"  # Already done
+						logger.info(f"🔄 Returning caller - appointment already booked → EXIT")
+					elif cd.get("ready_to_book"):
+						current_node = "book"  # Pick up at booking
+						logger.info(f"🔄 Returning caller - resuming at BOOK node")
+					elif cd.get("qualified") is not None:
+						current_node = "answer"  # Already qualified, answer questions
+						logger.info(f"🔄 Returning caller - resuming at ANSWER node")
+					else:
+						logger.info(f"🆕 New caller - starting at GREET node")
+				else:
+					logger.info(f"🆕 New caller - no state found, starting at GREET node")
 				
+				# ==================== STEP 4: LOAD BARBGRAPH PROMPT ====================
 				# Load BarbGraph node prompt with context injection
 				from equity_connect.services.prompt_loader import build_instructions_for_node
 				
@@ -619,20 +584,34 @@ List specific actions needed based on conversation outcome.
 					vertical="reverse_mortgage"
 				)
 				
+				# ==================== STEP 5: APPLY PROMPT ====================
 				# Update agent instructions with context-aware BarbGraph prompt
 				self.set_prompt_text(instructions)
+				
+				# ==================== STEP 6: UPDATE INSTANCE VARIABLES ====================
 				self.current_node = current_node
 				
-				logger.info(f"✅ Loaded BarbGraph prompt for node '{current_node}' with context for {phone}")
+				logger.info(f"✅ Agent fully configured: voice=rachel, model=gpt-4o, node={current_node}, phone={phone}")
 			else:
-				logger.warning("⚠️ No phone number found in request - using default greet prompt")
+				logger.warning("⚠️ No phone number found in request - using default configuration")
+				# Apply fallback prompt if no phone number
+				self.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries. Greet the caller warmly.")
+				self.current_node = "greet"
 			
-			# Return None - no SWML modifications needed
-			# The pre_answer_delay from __init__ will be used automatically
+			# ==================== STEP 7: RETURN ====================
+			# Return None - no SWML modifications needed, use SDK defaults
 			return None
 			
 		except Exception as e:
 			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
+			# Fall back to minimal configuration if setup fails
+			try:
+				self.add_language("English", "en-US", voice="rachel", engine="elevenlabs")
+				self.set_params({"ai_model": "gpt-4o"})
+				self.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries.")
+				logger.info("✅ Applied fallback configuration after error")
+			except:
+				logger.error("❌ Fallback configuration also failed")
 			# Return None to proceed with defaults even if setup fails
 			return None
 	
