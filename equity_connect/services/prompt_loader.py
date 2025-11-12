@@ -25,7 +25,7 @@ def load_theme(vertical: str = "reverse_mortgage") -> str:
 	"""
 	# TRY DATABASE FIRST
 	try:
-		from services.supabase import get_supabase_client
+		from equity_connect.services.supabase import get_supabase_client
 		
 		sb = get_supabase_client()
 		result = sb.table('theme_prompts').select('content').eq('vertical', vertical).eq('is_active', True).execute()
@@ -77,7 +77,7 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
 	"""
 	# TRY DATABASE FIRST (Plan 2/3 integration)
 	try:
-		from services.supabase import get_supabase_client
+		from equity_connect.services.supabase import get_supabase_client
 		
 		sb = get_supabase_client()
 		result = sb.rpc('get_node_prompt', {
