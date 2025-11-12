@@ -31,11 +31,32 @@ class BarbaraAgent(AgentBase):
 			record_format="mp3"
 		)
 		
-		# Voice and AI configuration
+		# AI Provider Configuration
+		# STT: Deepgram Nova-2 (best for real-time voice)
+		self.set_stt_engine({
+			"engine": "deepgram",
+			"model": "nova-2",
+			"language": "en-US"
+		})
+		
+		# LLM: OpenAI GPT-4o (fast, supports tool calling)
+		self.set_llm_engine({
+			"engine": "openai",
+			"model": "gpt-4o"
+		})
+		
+		# TTS: ElevenLabs (natural voice, low latency)
+		self.set_tts_engine({
+			"engine": "elevenlabs",
+			"voice": "Rachel",  # Professional female voice
+			"model": "eleven_turbo_v2_5"  # Fast model
+		})
+		
+		# Voice configuration
 		self.add_language(
 			"English", 
 			"en-US", 
-			"rime.spore",
+			code="en-US",
 			speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
 			function_fillers=["Processing...", "Just a second...", "Looking that up..."]
 		)
