@@ -33,6 +33,10 @@ class BarbaraAgent(AgentBase):
 			record_format="mp3"
 		)
 		
+		# Enable SIP routing - REQUIRED for SignalWire to route calls to this agent
+		# This makes Barbara reachable at barbara-agent@domain and /agent@domain
+		self.enable_sip_routing(auto_map=True)
+		
 		# Set up dynamic configuration (per-request)
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
