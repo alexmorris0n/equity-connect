@@ -79,19 +79,19 @@ class BarbaraAgent(AgentBase):
 				function_fillers=["Processing...", "Just a second...", "Looking that up..."]
 			)
 			
-		# LLM and conversation parameters
-		agent.set_params({
-			"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
-			"wait_for_user": False,  # Barbara can proactively speak
-			"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
-			"attention_timeout": 30000,  # 30 seconds before timeout
-			"temperature": 0.7,  # Balanced creativity
-			"max_tokens": 150,  # Keep responses concise for voice
-			"top_p": 0.9,  # Nucleus sampling
-			"ai_volume": 5,
-			"local_tz": "America/Los_Angeles",  # Pacific time for CA customers
-			"swaig_post_conversation": True  # Send conversation history to tools
-		})
+			# LLM and conversation parameters
+			agent.set_params({
+				"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
+				"wait_for_user": False,  # Barbara can proactively speak
+				"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
+				"attention_timeout": 30000,  # 30 seconds before timeout
+				"temperature": 0.7,  # Balanced creativity
+				"max_tokens": 150,  # Keep responses concise for voice
+				"top_p": 0.9,  # Nucleus sampling
+				"ai_volume": 5,
+				"local_tz": "America/Los_Angeles",  # Pacific time for CA customers
+				"swaig_post_conversation": True  # Send conversation history to tools
+			})
 			
 			# Global data for AI to reference
 			agent.set_global_data({
