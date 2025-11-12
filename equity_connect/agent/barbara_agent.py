@@ -67,6 +67,30 @@ class BarbaraAgent(AgentBase):
 		# LLMs have no concept of "now" - this gives Barbara temporal awareness
 		self.add_skill("datetime")
 		
+		# Set post-prompt for conversation analysis and summary
+		self.set_post_prompt("""
+Analyze the conversation and provide a structured summary:
+
+**CALL OUTCOME:**
+- Qualified: [Yes/No/Partial]
+- Appointment Booked: [Yes/No]
+- Next Action: [Follow-up call / Send info / No action needed]
+
+**KEY INFORMATION COLLECTED:**
+- Lead details gathered
+- Questions asked by caller
+- Objections raised (if any)
+- Main concerns or interests
+
+**CONVERSATION QUALITY:**
+- Rapport established: [Excellent/Good/Fair/Poor]
+- All questions answered: [Yes/No/Partial]
+- Call completed successfully: [Yes/No]
+
+**FOLLOW-UP REQUIRED:**
+List any specific follow-up actions needed.
+		""")
+		
 		# BarbGraph routing state
 		self.current_node = "greet"
 		self.phone_number = None
@@ -626,4 +650,56 @@ class BarbaraAgent(AgentBase):
 			logger.info(f"📝 Loaded prompt for node '{node_name}'")
 		except Exception as e:
 			logger.error(f"❌ Failed to route to node '{node_name}': {e}")
+	
+	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
+		"""Handle conversation summary after call ends
+		
+		This is called by SignalWire when the call completes and post-prompt is processed.
+		We save the summary to the interactions table for future reference.
+		
+		Args:
+			summary: Structured summary from post-prompt analysis
+			raw_data: Raw request data from SignalWire
+		"""
+		try:
+			if not summary:
+				logger.warning("⚠️ No summary provided")
+				return
+			
+			logger.info(f"📊 Call summary received: {summary}")
+			
+			# Extract phone number from call context
+			phone = self.phone_number
+			if not phone and raw_data:
+				phone = raw_data.get("From") or raw_data.get("To")
+			
+			if phone:
+				# Get lead_id from conversation state
+				from equity_connect.services.conversation_state import get_conversation_state
+				state_row = get_conversation_state(phone)
+				
+				if state_row and state_row.get("lead_id"):
+					# Save summary as an interaction
+					from equity_connect.services.supabase import get_supabase_client
+					supabase = get_supabase_client()
+					
+					supabase.table("interactions").insert({
+						"lead_id": state_row["lead_id"],
+						"broker_id": state_row.get("broker_id"),
+						"interaction_type": "call",
+						"outcome": "completed",
+						"content": f"Call Summary:\n{summary}",
+						"metadata": {
+							"summary": summary,
+							"call_ended_at": raw_data.get("timestamp") if raw_data else None,
+							"node": self.current_node
+						}
+					}).execute()
+					
+					logger.info(f"✅ Call summary saved for lead {state_row['lead_id']}")
+			else:
+				logger.warning("⚠️ No phone number available to save summary")
+				
+		except Exception as e:
+			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
 
