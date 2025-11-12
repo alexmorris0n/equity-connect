@@ -203,7 +203,7 @@ class BarbaraAgent(AgentBase):
 		# Could save to database via save_interaction tool
 		# Could send notifications, update analytics, etc.
 	
-	def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
+	async def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
 		"""Intercept tool calls to trigger BarbGraph routing after completion
 		
 		This is the key integration point where BarbGraph routing happens after tools execute.
@@ -216,8 +216,12 @@ class BarbaraAgent(AgentBase):
 		Returns:
 			Tool result (passes through from tool)
 		"""
-		# Let the tool execute normally via parent class
+		# Let the tool execute normally via parent class (await if async)
 		result = super().on_function_call(name, args, raw_data)
+		
+		# If result is a coroutine, await it
+		if hasattr(result, '__await__'):
+			result = await result
 		
 		# After tool completes, check if we should route to next node
 		try:
