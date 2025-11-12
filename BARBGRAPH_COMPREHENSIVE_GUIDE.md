@@ -504,161 +504,210 @@ $$ LANGUAGE plpgsql;
 
 ### 3. Backend: Agent Components
 
-#### Component 3.1: EquityConnectAgent Class
+#### Component 3.1: BarbaraAgent Class
 
-**File:** `livekit-agent/agent.py`
+**File:** `equity_connect/agent/barbara_agent.py`
 
-**Purpose:** Custom Agent subclass that implements event-based routing.
+**Purpose:** Custom Agent subclass (SignalWire AgentBase) that implements event-based routing.
 
 **Key Features:**
-- Inherits from `livekit.agents.Agent`
-- Stores: `phone_number`, `vertical`, `call_type`, `lead_context`, `current_node`
-- Manages node transitions and routing checks
-- Hooks into `agent_speech_committed` event
+- Inherits from `signalwire_agents.AgentBase`
+- Stores: `phone_number`, `call_type`, `current_node`
+- Manages node transitions using **`context_switch` SWAIG action**
+- Automatic routing after tool execution via `check_and_route()`
 
-**Code Snippet: Agent Class**
+**Code Snippet: Agent Class (SignalWire SDK)**
 
 ```python
-class EquityConnectAgent(Agent):
-    """Voice agent with event-based node routing"""
+from signalwire_agents import AgentBase
+from signalwire_agents.core import SwaigFunctionResult
+
+class BarbaraAgent(AgentBase):
+    """Barbara - Conversational AI agent for reverse mortgage lead qualification
     
-    def __init__(
-        self, 
-        instructions: str, 
-        phone_number: str, 
-        vertical: str = "reverse_mortgage",
-        call_type: str = "inbound-unknown",
-        lead_context: dict = None
-    ):
+    Uses BarbGraph 8-node event-driven routing with SignalWire SDK infrastructure.
+    All business logic (tools, routers, checkers) remains unchanged from LiveKit version.
+    """
+    
+    def __init__(self):
         super().__init__(
-            instructions=instructions,
-            tools=all_tools,
+            name="barbara-agent",
+            route="/agent",
+            host="0.0.0.0",
+            port=8080,
+            use_pom=True,  # Enable Prompt Object Model
+            auto_answer=True,
+            record_call=True
         )
-        self.phone = phone_number
-        self.vertical = vertical
-        self.call_type = call_type
-        self.lead_context = lead_context or {}
+        
+        # Enable SIP routing for inbound calls
+        self.enable_sip_routing(auto_map=True)
+        
+        # Set up dynamic configuration (per-request)
+        self.set_dynamic_config_callback(self.configure_per_call)
+        
+        # BarbGraph routing state
         self.current_node = "greet"
-        self.session = None  # Set after AgentSession creates it
+        self.phone_number = None
+        self.call_type = "inbound"
     
-    async def on_enter(self):
-        """Agent joins - start with greet node"""
-        logger.info("🎤 Agent joined - loading greet node")
-        await self.load_node("greet", speak_now=True)
-    
-    async def load_node(self, node_name: str, speak_now: bool = False):
-        """Load node prompt and optionally trigger immediate speech"""
-        logger.info(f"📍 Loading node: {node_name} (vertical={self.vertical})")
+    def configure_per_call(self, query_params, body_params, headers, agent):
+        """Configure agent dynamically per-request
         
-        # Load prompt from database or file
-        node_prompt = load_node_prompt(node_name, vertical=self.vertical)
+        This runs for EVERY incoming call and handles:
+        - AI provider configuration (TTS/LLM/STT)
+        - Multi-call persistence (resume where left off)
+        - Initial BarbGraph node selection
+        - Prompt loading with context injection
+        """
+        # Extract call info
+        phone = body_params.get('From') or query_params.get('phone')
+        broker_id = query_params.get('broker_id')
         
-        # Inject call context for situational awareness
-        context = build_context_injection(
-            call_type=self.call_type,
-            lead_context=self.lead_context,
-            phone_number=self.phone
+        # Configure AI (TTS/LLM/STT/skills)
+        agent.add_language("English", "en-US", voice="rachel", engine="elevenlabs")
+        agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
+        agent.add_skill("datetime")  # Temporal awareness
+        agent.add_skill("math")  # Reliable calculations
+        
+        # Multi-call persistence: check if returning caller
+        current_node = "greet"
+        if phone:
+            state_row = get_conversation_state(phone)
+            if state_row:
+                cd = state_row.get("conversation_data", {})
+                if cd.get("appointment_booked"):
+                    current_node = "exit"  # Already done
+                elif cd.get("ready_to_book"):
+                    current_node = "book"  # Resume at booking
+                elif cd.get("qualified") is not None:
+                    current_node = "answer"  # Already qualified
+        
+        # Load BarbGraph node prompt (theme + context + node)
+        instructions = build_instructions_for_node(
+            node_name=current_node,
+            call_type="inbound",
+            lead_context=lead_context,
+            phone_number=phone,
+            vertical="reverse_mortgage"
         )
         
-        # Prepend context to node prompt
-        full_prompt = context + "\n\n" + node_prompt
+        agent.set_prompt_text(instructions)
         
-        self.current_node = node_name
-        self.instructions = full_prompt  # CRITICAL: Persist to Agent
-        
-        # If speak_now, generate immediate response
-        if speak_now and self.session:
-            await self.session.generate_reply(instructions=full_prompt)
+        # Store state
+        self.current_node = current_node
+        self.phone_number = phone
     
-    async def check_and_route(self):
-        """Check if we should transition to next node"""
-        logger.info(f"🔍 Routing check from node: {self.current_node}")
+    def check_and_route(self, tool_name: str):
+        """Check if we should transition to next node after tool execution"""
+        phone = self.phone_number
+        if not phone:
+            return
         
         # Get conversation state from DB
-        state_row = get_conversation_state(self.phone)
+        state_row = get_conversation_state(phone)
         if not state_row:
             return
         
-        # Extract conversation_data (contains flags)
-        state = state_row.get("conversation_data", {})
-        
         # Check if current node is complete
-        if not is_node_complete(self.current_node, state):
-            logger.info(f"⏳ Node '{self.current_node}' not complete yet")
-            return
-        
-        # Route to next node
-        next_node = self.route_next(state_row, state)
-        logger.info(f"🧭 Router: {self.current_node} → {next_node}")
-        
-        if next_node == "END":
-            if self.session:
-                await self.session.generate_reply(
-                    instructions="Say a warm goodbye and thank them for their time."
-                )
-        elif next_node != self.current_node:
-            await self.load_node(next_node, speak_now=False)
+        conversation_data = state_row.get("conversation_data", {})
+        if is_node_complete(self.current_node, conversation_data):
+            # Determine next node using BarbGraph routers
+            next_node = self._get_next_node(state_row)
+            
+            if next_node and next_node != self.current_node:
+                logger.info(f"🔀 Routing: {self.current_node} → {next_node}")
+                self._route_to_node(next_node, phone)
     
-    def route_next(self, state_row: dict, conversation_data: dict) -> str:
-        """Determine next node based on current node and DB state"""
-        state = {
-            "phone_number": self.phone,
-            "lead_id": state_row.get("lead_id"),
-            "qualified": state_row.get("qualified"),
+    def _route_to_node(self, node_name: str, phone: str):
+        """Route to new BarbGraph node using context_switch for smooth transitions
+        
+        This is the proper SignalWire pattern for mid-call prompt changes.
+        Uses context_switch action instead of basic set_prompt_text() to:
+        - Provide transition context to the LLM
+        - Consolidate conversation history (save tokens)
+        - Create natural, smooth node transitions
+        
+        Returns:
+            SwaigFunctionResult with context_switch action
+        """
+        # Save per-node summary before transitioning
+        self._save_node_summary(self.current_node, phone)
+        
+        # Get conversation state for context
+        state_row = get_conversation_state(phone)
+        lead_context = self._extract_lead_context(state_row)
+        
+        # Load new node prompt (theme + context + node)
+        node_prompt = build_instructions_for_node(
+            node_name=node_name,
+            call_type=self.call_type,
+            lead_context=lead_context,
+            phone_number=phone,
+            vertical="reverse_mortgage"
+        )
+        
+        # Build transition context message
+        transition_message = self._build_transition_message(node_name, state_row)
+        
+        # Use SWAIG context_switch action (proper SignalWire pattern)
+        result = SwaigFunctionResult()
+        result.switch_context(
+            system_prompt=node_prompt,
+            user_prompt=transition_message,
+            consolidate=True  # Summarize previous conversation to save tokens
+        )
+        
+        # Update tracking
+        self.current_node = node_name
+        self.phone_number = phone
+        
+        # Apply function restrictions per node
+        self._apply_node_function_restrictions(node_name)
+        
+        logger.info(f"✅ Context switched to node '{node_name}' with consolidation")
+        
+        return result
+    
+    def _build_transition_message(self, node_name: str, state: dict) -> str:
+        """Build user message to provide context for node transition
+        
+        This message helps the LLM understand WHY the prompt changed and what
+        happened in the previous node. Creates smoother, more natural transitions.
+        """
+        conversation_data = state.get("conversation_data", {}) if state else {}
+        
+        messages = {
+            "greet": "Call starting. Greet the caller warmly and introduce yourself.",
+            "verify": "Caller has been greeted. Now verify their identity and collect basic information.",
+            "qualify": "Identity verified. Now determine if they qualify for a reverse mortgage.",
+            "quote": f"Lead is qualified. Present the financial quote using their equity.",
+            "answer": "Quote presented. Answer any questions they have about reverse mortgages.",
+            "objections": f"Caller expressed concerns. Address them empathetically with facts.",
+            "book": "Caller is ready to schedule. Check broker availability and book a time.",
+            "exit": "Call objectives complete. Thank the caller and end professionally."
         }
         
-        # Call appropriate router function
-        if self.current_node == "greet":
-            return route_after_greet(state)
-        elif self.current_node == "verify":
-            return route_after_verify(state)
-        elif self.current_node == "qualify":
-            return route_after_qualify(state)  # Can go to: quote or exit
-        elif self.current_node == "quote":
-            return route_after_quote(state)  # Can go to: answer, book, or exit
-        elif self.current_node == "answer":
-            return route_after_answer(state)
-        elif self.current_node == "objections":
-            return route_after_objections(state)
-        elif self.current_node == "book":
-            return route_after_book(state)
-        elif self.current_node == "exit":
-            return route_after_exit(state)
-        else:
-            return "END"
+        return messages.get(node_name, "Continue the conversation naturally.")
 ```
 
-**Event Hook in Entrypoint:**
+**SignalWire Routing Pattern:**
+
+Unlike LiveKit's `agent_speech_committed` event hook, SignalWire routing happens **after tool execution**:
 
 ```python
-# Create agent with phone number for event-based routing
-agent = EquityConnectAgent(
-    instructions=instructions,
-    phone_number=caller_phone,
-    vertical=vertical,
-    call_type=call_type,
-    lead_context=lead_context or {}
-)
-
-session = AgentSession(
-    stt=stt_string,
-    llm=llm_string,
-    tts=tts_string,
-    # ... other config
-)
-
-# Link session to agent
-agent.session = session
-
-# Hook routing checks after each agent turn
-@session.on("agent_speech_committed")
-async def on_agent_finished_speaking():
-    """Agent finished speaking - check if we should route"""
-    await agent.check_and_route()
-
-# Start the session
-await session.start(agent=agent, room=ctx.room)
+# Automatic routing after each tool call
+def check_and_route(self, tool_name: str):
+    """Called after EVERY tool execution to check for node transitions"""
+    # 1. Check if current node is complete
+    # 2. If complete, get next node from BarbGraph router
+    # 3. Call _route_to_node() which returns SwaigFunctionResult
+    # 4. SignalWire SDK applies context_switch action automatically
 ```
+
+**Key Difference from LiveKit:**
+- **LiveKit:** Hook into `agent_speech_committed` event explicitly
+- **SignalWire:** Routing happens in tool execution flow, uses SWAIG actions
 
 ---
 

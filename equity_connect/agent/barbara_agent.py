@@ -706,18 +706,86 @@ List specific actions needed based on conversation outcome.
 			logger.error(f"❌ Router error for '{node}': {e}")
 			return node  # Stay on current node if router fails
 	
+	def _build_transition_message(self, node_name: str, state: dict) -> str:
+		"""Build user message to provide context for node transition
+		
+		This message helps the LLM understand WHY the prompt changed and what
+		happened in the previous node. It creates smoother, more natural transitions.
+		
+		Args:
+			node_name: Target node being transitioned to
+			state: Current conversation state from database
+			
+		Returns:
+			User message explaining the transition context
+		"""
+		conversation_data = state.get("conversation_data", {}) if state else {}
+		
+		# Context messages for each BarbGraph node transition
+		messages = {
+			"greet": "Call starting. Greet the caller warmly and introduce yourself.",
+			
+			"verify": (
+				"Caller has been greeted. Now verify their identity and collect basic information. "
+				"Create a lead record if this is a new caller."
+			),
+			
+			"qualify": (
+				"Identity verified. Now determine if they qualify for a reverse mortgage. "
+				"Ask about age, home value, mortgage balance, and financial situation."
+			),
+			
+			"quote": (
+				"Lead is qualified. Present the financial quote showing how much equity they can access. "
+				f"Use their home value (${conversation_data.get('home_value', 'unknown')}) and "
+				f"equity (${conversation_data.get('estimated_equity', 'unknown')}) to calculate the range."
+			),
+			
+			"answer": (
+				"Quote has been presented. Now answer any questions they have about reverse mortgages, "
+				"the process, requirements, or their specific situation. Use the knowledge base."
+			),
+			
+			"objections": (
+				"Caller expressed concerns or objections. Address them empathetically with facts. "
+				f"Main concern: {conversation_data.get('objection_type', 'general concerns')}"
+			),
+			
+			"book": (
+				"Caller is ready to schedule an appointment. Check broker availability and book a time "
+				"that works for them. Send confirmation via SMS."
+			),
+			
+			"exit": (
+				"Call objectives complete. Thank the caller, confirm next steps, and end the call professionally."
+			)
+		}
+		
+		return messages.get(node_name, "Continue the conversation naturally.")
+	
 	def _route_to_node(self, node_name: str, phone: str):
-		"""Load new node prompt and update agent instructions
+		"""Route to new BarbGraph node using context_switch for smooth transitions
+		
+		This is the proper SignalWire pattern for mid-call prompt changes.
+		Uses context_switch action instead of basic set_prompt_text() to:
+		- Provide transition context to the LLM
+		- Consolidate conversation history (save tokens)
+		- Create natural, smooth node transitions
 		
 		Args:
 			node_name: Target node to route to
 			phone: Caller's phone number for context loading
+			
+		Returns:
+			SwaigFunctionResult with context_switch action
 		"""
+		from signalwire_agents.core import SwaigFunctionResult
+		
 		try:
 			# Save per-node summary before transitioning
 			self._save_node_summary(self.current_node, phone)
 			
-			# Get lead context for injection (if available)
+			# Get conversation state for context
 			state_row = get_conversation_state(phone)
 			lead_context = {}
 			if state_row:
@@ -730,28 +798,43 @@ List specific actions needed based on conversation outcome.
 						"conversation_data": state_row.get("conversation_data", {})
 					}
 			
-			# Use build_instructions_for_node to correctly combine theme + context + node
+			# Load new node prompt (theme + context + node)
 			from equity_connect.services.prompt_loader import build_instructions_for_node
 			
-			instructions = build_instructions_for_node(
+			node_prompt = build_instructions_for_node(
 				node_name=node_name,
-				call_type="outbound",  # Will be updated from call metadata later
+				call_type=self.call_type,
 				lead_context=lead_context if lead_context else None,
 				phone_number=phone,
 				vertical="reverse_mortgage"
 			)
 			
-			# Update prompt using SignalWire API
-			self.set_prompt_text(instructions)
+			# Build transition context message
+			transition_message = self._build_transition_message(node_name, state_row)
+			
+			# Create SWAIG result with context_switch action
+			# This is the proper SignalWire pattern for mid-call prompt changes
+			result = SwaigFunctionResult()
+			result.switch_context(
+				system_prompt=node_prompt,
+				user_prompt=transition_message,
+				consolidate=True  # Summarize previous conversation to save tokens
+			)
+			
+			# Update tracking
 			self.current_node = node_name
 			self.phone_number = phone
 			
 			# Apply function restrictions per node (hybrid SignalWire + BarbGraph)
 			self._apply_node_function_restrictions(node_name)
 			
-			logger.info(f"📝 Loaded prompt for node '{node_name}'")
+			logger.info(f"✅ Context switched to node '{node_name}' with consolidation")
+			
+			return result
 		except Exception as e:
 			logger.error(f"❌ Failed to route to node '{node_name}': {e}")
+			# Return empty result on failure - stay on current node
+			return SwaigFunctionResult()
 	
 	def _apply_node_function_restrictions(self, node_name: str):
 		"""Restrict available functions based on current BarbGraph node
