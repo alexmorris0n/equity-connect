@@ -3,6 +3,7 @@ name: Deploy Barbara to Fly.io
 on:
   push:
     branches:
+      - master
       - main
   workflow_dispatch:
 

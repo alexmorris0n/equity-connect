@@ -1,8 +1,8 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 11, 2025  
-**Status:** ✅ Production Ready - LiveKit Cloud + Northflank Agent Worker + LiveKit Inference + BarbGraph Event-Based State Machine  
-**Current Phase:** BarbGraph 8-Node System Complete + Theme Prompts Active + System Verification Complete
+**Last Updated:** November 12, 2025  
+**Status:** 🚧 Migration In Progress - SignalWire Agent SDK + Fly.io + BarbGraph Event-Based State Machine  
+**Current Phase:** SignalWire SDK Integration + Fly.io Deployment + BarbGraph Migration Complete
 
 ---
 
@@ -20,23 +20,22 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 **Key Innovation:** BarbGraph event-based state machine provides structured, adaptive conversations with 8 conversation nodes and dynamic routing based on real-time state.
 
 **Tech Stack:**
-- **AI Voice:** LiveKit Cloud + Northflank Agent Worker + LiveKit Inference (unified billing)
-- **Voice Infrastructure:** LiveKit Cloud (SIP Bridge + Core + Dispatch Rules) + Northflank Python Agent Worker
-- **AI Providers (via LiveKit Inference):**
-  - **LLM:** OpenAI (GPT-4o), Anthropic (Claude), Google (Gemini), DeepSeek, Qwen, Kimi
-  - **STT:** Deepgram (Nova-2/Nova-3), AssemblyAI, Cartesia, OpenAI Whisper
-  - **TTS:** ElevenLabs (Tiffany voice), Cartesia, Inworld, Rime, OpenAI, Google
-  - **Unified Billing:** Single invoice from LiveKit for all AI services
-  - **Co-located Infrastructure:** Models run on LiveKit's edge network for lower latency
+- **AI Voice:** SignalWire Agent SDK + Fly.io Agent Worker
+- **Voice Infrastructure:** SignalWire SIP + SignalWire AI Gateway (SWAIG)
+- **AI Providers (Native SignalWire Integration):**
+  - **LLM:** OpenAI (GPT-4o), Anthropic (Claude), Google (Gemini), DeepSeek, OpenRouter
+  - **STT:** Deepgram (Nova-2/Nova-3), AssemblyAI, OpenAI Whisper, Google Cloud Speech
+  - **TTS:** ElevenLabs (Tiffany voice), OpenAI TTS, Google Cloud TTS, Cartesia, Speechify
+  - **Multi-Provider Flexibility:** Mix-and-match with own API keys (no aggregator)
 - **AI Orchestration:** Gemini 2.5 Flash via OpenRouter (n8n workflows)
-- **Telephony:** SignalWire SIP trunk → LiveKit Cloud SIP Bridge
-- **Recording Storage:** Supabase Storage (via LiveKit Cloud Egress)
+- **Telephony:** SignalWire SIP trunk + SignalWire Voice API
+- **Recording Storage:** Supabase Storage (via SignalWire webhook)
 - **Orchestration:** n8n (self-hosted on Northflank)
 - **Database:** Supabase (PostgreSQL + pgvector)
 - **Data Sources:** PropertyRadar API (property data + contact enrichment)
-- **Outreach:** Instantly.ai (email), LiveKit voice agents
+- **Outreach:** Instantly.ai (email), SignalWire voice agents
 - **Integration:** MCP servers (Supabase, Instantly, Barbara, SwarmTrace)
-- **Deployment:** Northflank (agent worker) + LiveKit Cloud (managed infrastructure)
+- **Deployment:** Fly.io (agent worker) + SignalWire Cloud (managed telephony)
 
 ---
 
@@ -44,28 +43,31 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 
 ```
 equity-connect/ (Git Monorepo)
-├── livekit-agent/                → Northflank Agent Worker (PRODUCTION)
-│   ├── agent.py                  → Main entrypoint (BarbGraph event-based routing)
-│   ├── config.py                 → Centralized configuration
+├── equity_connect/               → Fly.io Agent Worker (MIGRATION IN PROGRESS)
+│   ├── app.py                    → Main entrypoint (SignalWire SDK)
+│   ├── agent/
+│   │   └── barbara_agent.py     → BarbGraph event-based routing (SignalWire AgentBase)
+│   ├── Dockerfile                → Fly.io deployment
+│   ├── fly.toml                  → Fly.io configuration (LAX primary region)
 │   ├── workflows/                → BarbGraph routing logic
 │   │   ├── node_completion.py   → Node completion checkers (8 nodes)
 │   │   └── routers.py            → DB-driven routing functions (8 routers)
 │   ├── services/                 → Business logic
 │   │   ├── supabase.py          → Database client + utilities
 │   │   ├── conversation_state.py → Multi-call persistence
-│   │   ├── prompt_loader.py     → Theme + node prompt loading
-│   │   └── templates.py          → AI template loading (STT/TTS/LLM configs)
+│   │   └── prompt_loader.py     → Theme + node prompt loading
 │   └── tools/                    → Agent function tools (21 tools)
 │       ├── lead.py              → Lead lookup, DNC checks, consent
 │       ├── knowledge.py         → Vector search
 │       ├── calendar.py          → Nylas integration
 │       ├── conversation_flags.py → State flag tools (7 tools)
-│       └── interaction.py       → Interaction logging
-├── deploy/                       → Deployment configs
-│   └── agent/
-│       └── Dockerfile            → Northflank agent worker container
+│       ├── interaction.py       → Interaction logging
+│       └── registry.py          → SignalWire SWAIG tool registration
+├── livekit-agent/                → DEPRECATED (Legacy LiveKit system)
+│   └── [files archived for reference]
+├── deploy/                       → Deployment configs (DEPRECATED)
 ├── barbara-mcp/                  → Northflank (MCP server for n8n)
-│   └── index.js                  → Outbound calls via LiveKit Cloud API
+│   └── index.js                  → Outbound calls via SignalWire Voice API
 ├── portal/                       → Vue.js admin (Vercel)
 │   └── src/views/admin/         → PromptManagement, LeadManagement, etc.
 ├── propertyradar-mcp/            → Docker/Local (property lookups)
@@ -82,7 +84,7 @@ equity-connect/ (Git Monorepo)
 - ✅ Simplified deployment (1 Northflank container)
 
 **Deployment Triggers:**
-- `livekit-agent/**` changes → Deploy agent worker to Northflank
+- `equity_connect/**` changes → Deploy agent worker to Fly.io via GitHub Actions
 - `portal/**` changes → Deploy to Vercel
 - `workflows/**` changes → Update n8n workflows
 - `database/**` changes → Run Supabase migrations
@@ -111,9 +113,150 @@ equity-connect/ (Git Monorepo)
 
 ---
 
-## 🎙️ LiveKit Cloud Voice System ⭐ **PRODUCTION (NOV 11, 2025)**
+## 🎙️ SignalWire Agent SDK Migration ⭐ **IN PROGRESS (NOV 12, 2025)**
 
-**Status:** ✅ **PRODUCTION READY - Primary Voice System**
+**Status:** 🚧 **MIGRATION IN PROGRESS - Core Integration Complete, Testing Phase**
+
+### Why SignalWire Over LiveKit
+
+**Cost Efficiency:**
+- ✅ No infrastructure management overhead
+- ✅ Native multi-provider AI (mix Deepgram STT + ElevenLabs TTS + OpenAI LLM)
+- ✅ Bring your own API keys (transparent pricing, no markup)
+- ✅ No aggregator layer (EdenAI not needed)
+
+**Developer Experience:**
+- ✅ Official SDK with native plugins for all major providers
+- ✅ SWAIG (SignalWire AI Gateway) for function calling
+- ✅ Built-in SIP integration
+- ✅ Simpler event model vs LiveKit
+
+**Regional Performance:**
+- ✅ Fly.io LAX deployment for CA customers (primary region)
+- ✅ Future expansion to IAD for East Coast customers
+- ✅ Auto-scaling for traffic spikes
+- ✅ Edge deployment for lower latency
+
+### Migration Architecture
+
+**From:**
+```
+SignalWire SIP → LiveKit Cloud SIP Bridge → LiveKit Dispatch → Northflank Agent Worker (LiveKit SDK)
+```
+
+**To:**
+```
+SignalWire SIP → SignalWire Agent SDK → Fly.io Agent Worker (SignalWire SDK)
+```
+
+### Migration Status
+
+**✅ Phase 1: Project Setup (COMPLETE)**
+- ✅ Forked SignalWire Agent SDK (github.com/alexmorris0n/barbara)
+- ✅ Created `equity_connect/` directory structure
+- ✅ Identified SignalWire event hooks (`on_function_call`, `on_speech_committed`)
+- ✅ Mapped LiveKit AgentSession → SignalWire Agent concepts
+
+**✅ Phase 2: Core Migration (COMPLETE)**
+- ✅ Converted `EquityConnectAgent` → `BarbaraAgent` (inherits from `AgentBase`)
+- ✅ Integrated BarbGraph routing (all 8 routers unchanged, pure Python)
+- ✅ Ported all 21 tools (converted `@function_tool` → `agent.define_tool()`)
+- ✅ Preserved state management (conversation_state table logic unchanged)
+- ✅ Fixed 3 theme duplication bugs in prompt loading
+
+**✅ Phase 3: SignalWire-Specific Integration (COMPLETE)**
+- ✅ Tool registration via SWAIG (`tools/registry.py`)
+- ✅ Multi-provider AI configuration ready (STT/LLM/TTS templates)
+- ✅ Event-based routing via `on_speech_committed` and `on_function_call`
+- ✅ Conversation history preservation across node transitions
+
+**✅ Phase 4: Fly.io Deployment (IN PROGRESS)**
+- ✅ Created Dockerfile with correct Python module structure
+- ✅ Configured fly.toml (LAX primary region, 2 CPUs, 1GB RAM)
+- ✅ Set up GitHub Actions deployment workflow
+- ✅ Deployed to Fly.io (`barbara-agent.fly.dev`)
+- ⏳ Testing: SIP integration, tool calls, BarbGraph routing
+
+### Critical Requirements (100% Preserved)
+
+**✅ Database Schema - UNCHANGED**
+- ✅ All field names identical (`primary_phone`, `primary_phone_e164`, `conversation_data`)
+- ✅ All RLS policies unchanged
+- ✅ All indexes unchanged
+- ✅ Verified against live Supabase schema via MCP
+
+**✅ Tools - Business Logic UNCHANGED**
+- ✅ All 21 tools: function signatures, parameters, return types identical
+- ✅ Only decorator changed: `@function_tool` → `agent.define_tool()` registration
+- ✅ Lead Management (5), Calendar (4), Knowledge (1), Interaction (4), Flags (7)
+
+**✅ BarbGraph Routing - UNCHANGED**
+- ✅ All 8 router functions (pure Python, no changes)
+- ✅ All 8 completion checkers (pure Python, no changes)
+- ✅ Router decision logic based on conversation_data JSONB flags
+- ✅ Dynamic routing conditions (wrong_person, ready_to_book, etc.)
+
+**✅ Prompt System - UNCHANGED**
+- ✅ Theme prompts from `theme_prompts` table
+- ✅ Node prompts from `prompt_versions` table
+- ✅ Context injection logic (call_type, lead_context, phone_number)
+- ✅ Prompt combination order: Theme → Context → Node
+
+### Bug Fixes During Migration
+
+**Bug 1:** Theme duplication in `_load_initial_prompt()` - **FIXED**
+**Bug 2:** Theme duplication in `_route_to_node()` - **FIXED**
+**Bug 3:** Theme duplication in `build_instructions_for_node()` - **FIXED**
+**Bug 4:** Dockerfile CMD path incorrect - **FIXED**
+
+### Files Created/Modified
+
+**New Files:**
+- `equity_connect/app.py` - SignalWire entry point
+- `equity_connect/agent/barbara_agent.py` - SignalWire AgentBase integration
+- `equity_connect/tools/registry.py` - SWAIG tool registration
+- `equity_connect/Dockerfile` - Fly.io container
+- `equity_connect/fly.toml` - Fly.io configuration
+- `equity_connect/requirements.txt` - SignalWire SDK dependencies
+- `.github/workflows/deploy.yml` - GitHub Actions deployment
+
+**Modified Files:**
+- `equity_connect/services/prompt_loader.py` - Added `build_instructions_for_node()`
+- All tool files (removed `@function_tool` decorators, kept business logic)
+
+### Testing Checklist
+
+**Before Production:**
+- [ ] 10 test calls through full 8-node flow
+- [ ] Verify database queries use correct field names
+- [ ] Confirm tool schemas match LiveKit exactly
+- [ ] Test multi-call scenarios (call back same number)
+- [ ] Verify theme + node prompts loading correctly
+- [ ] Test spouse handoff (wrong_person → re-greet)
+- [ ] Test QUOTE node routing
+- [ ] Validate SIP integration end-to-end
+
+### Success Metrics (Compare to LiveKit Baseline)
+
+- [ ] Routing latency <100ms
+- [ ] Tool call success rate >99%
+- [ ] Conversation history preserved 100%
+- [ ] Multi-call persistence working
+- [ ] Zero schema drift
+- [ ] All 21 tools functional with identical output
+
+**Status:** ✅ **CORE MIGRATION COMPLETE - Testing Phase (November 12, 2025)**
+
+---
+
+## 🎙️ LiveKit Cloud Voice System (DEPRECATED) ⚠️
+
+**Status:** ⚠️ **DEPRECATED - Being Replaced by SignalWire Agent SDK**
+
+This section preserved for reference during migration. The LiveKit system was production-ready but is being replaced by SignalWire for better cost control and simpler architecture.
+
+<details>
+<summary>Click to view LiveKit architecture (reference only)</summary>
 
 ### Architecture Overview
 
@@ -267,6 +410,8 @@ Call ends, metadata saved to interactions table
 - ✅ Vue portal updated with accurate LiveKit Inference pricing
 - ✅ 4 system presets created: Premium, Budget, Spanish, Ultra-Fast
 - ✅ Database migration applied to update existing templates
+
+</details>
 
 ---
 

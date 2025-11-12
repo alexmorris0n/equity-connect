@@ -197,3 +197,62 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
 	return "\n".join(context_parts)
 
 
+def build_instructions_for_node(
+	node_name: str,
+	call_type: str = "outbound",
+	lead_context: Optional[dict] = None,
+	phone_number: Optional[str] = None,
+	vertical: str = "reverse_mortgage"
+) -> str:
+	"""Build complete instructions for a node (theme + context + node prompt)
+	
+	This is the main function called by BarbaraAgent to get full prompt text for SignalWire.
+	Combines theme, call context, and node-specific instructions in the correct order.
+	
+	Args:
+		node_name: Current conversation node (greet, verify, qualify, quote, answer, objections, book, exit)
+		call_type: "inbound" or "outbound"
+		lead_context: Optional lead information dict to inject into context
+		phone_number: Caller's phone number
+		vertical: Business vertical (default: reverse_mortgage)
+	
+	Returns:
+		Complete prompt text ready for agent.set_prompt_text()
+	
+	Example:
+		instructions = build_instructions_for_node(
+			node_name="verify",
+			call_type="outbound",
+			lead_context={"lead_id": "123", "name": "John Doe"},
+			phone_number="+15551234567"
+		)
+		agent.set_prompt_text(instructions)
+	"""
+	# 1. Load node prompt (already includes theme from load_node_prompt())
+	# load_node_prompt() returns: theme + "---" + node
+	node_prompt_with_theme = load_node_prompt(node_name, vertical)
+	
+	# 2. Build context injection (if we have context)
+	context = None
+	if lead_context and phone_number:
+		context = build_context_injection(call_type, lead_context, phone_number)
+	
+	# 3. Combine: Node (with theme) → Context
+	# load_node_prompt already combined theme + node, so we just inject context if available
+	if context:
+		# Insert context between theme and node sections
+		# Split on the separator "---" that load_node_prompt adds
+		if "\n---\n" in node_prompt_with_theme:
+			theme_part, node_part = node_prompt_with_theme.split("\n---\n", 1)
+			instructions = f"{theme_part}\n\n{context}\n\n---\n{node_part}"
+		else:
+			# Fallback: append context after everything
+			instructions = f"{node_prompt_with_theme}\n\n{context}"
+	else:
+		# No context: use node prompt as-is (already has theme)
+		instructions = node_prompt_with_theme
+	
+	logger.debug(f"📄 Built instructions for node '{node_name}': {len(instructions)} chars")
+	return instructions
+
+
