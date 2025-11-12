@@ -69,28 +69,32 @@ class BarbaraAgent(AgentBase):
 		# LLMs have no concept of "now" - this gives Barbara temporal awareness
 		self.add_skill("datetime")
 		
-		# Set post-prompt for conversation analysis and summary
+		# Set post-prompt for overall call summary (runs at end of call)
 		self.set_post_prompt("""
-Analyze the conversation and provide a structured summary:
+Analyze the complete conversation and provide a structured summary:
 
-**CALL OUTCOME:**
-- Qualified: [Yes/No/Partial]
-- Appointment Booked: [Yes/No]
-- Next Action: [Follow-up call / Send info / No action needed]
+**BARBGRAPH PATH:**
+- Nodes visited in order: [list all nodes traversed]
+- Where conversation ended: [final node]
+- Successful completion: [Yes/No]
 
-**KEY INFORMATION COLLECTED:**
-- Lead details gathered
+**OVERALL OUTCOME:**
+- Primary goal achieved: [Yes/No/Partial]
+- Next action required: [Specific action or "None"]
+- Caller sentiment: [Positive/Neutral/Negative]
+
+**KEY INFORMATION GATHERED:**
+- Main data points collected across all nodes
 - Questions asked by caller
-- Objections raised (if any)
-- Main concerns or interests
+- Objections or concerns raised
 
 **CONVERSATION QUALITY:**
 - Rapport established: [Excellent/Good/Fair/Poor]
-- All questions answered: [Yes/No/Partial]
-- Call completed successfully: [Yes/No]
+- Flow smoothness: [Smooth/Some issues/Problematic]
+- All caller questions answered: [Yes/No/Partial]
 
-**FOLLOW-UP REQUIRED:**
-List any specific follow-up actions needed.
+**FOLLOW-UP ACTIONS:**
+List specific actions needed based on conversation outcome.
 		""")
 		
 		# BarbGraph routing state
@@ -620,6 +624,9 @@ List any specific follow-up actions needed.
 			phone: Caller's phone number for context loading
 		"""
 		try:
+			# Save per-node summary before transitioning
+			self._save_node_summary(self.current_node, phone)
+			
 			# Get lead context for injection (if available)
 			state_row = get_conversation_state(phone)
 			lead_context = {}
@@ -652,6 +659,92 @@ List any specific follow-up actions needed.
 			logger.info(f"📝 Loaded prompt for node '{node_name}'")
 		except Exception as e:
 			logger.error(f"❌ Failed to route to node '{node_name}': {e}")
+	
+	def _save_node_summary(self, node_name: str, phone: str):
+		"""Save a summary of what happened in this node
+		
+		Args:
+			node_name: The node that just completed
+			phone: Caller's phone number
+		"""
+		if not node_name or node_name == "greet":
+			return  # Don't save for initial node
+		
+		try:
+			# Get conversation state for this node
+			from equity_connect.services.conversation_state import get_conversation_state
+			state_row = get_conversation_state(phone)
+			
+			if not state_row or not state_row.get("lead_id"):
+				return
+			
+			# Extract node-specific data from conversation_data
+			conv_data = state_row.get("conversation_data", {})
+			
+			# Build node summary based on what we know
+			node_summary = f"""
+NODE: {node_name}
+
+COMPLETED: Yes
+FLAGS SET: {', '.join([k for k, v in conv_data.items() if v and k != 'node_history'])}
+
+DATA COLLECTED:
+{self._format_node_data(node_name, conv_data)}
+
+NEXT NODE: {self._get_next_node_from_state(state_row)}
+			""".strip()
+			
+			# Save as interaction with node-specific metadata
+			from equity_connect.services.supabase import get_supabase_client
+			supabase = get_supabase_client()
+			
+			supabase.table("interactions").insert({
+				"lead_id": state_row["lead_id"],
+				"broker_id": state_row.get("broker_id"),
+				"interaction_type": "node_completion",
+				"outcome": node_name,
+				"content": node_summary,
+				"metadata": {
+					"node": node_name,
+					"flags": conv_data,
+					"timestamp": "now()"
+				}
+			}).execute()
+			
+			logger.info(f"📊 Node summary saved: {node_name}")
+			
+		except Exception as e:
+			logger.error(f"❌ Failed to save node summary for '{node_name}': {e}")
+	
+	def _format_node_data(self, node_name: str, conv_data: dict) -> str:
+		"""Format node-specific data for summary"""
+		data_points = []
+		
+		# Extract relevant flags for this node
+		if node_name == "verify":
+			if conv_data.get("verified"):
+				data_points.append("✓ Identity verified")
+		elif node_name == "qualify":
+			if conv_data.get("qualified") is not None:
+				data_points.append(f"✓ Qualified: {conv_data['qualified']}")
+		elif node_name == "answer":
+			if conv_data.get("questions_answered"):
+				data_points.append("✓ Questions answered")
+		elif node_name == "quote":
+			if conv_data.get("quote_presented"):
+				data_points.append("✓ Quote presented")
+		elif node_name == "objections":
+			if conv_data.get("has_objection"):
+				data_points.append(f"✓ Objection handled: {conv_data.get('objection_type', 'Unknown')}")
+		elif node_name == "book":
+			if conv_data.get("appointment_booked"):
+				data_points.append("✓ Appointment booked")
+		
+		return "\n".join(data_points) if data_points else "No specific data collected"
+	
+	def _get_next_node_from_state(self, state_row: dict) -> str:
+		"""Determine next node from current state"""
+		return state_row.get("current_node", "unknown")
 	
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
 		"""Handle conversation summary after call ends
