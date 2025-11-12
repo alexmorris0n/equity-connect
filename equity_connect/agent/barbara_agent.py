@@ -23,6 +23,16 @@ class BarbaraAgent(AgentBase):
 	"""
 	
 	def __init__(self):
+		# SECURITY: Require auth credentials via environment variables - NO DEFAULTS
+		# Fail fast if credentials are not configured to prevent running with insecure defaults
+		agent_username = os.getenv("AGENT_USERNAME")
+		agent_password = os.getenv("AGENT_PASSWORD")
+		
+		if not agent_username or not agent_password:
+			error_msg = "CRITICAL SECURITY ERROR: AGENT_USERNAME and AGENT_PASSWORD environment variables are required. Do not use default credentials."
+			logger.error(error_msg)
+			raise ValueError(error_msg)
+		
 		super().__init__(
 			name="barbara-agent",
 			route="/agent",
@@ -32,10 +42,7 @@ class BarbaraAgent(AgentBase):
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
-			basic_auth=(
-				os.getenv("AGENT_USERNAME", "barbara"),
-				os.getenv("AGENT_PASSWORD", "rained1MANU.endured5juices")
-			)
+			basic_auth=(agent_username, agent_password)
 		)
 		
 		# Enable SIP routing - REQUIRED for SignalWire to route calls to this agent
