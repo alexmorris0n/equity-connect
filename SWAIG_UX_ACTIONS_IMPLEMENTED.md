@@ -1,10 +1,10 @@
 # SWAIG UX Actions - Implementation Summary
 
-This document tracks the implementation of advanced SWAIG actions in Barbara's tools for improved user experience.
+This document tracks the implementation of advanced SWAIG actions in Barbara's tools for improved user experience and analytics.
 
 ---
 
-## ✅ **COMPLETED: Two Quick Wins from SWAIG Documentation**
+## ✅ **COMPLETED: Three Quick Wins from SWAIG Documentation**
 
 ### **Quick Win #1: Conversation History in Tools** (Commit: `e6b5afa`)
 
@@ -69,6 +69,84 @@ This document tracks the implementation of advanced SWAIG actions in Barbara's t
 - Method chaining preserved: `result.say().set_response().set_end_of_speech_timeout()`
 
 **Reference:** [SWAIG Actions Documentation](https://developer.signalwire.com/sdks/agents-sdk/swaig-actions)
+
+---
+
+### **Quick Win #3: Function-Specific Metadata Tracking** (Commit: `fef958b`)
+
+**What:** Added `meta_data_token` to 3 critical tools for analytics and persistence
+
+#### **Tools Updated:**
+
+1. **`search_knowledge` (tools/knowledge.py)**
+   - ✅ `meta_data_token="search_knowledge_v1"`
+   - **Tracks:**
+     - `search_count` - Total searches performed
+     - `last_question` - Previous search query
+     - `last_search_time` - ISO 8601 timestamp
+   - **Log Output:** `🔍 Knowledge search #3 (previous: 'reverse mortgage fees')`
+   - **Use Cases:**
+     - Identify most common questions
+     - Detect repeated searches (user not satisfied)
+     - Optimize knowledge base based on patterns
+
+2. **`check_broker_availability` (tools/calendar.py)**
+   - ✅ `meta_data_token="check_broker_availability_v1"`
+   - **Tracks:**
+     - `check_count` - Total availability checks
+     - `last_broker_id` - Last broker checked
+     - `last_check_time` - ISO 8601 timestamp
+     - `slots_found` - Number of available slots found
+   - **Log Output:** `📅 Availability check #2 (last broker: broker-uuid-123)`
+   - **Use Cases:**
+     - Measure user indecision (multiple checks before booking)
+     - Track broker load (who gets checked most)
+     - Optimize scheduling UX flow
+
+3. **`book_appointment` (tools/calendar.py)**
+   - ✅ `meta_data_token="book_appointment_v1"`
+   - **Tracks:**
+     - `booking_attempts` - Total booking attempts
+     - `successful_bookings` - Successful bookings count
+     - `last_booking_time` - ISO 8601 timestamp
+     - `last_lead_id`, `last_broker_id` - Last booking IDs
+     - `last_error` - Error message (on failure only)
+     - `last_error_time` - Error timestamp (on failure only)
+   - **Log Output:** `📅 Booking attempt #4 (successful: 3)`
+   - **Use Cases:**
+     - Calculate conversion rate: `successful_bookings / booking_attempts`
+     - Identify error patterns via `last_error` tracking
+     - Measure appointment completion funnel
+
+**How It Works:**
+```python
+# In tool function
+metadata = raw_data.get("meta_data", {})  # Get current metadata
+search_count = metadata.get("search_count", 0)  # Read previous value
+
+# ... perform operation ...
+
+# Update metadata before returning
+result.update_metadata({
+    "search_count": search_count + 1,
+    "last_question": question,
+    "last_search_time": "2025-11-12T12:34:56Z"
+})
+```
+
+**Metadata Scope:**
+- **Per-function:** Each `meta_data_token` creates isolated storage
+- **Per-call:** Metadata persists across all function calls in same session
+- **Cross-call:** Functions sharing same token share metadata
+- **Isolated:** Different tokens = different metadata stores
+
+**Impact:**
+- **Analytics:** Track usage patterns for each tool
+- **Optimization:** Identify bottlenecks (e.g., multiple availability checks)
+- **Debugging:** Error tracking with `last_error` on booking failures
+- **UX Improvements:** Data-driven decisions on tool enhancements
+
+**Reference:** [POST Data - Metadata Section](https://developer.signalwire.com/sdks/agents-sdk/post-data#metadata)
 
 ---
 
@@ -200,5 +278,5 @@ Track these metrics to measure impact:
 ---
 
 **Last Updated:** 2025-11-12  
-**Status:** ✅ Two quick wins completed, additional enhancements documented for future
+**Status:** ✅ Three quick wins completed (conversation history + UX actions + metadata tracking), additional enhancements documented for future
 
