@@ -678,11 +678,16 @@ List specific actions needed based on conversation outcome.
 							lead_data = lead_result.data
 							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
 							
+							# Build name - handle None/empty last_name gracefully (Pythonic pattern)
+							full_name = " ".join([s for s in [lead_data.get('first_name'), lead_data.get('last_name')] if s])
+							first_name = lead_data.get('first_name') or ''
+							last_name = lead_data.get('last_name')
+							
 							lead_context = {
 								"lead_id": lead_id,
-								"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
-								"first_name": lead_data.get('first_name'),
-								"last_name": lead_data.get('last_name'),
+								"name": full_name,
+								"first_name": first_name,
+								"last_name": last_name,
 								"qualified": (state_row.get("qualified") if state_row else None) or lead_data.get('status') in ['qualified', 'appointment_set'],
 								"property_address": lead_data.get('property_address'),
 								"property_city": lead_data.get('property_city'),
@@ -708,13 +713,35 @@ List specific actions needed based on conversation outcome.
 								# This avoids DB queries in calendar tools (same pattern as v3)
 								if lead_context.get('broker_nylas_grant_id'):
 									self.update_global_data({
+										# Broker info (for calendar tools)
 										"broker_id": lead_context["broker_id"],
 										"broker_name": lead_context["broker_name"],
+										"broker_company": lead_context.get("broker_company"),
 										"broker_email": lead_context.get("broker_email"),
+										"broker_phone": broker_data.get('phone'),
 										"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
-										"broker_timezone": lead_context.get("broker_timezone")
+										"broker_timezone": lead_context.get("broker_timezone"),
+										# Lead identity (always know who they are)
+										"lead_id": lead_context["lead_id"],
+										"lead_name": lead_context["name"],
+										"lead_first_name": lead_context["first_name"],
+										"lead_phone": phone,
+										"lead_email": lead_context.get("primary_email"),
+										"lead_age": lead_context.get("age"),
+										# Property info (this is a property-based product!)
+										"property_address": lead_context.get("property_address"),
+										"property_city": lead_context.get("property_city"),
+										"property_state": lead_context.get("property_state"),
+										"property_value": lead_context.get("property_value"),
+										"estimated_equity": lead_context.get("estimated_equity"),
+										# Status (don't re-qualify if already qualified)
+										"qualified": lead_context.get("qualified"),
+										"lead_status": lead_data.get('status'),
+										"owner_occupied": lead_data.get('owner_occupied'),
+										# Call metadata
+										"call_direction": call_direction
 									})
-									logger.info(f"✅ Injected broker_nylas_grant_id into global_data for calendar tools")
+									logger.info(f"✅ Injected lead & broker data into global_data for persistent LLM memory")
 							else:
 								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
 						else:
@@ -765,6 +792,8 @@ List specific actions needed based on conversation outcome.
 				# Log lead context for debugging
 				if lead_context:
 					logger.info(f"📋 Lead context for prompt injection: name={lead_context.get('name')}, lead_id={lead_context.get('lead_id')}, qualified={lead_context.get('qualified')}")
+					logger.info(f"📋 Lead context keys: {list(lead_context.keys())}")
+					logger.info(f"📋 Property info: address={lead_context.get('property_address')}, city={lead_context.get('property_city')}, equity=${lead_context.get('estimated_equity')}")
 				else:
 					logger.info(f"📋 No lead context available - will use generic prompt")
 				
@@ -1164,11 +1193,16 @@ List specific actions needed based on conversation outcome.
 							lead_data = lead_result.data
 							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
 							
+							# Build name - handle None/empty last_name gracefully (Pythonic pattern)
+							full_name = " ".join([s for s in [lead_data.get('first_name'), lead_data.get('last_name')] if s])
+							first_name = lead_data.get('first_name') or ''
+							last_name = lead_data.get('last_name')
+							
 							lead_context = {
 								"lead_id": lead_id,
-								"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
-								"first_name": lead_data.get('first_name'),
-								"last_name": lead_data.get('last_name'),
+								"name": full_name,
+								"first_name": first_name,
+								"last_name": last_name,
 								"qualified": state_row.get("qualified") or lead_data.get('status') in ['qualified', 'appointment_set'],
 								"property_address": lead_data.get('property_address'),
 								"property_city": lead_data.get('property_city'),

@@ -135,10 +135,11 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
 
 
 def build_context_injection(call_type: str, lead_context: dict, phone_number: str) -> str:
-	"""Build context string to inject before node prompt
+	"""Build context string to inject before node prompt as narrative instructions
 	
 	This provides the LLM with situational awareness so the same node prompt
 	can adapt to different call types (inbound/outbound, qualified/unqualified).
+	Formatted as natural narrative instructions, not a data dump.
 	
 	Args:
 	    call_type: Type of call (inbound-qualified, outbound-warm, etc.)
@@ -150,58 +151,101 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
 	"""
 	# Determine call direction
 	is_inbound = call_type.startswith("inbound")
-	is_qualified = lead_context.get("qualified", False)
 	lead_id = lead_context.get("lead_id")
-	lead_name = lead_context.get("name", "Unknown")
 	
-	context_parts = [
-		"=== CALL CONTEXT ===",
-		f"Call Type: {call_type}",
-		f"Direction: {'Inbound' if is_inbound else 'Outbound'}",
-		f"Phone: {phone_number}",
-	]
+	context_parts = ["=== CALL CONTEXT ===\n"]
 	
+	# Lead-specific context (known caller)
 	if lead_id:
-		context_parts.append(f"Lead Status: Known (ID: {lead_id})")
-		context_parts.append(f"Lead Name: {lead_name}")
-		context_parts.append(f"Qualified: {'Yes' if is_qualified else 'No'}")
+		lead_name = lead_context.get("name", "Unknown")
+		first_name = lead_context.get("first_name", lead_name)
+		is_qualified = lead_context.get("qualified", False)
 		
-		# Add property context if available
-		property_parts = []
-		if lead_context.get("property_address"):
-			property_parts.append(lead_context['property_address'])
-		elif lead_context.get("property_city") or lead_context.get("property_state"):
-			# Construct address from city/state if address not available
-			addr_parts = []
-			if lead_context.get("property_city"):
-				addr_parts.append(lead_context['property_city'])
-			if lead_context.get("property_state"):
-				addr_parts.append(lead_context['property_state'])
-			if addr_parts:
-				property_parts.append(", ".join(addr_parts))
+		# Call direction with name
+		if is_inbound:
+			context_parts.append(f"You are answering an INBOUND call from {lead_name}.")
+		else:
+			context_parts.append(f"You are making an OUTBOUND call to {lead_name}.")
 		
-		if property_parts:
-			context_parts.append(f"Property: {', '.join(property_parts)}")
+		# About the caller
+		context_parts.append(f"\nABOUT {first_name.upper()}:")
+		context_parts.append(f"- Full name: {lead_name} (use \"{first_name}\" in conversation)")
+		context_parts.append(f"- Phone: {phone_number}")
 		
-		if lead_context.get("estimated_equity"):
-			context_parts.append(f"Est. Equity: ${lead_context['estimated_equity']:,}")
+		if lead_context.get("age"):
+			context_parts.append(f"- Age: {lead_context['age']} years old")
 		
-		# Add email if available (for verification scenarios)
-		if lead_context.get("email") or lead_context.get("primary_email"):
-			context_parts.append(f"Email: {lead_context.get('email') or lead_context.get('primary_email')}")
+		if lead_context.get("primary_email"):
+			context_parts.append(f"- Email: {lead_context['primary_email']}")
 		
-		# Add broker info if assigned (so Barbara knows who to book with)
+		# Property information
+		has_property_info = any([
+			lead_context.get("property_address"),
+			lead_context.get("property_city"),
+			lead_context.get("property_value"),
+			lead_context.get("estimated_equity")
+		])
+		
+		if has_property_info:
+			context_parts.append(f"\n{first_name.upper()}'S PROPERTY:")
+			
+			if lead_context.get("property_address"):
+				context_parts.append(f"- Address: {lead_context['property_address']}")
+			elif lead_context.get("property_city") or lead_context.get("property_state"):
+				city = lead_context.get("property_city", "")
+				state = lead_context.get("property_state", "")
+				location = f"{city}, {state}".strip(", ")
+				context_parts.append(f"- Location: {location}")
+			
+			if lead_context.get("property_value"):
+				context_parts.append(f"- Property value: ${int(float(lead_context['property_value'])):,}")
+			
+			if lead_context.get("estimated_equity"):
+				context_parts.append(f"- Estimated equity: ${int(float(lead_context['estimated_equity'])):,}")
+			
+			if lead_context.get("owner_occupied") is not None:
+				owner_status = "Yes" if lead_context.get("owner_occupied") else "No"
+				context_parts.append(f"- Owner-occupied: {owner_status}")
+		
+		# Qualification status
+		context_parts.append(f"\nQUALIFICATION STATUS:")
+		if is_qualified:
+			context_parts.append(f"- {first_name} is ALREADY QUALIFIED. Skip qualification questions.")
+			if lead_context.get("lead_status"):
+				context_parts.append(f"- Status: {lead_context['lead_status']}")
+		else:
+			context_parts.append(f"- {first_name} is NOT YET QUALIFIED. Ask qualification questions.")
+		
+		# Assigned broker
 		if lead_context.get("broker_name"):
-			broker_info = f"Assigned Broker: {lead_context.get('broker_name')}"
+			context_parts.append(f"\nASSIGNED BROKER:")
+			broker_line = f"- Broker: {lead_context['broker_name']}"
 			if lead_context.get("broker_company"):
-				broker_info += f" ({lead_context.get('broker_company')})"
-			context_parts.append(broker_info)
-			# Note: broker_nylas_grant_id is available in lead_context but not shown in prompt
-			# (it's used directly by calendar tools to skip DB queries)
-	else:
-		context_parts.append("Lead Status: Unknown (new caller)")
+				broker_line += f" from {lead_context['broker_company']}"
+			context_parts.append(broker_line)
+			context_parts.append(f"- When {first_name} is ready to book, schedule with {lead_context['broker_name']}.")
+		
+		context_parts.append(f"\nUse these facts naturally in conversation. If asked about their property, broker, or status, reference this information.")
 	
-	context_parts.append("===================\n")
+	# Cold caller (no lead info)
+	else:
+		if is_inbound:
+			context_parts.append(f"You are answering an INBOUND call from an UNKNOWN caller.")
+		else:
+			context_parts.append(f"You are making an OUTBOUND call to phone number {phone_number}.")
+		
+		context_parts.append(f"\nABOUT THIS CALLER:")
+		context_parts.append(f"- This is a NEW caller - you don't have their information yet.")
+		context_parts.append(f"- Phone: {phone_number}")
+		context_parts.append(f"- Ask for their name, property details, and qualification information.")
+		
+		if not is_inbound:
+			context_parts.append(f"\nOUTBOUND APPROACH:")
+			context_parts.append(f"- Verify you're speaking to the right person first.")
+			context_parts.append(f"- Ask if now is a good time to talk.")
+			context_parts.append(f"- Be respectful - they didn't call you.")
+	
+	context_parts.append("\n===================\n")
 	
 	return "\n".join(context_parts)
 
@@ -265,6 +309,19 @@ def build_instructions_for_node(
 		instructions = node_prompt_with_theme
 	
 	logger.debug(f"📄 Built instructions for node '{node_name}': {len(instructions)} chars")
+	
+	# Debug: Log the actual context that was injected (first 500 chars of context section)
+	if context:
+		# Extract context section for logging
+		if "\n---\n" in instructions:
+			parts = instructions.split("\n---\n")
+			if len(parts) >= 2:
+				# Context is between theme and node
+				context_section = parts[0].split("=== CALL CONTEXT ===")
+				if len(context_section) > 1:
+					context_text = "=== CALL CONTEXT ===" + context_section[1].split("===================")[0] + "==================="
+					logger.info(f"📋 Context injection preview: {context_text[:300]}...")
+	
 	return instructions
 
 
