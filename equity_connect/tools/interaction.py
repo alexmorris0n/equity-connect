@@ -60,7 +60,7 @@ async def save_interaction(
 		
 		# Build comprehensive metadata
 		interaction_metadata = {
-			"ai_agent": "livekit-agent",
+			"ai_agent": "signalwire-agent",
 			"version": "1.0",
 			"conversation_transcript": metadata_dict.get("conversation_transcript") if metadata_dict else None,
 			"prompt_version_id": metadata_dict.get("prompt_version_id") if metadata_dict else None,

@@ -147,20 +147,17 @@
 
     <!-- TTS Tab -->
     <div v-if="activeTab === 'tts'" class="tab-content">
-      <h2>Text-to-Speech Settings</h2>
+      <h2>Text-to-Speech Settings (SignalWire)</h2>
+      <p class="info-banner">
+        🎤 SignalWire provides all voices automatically - no separate API keys needed!
+      </p>
       
+      <!-- Voice Selector with Pricing -->
       <div class="form-group">
-        <label>Voice Selection</label>
-        <select v-model="config.tts.voice">
-          <option value="alloy">Alloy (Neutral)</option>
-          <option value="echo">Echo (Male)</option>
-          <option value="fable">Fable (Warm)</option>
-          <option value="onyx">Onyx (Deep)</option>
-          <option value="nova">Nova (Female)</option>
-          <option value="shimmer">Shimmer (Soft)</option>
-        </select>
+        <VoiceSelector v-model="config.tts.voice" />
       </div>
 
+      <!-- TTS Processing Options -->
       <div class="form-group">
         <label>
           <input type="checkbox" v-model="config.tts.normalizeNumbers">
@@ -184,6 +181,26 @@
         </label>
         <p class="help-text">Round to nearest significant figure for speech</p>
       </div>
+
+      <!-- Cost Calculator (Collapsible) -->
+      <details class="cost-section" open>
+        <summary class="cost-section-header">
+          💰 Estimate Your Voice Costs
+        </summary>
+        <div class="cost-section-content">
+          <VoiceCostCalculator />
+        </div>
+      </details>
+
+      <!-- Pricing Comparison (Collapsible) -->
+      <details class="cost-section">
+        <summary class="cost-section-header">
+          📊 Compare All Voice Providers
+        </summary>
+        <div class="cost-section-content">
+          <VoicePricingComparison />
+        </div>
+      </details>
     </div>
 
     <!-- Advanced Tab -->
@@ -254,13 +271,24 @@
 </template>
 
 <script>
+import VoiceSelector from './VoiceSelector.vue';
+import VoiceCostCalculator from './VoiceCostCalculator.vue';
+import VoicePricingComparison from './VoicePricingComparison.vue';
+
 export default {
   name: 'BarbaraConfig',
+  
+  components: {
+    VoiceSelector,
+    VoiceCostCalculator,
+    VoicePricingComparison,
+  },
   
   data() {
     return {
       activeTab: 'personality',
       showPreview: false,
+      voiceProvider: 'elevenlabs',  // Track current voice provider
       
       tabs: [
         { id: 'personality', label: 'Personality' },
@@ -289,7 +317,7 @@ export default {
           confidence: 0.8
         },
         tts: {
-          voice: 'alloy',
+          voice: 'elevenlabs.rachel',  // Updated default to SignalWire format
           normalizeNumbers: true,
           useApproximations: true,
           smartRounding: true
@@ -301,6 +329,39 @@ export default {
           logBookingAttempts: true,
           sessionTimeout: 15
         }
+      },
+      
+      // Voice metadata for preview
+      voiceMetadata: {
+        // ElevenLabs
+        'elevenlabs.rachel': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Most popular, clear and natural' },
+        'elevenlabs.nicole': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Confident, strong - BEST for Barbara' },
+        'elevenlabs.serena': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Warm, friendly - GREAT for Barbara' },
+        'elevenlabs.grace': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Elegant, refined - GREAT for Barbara' },
+        'elevenlabs.charlotte': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Clear articulation' },
+        'elevenlabs.domi': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Strong, professional' },
+        'elevenlabs.emily': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Calm, soothing' },
+        'elevenlabs.elli': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Young, energetic' },
+        'elevenlabs.dorothy': { gender: 'Female', accent: 'British', quality: 'Premium', latency: 250, notes: 'British accent, pleasant' },
+        'elevenlabs.matilda': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Mature, authoritative' },
+        'elevenlabs.gigi': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Cheerful, upbeat' },
+        'elevenlabs.freya': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Business professional' },
+        'elevenlabs.jessie': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Casual, relaxed' },
+        'elevenlabs.glinda': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Dramatic, theatrical' },
+        'elevenlabs.mimi': { gender: 'Female', accent: 'American', quality: 'Premium', latency: 250, notes: 'Cute, playful' },
+        
+        // OpenAI
+        'openai.alloy': { gender: 'Neutral', accent: 'American', quality: 'Standard', latency: 180, notes: 'Versatile neutral voice' },
+        'openai.echo': { gender: 'Male', accent: 'American', quality: 'Standard', latency: 180, notes: 'Clear male voice' },
+        'openai.fable': { gender: 'Neutral', accent: 'British', quality: 'Standard', latency: 180, notes: 'Warm British voice' },
+        'openai.onyx': { gender: 'Male', accent: 'American', quality: 'Standard', latency: 180, notes: 'Deep male voice' },
+        'openai.nova': { gender: 'Female', accent: 'American', quality: 'Standard', latency: 180, notes: 'Friendly female' },
+        'openai.shimmer': { gender: 'Female', accent: 'American', quality: 'Standard', latency: 180, notes: 'Soft, gentle' },
+        
+        // Rime
+        'rime.luna': { gender: 'Female', accent: 'American', quality: 'Ultra', latency: 200, notes: 'Ultra-realistic Arcana model' },
+        'rime.hudson': { gender: 'Male', accent: 'American', quality: 'Premium', latency: 150, notes: 'Fast business voice' },
+        'rime.sage': { gender: 'Neutral', accent: 'American', quality: 'Ultra', latency: 200, notes: 'Wise, neutral tone' }
       },
       
       slots: [
@@ -364,7 +425,32 @@ export default {
     };
   },
   
+  computed: {
+    selectedVoiceInfo() {
+      return this.voiceMetadata[this.config.tts.voice] || null;
+    }
+  },
+  
+  watch: {
+    'config.tts.voice'(newVoice) {
+      // Auto-update provider when voice changes
+      if (newVoice) {
+        this.voiceProvider = newVoice.split('.')[0];
+      }
+    }
+  },
+  
   methods: {
+    onProviderChange() {
+      // When provider changes, set default voice for that provider
+      const defaultVoices = {
+        'elevenlabs': 'elevenlabs.rachel',
+        'openai': 'openai.nova',
+        'rime': 'rime.luna'
+      };
+      this.config.tts.voice = defaultVoices[this.voiceProvider] || 'elevenlabs.rachel';
+    },
+    
     async saveConfig() {
       try {
         // Save to Supabase or backend
@@ -622,5 +708,46 @@ export default {
   overflow: auto;
   margin-bottom: 1rem;
 }
+
+/* Cost Section Styling */
+.cost-section {
+  margin-top: 2rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cost-section-header {
+  padding: 1rem 1.5rem;
+  background: #f9fafb;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #111827;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.cost-section-header:hover {
+  background: #f3f4f6;
+}
+
+.cost-section-header::-webkit-details-marker {
+  display: none;
+}
+
+.cost-section[open] .cost-section-header {
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.cost-section-content {
+  padding: 1.5rem;
+  background: #ffffff;
+}
 </style>
+
 

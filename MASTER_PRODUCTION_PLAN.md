@@ -247,6 +247,27 @@ SignalWire SIP → SignalWire Agent SDK → Fly.io Agent Worker (SignalWire SDK)
 
 **Status:** ✅ **CORE MIGRATION COMPLETE - Testing Phase (November 12, 2025)**
 
+### ✅ Phase 5: Voice Configuration & Pricing System (COMPLETE - NOV 12, 2025)
+- ✅ Created comprehensive voice pricing transparency system
+- ✅ Integrated into `BarbaraConfig.vue` TTS tab (new configurator)
+- ✅ 7 TTS providers supported with pricing tiers:
+  - **Standard Tier** ($0.008/1k chars): OpenAI, Amazon Polly, Microsoft Azure, Google Cloud, Cartesia
+  - **Mid Tier** ($0.12/1k chars): Rime
+  - **Premium Tier** ($0.297/1k chars): ElevenLabs
+- ✅ Real-time cost estimation and provider comparison
+- ✅ 400+ voices catalogued with gender filtering
+- ✅ Manual voice ID override for custom voices
+- ✅ Components: VoiceSelector, VoiceCostCalculator, VoicePricingComparison
+
+**Key Files:**
+- `portal/src/components/VoiceSelector.vue` - Voice picker with pricing badges
+- `portal/src/components/VoiceCostCalculator.vue` - Interactive cost estimator
+- `portal/src/components/VoicePricingComparison.vue` - Provider comparison table
+- `portal/src/constants/voices.ts` - Voice data with pricing metadata
+- `portal/src/components/BarbaraConfig.vue` - Updated TTS tab with pricing components
+
+**Status:** ✅ **VOICE PRICING SYSTEM COMPLETE (November 12, 2025)**
+
 ---
 
 ## 🎙️ LiveKit Cloud Voice System (DEPRECATED) ⚠️

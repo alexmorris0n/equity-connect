@@ -31,6 +31,13 @@ const BRIDGE_API_KEY = process.env.BRIDGE_API_KEY;
 const NYLAS_API_KEY = process.env.NYLAS_API_KEY;
 const NYLAS_API_URL = process.env.NYLAS_API_URL || 'https://api.us.nylas.com';
 
+// SignalWire credentials for outbound calls
+const SIGNALWIRE_PROJECT_ID = process.env.SIGNALWIRE_PROJECT_ID;
+const SIGNALWIRE_API_TOKEN = process.env.SIGNALWIRE_API_TOKEN;
+const SIGNALWIRE_SPACE_URL = process.env.SIGNALWIRE_SPACE_URL;
+const SIGNALWIRE_PHONE_NUMBER = process.env.SIGNALWIRE_PHONE_NUMBER;
+const BARBARA_AGENT_URL = process.env.BARBARA_AGENT_URL || 'https://barbara-agent.fly.dev/agent';
+
 if (!BRIDGE_API_KEY) {
   app.log.error('BRIDGE_API_KEY environment variable is required');
   process.exit(1);
@@ -38,6 +45,10 @@ if (!BRIDGE_API_KEY) {
 
 if (!NYLAS_API_KEY) {
   app.log.warn('NYLAS_API_KEY not set - Nylas tools will not be available');
+}
+
+if (!SIGNALWIRE_PROJECT_ID || !SIGNALWIRE_API_TOKEN || !SIGNALWIRE_SPACE_URL) {
+  app.log.warn('⚠️  SignalWire credentials not set - outbound calls will fail');
 }
 
 // Tool definitions
@@ -477,55 +488,53 @@ async function executeTool(name, args) {
     }
     
     case 'create_outbound_call': {
-      app.log.info({ args }, '📞 Creating outbound call via bridge');
+      app.log.info({ to_phone: args.to_phone, lead_id: args.lead_id }, '📞 Creating outbound call via SignalWire');
       
       try {
-        // Just call the bridge - it handles everything!
-        const response = await fetch(`${BRIDGE_URL}/api/outbound-call`, {
+        // Call SignalWire Voice API directly
+        const auth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+        
+        const response = await fetch(`${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${BRIDGE_API_KEY}`
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${auth}`
           },
-          body: JSON.stringify(args)  // Pass everything to bridge
+          body: new URLSearchParams({
+            To: args.to_phone,
+            From: args.from_phone || SIGNALWIRE_PHONE_NUMBER,
+            Url: BARBARA_AGENT_URL,
+            Method: 'POST'
+          })
         });
         
         const result = await response.json();
         
-        if (result.success) {
-          app.log.info({ result }, '✅ Outbound call created successfully');
+        if (result.sid) {
+          app.log.info({ call_sid: result.sid, to: args.to_phone }, '✅ Outbound call created');
           return {
             content: [
               {
                 type: 'text',
                 text: `✅ Outbound Call Created!\n\n` +
-                      `📞 Conversation ID: ${result.conversation_id || 'N/A'}\n` +
-                      `📱 SIP Call ID: ${result.sip_call_id || 'N/A'}\n` +
-                      `📞 From: ${result.from_number || 'N/A'}\n` +
-                      `📱 To: ${result.to_number || args.to_phone}\n` +
-                      `💬 ${result.message || 'Call initiated'}`
+                      `📞 Call SID: ${result.sid}\n` +
+                      `📱 From: ${result.from || SIGNALWIRE_PHONE_NUMBER}\n` +
+                      `📱 To: ${result.to}\n` +
+                      `👤 Lead ID: ${args.lead_id}\n` +
+                      `💬 Status: ${result.status}`
               }
             ]
           };
         } else {
-          app.log.error({ result }, '❌ Outbound call failed');
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `❌ Outbound call failed: ${result.message || 'Unknown error'}`
-              }
-            ],
-            isError: true
-          };
+          throw new Error(result.message || 'Call creation failed');
         }
       } catch (error) {
-        app.log.error({ error }, '❌ Bridge API error');
+        app.log.error({ error }, '❌ SignalWire API error');
         return {
           content: [
             {
               type: 'text',
-              text: `❌ Bridge API error: ${error.message}`
+              text: `❌ Outbound call failed: ${error.message}`
             }
           ],
           isError: true

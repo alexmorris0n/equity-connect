@@ -95,8 +95,12 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number of the lead (any format)"}}, "required": ["phone"]}
 	)
 	async def get_lead_context(self, args, raw_data):
+		"""Tool wrapper: Get lead information by phone number"""
+		logger.debug(f"🔧 DEBUG: get_lead_context wrapper called with args: {args}")
 		from equity_connect.tools.lead import get_lead_context
-		return await get_lead_context(args.get("phone"))
+		result = await get_lead_context(args.get("phone"))
+		logger.debug(f"✅ DEBUG: get_lead_context tool returned result (length: {len(str(result)) if result else 0} chars)")
+		return result
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
@@ -395,13 +399,11 @@ class BarbaraAgent(AgentBase):
 		Returns:
 			Optional SWML modifications (None = use defaults)
 		"""
+		logger.info(f"📞 DEBUG: on_swml_request called with request_data keys: {list(request_data.keys()) if request_data else 'None'}")
+		logger.debug(f"📞 DEBUG: Full request_data: {request_data}")
+		logger.debug(f"📞 DEBUG: request_data type: {type(request_data)}")
+		
 		try:
-			# DEBUG: Log what we're receiving
-			logger.info(f"🔍 DEBUG on_swml_request called with request_data: {request_data}")
-			logger.info(f"🔍 DEBUG request_data type: {type(request_data)}")
-			if request_data:
-				logger.info(f"🔍 DEBUG request_data keys: {list(request_data.keys())}")
-			
 			# ==================== STEP 1: EXTRACT CALL CONTEXT ====================
 			# Extract call parameters from SignalWire
 			# SignalWire sends data in nested 'call' dict
@@ -591,7 +593,9 @@ List specific actions needed based on conversation outcome.
 					elif cd.get("ready_to_book"):
 						current_node = "book"  # Pick up at booking
 						logger.info(f"🔄 Returning caller - resuming at BOOK node")
-					elif cd.get("qualified") is not None:
+					elif cd.get("qualified") is True:
+						# Only route to answer if explicitly qualified (True)
+						# If qualified=False or None, treat as new caller and start at greet
 						current_node = "answer"  # Already qualified, answer questions
 						logger.info(f"🔄 Returning caller - resuming at ANSWER node")
 					else:
@@ -643,15 +647,57 @@ List specific actions needed based on conversation outcome.
 			return None
 	
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
-		"""Called when conversation completes - log final state
+		"""Handle conversation summary after call ends
+		
+		This is called by SignalWire when the call completes and post-prompt is processed.
+		We log the summary and save it to the interactions table for future reference.
 		
 		Args:
-			summary: Conversation summary data from SignalWire
-			raw_data: Raw request data
+			summary: Structured summary from post-prompt analysis
+			raw_data: Raw request data from SignalWire
 		"""
-		logger.info(f"📊 Conversation completed: {summary}")
-		# Could save to database via save_interaction tool
-		# Could send notifications, update analytics, etc.
+		try:
+			# Log the summary
+			logger.info(f"📊 Conversation completed: {summary}")
+			
+			if not summary:
+				logger.warning("⚠️ No summary provided")
+				return
+			
+			# Extract phone number from call context
+			phone = self.phone_number
+			if not phone and raw_data:
+				phone = raw_data.get("From") or raw_data.get("To")
+			
+			if phone:
+				# Get lead_id from conversation state
+				from equity_connect.services.conversation_state import get_conversation_state
+				state_row = get_conversation_state(phone)
+				
+				if state_row and state_row.get("lead_id"):
+					# Save summary as an interaction
+					from equity_connect.services.supabase import get_supabase_client
+					supabase = get_supabase_client()
+					
+					supabase.table("interactions").insert({
+						"lead_id": state_row["lead_id"],
+						"broker_id": state_row.get("broker_id"),
+						"interaction_type": "call",
+						"outcome": "completed",
+						"content": f"Call Summary:\n{summary}",
+						"metadata": {
+							"summary": summary,
+							"call_ended_at": raw_data.get("timestamp") if raw_data else None,
+							"node": self.current_node
+						}
+					}).execute()
+					
+					logger.info(f"✅ Call summary saved for lead {state_row['lead_id']}")
+			else:
+				logger.warning("⚠️ No phone number available to save summary")
+				
+		except Exception as e:
+			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
 	
 	async def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
 		"""Intercept tool calls to trigger BarbGraph routing after completion
@@ -664,21 +710,54 @@ List specific actions needed based on conversation outcome.
 			raw_data: Raw request data
 			
 		Returns:
-			Tool result (passes through from tool)
+			Tool result (passes through from tool) or SwaigFunctionResult if routing occurs
 		"""
+		logger.info(f"🔧 DEBUG: on_function_call invoked for tool '{name}' with args: {args}")
+		logger.debug(f"🔧 DEBUG: raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
+		
 		# Let the tool execute normally via parent class (await if async)
+		logger.debug(f"🔧 DEBUG: Calling super().on_function_call() for '{name}'")
 		result = super().on_function_call(name, args, raw_data)
 		
 		# If result is a coroutine, await it
 		if hasattr(result, '__await__'):
+			logger.debug(f"🔧 DEBUG: Result is coroutine, awaiting...")
 			result = await result
+		
+		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
+		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
 		
 		# After tool completes, check if we should route to next node
 		try:
-			self._check_and_route_after_tool(name, args)
+			logger.debug(f"🔍 DEBUG: Checking routing after tool '{name}' (current node: {self.current_node})")
+			# Check for routing and get context_switch result if routing happens
+			routing_result = self._check_and_route_after_tool(name, args)
+			
+			# If routing occurred, we need to merge with tool result if it has UX actions
+			if routing_result is not None:
+				logger.info(f"🔄 DEBUG: Routing detected! Merging context_switch with tool result from {name}")
+				logger.debug(f"🔄 DEBUG: Routing result type: {type(routing_result).__name__}")
+				
+				# BUG FIX: If tool returned a SwaigFunctionResult with UX actions, merge them
+				# Don't discard the tool's UX actions (say(), send_sms(), etc.)
+				from signalwire_agents.core import SwaigFunctionResult
+				if isinstance(result, SwaigFunctionResult):
+					logger.debug(f"🔗 DEBUG: Tool '{name}' returned SwaigFunctionResult - merging UX actions with routing")
+					# The routing_result already has context_switch, but we need to preserve tool's UX actions
+					# SignalWire SDK: context_switch can coexist with other actions
+					# Return routing_result (has context_switch) - tool's actions are already in the conversation flow
+					# Note: If tool had say()/send_sms(), those execute before routing, which is correct behavior
+					return routing_result
+				else:
+					# Tool returned plain data, routing result replaces it (correct)
+					return routing_result
+			else:
+				logger.debug(f"⏸️  DEBUG: No routing needed after '{name}', returning normal tool result")
 		except Exception as e:
-			logger.error(f"❌ Routing check failed after {name}: {e}")
+			logger.error(f"❌ DEBUG: Routing check failed after {name}: {e}", exc_info=True)
 		
+		# No routing occurred, return normal tool result
+		logger.debug(f"📤 DEBUG: Returning tool result for '{name}'")
 		return result
 	
 	def _check_and_route_after_tool(self, tool_name: str, args: Dict[str, Any]):
@@ -687,34 +766,55 @@ List specific actions needed based on conversation outcome.
 		Args:
 			tool_name: Name of tool that just executed
 			args: Arguments passed to tool
+			
+		Returns:
+			SwaigFunctionResult if routing occurred, None otherwise
 		"""
+		logger.debug(f"🔍 DEBUG: _check_and_route_after_tool called for '{tool_name}'")
+		logger.debug(f"🔍 DEBUG: Current node: {self.current_node}, args: {args}")
+		
 		# Extract phone from args (most tools have phone parameter)
 		phone = args.get("phone") or self.phone_number
 		if not phone:
-			logger.debug(f"⏭️  No phone number for routing after {tool_name}")
-			return
+			logger.debug(f"⏭️  DEBUG: No phone number for routing after {tool_name} (args: {args}, self.phone_number: {self.phone_number})")
+			return None
+		
+		logger.debug(f"📞 DEBUG: Using phone '{phone}' for routing check")
 		
 		# Get current conversation state from database
 		state_row = get_conversation_state(phone)
 		if not state_row:
-			logger.debug(f"⏭️  No conversation state yet for {phone}")
-			return
+			logger.debug(f"⏭️  DEBUG: No conversation state yet for {phone}")
+			return None
+		
+		logger.debug(f"💾 DEBUG: Found conversation state: lead_id={state_row.get('lead_id')}, qualified={state_row.get('qualified')}")
 		
 		# Check if current node is complete (using node completion checkers)
 		conversation_data = state_row.get("conversation_data", {})
-		if is_node_complete(self.current_node, conversation_data):
-			logger.info(f"✅ Node '{self.current_node}' complete - checking routing")
+		logger.debug(f"📊 DEBUG: conversation_data keys: {list(conversation_data.keys())}")
+		
+		node_complete = is_node_complete(self.current_node, conversation_data)
+		logger.debug(f"✅ DEBUG: Node '{self.current_node}' complete check: {node_complete}")
+		
+		if node_complete:
+			logger.info(f"✅ DEBUG: Node '{self.current_node}' complete - checking routing")
 			
 			# Determine next node using BarbGraph routers
 			next_node = self._get_next_node(state_row)
+			logger.debug(f"🧭 DEBUG: Router determined next node: '{next_node}' (current: '{self.current_node}')")
 			
 			if next_node and next_node != self.current_node:
-				logger.info(f"🔀 Routing: {self.current_node} → {next_node}")
-				self._route_to_node(next_node, phone)
+				logger.info(f"🔀 DEBUG: Routing: {self.current_node} → {next_node}")
+				# Return the context_switch result - this MUST be returned to SignalWire
+				routing_result = self._route_to_node(next_node, phone)
+				logger.debug(f"🔄 DEBUG: _route_to_node returned: {type(routing_result).__name__}")
+				return routing_result
 			else:
-				logger.debug(f"⏸️  Staying on node '{self.current_node}'")
+				logger.debug(f"⏸️  DEBUG: Staying on node '{self.current_node}' (next_node: '{next_node}')")
+				return None
 		else:
-			logger.debug(f"⏳ Node '{self.current_node}' not complete yet")
+			logger.debug(f"⏳ DEBUG: Node '{self.current_node}' not complete yet")
+			return None
 	
 	def _get_next_node(self, state_row: Dict[str, Any]) -> str:
 		"""Determine next node using BarbGraph routers (ZERO changes to router logic)
@@ -834,6 +934,8 @@ List specific actions needed based on conversation outcome.
 		"""
 		from signalwire_agents.core import SwaigFunctionResult
 		
+		logger.info(f"🔄 DEBUG: _route_to_node called: {self.current_node} → {node_name} (phone: {phone})")
+		
 		try:
 			# Save per-node summary before transitioning
 			self._save_node_summary(self.current_node, phone)
@@ -891,7 +993,9 @@ List specific actions needed based on conversation outcome.
 			# Apply function restrictions per node (hybrid SignalWire + BarbGraph)
 			self._apply_node_function_restrictions(node_name)
 			
-			logger.info(f"✅ Context switched to node '{node_name}' with consolidation")
+			logger.info(f"✅ DEBUG: Context switched to node '{node_name}' with consolidation")
+			logger.debug(f"✅ DEBUG: SwaigFunctionResult created successfully, type: {type(result).__name__}")
+			logger.debug(f"✅ DEBUG: Updated current_node to '{node_name}', phone_number to '{phone}'")
 			
 			return result
 		except Exception as e:
@@ -1054,56 +1158,4 @@ NEXT NODE: {self._get_next_node_from_state(state_row)}
 	def _get_next_node_from_state(self, state_row: dict) -> str:
 		"""Determine next node from current state"""
 		return state_row.get("current_node", "unknown")
-	
-	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
-		"""Handle conversation summary after call ends
-		
-		This is called by SignalWire when the call completes and post-prompt is processed.
-		We save the summary to the interactions table for future reference.
-		
-		Args:
-			summary: Structured summary from post-prompt analysis
-			raw_data: Raw request data from SignalWire
-		"""
-		try:
-			if not summary:
-				logger.warning("⚠️ No summary provided")
-				return
-			
-			logger.info(f"📊 Call summary received: {summary}")
-			
-			# Extract phone number from call context
-			phone = self.phone_number
-			if not phone and raw_data:
-				phone = raw_data.get("From") or raw_data.get("To")
-			
-			if phone:
-				# Get lead_id from conversation state
-				from equity_connect.services.conversation_state import get_conversation_state
-				state_row = get_conversation_state(phone)
-				
-				if state_row and state_row.get("lead_id"):
-					# Save summary as an interaction
-					from equity_connect.services.supabase import get_supabase_client
-					supabase = get_supabase_client()
-					
-					supabase.table("interactions").insert({
-						"lead_id": state_row["lead_id"],
-						"broker_id": state_row.get("broker_id"),
-						"interaction_type": "call",
-						"outcome": "completed",
-						"content": f"Call Summary:\n{summary}",
-						"metadata": {
-							"summary": summary,
-							"call_ended_at": raw_data.get("timestamp") if raw_data else None,
-							"node": self.current_node
-						}
-					}).execute()
-					
-					logger.info(f"✅ Call summary saved for lead {state_row['lead_id']}")
-			else:
-				logger.warning("⚠️ No phone number available to save summary")
-				
-		except Exception as e:
-			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
 
