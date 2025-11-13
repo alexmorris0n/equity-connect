@@ -609,12 +609,44 @@ List specific actions needed based on conversation outcome.
 				if state_row:
 					lead_id = state_row.get("lead_id")
 					if lead_id:
-						lead_context = {
-							"lead_id": lead_id,
-							"qualified": state_row.get("qualified"),
-							"conversation_data": state_row.get("conversation_data", {})
-						}
-						logger.info(f"👤 Found lead context: lead_id={lead_id}")
+						# Load full lead data from leads table
+						from equity_connect.services.supabase import get_supabase_client
+						try:
+							sb = get_supabase_client()
+							lead_result = sb.table('leads').select('*').eq('id', lead_id).single().execute()
+							
+							if lead_result.data:
+								lead_data = lead_result.data
+								lead_context = {
+									"lead_id": lead_id,
+									"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
+									"first_name": lead_data.get('first_name'),
+									"last_name": lead_data.get('last_name'),
+									"qualified": state_row.get("qualified") or lead_data.get('status') in ['qualified', 'appointment_set'],
+									"property_address": lead_data.get('property_address'),
+									"property_city": lead_data.get('property_city'),
+									"property_state": lead_data.get('property_state'),
+									"property_value": lead_data.get('property_value'),
+									"estimated_equity": lead_data.get('estimated_equity'),
+									"primary_email": lead_data.get('primary_email'),
+									"age": lead_data.get('age'),
+									"conversation_data": state_row.get("conversation_data", {})
+								}
+								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')}")
+							else:
+								logger.warning(f"Lead {lead_id} not found in leads table")
+								lead_context = {
+									"lead_id": lead_id,
+									"qualified": state_row.get("qualified"),
+									"conversation_data": state_row.get("conversation_data", {})
+								}
+						except Exception as e:
+							logger.error(f"Failed to load lead data: {e}")
+							lead_context = {
+								"lead_id": lead_id,
+								"qualified": state_row.get("qualified"),
+								"conversation_data": state_row.get("conversation_data", {})
+							}
 					
 					# Check if this is a returning caller (multi-call persistence)
 					cd = state_row.get("conversation_data", {})
