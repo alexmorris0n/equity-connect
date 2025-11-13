@@ -9,9 +9,9 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code and preserve package structure
-# Copy only the equity_connect package directory (not entire workspace root)
+# Build context is equity_connect/, so copy current directory contents
 # This creates /app/equity_connect/ with all modules at the correct level
-COPY equity_connect /app/equity_connect
+COPY . /app/equity_connect
 
 EXPOSE 8080
 # Run using module syntax to properly resolve imports
