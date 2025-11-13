@@ -322,7 +322,7 @@ export default {
         configs.value[selectedLanguage.value] = {
           vertical: 'reverse_mortgage',
           language_code: selectedLanguage.value,
-          tts_engine: 'elevenlabs',
+          tts_engine: currentConfig.value.tts_engine,
           voice_name: '',
           model: null,
           is_active: true
@@ -339,7 +339,7 @@ export default {
         configs.value[selectedLanguage.value] = {
           vertical: 'reverse_mortgage',
           language_code: selectedLanguage.value,
-          tts_engine: 'elevenlabs',
+          tts_engine: currentConfig.value.tts_engine,
           voice_name: voice.id,
           model: voice.model !== undefined ? voice.model : null,
           is_active: true
