@@ -711,86 +711,81 @@ def check_and_route(self, tool_name: str):
 
 ---
 
-#### Component 3.2: Prompt Loader
+#### Component 3.2: Prompt Loader (SignalWire Implementation)
 
-**File:** `livekit-agent/services/prompt_loader.py`
+**File:** `equity_connect/services/prompt_loader.py`
 
-**Purpose:** Load node prompts from Supabase with file fallback + context injection.
+**Purpose:** Load node prompts from Supabase with file fallback + context injection for SignalWire SDK.
 
-**Code Snippet:**
+**Key Functions:**
+1. `load_theme()` - Loads universal personality prompt for vertical
+2. `load_node_prompt()` - Loads node-specific prompt and combines with theme
+3. `build_context_injection()` - Builds call-specific context string
+4. `build_instructions_for_node()` - **Main function** that combines all three layers
+
+**Context Injection Method:**
+SignalWire uses **string concatenation** (not template variables like `{{variable}}`). Context is injected as a formatted text block that gets inserted between the theme and node sections.
+
+**Code Snippet: Main Function**
 
 ```python
-def load_theme(vertical: str = "reverse_mortgage") -> str:
-    """Load universal theme prompt for a vertical from database"""
-    try:
-        sb = get_supabase_client()
-        result = sb.table('theme_prompts').select('content').eq('vertical', vertical).eq('is_active', True).single().execute()
-        
-        if result.data and result.data.get('content'):
-            logger.info(f"✅ Loaded theme for {vertical}: {len(result.data['content'])} chars")
-            return result.data['content']
-    except Exception as e:
-        logger.warning(f"Failed to load theme from database: {e}")
+def build_instructions_for_node(
+    node_name: str,
+    call_type: str = "outbound",
+    lead_context: Optional[dict] = None,
+    phone_number: Optional[str] = None,
+    vertical: str = "reverse_mortgage"
+) -> str:
+    """Build complete instructions for a node (theme + context + node prompt)
     
-    # FALLBACK: Basic theme if database fails
-    return """# Barbara - Core Personality
-[Fallback theme content]
-"""
+    This is the main function called by BarbaraAgent to get full prompt text for SignalWire.
+    Combines theme, call context, and node-specific instructions in the correct order.
+    
+    Returns:
+        Complete prompt text ready for agent.set_prompt_text() or context_switch
+    """
+    # 1. Load node prompt (already includes theme from load_node_prompt())
+    # load_node_prompt() returns: theme + "---" + node
+    node_prompt_with_theme = load_node_prompt(node_name, vertical)
+    
+    # 2. Build context injection (if we have context)
+    context = None
+    if lead_context and phone_number:
+        context = build_context_injection(call_type, lead_context, phone_number)
+    
+    # 3. Combine: Theme → Context → Node
+    # Insert context between theme and node sections
+    if context:
+        # Split on the separator "---" that load_node_prompt adds
+        if "\n---\n" in node_prompt_with_theme:
+            theme_part, node_part = node_prompt_with_theme.split("\n---\n", 1)
+            instructions = f"{theme_part}\n\n{context}\n\n---\n{node_part}"
+        else:
+            # Fallback: append context after everything
+            instructions = f"{node_prompt_with_theme}\n\n{context}"
+    else:
+        # No context: use node prompt as-is (already has theme)
+        instructions = node_prompt_with_theme
+    
+    return instructions
+```
 
+**Code Snippet: Context Injection**
 
-def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
-    """Load node prompt from database and combine with theme"""
-    
-    # 1. Load theme (universal personality)
-    theme = load_theme(vertical)
-    
-    # 2. Load node prompt from database
-    try:
-        sb = get_supabase_client()
-        result = sb.rpc('get_node_prompt', {
-            'p_vertical': vertical,
-            'p_node_name': node_name
-        }).execute()
-        
-        if result.data and len(result.data) > 0:
-            content = result.data[0].get('content', {})
-            
-            # Build prompt from JSONB fields (NO personality - moved to theme)
-            prompt_parts = []
-            if content.get('role'):
-                prompt_parts.append(f"## Role\n{content['role']}\n")
-            if content.get('instructions'):
-                prompt_parts.append(f"## Instructions\n{content['instructions']}")
-            
-            if prompt_parts:
-                node_prompt = "\n".join(prompt_parts)
-                # Combine: Theme → Node (theme prepended, separator added)
-                combined_prompt = f"{theme}\n\n---\n\n{node_prompt}"
-                logger.info(f"✅ Combined theme ({len(theme)} chars) + node ({len(node_prompt)} chars) = {len(combined_prompt)} chars")
-                return combined_prompt
-            else:
-                logger.warning(f"Database returned empty content for {node_name}/{vertical}")
-    
-    except Exception as e:
-        logger.warning(f"Failed to load from database: {e}, falling back to file")
-    
-    # FALLBACK TO FILE
-    module_dir = os.path.dirname(__file__)
-    prompt_path = os.path.join(module_dir, "..", "prompts", vertical, "nodes", f"{node_name}.md")
-    prompt_path = os.path.abspath(prompt_path)
-    
-    try:
-        with open(prompt_path, 'r') as f:
-            node_prompt = f.read()
-            # Combine with theme even in fallback
-            return f"{theme}\n\n---\n\n{node_prompt}"
-    except FileNotFoundError:
-        return f"{theme}\n\n---\n\nYou are in the {node_name} phase. Continue naturally."
-
-
+```python
 def build_context_injection(call_type: str, lead_context: dict, phone_number: str) -> str:
-    """Build context string to inject before node prompt"""
+    """Build context string to inject into prompt
     
+    Creates a formatted text block with call-specific information:
+    - Call type and direction
+    - Lead status (known/new)
+    - Property information
+    - Qualification status
+    - Broker assignment
+    
+    This context is inserted between theme and node sections so the LLM
+    has situational awareness without needing separate prompts per call type.
+    """
     is_inbound = call_type.startswith("inbound")
     is_qualified = lead_context.get("qualified", False)
     lead_id = lead_context.get("lead_id")
@@ -808,10 +803,28 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
         context_parts.append(f"Lead Name: {lead_name}")
         context_parts.append(f"Qualified: {'Yes' if is_qualified else 'No'}")
         
+        # Add property context if available
         if lead_context.get("property_address"):
             context_parts.append(f"Property: {lead_context['property_address']}")
+        elif lead_context.get("property_city") or lead_context.get("property_state"):
+            # Construct from city/state if full address not available
+            addr_parts = []
+            if lead_context.get("property_city"):
+                addr_parts.append(lead_context['property_city'])
+            if lead_context.get("property_state"):
+                addr_parts.append(lead_context['property_state'])
+            if addr_parts:
+                context_parts.append(f"Property: {', '.join(addr_parts)}")
+        
         if lead_context.get("estimated_equity"):
             context_parts.append(f"Est. Equity: ${lead_context['estimated_equity']:,}")
+        
+        # Add broker info if assigned
+        if lead_context.get("broker_name"):
+            broker_info = f"Assigned Broker: {lead_context.get('broker_name')}"
+            if lead_context.get("broker_company"):
+                broker_info += f" ({lead_context.get('broker_company')})"
+            context_parts.append(broker_info)
     else:
         context_parts.append("Lead Status: Unknown (new caller)")
     
@@ -819,27 +832,65 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
     return "\n".join(context_parts)
 ```
 
-**Final Prompt Assembly (in agent.py load_node method):**
+**Final Prompt Assembly (SignalWire):**
+
 ```python
-# 1. Load node prompt (already includes theme: Theme --- Node)
-node_prompt = load_node_prompt(node_name, vertical=self.vertical)
+# In barbara_agent.py on_swml_request() or _route_to_node():
 
-# 2. Build call context
-context = build_context_injection(call_type, lead_context, phone_number)
+# Load complete instructions (theme + context + node)
+instructions = build_instructions_for_node(
+    node_name=current_node,
+    call_type=call_direction,
+    lead_context=lead_context,
+    phone_number=phone,
+    vertical="reverse_mortgage"
+)
 
-# 3. Combine: Context → Theme → Node
-# Note: Current implementation prepends context to node_prompt
-# Final order: Call Context → Theme --- Node
-full_prompt = f"{context}\n\n{node_prompt}"
+# Apply to agent
+self.set_prompt_text(instructions)  # Initial call setup
+# OR
+result.switch_context(system_prompt=instructions, ...)  # Mid-call routing
 ```
 
-**Note:** The prompt_loader returns `Theme --- Node`, and agent.py prepends `Context`, resulting in `Context → Theme --- Node`. The intended order (Theme → Context → Node) could be optimized in the future for better LLM parsing, but current implementation works correctly.
+**Final Prompt Structure:**
+```
+# Barbara - Core Personality
+[Theme content - universal personality for vertical]
+---
+
+=== CALL CONTEXT ===
+Call Type: inbound
+Direction: Inbound
+Phone: +15551234567
+Lead Status: Known (ID: abc-123)
+Lead Name: John Smith
+Qualified: Yes
+Property: 123 Main St, Los Angeles, CA
+Est. Equity: $450,000
+Assigned Broker: Walter White (ABC Mortgage)
+===================
+
+---
+
+## Role
+[Node-specific role]
+
+## Instructions
+[Node-specific instructions]
+```
+
+**Key Points:**
+- ✅ **"Injection" is the correct term** - it's a common industry term meaning "inserting data into a template/prompt"
+- ✅ Context is injected as **formatted text**, not template variables (SignalWire doesn't use `{{variable}}` syntax)
+- ✅ Order: **Theme → Context → Node** (optimal for LLM parsing)
+- ✅ Context is **optional** - if no lead_context provided, prompt still works (theme + node only)
+- ✅ Same node prompt adapts to different call types via context injection (no duplicate prompts needed)
 
 ---
 
 #### Component 3.3: Node Completion Checker
 
-**File:** `livekit-agent/workflows/node_completion.py`
+**File:** `equity_connect/workflows/node_completion.py`
 
 **Purpose:** Determine if a node's goals have been met based on DB state.
 
@@ -873,7 +924,7 @@ def is_node_complete(node_name: str, state: dict) -> bool:
 
 #### Component 3.4: Dynamic Routers
 
-**File:** `livekit-agent/workflows/routers.py`
+**File:** `equity_connect/workflows/routers.py`
 
 **Purpose:** DB-driven routing logic for each node.
 
@@ -995,7 +1046,7 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
 
 #### Component 3.5: State Flag Tools
 
-**File:** `livekit-agent/tools/conversation_flags.py`
+**File:** `equity_connect/tools/conversation_flags.py`
 
 **Purpose:** Allow the LLM to signal routing intent by setting flags in the database.
 
@@ -1389,13 +1440,13 @@ Same agent code, different prompts loaded via vertical selector
 
 | File | Purpose |
 |------|---------|
-| `livekit-agent/agent.py` | EquityConnectAgent class + event hooks |
-| `livekit-agent/services/prompt_loader.py` | DB query + context injection |
-| `livekit-agent/workflows/node_completion.py` | Completion criteria checkers |
-| `livekit-agent/workflows/routers.py` | 8 dynamic routing functions (added route_after_quote) |
-| `livekit-agent/tools/conversation_flags.py` | 7 state flag tools (added mark_quote_presented) |
-| `livekit-agent/tools/lead.py` | Lead lookup + verification tools |
-| `livekit-agent/tools/calendar.py` | Appointment booking tools |
+| `equity_connect/agent/barbara_agent.py` | BarbaraAgent class (SignalWire AgentBase) + routing hooks |
+| `equity_connect/services/prompt_loader.py` | DB query + context injection (SignalWire implementation) |
+| `equity_connect/workflows/node_completion.py` | Completion criteria checkers |
+| `equity_connect/workflows/routers.py` | 8 dynamic routing functions (added route_after_quote) |
+| `equity_connect/tools/conversation_flags.py` | 7 state flag tools (added mark_quote_presented) |
+| `equity_connect/tools/lead.py` | Lead lookup + verification tools |
+| `equity_connect/tools/calendar.py` | Appointment booking tools |
 | `portal/src/views/admin/PromptManagement.vue` | Node editor UI |
 | `database/migrations/20251111_add_theme_prompts.sql` | Theme table creation |
 | `database/migrations/20251111_add_quote_node_prompt.sql` | QUOTE node creation |

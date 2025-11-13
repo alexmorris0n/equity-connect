@@ -189,6 +189,15 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
 		# Add email if available (for verification scenarios)
 		if lead_context.get("email") or lead_context.get("primary_email"):
 			context_parts.append(f"Email: {lead_context.get('email') or lead_context.get('primary_email')}")
+		
+		# Add broker info if assigned (so Barbara knows who to book with)
+		if lead_context.get("broker_name"):
+			broker_info = f"Assigned Broker: {lead_context.get('broker_name')}"
+			if lead_context.get("broker_company"):
+				broker_info += f" ({lead_context.get('broker_company')})"
+			context_parts.append(broker_info)
+			# Note: broker_nylas_grant_id is available in lead_context but not shown in prompt
+			# (it's used directly by calendar tools to skip DB queries)
 	else:
 		context_parts.append("Lead Status: Unknown (new caller)")
 	

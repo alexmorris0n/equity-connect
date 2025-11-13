@@ -2,7 +2,7 @@
 import os
 import logging
 from typing import Optional, Dict, Any
-from signalwire_agents import AgentBase
+from signalwire_agents import AgentBase  # type: ignore
 from equity_connect.services.prompt_loader import load_theme, load_node_prompt, build_context_injection
 from equity_connect.services.conversation_state import get_conversation_state
 from equity_connect.workflows.routers import (
@@ -613,10 +613,21 @@ List specific actions needed based on conversation outcome.
 						from equity_connect.services.supabase import get_supabase_client
 						try:
 							sb = get_supabase_client()
-							lead_result = sb.table('leads').select('*').eq('id', lead_id).single().execute()
+							# Load lead with broker join to get nylas_grant_id
+							lead_result = sb.table('leads').select('''
+								id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
+								property_address, property_city, property_state, property_zip,
+								property_value, estimated_equity, age, status, qualified, owner_occupied,
+								assigned_broker_id,
+								brokers:assigned_broker_id (
+									id, contact_name, company_name, email, phone, nmls_number, nylas_grant_id, timezone
+								)
+							''').eq('id', lead_id).single().execute()
 							
 							if lead_result.data:
 								lead_data = lead_result.data
+								broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
+								
 								lead_context = {
 									"lead_id": lead_id,
 									"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
@@ -632,7 +643,30 @@ List specific actions needed based on conversation outcome.
 									"age": lead_data.get('age'),
 									"conversation_data": state_row.get("conversation_data", {})
 								}
-								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')}")
+								
+								# Add broker info if assigned
+								if broker_data:
+									lead_context["broker_id"] = broker_data.get('id')
+									lead_context["broker_name"] = broker_data.get('contact_name')
+									lead_context["broker_company"] = broker_data.get('company_name')
+									lead_context["broker_email"] = broker_data.get('email')
+									lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
+									lead_context["broker_timezone"] = broker_data.get('timezone')
+									logger.info(f"👤 Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+									
+									# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
+									# This avoids DB queries in calendar tools (same pattern as v3)
+									if lead_context.get('broker_nylas_grant_id'):
+										self.update_global_data({
+											"broker_id": lead_context["broker_id"],
+											"broker_name": lead_context["broker_name"],
+											"broker_email": lead_context.get("broker_email"),
+											"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
+											"broker_timezone": lead_context.get("broker_timezone")
+										})
+										logger.info(f"✅ Injected broker_nylas_grant_id into global_data for calendar tools")
+								else:
+									logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
 							else:
 								logger.warning(f"Lead {lead_id} not found in leads table")
 								lead_context = {
@@ -811,7 +845,7 @@ List specific actions needed based on conversation outcome.
 				
 				# BUG FIX: If tool returned a SwaigFunctionResult with UX actions, merge them
 				# Don't discard the tool's UX actions (say(), send_sms(), etc.)
-				from signalwire_agents.core import SwaigFunctionResult
+				from signalwire_agents.core import SwaigFunctionResult  # type: ignore
 				if isinstance(result, SwaigFunctionResult):
 					logger.debug(f"🔗 DEBUG: Tool '{name}' returned SwaigFunctionResult - merging UX actions with routing")
 					# The routing_result already has context_switch, but we need to preserve tool's UX actions
@@ -1022,7 +1056,7 @@ List specific actions needed based on conversation outcome.
 		Returns:
 			SwaigFunctionResult with context_switch action
 		"""
-		from signalwire_agents.core import SwaigFunctionResult
+		from signalwire_agents.core import SwaigFunctionResult  # type: ignore
 		
 		logger.info(f"🔄 DEBUG: _route_to_node called: {self.current_node} → {node_name} (phone: {phone})")
 		
@@ -1032,16 +1066,86 @@ List specific actions needed based on conversation outcome.
 			
 			# Get conversation state for context
 			state_row = get_conversation_state(phone)
-			lead_context = {}
+			lead_context = None
+			
 			if state_row:
 				lead_id = state_row.get("lead_id")
 				if lead_id:
-					# Extract relevant context from state
-					lead_context = {
-						"lead_id": lead_id,
-						"qualified": state_row.get("qualified"),
-						"conversation_data": state_row.get("conversation_data", {})
-					}
+					# Load full lead data from leads table (same as on_swml_request)
+					# This ensures name, property, equity, email, age are available in all nodes
+					from equity_connect.services.supabase import get_supabase_client
+					try:
+						sb = get_supabase_client()
+						# Load lead with broker join to get nylas_grant_id
+						lead_result = sb.table('leads').select('''
+							id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
+							property_address, property_city, property_state, property_zip,
+							property_value, estimated_equity, age, status, qualified, owner_occupied,
+							assigned_broker_id,
+							brokers:assigned_broker_id (
+								id, contact_name, company_name, email, phone, nmls_number, nylas_grant_id, timezone
+							)
+						''').eq('id', lead_id).single().execute()
+						
+						if lead_result.data:
+							lead_data = lead_result.data
+							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
+							
+							lead_context = {
+								"lead_id": lead_id,
+								"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
+								"first_name": lead_data.get('first_name'),
+								"last_name": lead_data.get('last_name'),
+								"qualified": state_row.get("qualified") or lead_data.get('status') in ['qualified', 'appointment_set'],
+								"property_address": lead_data.get('property_address'),
+								"property_city": lead_data.get('property_city'),
+								"property_state": lead_data.get('property_state'),
+								"property_value": lead_data.get('property_value'),
+								"estimated_equity": lead_data.get('estimated_equity'),
+								"primary_email": lead_data.get('primary_email'),
+								"age": lead_data.get('age'),
+								"conversation_data": state_row.get("conversation_data", {})
+							}
+							
+							# Add broker info if assigned
+							if broker_data:
+								lead_context["broker_id"] = broker_data.get('id')
+								lead_context["broker_name"] = broker_data.get('contact_name')
+								lead_context["broker_company"] = broker_data.get('company_name')
+								lead_context["broker_email"] = broker_data.get('email')
+								lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
+								lead_context["broker_timezone"] = broker_data.get('timezone')
+								logger.info(f"👤 Loaded full lead data for routing: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+								
+								# Inject broker Nylas grant ID into global_data during node transition
+								# This ensures calendar tools have access to it without DB query
+								if lead_context.get('broker_nylas_grant_id'):
+									self.update_global_data({
+										"broker_id": lead_context["broker_id"],
+										"broker_name": lead_context["broker_name"],
+										"broker_email": lead_context.get("broker_email"),
+										"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
+										"broker_timezone": lead_context.get("broker_timezone")
+									})
+									logger.info(f"✅ Updated global_data with broker_nylas_grant_id during node transition")
+							else:
+								logger.info(f"👤 Loaded full lead data for routing: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
+						else:
+							logger.warning(f"Lead {lead_id} not found in leads table during routing")
+							# Fallback to minimal context if lead not found
+							lead_context = {
+								"lead_id": lead_id,
+								"qualified": state_row.get("qualified"),
+								"conversation_data": state_row.get("conversation_data", {})
+							}
+					except Exception as e:
+						logger.error(f"Failed to load lead data during routing: {e}")
+						# Fallback to minimal context on error
+						lead_context = {
+							"lead_id": lead_id,
+							"qualified": state_row.get("qualified"),
+							"conversation_data": state_row.get("conversation_data", {})
+						}
 			
 			# Load new node prompt (theme + context + node)
 			from equity_connect.services.prompt_loader import build_instructions_for_node

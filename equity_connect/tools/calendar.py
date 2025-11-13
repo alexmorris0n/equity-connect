@@ -62,32 +62,52 @@ async def check_broker_availability(
 	try:
 		logger.info(f"📅 Checking availability for broker: {broker_id}")
 		
-		# Get broker's Nylas grant ID
-		response = sb.table('brokers')\
-			.select('contact_name, email, timezone, nylas_grant_id')\
-			.eq('id', broker_id)\
-			.single()\
-			.execute()
+		# Check if broker_nylas_grant_id is available in global_data (injected from context)
+		# This avoids DB query if we already have it (same pattern as v3)
+		broker_nylas_grant_id = None
+		broker_name = None
+		broker_timezone = None
 		
-		if not response.data:
-			error_msg = json.dumps({
-				"success": False,
-				"error": "Broker not found",
-				"message": "Unable to check availability - broker not found."
-			})
-			if result:
-				result.set_response(error_msg)
-				return result
-			return error_msg
+		if raw_data:
+			global_data = raw_data.get("global_data", {})
+			# Only use global_data if broker_id matches (ensure we're checking the right broker)
+			if global_data.get("broker_id") == broker_id:
+				broker_nylas_grant_id = global_data.get("broker_nylas_grant_id")
+				broker_name = global_data.get("broker_name")
+				broker_timezone = global_data.get("broker_timezone")
+				logger.info(f"✅ Using broker_nylas_grant_id from global_data (skipped DB query)")
 		
-		broker = response.data
+		# Fall back to DB query if not in global_data
+		if not broker_nylas_grant_id:
+			logger.info(f"📊 broker_nylas_grant_id not in global_data, querying DB...")
+			response = sb.table('brokers')\
+				.select('contact_name, email, timezone, nylas_grant_id')\
+				.eq('id', broker_id)\
+				.single()\
+				.execute()
+			
+			if not response.data:
+				error_msg = json.dumps({
+					"success": False,
+					"error": "Broker not found",
+					"message": "Unable to check availability - broker not found."
+				})
+				if result:
+					result.set_response(error_msg)
+					return result
+				return error_msg
+			
+			broker = response.data
+			broker_nylas_grant_id = broker.get('nylas_grant_id')
+			broker_name = broker.get('contact_name')
+			broker_timezone = broker.get('timezone')
 		
-		if not broker.get('nylas_grant_id'):
+		if not broker_nylas_grant_id:
 			logger.warn('⚠️  Broker has no Nylas grant - calendar not connected')
 			error_msg = json.dumps({
 				"success": False,
 				"error": "Calendar not connected",
-				"message": f"{broker.get('contact_name')}'s calendar is not connected. Please schedule manually."
+				"message": f"{broker_name or 'Broker'}'s calendar is not connected. Please schedule manually."
 			})
 			if result:
 				result.set_response(error_msg)
@@ -98,8 +118,8 @@ async def check_broker_availability(
 		now = int(time.time())
 		end_time = int(time.time() + 14 * 24 * 60 * 60)
 		
-		# Get broker's calendar events
-		busy_times = await get_broker_events(broker['nylas_grant_id'], now, end_time)
+		# Get broker's calendar events (Nylas API call - same as v3)
+		busy_times = await get_broker_events(broker_nylas_grant_id, now, end_time)
 		
 		logger.info(f"✅ Found {len(busy_times)} busy events on calendar")
 		
@@ -124,22 +144,22 @@ async def check_broker_availability(
 		# Generate smart response message
 		message = ''
 		if len(available_slots) == 0:
-			message = f"{broker.get('contact_name')} has no availability in the next 2 weeks within business hours (10 AM - 5 PM Mon-Fri)."
+			message = f"{broker_name or 'Broker'} has no availability in the next 2 weeks within business hours (10 AM - 5 PM Mon-Fri)."
 		else:
 			same_day_slots = [s for s in available_slots if s.get('is_same_day')]
 			tomorrow_slots = [s for s in available_slots if s.get('is_tomorrow')]
 			
 			if same_day_slots:
-				message = f"Great news! {broker.get('contact_name')} has {len(same_day_slots)} slot(s) available today. The earliest is {same_day_slots[0].get('time')}."
+				message = f"Great news! {broker_name or 'Broker'} has {len(same_day_slots)} slot(s) available today. The earliest is {same_day_slots[0].get('time')}."
 			elif tomorrow_slots:
-				message = f"{broker.get('contact_name')} has {len(tomorrow_slots)} slot(s) available tomorrow. The earliest is {tomorrow_slots[0].get('time')}."
+				message = f"{broker_name or 'Broker'} has {len(tomorrow_slots)} slot(s) available tomorrow. The earliest is {tomorrow_slots[0].get('time')}."
 			else:
-				message = f"{broker.get('contact_name')} has {len(available_slots)} available times over the next 2 weeks."
+				message = f"{broker_name or 'Broker'} has {len(available_slots)} available times over the next 2 weeks."
 		
 		success_msg = json.dumps({
 			"success": True,
 			"available_slots": available_slots,
-			"broker_name": broker.get('contact_name'),
+			"broker_name": broker_name or "Broker",
 			"calendar_provider": "nylas",
 			"business_hours": "10:00 AM - 5:00 PM Mon-Fri",
 			"message": message
@@ -220,27 +240,50 @@ async def book_appointment(
 	try:
 		logger.info(f"📅 Booking appointment: {scheduled_for}")
 		
-		# Get broker info
-		broker_response = sb.table('brokers')\
-			.select('contact_name, email, timezone, nylas_grant_id')\
-			.eq('id', broker_id)\
-			.single()\
-			.execute()
+		# Check if broker_nylas_grant_id is available in global_data (injected from context)
+		# This avoids DB query if we already have it (same pattern as v3)
+		broker_nylas_grant_id = None
+		broker_name = None
+		broker_email = None
+		broker_timezone = None
 		
-		if not broker_response.data:
-			return json.dumps({
-				"success": False,
-				"error": "Broker not found",
-				"message": "Unable to book appointment - broker not found."
-			})
+		if raw_data:
+			global_data = raw_data.get("global_data", {})
+			# Only use global_data if broker_id matches (ensure we're booking with the right broker)
+			if global_data.get("broker_id") == broker_id:
+				broker_nylas_grant_id = global_data.get("broker_nylas_grant_id")
+				broker_name = global_data.get("broker_name")
+				broker_email = global_data.get("broker_email")
+				broker_timezone = global_data.get("broker_timezone")
+				logger.info(f"✅ Using broker_nylas_grant_id from global_data (skipped DB query)")
 		
-		broker = broker_response.data
+		# Fall back to DB query if not in global_data
+		if not broker_nylas_grant_id:
+			logger.info(f"📊 broker_nylas_grant_id not in global_data, querying DB...")
+			broker_response = sb.table('brokers')\
+				.select('contact_name, email, timezone, nylas_grant_id')\
+				.eq('id', broker_id)\
+				.single()\
+				.execute()
+			
+			if not broker_response.data:
+				return json.dumps({
+					"success": False,
+					"error": "Broker not found",
+					"message": "Unable to book appointment - broker not found."
+				})
+			
+			broker = broker_response.data
+			broker_nylas_grant_id = broker.get('nylas_grant_id')
+			broker_name = broker.get('contact_name')
+			broker_email = broker.get('email')
+			broker_timezone = broker.get('timezone')
 		
-		if not broker.get('nylas_grant_id'):
+		if not broker_nylas_grant_id:
 			return json.dumps({
 				"success": False,
 				"error": "Calendar not connected",
-				"message": f"{broker.get('contact_name')}'s calendar is not connected. Please book manually."
+				"message": f"{broker_name or 'Broker'}'s calendar is not connected. Please book manually."
 			})
 		
 		# Get lead info
@@ -268,8 +311,8 @@ async def book_appointment(
 		start_unix = int(appointment_date.timestamp())
 		end_unix = start_unix + 3600  # 1 hour appointment
 		
-		# Create calendar event via Nylas
-		nylas_event_id = await create_calendar_event(broker['nylas_grant_id'], {
+		# Create calendar event via Nylas (same API call as v3)
+		nylas_event_id = await create_calendar_event(broker_nylas_grant_id, {
 			"title": f"Reverse Mortgage Consultation - {lead_name}",
 			"description": "\n".join([
 				f"Lead: {lead_name}",
@@ -283,7 +326,7 @@ async def book_appointment(
 			"startTime": start_unix,
 			"endTime": end_unix,
 			"participants": [
-				{"name": broker.get('contact_name'), "email": broker.get('email')},
+				{"name": broker_name or "Broker", "email": broker_email or ""},
 				*([{"name": lead_name, "email": lead_email}] if lead_email else [])
 			]
 		})
@@ -360,7 +403,7 @@ async def book_appointment(
 					appointment_display_sms = appointment_date.strftime('%B %d, %Y at %I:%M %p')
 					sms_body = (
 						f"Hi {lead.get('first_name', '')}! Your reverse mortgage consultation "
-						f"is confirmed for {appointment_display_sms} with {broker.get('contact_name')}. "
+						f"is confirmed for {appointment_display_sms} with {broker_name or 'your broker'}. "
 						f"Reply CANCEL to reschedule. - Barbara AI"
 					)
 					
