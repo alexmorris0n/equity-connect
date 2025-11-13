@@ -730,12 +730,13 @@ List specific actions needed based on conversation outcome.
 		except Exception as e:
 			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
 	
-	async def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
+	def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
 		"""Intercept tool calls to trigger BarbGraph routing after completion
 		
 		This is the key integration point where BarbGraph routing happens after tools execute.
 		
-		NOTE: Must be async to properly await async tool wrappers. SignalWire SDK supports async on_function_call.
+		NOTE: Must be synchronous - SignalWire SDK calls this synchronously and handles async tools internally.
+		The parent class's on_function_call handles async tool execution, so we don't need to await anything.
 		
 		Args:
 			name: Tool name being called
@@ -748,14 +749,18 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"🔧 DEBUG: on_function_call invoked for tool '{name}' with args: {args}")
 		logger.debug(f"🔧 DEBUG: raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
 		
-		# Let the tool execute normally via parent class (await if async)
+		# Let the tool execute normally via parent class
+		# Parent class handles async tools internally - it will await them
 		logger.debug(f"🔧 DEBUG: Calling super().on_function_call() for '{name}'")
 		result = super().on_function_call(name, args, raw_data)
 		
-		# Parent class may return a coroutine for async tools - await it
+		# Parent class handles async execution internally, so result should be ready
+		# If it's a coroutine, that means parent didn't handle it (shouldn't happen)
 		if hasattr(result, '__await__'):
-			logger.debug(f"🔧 DEBUG: Parent returned coroutine, awaiting...")
-			result = await result
+			logger.error(f"❌ ERROR: Parent returned coroutine - SignalWire SDK should handle async internally! Tool: {name}")
+			# This shouldn't happen - parent should await async tools
+			# Return the coroutine and let SignalWire handle it (will likely error)
+			return result
 		
 		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
 		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
