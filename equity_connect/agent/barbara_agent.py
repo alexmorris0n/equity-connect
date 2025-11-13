@@ -272,9 +272,40 @@ class BarbaraAgent(AgentBase):
 		- channel_active: Whether call is still active
 		"""
 		from equity_connect.tools.interaction import save_interaction
+		import json
+		
+		# Extract transcript from raw_data if available
+		transcript = raw_data.get("raw_call_log") if raw_data else None
+		
+		# Parse existing metadata or create new dict
+		metadata_str = args.get("metadata")
+		metadata_dict = {}
+		if metadata_str:
+			try:
+				metadata_dict = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
+			except:
+				metadata_dict = {}
+		
+		# Add transcript to metadata if available
+		if transcript:
+			metadata_dict["conversation_transcript"] = transcript
+			logger.info(f"📝 Extracted transcript with {len(transcript)} messages from raw_data")
+		
+		# Add call_id and other raw_data context to metadata
+		if raw_data:
+			if not metadata_dict.get("call_id"):
+				metadata_dict["call_id"] = raw_data.get("call_id")
+			if not metadata_dict.get("caller_id_num"):
+				metadata_dict["caller_id_num"] = raw_data.get("caller_id_num")
+			if not metadata_dict.get("caller_id_name"):
+				metadata_dict["caller_id_name"] = raw_data.get("caller_id_name")
+		
+		# Convert metadata back to JSON string
+		metadata_json = json.dumps(metadata_dict) if metadata_dict else None
+		
 		return await save_interaction(
 			args.get("lead_id"), args.get("broker_id"), args.get("duration_seconds"),
-			args.get("outcome"), args.get("content"), args.get("recording_url"), args.get("metadata")
+			args.get("outcome"), args.get("content"), args.get("recording_url"), metadata_json
 		)
 	
 	@AgentBase.tool(
