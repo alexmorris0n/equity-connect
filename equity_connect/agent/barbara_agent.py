@@ -730,13 +730,12 @@ List specific actions needed based on conversation outcome.
 		except Exception as e:
 			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
 	
-	def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
+	async def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
 		"""Intercept tool calls to trigger BarbGraph routing after completion
 		
 		This is the key integration point where BarbGraph routing happens after tools execute.
 		
-		NOTE: This must be synchronous - SignalWire SDK doesn't await async on_function_call.
-		We handle async tool execution via the parent class, then do routing synchronously.
+		NOTE: Must be async to properly await async tool wrappers. SignalWire SDK supports async on_function_call.
 		
 		Args:
 			name: Tool name being called
@@ -749,17 +748,14 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"🔧 DEBUG: on_function_call invoked for tool '{name}' with args: {args}")
 		logger.debug(f"🔧 DEBUG: raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
 		
-		# Let the tool execute normally via parent class (parent handles async)
+		# Let the tool execute normally via parent class (await if async)
 		logger.debug(f"🔧 DEBUG: Calling super().on_function_call() for '{name}'")
 		result = super().on_function_call(name, args, raw_data)
 		
-		# Parent class handles async execution - result should be ready
-		# If it's a coroutine, that's a problem (parent should await it)
+		# Parent class may return a coroutine for async tools - await it
 		if hasattr(result, '__await__'):
-			logger.error(f"❌ DEBUG: Parent returned coroutine - this shouldn't happen! Tool: {name}")
-			# This shouldn't happen, but if it does, we can't await it here (sync method)
-			# Return the coroutine and let SignalWire handle it (or it will error)
-			return result
+			logger.debug(f"🔧 DEBUG: Parent returned coroutine, awaiting...")
+			result = await result
 		
 		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
 		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
