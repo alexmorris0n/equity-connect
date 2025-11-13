@@ -3,14 +3,8 @@ import os
 import logging
 from typing import Optional, Dict, Any
 from signalwire_agents import AgentBase  # type: ignore
-from equity_connect.services.prompt_loader import load_theme, load_node_prompt, build_context_injection
+from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
-from equity_connect.workflows.routers import (
-	route_after_greet, route_after_verify, route_after_qualify,
-	route_after_answer, route_after_quote, route_after_objections,
-	route_after_book, route_after_exit
-)
-from equity_connect.workflows.node_completion import is_node_complete
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +32,7 @@ class BarbaraAgent(AgentBase):
 			route="/agent",
 			host="0.0.0.0",  # Listen on all interfaces for Docker/Fly.io
 			port=8080,
-			use_pom=False,  # Disable POM - we use raw text with set_prompt_text()
+			use_pom=True,  # Enable POM for contexts
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
@@ -58,36 +52,352 @@ class BarbaraAgent(AgentBase):
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
 		
-		# BarbGraph routing state
-		self.current_node = "greet"
-		self.phone_number = None
-		self.call_type = "inbound"
-		
 		logger.info("✅ BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
-		"""Dynamic configuration callback - NOT USED for SWML webhook flows
+		"""Configure agent for incoming call using SignalWire contexts"""
 		
-		⚠️ IMPORTANT: This callback is NOT invoked when calls come via SWML webhooks (our deployment pattern).
+		# 1. Extract call info
+		phone = body_params.get('From') or query_params.get('phone')
+		broker_id = query_params.get('broker_id')
 		
-		All configuration has been moved to on_swml_request() which IS called for webhook flows.
-		That method handles:
-		- Voice/LLM/STT configuration (ElevenLabs Rachel, GPT-4o)
-		- Multi-call persistence (resume where caller left off)
-		- BarbGraph node selection and prompt loading
-		- Skills, hints, pronunciations, global data
+		logger.info(f"📞 Configuring agent for call from {phone}")
 		
-		This stub is kept for SDK compatibility in case future SDK versions or
-		alternative flow types (e.g., SIP direct routing) invoke this callback.
+		# 2. Configure AI providers
+		# Load voice config from database (configurable per language)
+		voice_config = self._get_voice_config(vertical="reverse_mortgage", language_code="en-US")
+		voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
+		
+		# Configure language with dynamic voice
+		language_params = {
+			"name": "English",
+			"code": "en-US",
+			"voice": voice_string,
+			"engine": voice_config["engine"]
+		}
+		
+		# Add model if specified (for Rime, Amazon)
+		if voice_config.get("model"):
+			language_params["model"] = voice_config["model"]
+		
+		agent.add_language(**language_params)
+		logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
+		
+		agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
+		agent.add_skill("datetime")
+		agent.add_skill("math")
+		
+		# 3. Get lead context
+		try:
+			lead_context = self._get_lead_context(phone, broker_id)
+		except Exception as e:
+			logger.error(f"❌ Failed to get lead context: {e}")
+			raise
+		
+		# 4. Set meta_data variables (SignalWire substitutes in prompts)
+		agent.set_meta_data({
+			"lead": {
+				"first_name": lead_context.get("first_name", "there"),
+				"name": lead_context.get("name", "Unknown"),
+				"phone": phone,
+				"email": lead_context.get("email", ""),
+				"id": lead_context.get("lead_id", "")
+			},
+			"property": {
+				"city": lead_context.get("property_city", "Unknown"),
+				"state": lead_context.get("property_state", ""),
+				"address": lead_context.get("property_address", ""),
+				"equity": lead_context.get("estimated_equity", 0),
+				"equity_formatted": f"${lead_context.get('estimated_equity', 0):,}" if lead_context.get('estimated_equity') else "$0"
+			},
+			"status": {
+				"qualified": lead_context.get("qualified", False),
+				"call_type": "inbound",
+				"broker_name": lead_context.get("broker_name", ""),
+				"broker_company": lead_context.get("broker_company", "")
+			}
+		})
+		
+		logger.info(f"✅ Variables set for {lead_context.get('name', 'Unknown')}")
+		
+		# 4. Determine initial context
+		initial_context = self._get_initial_context(phone)
+		logger.info(f"🎯 Initial context: {initial_context}")
+		
+		# 5. Build contexts from DB
+		try:
+			contexts_obj = build_contexts_object(
+				vertical="reverse_mortgage",
+				initial_context=initial_context,
+				lead_context=lead_context
+			)
+		except Exception as e:
+			logger.error(f"❌ Failed to build contexts: {e}")
+			raise
+		
+		# 6. Load theme
+		try:
+			theme_text = load_theme("reverse_mortgage")
+		except Exception as e:
+			logger.error(f"❌ Failed to load theme: {e}")
+			raise
+		
+		# 7. Configure agent with contexts
+		agent.set_prompt({
+			"text": theme_text,
+			"contexts": contexts_obj
+		})
+		
+		logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
+	
+	def _get_lead_context(self, phone: str, broker_id: Optional[str] = None) -> Dict[str, Any]:
+		"""Query Supabase directly for lead information
+		
+		Cannot call tools from configure_per_call (sync vs async mismatch).
+		Duplicates query logic from tools/lead.py get_lead_context.
 		
 		Args:
-			query_params: URL query parameters (e.g., ?broker_id=123)
-			body_params: POST body parameters (SignalWire call data)
-			headers: HTTP headers
-			agent: EphemeralAgentConfig for per-request configuration
+			phone: Caller phone number
+			broker_id: Optional broker UUID override
+			
+		Returns:
+			Dict with lead, property, broker info
 		"""
-		logger.debug("configure_per_call called (not used for SWML webhooks - see on_swml_request instead)")
-		pass
+		from equity_connect.services.supabase import get_supabase_client
+		import re
+		
+		sb = get_supabase_client()
+		
+		try:
+			logger.info(f"🔍 Looking up lead by phone: {phone}")
+			
+			# Generate search patterns (same logic as tool)
+			phone_digits = re.sub(r'\D', '', phone)
+			last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+			patterns = [
+				phone,
+				last10,
+				f"+1{last10}" if len(last10) == 10 else phone,
+			]
+			
+			# Build OR query
+			or_conditions = []
+			for pattern in patterns:
+				if pattern:
+					or_conditions.append(f"primary_phone.ilike.%{pattern}%")
+					or_conditions.append(f"primary_phone_e164.eq.{pattern}")
+			
+			if not or_conditions:
+				logger.warning("Invalid phone number")
+				return {
+					"name": "Unknown",
+					"first_name": "there",
+					"last_name": "",
+					"email": "",
+					"lead_id": "",
+					"property_city": "Unknown",
+					"property_state": "",
+					"property_address": "",
+					"estimated_equity": 0,
+					"qualified": False,
+					"broker_name": "",
+					"broker_company": ""
+				}
+			
+			# Query lead with broker join
+			query = sb.table('leads').select('''
+				id, first_name, last_name, primary_email, primary_phone,
+				property_address, property_city, property_state, property_zip,
+				estimated_equity, status, qualified,
+				brokers:assigned_broker_id (
+					id, contact_name, company_name
+				)
+			''')
+			or_filter = ','.join(or_conditions)
+			response = query.or_(or_filter).limit(1).execute()
+			
+			if not response.data or len(response.data) == 0:
+				logger.info('Lead not found - new caller')
+				return {
+					"name": "Unknown",
+					"first_name": "there",
+					"last_name": "",
+					"email": "",
+					"lead_id": "",
+					"property_city": "Unknown",
+					"property_state": "",
+					"property_address": "",
+					"estimated_equity": 0,
+					"qualified": False,
+					"broker_name": "",
+					"broker_company": ""
+				}
+			
+			lead = response.data[0]
+			broker = lead.get('brokers')
+			
+			# Determine qualification
+			is_qualified = lead.get('status') in ['qualified', 'appointment_set', 'showed', 'application', 'funded']
+			
+			# Build full name
+			first_name = lead.get('first_name', '')
+			last_name = lead.get('last_name', '')
+			full_name = f"{first_name} {last_name}".strip() or "Unknown"
+			
+			logger.info(f"✅ Lead found: {full_name} ({lead.get('status')})")
+			
+			# Return structured dict
+			return {
+				"name": full_name,
+				"first_name": first_name,
+				"last_name": last_name,
+				"email": lead.get('primary_email', ''),
+				"lead_id": str(lead['id']),
+				"property_city": lead.get('property_city', 'Unknown'),
+				"property_state": lead.get('property_state', ''),
+				"property_address": lead.get('property_address', ''),
+				"estimated_equity": lead.get('estimated_equity', 0),
+				"qualified": is_qualified,
+				"broker_name": broker.get('contact_name', '') if broker else '',
+				"broker_company": broker.get('company_name', '') if broker else ''
+			}
+			
+		except Exception as e:
+			logger.error(f'❌ Error getting lead context: {e}')
+			return {
+				"name": "Unknown",
+				"first_name": "there",
+				"last_name": "",
+				"email": "",
+				"lead_id": "",
+				"property_city": "Unknown",
+				"property_state": "",
+				"property_address": "",
+				"estimated_equity": 0,
+				"qualified": False,
+				"broker_name": "",
+				"broker_company": ""
+			}
+	
+	def _get_initial_context(self, phone: str) -> str:
+		"""Determine which context to start in based on conversation state
+		
+		Multi-call persistence: resume where caller left off.
+		
+		Args:
+			phone: Caller's phone number
+			
+		Returns:
+			Context name to start in (default: "greet")
+		"""
+		state = get_conversation_state(phone)
+		
+		if not state:
+			logger.info("🆕 New caller - starting at greet")
+			return "greet"
+		
+		cd = state.get("conversation_data", {})
+		qualified = state.get("qualified", False)
+		
+		# Check in priority order (most complete first)
+		if cd.get("appointment_booked"):
+			logger.info("✅ Appointment booked - starting at exit")
+			return "exit"
+		
+		if cd.get("ready_to_book"):
+			logger.info("📅 Ready to book - starting at book")
+			return "book"
+		
+		if cd.get("quote_presented") and cd.get("quote_reaction") in ["positive", "skeptical"]:
+			logger.info("💰 Quote presented - starting at answer")
+			return "answer"
+		
+		if qualified and not cd.get("quote_presented"):
+			logger.info("✅ Qualified, no quote - starting at quote")
+			return "quote"
+		
+		if cd.get("verified") and not qualified:
+			logger.info("🔍 Verified, not qualified - starting at qualify")
+			return "qualify"
+		
+		if cd.get("greeted"):
+			logger.info("👋 Greeted, not verified - starting at verify")
+			return "verify"
+		
+		logger.info("🎬 Starting from greet")
+		return "greet"
+	
+	def _get_voice_config(self, vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
+		"""Load voice configuration from database
+		
+		Args:
+			vertical: Business vertical
+			language_code: Language code (en-US, es-US, es-MX)
+			
+		Returns:
+			Dict with: engine, voice_name, model (nullable)
+		"""
+		from equity_connect.services.supabase import get_supabase_client
+		
+		try:
+			sb = get_supabase_client()
+			result = sb.table('agent_voice_config') \
+				.select('tts_engine, voice_name, model') \
+				.eq('vertical', vertical) \
+				.eq('language_code', language_code) \
+				.eq('is_active', True) \
+				.single() \
+				.execute()
+			
+			if result.data:
+				logger.info(f"✅ Loaded voice config from DB: {result.data['tts_engine']} - {result.data['voice_name']}")
+				return {
+					"engine": result.data['tts_engine'],
+					"voice_name": result.data['voice_name'],
+					"model": result.data.get('model')
+				}
+		except Exception as e:
+			logger.warning(f"Failed to load voice config from DB: {e}, using env fallback")
+		
+		# Fallback to environment variables
+		engine = os.getenv("TTS_ENGINE", "elevenlabs")
+		voice_name = os.getenv("ELEVENLABS_VOICE_NAME", "rachel") if engine == "elevenlabs" else os.getenv("TTS_VOICE_NAME", "rachel")
+		model = os.getenv("TTS_MODEL")
+		
+		logger.info(f"Using env fallback: {engine} - {voice_name}")
+		return {
+			"engine": engine,
+			"voice_name": voice_name,
+			"model": model
+		}
+	
+	def _build_voice_string(self, engine: str, voice_name: str) -> str:
+		"""Build provider-specific voice string
+		
+		Args:
+			engine: TTS provider (elevenlabs, openai, google, amazon, azure, cartesia, rime)
+			voice_name: Voice identifier
+			
+		Returns:
+			Formatted voice string for SignalWire
+		"""
+		# Map engine to voice format (based on SignalWire Voice API docs)
+		formats = {
+			"elevenlabs": f"elevenlabs.{voice_name}",  # e.g., elevenlabs.rachel
+			"openai": f"openai.{voice_name}",  # e.g., openai.alloy
+			"google": f"gcloud.{voice_name}",  # e.g., gcloud.en-US-Neural2-A
+			"gcloud": f"gcloud.{voice_name}",  # Alias for google
+			"amazon": f"amazon.{voice_name}",  # e.g., amazon.Ruth:neural
+			"polly": f"amazon.{voice_name}",  # Alias for amazon
+			"azure": voice_name,  # No prefix - e.g., en-US-JennyNeural
+			"microsoft": voice_name,  # Alias for azure
+			"cartesia": f"cartesia.{voice_name}",  # e.g., cartesia.a167e0f3-df7e-4d52-a9c3-f949145efdab
+			"rime": f"rime.{voice_name}"  # e.g., rime.luna
+		}
+		
+		voice_string = formats.get(engine.lower(), f"{engine}.{voice_name}")
+		logger.debug(f"Built voice string: {voice_string} (engine: {engine}, voice: {voice_name})")
+		return voice_string
 	
 	# Lead Management (5)
 	@AgentBase.tool(
@@ -413,14 +723,10 @@ class BarbaraAgent(AgentBase):
 		callback_path: Optional[str] = None,
 		request: Optional[Any] = None
 	) -> Optional[Dict[str, Any]]:
-		"""Handle incoming call - configure agent dynamically and load BarbGraph context
+		"""Handle incoming call - configure agent with SignalWire contexts
 		
 		SignalWire calls this BEFORE the agent starts talking for SWML webhook flows.
-		This is where we:
-		1. Extract phone number from request_data
-		2. Configure AI (voice, LLM, skills, hints, etc.) - CRITICAL for webhook flows
-		3. Query Supabase for lead context and multi-call persistence
-		4. Load the correct BarbGraph node prompt with context injected
+		This is the PRIMARY configuration method for production (not configure_per_call).
 		
 		Args:
 			request_data: Call parameters from SignalWire (From, To, CallSid, etc.)
@@ -463,31 +769,32 @@ class BarbaraAgent(AgentBase):
 			else:
 				phone = to_phone  # Lead's number (we're calling them)
 			
-			self.phone_number = phone
-			self.call_type = call_direction
-			
 			logger.info(f"📞 {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
 			
 			# ==================== STEP 2: CONFIGURE AI ====================
 			# This is CRITICAL for SWML webhook flows - configure_per_call() is NOT called
 			# Apply ALL configuration BEFORE loading prompts
 			
-			# TTS: ElevenLabs voice (SignalWire format: elevenlabs.<voice_name>)
-			# Get voice name from environment or default to Rachel
-			voice_name = os.getenv("ELEVENLABS_VOICE_NAME", "rachel")  # Default: rachel
-			elevenlabs_voice = f"elevenlabs.{voice_name}"  # SignalWire format
+			# Load voice configuration from database (configurable per language)
+			voice_config = self._get_voice_config(vertical="reverse_mortgage", language_code="en-US")
+			voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
 			
-			# TTS: ElevenLabs + LLM: OpenAI GPT-4o + STT: Automatic (Deepgram Nova-3)
-			self.add_language(
-				name="English",
-				code="en-US",
-				voice=elevenlabs_voice,  # Format: elevenlabs.<name>
-				engine="elevenlabs",
-				model="eleven_turbo_v2_5",
-				speech_fillers=["Let me check on that...", "One moment please...", "I'm looking that up now..."],
-				function_fillers=["Processing...", "Just a second...", "Looking that up..."]
-			)
-			logger.info(f"✅ Voice configured: {elevenlabs_voice}")
+			# Configure language with dynamic voice
+			language_params = {
+				"name": "English",
+				"code": "en-US",
+				"voice": voice_string,
+				"engine": voice_config["engine"],
+				"speech_fillers": ["Let me check on that...", "One moment please...", "I'm looking that up now..."],
+				"function_fillers": ["Processing...", "Just a second...", "Looking that up..."]
+			}
+			
+			# Add model if specified (for Rime Arcana, Amazon Neural/Generative, etc.)
+			if voice_config.get("model"):
+				language_params["model"] = voice_config["model"]
+			
+			self.add_language(**language_params)
+			logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
 			
 			# LLM and conversation parameters
 			self.set_params({
@@ -542,21 +849,17 @@ class BarbaraAgent(AgentBase):
 				ignore_case=True
 			)
 			
-			# Add datetime skill for appointment booking
-			# Wrap in try/except since skill may already be loaded from previous calls
+			# Skills: datetime and math
 			try:
 				self.add_skill("datetime")
+				logger.info("✅ Added datetime skill")
 			except Exception as e:
 				logger.debug(f"Skill 'datetime' already loaded: {e}")
-			
-			# Add math skill for equity calculations in quote node
-			# LLMs are terrible at arithmetic - let Python do the math
 			try:
 				self.add_skill("math")
+				logger.info("✅ Added math skill")
 			except Exception as e:
 				logger.debug(f"Skill 'math' already loaded: {e}")
-			
-			logger.info("✅ Skills configured: datetime, math")
 			
 			# Set post-prompt for call summaries
 			self.set_post_prompt("""
@@ -759,74 +1062,104 @@ List specific actions needed based on conversation outcome.
 							"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
 						}
 				
-				# ==================== STEP 6: MULTI-CALL PERSISTENCE ====================
-				# For returning callers, resume where they left off
-				if state_row:
-					cd = state_row.get("conversation_data", {})
-					if cd.get("appointment_booked"):
-						current_node = "exit"  # Already done
-						logger.info(f"🔄 Returning caller - appointment already booked → EXIT")
-					elif cd.get("ready_to_book"):
-						current_node = "book"  # Pick up at booking
-						logger.info(f"🔄 Returning caller - resuming at BOOK node")
-					elif cd.get("qualified") is True:
-						# Only route to answer if explicitly qualified (True)
-						# If qualified=False or None, treat as new caller and start at greet
-						current_node = "answer"  # Already qualified, answer questions
-						logger.info(f"🔄 Returning caller - resuming at ANSWER node")
-					else:
-						if lead_context:
-							logger.info(f"🔄 Returning caller with lead context - starting at GREET node")
-						else:
-							logger.info(f"🆕 New caller - starting at GREET node")
-				else:
-					if lead_context:
-						logger.info(f"🔄 New call for existing lead - starting at GREET node")
-					else:
-						logger.info(f"🆕 New caller - no state found, starting at GREET node")
-				
-				# ==================== STEP 7: LOAD BARBGRAPH PROMPT ====================
-				# Load BarbGraph node prompt with context injection
-				from equity_connect.services.prompt_loader import build_instructions_for_node
-				
-				# Log lead context for debugging
+				# ==================== STEP 6: SET META_DATA VARIABLES ====================
+				# Set variables for SignalWire to substitute in context prompts
 				if lead_context:
-					logger.info(f"📋 Lead context for prompt injection: name={lead_context.get('name')}, lead_id={lead_context.get('lead_id')}, qualified={lead_context.get('qualified')}")
-					logger.info(f"📋 Lead context keys: {list(lead_context.keys())}")
-					logger.info(f"📋 Property info: address={lead_context.get('property_address')}, city={lead_context.get('property_city')}, equity=${lead_context.get('estimated_equity')}")
+					self.set_meta_data({
+						"lead": {
+							"first_name": lead_context.get("first_name", "there"),
+							"name": lead_context.get("name", "Unknown"),
+							"phone": phone,
+							"email": lead_context.get("primary_email", ""),
+							"id": lead_context.get("lead_id", "")
+						},
+						"property": {
+							"city": lead_context.get("property_city", "Unknown"),
+							"state": lead_context.get("property_state", ""),
+							"address": lead_context.get("property_address", ""),
+							"equity": lead_context.get("estimated_equity", 0),
+							"equity_formatted": f"${lead_context.get('estimated_equity', 0):,}" if lead_context.get('estimated_equity') else "$0"
+						},
+						"status": {
+							"qualified": lead_context.get("qualified", False),
+							"call_type": call_direction,
+							"broker_name": lead_context.get("broker_name", ""),
+							"broker_company": lead_context.get("broker_company", "")
+						}
+					})
+					logger.info(f"✅ Variables set for {lead_context.get('name', 'Unknown')}")
 				else:
-					logger.info(f"📋 No lead context available - will use generic prompt")
+					# Unknown caller - minimal meta_data
+					self.set_meta_data({
+						"lead": {
+							"first_name": "there",
+							"name": "Unknown",
+							"phone": phone or "Unknown",
+							"email": "",
+							"id": ""
+						},
+						"property": {
+							"city": "Unknown",
+							"state": "",
+							"address": "",
+							"equity": 0,
+							"equity_formatted": "$0"
+						},
+						"status": {
+							"qualified": False,
+							"call_type": call_direction,
+							"broker_name": "",
+							"broker_company": ""
+						}
+					})
 				
-				instructions = build_instructions_for_node(
-					node_name=current_node,
-					call_type=call_direction,
-					lead_context=lead_context,
-					phone_number=phone,
-					vertical="reverse_mortgage"
-				)
+				# ==================== STEP 7: DETERMINE INITIAL CONTEXT ====================
+				initial_context = self._get_initial_context(phone)
+				logger.info(f"🎯 Initial context: {initial_context}")
 				
-				# ==================== STEP 8: APPLY PROMPT ====================
-				# Update agent instructions with context-aware BarbGraph prompt
-				self.set_prompt_text(instructions)
+				# ==================== STEP 8: BUILD CONTEXTS FROM DB ====================
+				try:
+					contexts_obj = build_contexts_object(
+						vertical="reverse_mortgage",
+						initial_context=initial_context,
+						lead_context=lead_context
+					)
+				except Exception as e:
+					logger.error(f"❌ Failed to build contexts: {e}")
+					raise
 				
-				# ==================== STEP 9: UPDATE INSTANCE VARIABLES ====================
-				self.current_node = current_node
+				# ==================== STEP 9: LOAD THEME ====================
+				try:
+					theme_text = load_theme("reverse_mortgage")
+				except Exception as e:
+					logger.error(f"❌ Failed to load theme: {e}")
+					raise
 				
-				# Ensure minimum delay of ~2 seconds (2 rings) for natural call experience
-				# If DB queries were fast, add remaining delay
-				elapsed = time.time() - start_time
-				min_delay = 4.0  # 4 seconds = ~2 rings
-				if elapsed < min_delay:
-					remaining_delay = min_delay - elapsed
-					logger.info(f"⏳ Adding {remaining_delay:.2f}s delay to reach {min_delay}s total (elapsed: {elapsed:.2f}s)")
-					time.sleep(remaining_delay)
+				# ==================== STEP 10: APPLY CONTEXTS ====================
+				self.set_prompt({
+					"text": theme_text,
+					"contexts": contexts_obj
+				})
+				logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
 				
-				logger.info(f"✅ Agent fully configured: voice=rachel, model=gpt-4o, node={current_node}, phone={phone} (total time: {time.time() - start_time:.2f}s)")
+				logger.info(f"✅ Agent configured with contexts: voice=rachel, model=gpt-4o, initial_context={initial_context}, phone={phone}")
 			else:
 				logger.warning("⚠️ No phone number found in request - using default configuration")
-				# Apply fallback prompt if no phone number
-				self.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries. Greet the caller warmly.")
-				self.current_node = "greet"
+				# Apply fallback for unknown caller
+				try:
+					contexts_obj = build_contexts_object(
+						vertical="reverse_mortgage",
+						initial_context="greet",
+						lead_context=None
+					)
+					theme_text = load_theme("reverse_mortgage")
+					self.set_prompt({
+						"text": theme_text,
+						"contexts": contexts_obj
+					})
+				except Exception as e:
+					logger.error(f"Failed to build fallback contexts: {e}")
+					raise
 			
 			# ==================== STEP 11: RETURN ====================
 			# Return None - no SWML modifications needed, use SDK defaults
@@ -834,16 +1167,8 @@ List specific actions needed based on conversation outcome.
 			
 		except Exception as e:
 			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
-			# Fall back to minimal configuration if setup fails
-			try:
-				self.add_language("English", "en-US", voice="rachel", engine="elevenlabs")
-				self.set_params({"ai_model": "gpt-4o"})
-				self.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries.")
-				logger.info("✅ Applied fallback configuration after error")
-			except:
-				logger.error("❌ Fallback configuration also failed")
-			# Return None to proceed with defaults even if setup fails
-			return None
+			# Fail loud - don't degrade gracefully
+			raise
 	
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
 		"""Handle conversation summary after call ends
@@ -863,9 +1188,9 @@ List specific actions needed based on conversation outcome.
 				logger.warning("⚠️ No summary provided")
 				return
 			
-			# Extract phone number from call context
-			phone = self.phone_number
-			if not phone and raw_data:
+			# Extract phone number from raw_data
+			phone = None
+			if raw_data:
 				phone = raw_data.get("From") or raw_data.get("To")
 			
 			if phone:
@@ -886,8 +1211,7 @@ List specific actions needed based on conversation outcome.
 						"content": f"Call Summary:\n{summary}",
 						"metadata": {
 							"summary": summary,
-							"call_ended_at": raw_data.get("timestamp") if raw_data else None,
-							"node": self.current_node
+							"call_ended_at": raw_data.get("timestamp") if raw_data else None
 						}
 					}).execute()
 					
@@ -933,551 +1257,6 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
 		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
 		
-		# After tool completes, check if we should route to next node
-		# This is synchronous - routing check doesn't need async
-		try:
-			logger.info(f"🔍 DEBUG: Checking routing after tool '{name}' (current node: {self.current_node})")
-			# Check for routing and get context_switch result if routing happens
-			routing_result = self._check_and_route_after_tool(name, args)
-			
-			# If routing occurred, we need to merge with tool result if it has UX actions
-			if routing_result is not None:
-				logger.info(f"🔄 DEBUG: Routing detected! Merging context_switch with tool result from {name}")
-				logger.debug(f"🔄 DEBUG: Routing result type: {type(routing_result).__name__}")
-				
-				# BUG FIX: If tool returned a SwaigFunctionResult with UX actions, merge them
-				# Don't discard the tool's UX actions (say(), send_sms(), etc.)
-				from signalwire_agents.core import SwaigFunctionResult  # type: ignore
-				if isinstance(result, SwaigFunctionResult):
-					logger.debug(f"🔗 DEBUG: Tool '{name}' returned SwaigFunctionResult - merging UX actions with routing")
-					# The routing_result already has context_switch, but we need to preserve tool's UX actions
-					# SignalWire SDK: context_switch can coexist with other actions
-					# Return routing_result (has context_switch) - tool's actions are already in the conversation flow
-					# Note: If tool had say()/send_sms(), those execute before routing, which is correct behavior
-					return routing_result
-				else:
-					# Tool returned plain data, routing result replaces it (correct)
-					return routing_result
-			else:
-				logger.debug(f"⏸️  DEBUG: No routing needed after '{name}', returning normal tool result")
-		except Exception as e:
-			logger.error(f"❌ DEBUG: Routing check failed after {name}: {e}", exc_info=True)
-		
-		# No routing occurred, return normal tool result
-		logger.debug(f"📤 DEBUG: Returning tool result for '{name}'")
+		# Return tool result - contexts handle routing automatically
 		return result
-	
-	def _check_and_route_after_tool(self, tool_name: str, args: Dict[str, Any]):
-		"""Check if we should route after a tool call using BarbGraph logic
-		
-		First checks for intent-based routing (user intent matches different node),
-		then checks if current node is complete.
-		
-		Args:
-			tool_name: Name of tool that just executed
-			args: Arguments passed to tool
-			
-		Returns:
-			SwaigFunctionResult if routing occurred, None otherwise
-		"""
-		logger.debug(f"🔍 DEBUG: _check_and_route_after_tool called for '{tool_name}'")
-		logger.debug(f"🔍 DEBUG: Current node: {self.current_node}, args: {args}")
-		
-		# Extract phone from args (most tools have phone parameter)
-		phone = args.get("phone") or self.phone_number
-		if not phone:
-			logger.debug(f"⏭️  DEBUG: No phone number for routing after {tool_name} (args: {args}, self.phone_number: {self.phone_number})")
-			return None
-		
-		logger.debug(f"📞 DEBUG: Using phone '{phone}' for routing check")
-		
-		# Get current conversation state from database
-		state_row = get_conversation_state(phone)
-		if not state_row:
-			logger.debug(f"⏭️  DEBUG: No conversation state yet for {phone}")
-			return None
-		
-		logger.debug(f"💾 DEBUG: Found conversation state: lead_id={state_row.get('lead_id')}, qualified={state_row.get('qualified')}")
-		
-		# Build state dict for intent detection and routing
-		conversation_data = state_row.get("conversation_data", {})
-		conv_state = {
-			"phone_number": phone,
-			"messages": [],  # Not needed for intent detection
-			"conversation_data": conversation_data
-		}
-		
-		# STEP 1: Check for intent-based routing (user intent matches different node)
-		from equity_connect.workflows.intent_detection import check_intent_in_node
-		intent_node = check_intent_in_node(self.current_node, conv_state)
-		if intent_node and intent_node != self.current_node:
-			logger.info(f"🎯 DEBUG: Intent detected in '{self.current_node}' → routing to '{intent_node}'")
-			routing_result = self._route_to_node(intent_node, phone)
-			logger.debug(f"🔄 DEBUG: Intent-based routing returned: {type(routing_result).__name__}")
-			return routing_result
-		
-		# STEP 2: Check if current node is complete (using node completion checkers)
-		logger.debug(f"📊 DEBUG: conversation_data keys: {list(conversation_data.keys())}")
-		
-		node_complete = is_node_complete(self.current_node, conversation_data)
-		logger.debug(f"✅ DEBUG: Node '{self.current_node}' complete check: {node_complete}")
-		
-		if node_complete:
-			logger.info(f"✅ DEBUG: Node '{self.current_node}' complete - checking routing")
-			
-			# Determine next node using BarbGraph routers
-			next_node = self._get_next_node(state_row)
-			logger.debug(f"🧭 DEBUG: Router determined next node: '{next_node}' (current: '{self.current_node}')")
-			
-			if next_node and next_node != self.current_node:
-				logger.info(f"🔀 DEBUG: Routing: {self.current_node} → {next_node}")
-				# Return the context_switch result - this MUST be returned to SignalWire
-				routing_result = self._route_to_node(next_node, phone)
-				logger.debug(f"🔄 DEBUG: _route_to_node returned: {type(routing_result).__name__}")
-				return routing_result
-			else:
-				logger.debug(f"⏸️  DEBUG: Staying on node '{self.current_node}' (next_node: '{next_node}')")
-				return None
-		else:
-			logger.debug(f"⏳ DEBUG: Node '{self.current_node}' not complete yet")
-			return None
-	
-	def _get_next_node(self, state_row: Dict[str, Any]) -> str:
-		"""Determine next node using BarbGraph routers (ZERO changes to router logic)
-		
-		Args:
-			state_row: Database row from conversation_state table
-			
-		Returns:
-			Next node name or current node if no routing needed
-		"""
-		node = self.current_node
-		
-		# Map current node to its router function
-		router_map = {
-			"greet": route_after_greet,
-			"verify": route_after_verify,
-			"qualify": route_after_qualify,
-			"answer": route_after_answer,
-			"quote": route_after_quote,
-			"objections": route_after_objections,  # Note: plural
-			"book": route_after_book,
-			"exit": route_after_exit
-		}
-		
-		router = router_map.get(node)
-		if not router:
-			logger.warning(f"⚠️  No router for node '{node}'")
-			return node
-		
-		# Build ConversationState dict for router (routers expect this structure)
-		conv_state = {
-			"phone_number": state_row.get("phone_number"),
-			"messages": [],  # Not needed for routing decisions
-			"conversation_data": state_row.get("conversation_data", {})
-		}
-		
-		try:
-			next_node = router(conv_state)
-			logger.info(f"🧭 Router '{node}' returned: {next_node}")
-			return next_node
-		except Exception as e:
-			logger.error(f"❌ Router error for '{node}': {e}")
-			return node  # Stay on current node if router fails
-	
-	def _build_transition_message(self, node_name: str, state: dict) -> str:
-		"""Build user message to provide context for node transition
-		
-		This message helps the LLM understand WHY the prompt changed and what
-		happened in the previous node. It creates smoother, more natural transitions.
-		
-		Args:
-			node_name: Target node being transitioned to
-			state: Current conversation state from database
-			
-		Returns:
-			User message explaining the transition context
-		"""
-		conversation_data = state.get("conversation_data", {}) if state else {}
-		
-		# Context messages for each BarbGraph node transition
-		messages = {
-			"greet": "Call starting. Greet the caller warmly and introduce yourself.",
-			
-			"verify": (
-				"Caller has been greeted. Now verify their identity and collect basic information. "
-				"Create a lead record if this is a new caller."
-			),
-			
-			"qualify": (
-				"Identity verified. Now determine if they qualify for a reverse mortgage. "
-				"Ask about age, home value, mortgage balance, and financial situation."
-			),
-			
-			"quote": (
-				"Lead is qualified. Present the financial quote showing how much equity they can access. "
-				f"Use their home value (${conversation_data.get('home_value', 'unknown')}) and "
-				f"equity (${conversation_data.get('estimated_equity', 'unknown')}) to calculate the range."
-			),
-			
-			"answer": (
-				"Quote has been presented. Now answer any questions they have about reverse mortgages, "
-				"the process, requirements, or their specific situation. Use the knowledge base."
-			),
-			
-			"objections": (
-				"Caller expressed concerns or objections. Address them empathetically with facts. "
-				f"Main concern: {conversation_data.get('objection_type', 'general concerns')}"
-			),
-			
-			"book": (
-				"Caller is ready to schedule an appointment. Check broker availability and book a time "
-				"that works for them. Send confirmation via SMS."
-			),
-			
-			"exit": (
-				"Call objectives complete. Thank the caller, confirm next steps, and end the call professionally."
-			)
-		}
-		
-		return messages.get(node_name, "Continue the conversation naturally.")
-	
-	def _route_to_node(self, node_name: str, phone: str):
-		"""Route to new BarbGraph node using context_switch for smooth transitions
-		
-		This is the proper SignalWire pattern for mid-call prompt changes.
-		Uses context_switch action instead of basic set_prompt_text() to:
-		- Provide transition context to the LLM
-		- Consolidate conversation history (save tokens)
-		- Create natural, smooth node transitions
-		
-		Args:
-			node_name: Target node to route to
-			phone: Caller's phone number for context loading
-			
-		Returns:
-			SwaigFunctionResult with context_switch action
-		"""
-		from signalwire_agents.core import SwaigFunctionResult  # type: ignore
-		
-		logger.info(f"🔄 DEBUG: _route_to_node called: {self.current_node} → {node_name} (phone: {phone})")
-		
-		try:
-			# Save per-node summary before transitioning
-			self._save_node_summary(self.current_node, phone)
-			
-			# Get conversation state for context
-			state_row = get_conversation_state(phone)
-			lead_context = None
-			
-			if state_row:
-				lead_id = state_row.get("lead_id")
-				if lead_id:
-					# Load full lead data from leads table (same as on_swml_request)
-					# This ensures name, property, equity, email, age are available in all nodes
-					from equity_connect.services.supabase import get_supabase_client
-					try:
-						sb = get_supabase_client()
-						# Load lead with broker join to get nylas_grant_id
-						lead_result = sb.table('leads').select('''
-							id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
-							property_address, property_city, property_state, property_zip,
-							property_value, estimated_equity, age, status, qualified, owner_occupied,
-							assigned_broker_id,
-							brokers:assigned_broker_id (
-								id, contact_name, company_name, email, phone, nmls_number, nylas_grant_id, timezone
-							)
-						''').eq('id', lead_id).single().execute()
-						
-						if lead_result.data:
-							lead_data = lead_result.data
-							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
-							
-							# Build name - handle None/empty last_name gracefully (Pythonic pattern)
-							full_name = " ".join([s for s in [lead_data.get('first_name'), lead_data.get('last_name')] if s])
-							first_name = lead_data.get('first_name') or ''
-							last_name = lead_data.get('last_name')
-							
-							lead_context = {
-								"lead_id": lead_id,
-								"name": full_name,
-								"first_name": first_name,
-								"last_name": last_name,
-								"qualified": state_row.get("qualified") or lead_data.get('status') in ['qualified', 'appointment_set'],
-								"property_address": lead_data.get('property_address'),
-								"property_city": lead_data.get('property_city'),
-								"property_state": lead_data.get('property_state'),
-								"property_value": lead_data.get('property_value'),
-								"estimated_equity": lead_data.get('estimated_equity'),
-								"primary_email": lead_data.get('primary_email'),
-								"age": lead_data.get('age'),
-								"conversation_data": state_row.get("conversation_data", {})
-							}
-							
-							# Add broker info if assigned
-							if broker_data:
-								lead_context["broker_id"] = broker_data.get('id')
-								lead_context["broker_name"] = broker_data.get('contact_name')
-								lead_context["broker_company"] = broker_data.get('company_name')
-								lead_context["broker_email"] = broker_data.get('email')
-								lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
-								lead_context["broker_timezone"] = broker_data.get('timezone')
-								logger.info(f"👤 Loaded full lead data for routing: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
-								
-								# Inject broker Nylas grant ID into global_data during node transition
-								# This ensures calendar tools have access to it without DB query
-								if lead_context.get('broker_nylas_grant_id'):
-									self.update_global_data({
-										"broker_id": lead_context["broker_id"],
-										"broker_name": lead_context["broker_name"],
-										"broker_email": lead_context.get("broker_email"),
-										"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
-										"broker_timezone": lead_context.get("broker_timezone")
-									})
-									logger.info(f"✅ Updated global_data with broker_nylas_grant_id during node transition")
-							else:
-								logger.info(f"👤 Loaded full lead data for routing: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
-						else:
-							logger.warning(f"Lead {lead_id} not found in leads table during routing")
-							# Fallback to minimal context if lead not found
-							lead_context = {
-								"lead_id": lead_id,
-								"qualified": state_row.get("qualified"),
-								"conversation_data": state_row.get("conversation_data", {})
-							}
-					except Exception as e:
-						logger.error(f"Failed to load lead data during routing: {e}")
-						# Fallback to minimal context on error
-						lead_context = {
-							"lead_id": lead_id,
-							"qualified": state_row.get("qualified"),
-							"conversation_data": state_row.get("conversation_data", {})
-						}
-			
-			# Load new node prompt (theme + context + node)
-			from equity_connect.services.prompt_loader import build_instructions_for_node
-			
-			node_prompt = build_instructions_for_node(
-				node_name=node_name,
-				call_type=self.call_type,
-				lead_context=lead_context if lead_context else None,
-				phone_number=phone,
-				vertical="reverse_mortgage"
-			)
-			
-			# Build transition context message
-			transition_message = self._build_transition_message(node_name, state_row)
-			
-			# Create SWAIG result with context_switch action
-			# This is the proper SignalWire pattern for mid-call prompt changes
-			result = SwaigFunctionResult()
-			result.switch_context(
-				system_prompt=node_prompt,
-				user_prompt=transition_message,
-				consolidate=True  # Summarize previous conversation to save tokens
-			)
-			
-			# Dynamic VAD timeout based on node (seniors need different patience levels)
-			# More patient for complex nodes (verify, qualify, answer, objections)
-			# Faster response for simple nodes (greet, quote, book, exit)
-			if node_name in ["verify", "qualify", "answer", "objections"]:
-				result.set_end_of_speech_timeout(2000)  # 2 seconds - more patient for seniors
-				logger.debug(f"🎙️  VAD timeout set to 2000ms for node '{node_name}' (patient mode)")
-			elif node_name in ["greet", "quote", "book", "exit"]:
-				result.set_end_of_speech_timeout(800)  # 0.8 seconds - faster for simple responses
-				logger.debug(f"🎙️  VAD timeout set to 800ms for node '{node_name}' (responsive mode)")
-			
-			# Update tracking
-			self.current_node = node_name
-			self.phone_number = phone
-			
-			# Apply function restrictions per node (hybrid SignalWire + BarbGraph)
-			self._apply_node_function_restrictions(node_name)
-			
-			logger.info(f"✅ DEBUG: Context switched to node '{node_name}' with consolidation")
-			logger.info(f"📍 DEBUG: Current node is now: '{node_name}' (tools will be restricted to this node)")
-			logger.debug(f"✅ DEBUG: SwaigFunctionResult created successfully, type: {type(result).__name__}")
-			logger.debug(f"✅ DEBUG: Updated current_node to '{node_name}', phone_number to '{phone}'")
-			
-			return result
-		except Exception as e:
-			logger.error(f"❌ Failed to route to node '{node_name}': {e}")
-			# Return empty result on failure - stay on current node
-			return SwaigFunctionResult()
-	
-	def _apply_node_function_restrictions(self, node_name: str):
-		"""Restrict available functions based on current BarbGraph node
-		
-		This is the hybrid approach: BarbGraph routing + SignalWire function restrictions.
-		Each node only gets access to relevant tools for security and performance.
-		
-		Args:
-			node_name: Current BarbGraph node
-		"""
-		# Always-allowed baseline flow flags (BarbGraph state signaling)
-		ALWAYS_ALLOWED = [
-			"get_lead_context",  # Read-only; safe and useful in all nodes
-			"mark_ready_to_book",
-			"mark_has_objection",
-			"mark_objection_handled",
-			"mark_questions_answered",
-			"mark_qualification_result",
-			"mark_quote_presented",
-			"mark_wrong_person",
-			"clear_conversation_flags",
-		]
-		
-		# Map nodes to allowed functions
-		function_map = {
-			"greet": [
-				"mark_wrong_person",  # Can identify wrong person early
-				"get_lead_context",  # Can lookup who they're calling
-				"mark_ready_to_book"  # User wants to book immediately (e.g., "I want to book with Walter")
-			],
-			"verify": [
-				"verify_caller_identity",  # Core verification
-				"check_consent_dnc",  # Legal compliance
-				"get_lead_context",  # Lookup existing lead
-				"mark_ready_to_book"  # User wants to book immediately
-			],
-			"qualify": [
-				"update_lead_info",  # Collect qualification data
-				"find_broker_by_territory",  # Find broker by location
-				"mark_qualification_result",  # Set qualified flag
-				"mark_ready_to_book"  # Can move to booking
-			],
-			"answer": [
-				"search_knowledge",  # Answer questions from knowledge base
-				"mark_questions_answered",  # Track completion
-				"mark_has_objection",  # Detect objections
-				"mark_ready_to_book"  # Can progress to booking
-			],
-			"quote": [
-				"search_knowledge",  # Explain quote details
-				"mark_quote_presented",  # Track quote presentation
-				"mark_has_objection",  # Detect concerns about quote
-				"calculate"  # Math skill for equity calculations (LLMs are bad at math)
-			],
-			"objections": [
-				"search_knowledge",  # Address objections with facts
-				"mark_objection_handled",  # Mark as resolved
-				"mark_has_objection"  # Track new objections
-			],
-			"book": [
-				"check_broker_availability",  # Check calendar
-				"book_appointment",  # Create appointment
-				"reschedule_appointment",  # Modify existing
-				"cancel_appointment",  # Cancel if needed
-				"send_appointment_confirmation",  # Send SMS
-				"verify_appointment_confirmation"  # Verify code
-			],
-			"exit": []  # No functions needed at exit
-		}
-		
-		# Get allowed functions for this node
-		allowed_functions = function_map.get(node_name, [])
-		
-		# Union with baseline flags so they are always available regardless of node
-		allowed_functions = sorted(set(allowed_functions) | set(ALWAYS_ALLOWED))
-		
-		logger.info(f"🔒 DEBUG: Node '{node_name}' - Available tools: {allowed_functions}")
-		
-		if allowed_functions:
-			# Set only these functions as available
-			self.set_functions(allowed_functions)
-			logger.info(f"🔒 Node '{node_name}' restricted to {len(allowed_functions)} functions")
-		elif node_name == "exit":
-			# Exit node has no functions
-			self.set_functions("none")
-			logger.info(f"🔒 Node '{node_name}' has no functions (exit)")
-		else:
-			# Unknown node - log warning but allow all functions (fail open)
-			logger.warning(f"⚠️ Unknown node '{node_name}' - allowing all functions")
-			# Don't call set_functions() to allow all
-	
-	def _save_node_summary(self, node_name: str, phone: str):
-		"""Save a summary of what happened in this node
-		
-		Args:
-			node_name: The node that just completed
-			phone: Caller's phone number
-		"""
-		if not node_name or node_name == "greet":
-			return  # Don't save for initial node
-		
-		try:
-			# Get conversation state for this node
-			from equity_connect.services.conversation_state import get_conversation_state
-			state_row = get_conversation_state(phone)
-			
-			if not state_row or not state_row.get("lead_id"):
-				return
-			
-			# Extract node-specific data from conversation_data
-			conv_data = state_row.get("conversation_data", {})
-			
-			# Build node summary based on what we know
-			node_summary = f"""
-NODE: {node_name}
-
-COMPLETED: Yes
-FLAGS SET: {', '.join([k for k, v in conv_data.items() if v and k != 'node_history'])}
-
-DATA COLLECTED:
-{self._format_node_data(node_name, conv_data)}
-
-NEXT NODE: {self._get_next_node_from_state(state_row)}
-			""".strip()
-			
-			# Save as interaction with node-specific metadata
-			from equity_connect.services.supabase import get_supabase_client
-			supabase = get_supabase_client()
-			
-			supabase.table("interactions").insert({
-				"lead_id": state_row["lead_id"],
-				"broker_id": state_row.get("broker_id"),
-				"interaction_type": "node_completion",
-				"outcome": node_name,
-				"content": node_summary,
-				"metadata": {
-					"node": node_name,
-					"flags": conv_data,
-					"timestamp": "now()"
-				}
-			}).execute()
-			
-			logger.info(f"📊 Node summary saved: {node_name}")
-			
-		except Exception as e:
-			logger.error(f"❌ Failed to save node summary for '{node_name}': {e}")
-	
-	def _format_node_data(self, node_name: str, conv_data: dict) -> str:
-		"""Format node-specific data for summary"""
-		data_points = []
-		
-		# Extract relevant flags for this node
-		if node_name == "verify":
-			if conv_data.get("verified"):
-				data_points.append("✓ Identity verified")
-		elif node_name == "qualify":
-			if conv_data.get("qualified") is not None:
-				data_points.append(f"✓ Qualified: {conv_data['qualified']}")
-		elif node_name == "answer":
-			if conv_data.get("questions_answered"):
-				data_points.append("✓ Questions answered")
-		elif node_name == "quote":
-			if conv_data.get("quote_presented"):
-				data_points.append("✓ Quote presented")
-		elif node_name == "objections":
-			if conv_data.get("has_objection"):
-				data_points.append(f"✓ Objection handled: {conv_data.get('objection_type', 'Unknown')}")
-		elif node_name == "book":
-			if conv_data.get("appointment_booked"):
-				data_points.append("✓ Appointment booked")
-		
-		return "\n".join(data_points) if data_points else "No specific data collected"
-	
-	def _get_next_node_from_state(self, state_row: dict) -> str:
-		"""Determine next node from current state"""
-		return state_row.get("current_node", "unknown")
 

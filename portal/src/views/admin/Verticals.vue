@@ -1301,7 +1301,14 @@ async function saveNode(nodeName) {
         .filter(t => t)
     }
     
+    // CRITICAL: Preserve existing content fields (valid_contexts, step_criteria, etc.)
+    // Load current active version to get existing fields
+    const currentPrompt = nodePrompts.value[selectedVertical.value]?.[nodeName]
+    const existingContent = currentPrompt?.content || {}
+    
+    // Merge: preserve migration fields, update edited fields
     const contentObj = {
+      ...existingContent,  // PRESERVE: valid_contexts, step_criteria, valid_steps, etc.
       role: nodeContent.value[nodeName].role || '',
       instructions: nodeContent.value[nodeName].instructions || '',
       tools: toolsArray
