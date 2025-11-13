@@ -26,7 +26,7 @@ async def get_broker_events(grant_id: str, start_time: int, end_time: int) -> Li
 	
 	url = f"{NYLAS_API_URL}/v3/grants/{grant_id}/events?calendar_id=primary&start={start_time}&end={end_time}"
 	
-	async with httpx.AsyncClient() as client:
+	async with httpx.AsyncClient(timeout=15.0) as client:  # 15 second timeout
 		response = await client.get(
 			url,
 			headers={
@@ -209,7 +209,7 @@ async def create_calendar_event(grant_id: str, event_data: Dict[str, Any]) -> st
 		"participants": participants
 	}
 	
-	async with httpx.AsyncClient() as client:
+	async with httpx.AsyncClient(timeout=15.0) as client:  # 15 second timeout
 		response = await client.post(
 			url,
 			headers={

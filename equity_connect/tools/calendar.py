@@ -55,7 +55,7 @@ async def check_broker_availability(
 	
 	# Immediate feedback - let caller know we're working
 	if result:
-		result.say("One moment while I check the broker's calendar for available times.")
+		result.say("Let me check Walter's calendar for available times. This will just take a moment.")
 		# Optional: Play subtle hold music during slow API call
 		# result.play_background_audio("https://your-cdn.com/hold-music.mp3", wait=True)
 	

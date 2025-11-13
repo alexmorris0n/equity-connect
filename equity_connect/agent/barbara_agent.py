@@ -699,10 +699,13 @@ List specific actions needed based on conversation outcome.
 		except Exception as e:
 			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
 	
-	async def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
+	def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None) -> Any:
 		"""Intercept tool calls to trigger BarbGraph routing after completion
 		
 		This is the key integration point where BarbGraph routing happens after tools execute.
+		
+		NOTE: This must be synchronous - SignalWire SDK doesn't await async on_function_call.
+		We handle async tool execution via the parent class, then do routing synchronously.
 		
 		Args:
 			name: Tool name being called
@@ -715,19 +718,23 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"🔧 DEBUG: on_function_call invoked for tool '{name}' with args: {args}")
 		logger.debug(f"🔧 DEBUG: raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
 		
-		# Let the tool execute normally via parent class (await if async)
+		# Let the tool execute normally via parent class (parent handles async)
 		logger.debug(f"🔧 DEBUG: Calling super().on_function_call() for '{name}'")
 		result = super().on_function_call(name, args, raw_data)
 		
-		# If result is a coroutine, await it
+		# Parent class handles async execution - result should be ready
+		# If it's a coroutine, that's a problem (parent should await it)
 		if hasattr(result, '__await__'):
-			logger.debug(f"🔧 DEBUG: Result is coroutine, awaiting...")
-			result = await result
+			logger.error(f"❌ DEBUG: Parent returned coroutine - this shouldn't happen! Tool: {name}")
+			# This shouldn't happen, but if it does, we can't await it here (sync method)
+			# Return the coroutine and let SignalWire handle it (or it will error)
+			return result
 		
 		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
 		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
 		
 		# After tool completes, check if we should route to next node
+		# This is synchronous - routing check doesn't need async
 		try:
 			logger.debug(f"🔍 DEBUG: Checking routing after tool '{name}' (current node: {self.current_node})")
 			# Check for routing and get context_switch result if routing happens
