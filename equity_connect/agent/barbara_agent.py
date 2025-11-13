@@ -39,7 +39,7 @@ class BarbaraAgent(AgentBase):
 			host="0.0.0.0",  # Listen on all interfaces for Docker/Fly.io
 			port=8080,
 			use_pom=False,  # Disable POM - we use raw text with set_prompt_text()
-			auto_answer=False,  # Let call ring during context injection, then auto-answer when ready
+			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
 			basic_auth=(agent_username, agent_password)
@@ -1314,6 +1314,19 @@ List specific actions needed based on conversation outcome.
 		Args:
 			node_name: Current BarbGraph node
 		"""
+		# Always-allowed baseline flow flags (BarbGraph state signaling)
+		ALWAYS_ALLOWED = [
+			"get_lead_context",  # Read-only; safe and useful in all nodes
+			"mark_ready_to_book",
+			"mark_has_objection",
+			"mark_objection_handled",
+			"mark_questions_answered",
+			"mark_qualification_result",
+			"mark_quote_presented",
+			"mark_wrong_person",
+			"clear_conversation_flags",
+		]
+		
 		# Map nodes to allowed functions
 		function_map = {
 			"greet": [
@@ -1363,6 +1376,9 @@ List specific actions needed based on conversation outcome.
 		
 		# Get allowed functions for this node
 		allowed_functions = function_map.get(node_name, [])
+		
+		# Union with baseline flags so they are always available regardless of node
+		allowed_functions = sorted(set(allowed_functions) | set(ALWAYS_ALLOWED))
 		
 		logger.info(f"🔒 DEBUG: Node '{node_name}' - Available tools: {allowed_functions}")
 		

@@ -72,6 +72,11 @@ const router = createRouter({
           path: 'live-calls',
           name: 'LiveCalls',
           component: () => import('@/views/admin/LiveCalls.vue')
+        },
+        {
+          path: 'verticals',
+          name: 'Verticals',
+          component: () => import('@/views/admin/Verticals.vue')
         }
       ]
     },
