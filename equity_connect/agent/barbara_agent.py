@@ -1051,12 +1051,14 @@ List specific actions needed based on conversation outcome.
 		function_map = {
 			"greet": [
 				"mark_wrong_person",  # Can identify wrong person early
-				"get_lead_context"  # Can lookup who they're calling
+				"get_lead_context",  # Can lookup who they're calling
+				"mark_ready_to_book"  # User wants to book immediately (e.g., "I want to book with Walter")
 			],
 			"verify": [
 				"verify_caller_identity",  # Core verification
 				"check_consent_dnc",  # Legal compliance
-				"get_lead_context"  # Lookup existing lead
+				"get_lead_context",  # Lookup existing lead
+				"mark_ready_to_book"  # User wants to book immediately
 			],
 			"qualify": [
 				"update_lead_info",  # Collect qualification data

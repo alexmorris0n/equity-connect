@@ -20,9 +20,10 @@ def _cd(row: Dict[str, Any]) -> Dict[str, Any]:
 	return (row or {}).get("conversation_data") or {}
 
 
-def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "answer", "exit", "greet"]:
+def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "answer", "exit", "greet", "book"]:
 	"""
 	DB-driven routing after greet.
+	- If ready_to_book → book (user wants to schedule immediately)
 	- If wrong_person and right_person_available → greet (re-greet spouse)
 	- If wrong_person only → exit
 	- If lead_id && qualified → answer
@@ -34,6 +35,11 @@ def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "an
 		logger.info("🔍 No DB row yet → VERIFY")
 		return "verify"
 	cd = _cd(row)
+
+	# Check if user wants to book immediately (e.g., "I want to book a call with Walter")
+	if cd.get("ready_to_book"):
+		logger.info("📅 Ready to book immediately → BOOK")
+		return "book"
 
 	if cd.get("wrong_person") and cd.get("right_person_available"):
 		logger.info("🔁 Re-greet right person now available → GREET")
@@ -53,9 +59,10 @@ def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "an
 	return "verify"
 
 
-def route_after_verify(state: Dict[str, Any]) -> Literal["qualify", "exit", "greet"]:
+def route_after_verify(state: Dict[str, Any]) -> Literal["qualify", "exit", "greet", "book"]:
 	"""
 	DB-driven routing after verify.
+	- If ready_to_book → book (user wants to schedule immediately)
 	- If wrong_person and right_person_available → greet
 	- If wrong_person → exit
 	- If verified → qualify
@@ -66,6 +73,11 @@ def route_after_verify(state: Dict[str, Any]) -> Literal["qualify", "exit", "gre
 		logger.info("🔍 No DB row → VERIFY (implicit)")
 		return "verify"  # continue verification until flags are persisted
 	cd = _cd(row)
+
+	# Check if user wants to book immediately
+	if cd.get("ready_to_book"):
+		logger.info("📅 Ready to book immediately → BOOK")
+		return "book"
 
 	if cd.get("wrong_person") and cd.get("right_person_available"):
 		logger.info("🔁 Re-greet right person now available → GREET")
