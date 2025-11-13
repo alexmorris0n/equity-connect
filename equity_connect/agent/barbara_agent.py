@@ -763,7 +763,7 @@ List specific actions needed based on conversation outcome.
 		# After tool completes, check if we should route to next node
 		# This is synchronous - routing check doesn't need async
 		try:
-			logger.debug(f"🔍 DEBUG: Checking routing after tool '{name}' (current node: {self.current_node})")
+			logger.info(f"🔍 DEBUG: Checking routing after tool '{name}' (current node: {self.current_node})")
 			# Check for routing and get context_switch result if routing happens
 			routing_result = self._check_and_route_after_tool(name, args)
 			
@@ -1028,6 +1028,7 @@ List specific actions needed based on conversation outcome.
 			self._apply_node_function_restrictions(node_name)
 			
 			logger.info(f"✅ DEBUG: Context switched to node '{node_name}' with consolidation")
+			logger.info(f"📍 DEBUG: Current node is now: '{node_name}' (tools will be restricted to this node)")
 			logger.debug(f"✅ DEBUG: SwaigFunctionResult created successfully, type: {type(result).__name__}")
 			logger.debug(f"✅ DEBUG: Updated current_node to '{node_name}', phone_number to '{phone}'")
 			
@@ -1093,6 +1094,8 @@ List specific actions needed based on conversation outcome.
 		
 		# Get allowed functions for this node
 		allowed_functions = function_map.get(node_name, [])
+		
+		logger.info(f"🔒 DEBUG: Node '{node_name}' - Available tools: {allowed_functions}")
 		
 		if allowed_functions:
 			# Set only these functions as available
