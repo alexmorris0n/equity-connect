@@ -23,10 +23,11 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 - **AI Voice:** SignalWire Agent SDK + Fly.io Agent Worker
 - **Voice Infrastructure:** SignalWire SIP + SignalWire AI Gateway (SWAIG)
 - **AI Providers (Native SignalWire Integration):**
-  - **LLM:** OpenAI (GPT-4o), Anthropic (Claude), Google (Gemini), DeepSeek, OpenRouter
-  - **STT:** Deepgram (Nova-2/Nova-3), AssemblyAI, OpenAI Whisper, Google Cloud Speech
-  - **TTS:** ElevenLabs (Tiffany voice), OpenAI TTS, Google Cloud TTS, Cartesia, Speechify
+  - **LLM:** OpenAI (GPT-4o, GPT-4o-mini) - SignalWire SDK supports OpenAI by default. Other providers require custom integration.
+  - **STT:** Deepgram (Nova-2/Nova-3), OpenAI (Whisper-1, GPT-4o Transcribe), AssemblyAI (Universal Streaming), Google Cloud (Latest Long/Short), Cartesia (Ink Whisper)
+  - **TTS:** ElevenLabs (Tiffany voice), OpenAI TTS, Amazon Polly, Rime, Google Cloud TTS, Microsoft Azure, Cartesia, Speechify
   - **Multi-Provider Flexibility:** Mix-and-match with own API keys (no aggregator)
+  - **Database-Driven Model Selection:** STT and LLM models loaded dynamically from `signalwire_available_stt_models` and `signalwire_available_llm_models` tables
 - **AI Orchestration:** Gemini 2.5 Flash via OpenRouter (n8n workflows)
 - **Telephony:** SignalWire SIP trunk + SignalWire Voice API
 - **Recording Storage:** Supabase Storage (via SignalWire webhook)
@@ -786,6 +787,28 @@ CREATE TABLE conversation_state (
 - ✅ **Live Reload** - Agent picks up changes immediately on next call
 - ✅ **Version Control** - Rollback to previous versions
 - ✅ **Database Integration** - Loads/saves via Supabase RPC
+
+### BarbGraph Vertical Manager (Verticals.vue)
+
+**Status:** ✅ **PRODUCTION READY (November 13, 2025)**
+
+**Core Features:**
+- ✅ **Vertical-Level Versioning** - All nodes share a single version number per vertical
+- ✅ **Global Settings Tabs** - Theme, Models & Voice, Telephony, Safety
+- ✅ **Dynamic Model Selection** - STT, LLM, and TTS models loaded from database
+- ✅ **Database-Driven Voice Catalog** - 400+ voices from `signalwire_available_voices` table
+- ✅ **STT Model Catalog** - Models from `signalwire_available_stt_models` table (English/Spanish)
+- ✅ **LLM Model Catalog** - OpenAI models from `signalwire_available_llm_models` table
+- ✅ **Multi-Select Tools Dropdown** - Searchable tool selector with baseline flow flags filtered
+- ✅ **Responsive Layout** - Desktop (horizontal node cards), mobile (vertical stack)
+- ✅ **Version History Bar** - Left sidebar (desktop) or top bar (mobile)
+- ✅ **Real-Time Preview** - Combined prompt preview (Theme + Context + Node)
+
+**Database Tables:**
+- `signalwire_available_voices` - TTS voice catalog (7 providers, 400+ voices, English/Spanish)
+- `signalwire_available_stt_models` - STT model catalog (5 providers, English/Spanish models)
+- `signalwire_available_llm_models` - LLM model catalog (OpenAI only - SignalWire default)
+- `theme_prompts` - Global vertical configuration (theme content + config JSONB)
 
 ### Lead Management Portal
 
