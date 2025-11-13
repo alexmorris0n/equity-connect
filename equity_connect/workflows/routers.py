@@ -41,6 +41,7 @@ def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "an
 		logger.info("📅 Ready to book immediately → BOOK")
 		return "book"
 
+	# Special case: Re-greet spouse (only fallback to greet)
 	if cd.get("wrong_person") and cd.get("right_person_available"):
 		logger.info("🔁 Re-greet right person now available → GREET")
 		return "greet"
@@ -48,6 +49,7 @@ def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "an
 		logger.info("🚪 Wrong person → EXIT")
 		return "exit"
 
+	# Intent-based routing (no fallback to greet)
 	if row.get("lead_id") and row.get("qualified"):
 		logger.info("⚡ Known + qualified → ANSWER")
 		return "answer"
@@ -55,6 +57,7 @@ def route_after_greet(state: Dict[str, Any]) -> Literal["verify", "qualify", "an
 		logger.info("🔎 Known lead → QUALIFY")
 		return "qualify"
 
+	# Default: verify (no fallback to greet)
 	logger.info("🔍 Unknown → VERIFY")
 	return "verify"
 

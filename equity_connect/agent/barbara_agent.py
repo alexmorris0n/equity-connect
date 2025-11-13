@@ -802,6 +802,9 @@ List specific actions needed based on conversation outcome.
 	def _check_and_route_after_tool(self, tool_name: str, args: Dict[str, Any]):
 		"""Check if we should route after a tool call using BarbGraph logic
 		
+		First checks for intent-based routing (user intent matches different node),
+		then checks if current node is complete.
+		
 		Args:
 			tool_name: Name of tool that just executed
 			args: Arguments passed to tool
@@ -828,8 +831,24 @@ List specific actions needed based on conversation outcome.
 		
 		logger.debug(f"💾 DEBUG: Found conversation state: lead_id={state_row.get('lead_id')}, qualified={state_row.get('qualified')}")
 		
-		# Check if current node is complete (using node completion checkers)
+		# Build state dict for intent detection and routing
 		conversation_data = state_row.get("conversation_data", {})
+		conv_state = {
+			"phone_number": phone,
+			"messages": [],  # Not needed for intent detection
+			"conversation_data": conversation_data
+		}
+		
+		# STEP 1: Check for intent-based routing (user intent matches different node)
+		from equity_connect.workflows.intent_detection import check_intent_in_node
+		intent_node = check_intent_in_node(self.current_node, conv_state)
+		if intent_node and intent_node != self.current_node:
+			logger.info(f"🎯 DEBUG: Intent detected in '{self.current_node}' → routing to '{intent_node}'")
+			routing_result = self._route_to_node(intent_node, phone)
+			logger.debug(f"🔄 DEBUG: Intent-based routing returned: {type(routing_result).__name__}")
+			return routing_result
+		
+		# STEP 2: Check if current node is complete (using node completion checkers)
 		logger.debug(f"📊 DEBUG: conversation_data keys: {list(conversation_data.keys())}")
 		
 		node_complete = is_node_complete(self.current_node, conversation_data)
