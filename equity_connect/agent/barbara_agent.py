@@ -543,11 +543,18 @@ class BarbaraAgent(AgentBase):
 			)
 			
 			# Add datetime skill for appointment booking
-			self.add_skill("datetime")
+			# Wrap in try/except since skill may already be loaded from previous calls
+			try:
+				self.add_skill("datetime")
+			except Exception as e:
+				logger.debug(f"Skill 'datetime' already loaded: {e}")
 			
 			# Add math skill for equity calculations in quote node
 			# LLMs are terrible at arithmetic - let Python do the math
-			self.add_skill("math")
+			try:
+				self.add_skill("math")
+			except Exception as e:
+				logger.debug(f"Skill 'math' already loaded: {e}")
 			
 			logger.info("✅ Skills configured: datetime, math")
 			
@@ -676,7 +683,7 @@ List specific actions needed based on conversation outcome.
 								"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
 								"first_name": lead_data.get('first_name'),
 								"last_name": lead_data.get('last_name'),
-								"qualified": state_row.get("qualified") if state_row else lead_data.get('status') in ['qualified', 'appointment_set'],
+								"qualified": (state_row.get("qualified") if state_row else None) or lead_data.get('status') in ['qualified', 'appointment_set'],
 								"property_address": lead_data.get('property_address'),
 								"property_city": lead_data.get('property_city'),
 								"property_state": lead_data.get('property_state'),
