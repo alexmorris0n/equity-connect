@@ -245,6 +245,9 @@ def build_instructions_for_node(
 	context = None
 	if lead_context and phone_number:
 		context = build_context_injection(call_type, lead_context, phone_number)
+		logger.info(f"📋 Built context injection: {len(context)} chars (name: {lead_context.get('name', 'Unknown')})")
+	else:
+		logger.info(f"📋 No context injection - lead_context={lead_context is not None}, phone_number={phone_number is not None}")
 	
 	# 3. Combine: Node (with theme) → Context
 	# load_node_prompt already combined theme + node, so we just inject context if available

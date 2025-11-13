@@ -581,15 +581,55 @@ List specific actions needed based on conversation outcome.
 			
 			logger.info("✅ All AI configuration applied successfully")
 			
-			# ==================== STEP 3: MULTI-CALL PERSISTENCE ====================
-			# For returning callers, resume where they left off
+			# ==================== STEP 3: LOAD LEAD BY PHONE NUMBER ====================
+			# SignalWire only provides phone number, so we MUST look up lead by phone
+			# For inbound: from_number is the caller (lead)
+			# For outbound: to_number is the lead
 			current_node = "greet"  # Default for new callers
 			lead_context = None
+			lead_id = None
 			
 			if phone:
-				# CRITICAL: Initialize or reuse conversation_state row for this call
-				# This MUST happen before get_conversation_state() to ensure the row exists
-				from equity_connect.services.conversation_state import start_call, get_conversation_state
+				# Add a small delay at the start to let the call ring while we do the work
+				# This ensures caller hears 1-2 rings while we load context
+				import time
+				start_time = time.time()
+				logger.info(f"⏳ Starting context injection (call will ring during this time)")
+				
+				# CRITICAL: Always look up lead by phone number FIRST
+				# SignalWire doesn't provide lead_id, we must find it from phone number
+				logger.info(f"🔍 Looking up lead by phone number: {phone} (direction: {call_direction})")
+				from equity_connect.services.supabase import get_supabase_client
+				import re
+				try:
+					sb = get_supabase_client()
+					# Generate search patterns (same logic as get_lead_context)
+					phone_digits = re.sub(r'\D', '', phone)
+					last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+					patterns = [phone, last10, f"+1{last10}" if len(last10) == 10 else phone]
+					
+					# Build OR query for phone lookup
+					or_conditions = []
+					for pattern in patterns:
+						if pattern:
+							or_conditions.append(f"primary_phone.ilike.%{pattern}%")
+							or_conditions.append(f"primary_phone_e164.eq.{pattern}")
+					
+					if or_conditions:
+						or_filter = ','.join(or_conditions)
+						lead_lookup = sb.table('leads').select('id').or_(or_filter).limit(1).execute()
+						
+						if lead_lookup.data and len(lead_lookup.data) > 0:
+							lead_id = str(lead_lookup.data[0]['id'])
+							logger.info(f"✅ Found existing lead by phone: {lead_id}")
+						else:
+							logger.info(f"🆕 No lead found for {phone} - this is a new caller")
+				except Exception as e:
+					logger.warning(f"Failed to lookup lead by phone: {e}")
+				
+				# ==================== STEP 4: INITIALIZE CONVERSATION STATE ====================
+				# Initialize or reuse conversation_state row for this call
+				from equity_connect.services.conversation_state import start_call, get_conversation_state, update_conversation_state
 				
 				# Build call metadata for initialization
 				call_metadata = {
@@ -603,86 +643,91 @@ List specific actions needed based on conversation outcome.
 				start_call(phone, metadata=call_metadata)
 				logger.info(f"📞 Call session initialized for {phone}")
 				
-				# Query Supabase for lead context and current conversation state
+				# If we found a lead_id, update conversation_state with it
+				if lead_id:
+					update_conversation_state(phone, {"lead_id": lead_id})
+					logger.info(f"✅ Updated conversation_state with lead_id: {lead_id}")
+				
+				# Get conversation state (now with lead_id if found)
 				state_row = get_conversation_state(phone)
 				
-				if state_row:
-					lead_id = state_row.get("lead_id")
-					if lead_id:
-						# Load full lead data from leads table
-						from equity_connect.services.supabase import get_supabase_client
-						try:
-							sb = get_supabase_client()
-							# Load lead with broker join to get nylas_grant_id
-							lead_result = sb.table('leads').select('''
-								id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
-								property_address, property_city, property_state, property_zip,
-								property_value, estimated_equity, age, status, qualified, owner_occupied,
-								assigned_broker_id,
-								brokers:assigned_broker_id (
-									id, contact_name, company_name, email, phone, nmls_number, nylas_grant_id, timezone
-								)
-							''').eq('id', lead_id).single().execute()
+				# ==================== STEP 5: LOAD FULL LEAD DATA ====================
+				# If we found a lead, load full lead data for context injection
+				if lead_id:
+					try:
+						sb = get_supabase_client()
+						# Load lead with broker join to get nylas_grant_id
+						lead_result = sb.table('leads').select('''
+							id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
+							property_address, property_city, property_state, property_zip,
+							property_value, estimated_equity, age, status, qualified, owner_occupied,
+							assigned_broker_id,
+							brokers:assigned_broker_id (
+								id, contact_name, company_name, email, phone, nmls_number, nylas_grant_id, timezone
+							)
+						''').eq('id', lead_id).single().execute()
+						
+						if lead_result.data:
+							lead_data = lead_result.data
+							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
 							
-							if lead_result.data:
-								lead_data = lead_result.data
-								broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
-								
-								lead_context = {
-									"lead_id": lead_id,
-									"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
-									"first_name": lead_data.get('first_name'),
-									"last_name": lead_data.get('last_name'),
-									"qualified": state_row.get("qualified") or lead_data.get('status') in ['qualified', 'appointment_set'],
-									"property_address": lead_data.get('property_address'),
-									"property_city": lead_data.get('property_city'),
-									"property_state": lead_data.get('property_state'),
-									"property_value": lead_data.get('property_value'),
-									"estimated_equity": lead_data.get('estimated_equity'),
-									"primary_email": lead_data.get('primary_email'),
-									"age": lead_data.get('age'),
-									"conversation_data": state_row.get("conversation_data", {})
-								}
-								
-								# Add broker info if assigned
-								if broker_data:
-									lead_context["broker_id"] = broker_data.get('id')
-									lead_context["broker_name"] = broker_data.get('contact_name')
-									lead_context["broker_company"] = broker_data.get('company_name')
-									lead_context["broker_email"] = broker_data.get('email')
-									lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
-									lead_context["broker_timezone"] = broker_data.get('timezone')
-									logger.info(f"👤 Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
-									
-									# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
-									# This avoids DB queries in calendar tools (same pattern as v3)
-									if lead_context.get('broker_nylas_grant_id'):
-										self.update_global_data({
-											"broker_id": lead_context["broker_id"],
-											"broker_name": lead_context["broker_name"],
-											"broker_email": lead_context.get("broker_email"),
-											"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
-											"broker_timezone": lead_context.get("broker_timezone")
-										})
-										logger.info(f"✅ Injected broker_nylas_grant_id into global_data for calendar tools")
-								else:
-									logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
-							else:
-								logger.warning(f"Lead {lead_id} not found in leads table")
-								lead_context = {
-									"lead_id": lead_id,
-									"qualified": state_row.get("qualified"),
-									"conversation_data": state_row.get("conversation_data", {})
-								}
-						except Exception as e:
-							logger.error(f"Failed to load lead data: {e}")
 							lead_context = {
 								"lead_id": lead_id,
-								"qualified": state_row.get("qualified"),
-								"conversation_data": state_row.get("conversation_data", {})
+								"name": f"{lead_data.get('first_name', '')} {lead_data.get('last_name', '')}".strip(),
+								"first_name": lead_data.get('first_name'),
+								"last_name": lead_data.get('last_name'),
+								"qualified": state_row.get("qualified") if state_row else lead_data.get('status') in ['qualified', 'appointment_set'],
+								"property_address": lead_data.get('property_address'),
+								"property_city": lead_data.get('property_city'),
+								"property_state": lead_data.get('property_state'),
+								"property_value": lead_data.get('property_value'),
+								"estimated_equity": lead_data.get('estimated_equity'),
+								"primary_email": lead_data.get('primary_email'),
+								"age": lead_data.get('age'),
+								"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
 							}
-					
-					# Check if this is a returning caller (multi-call persistence)
+							
+							# Add broker info if assigned
+							if broker_data:
+								lead_context["broker_id"] = broker_data.get('id')
+								lead_context["broker_name"] = broker_data.get('contact_name')
+								lead_context["broker_company"] = broker_data.get('company_name')
+								lead_context["broker_email"] = broker_data.get('email')
+								lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
+								lead_context["broker_timezone"] = broker_data.get('timezone')
+								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+								
+								# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
+								# This avoids DB queries in calendar tools (same pattern as v3)
+								if lead_context.get('broker_nylas_grant_id'):
+									self.update_global_data({
+										"broker_id": lead_context["broker_id"],
+										"broker_name": lead_context["broker_name"],
+										"broker_email": lead_context.get("broker_email"),
+										"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
+										"broker_timezone": lead_context.get("broker_timezone")
+									})
+									logger.info(f"✅ Injected broker_nylas_grant_id into global_data for calendar tools")
+							else:
+								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
+						else:
+							logger.warning(f"Lead {lead_id} not found in leads table")
+							lead_context = {
+								"lead_id": lead_id,
+								"qualified": state_row.get("qualified") if state_row else False,
+								"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
+							}
+					except Exception as e:
+						logger.error(f"Failed to load lead data: {e}")
+						lead_context = {
+							"lead_id": lead_id,
+							"qualified": state_row.get("qualified") if state_row else False,
+							"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
+						}
+				
+				# ==================== STEP 6: MULTI-CALL PERSISTENCE ====================
+				# For returning callers, resume where they left off
+				if state_row:
 					cd = state_row.get("conversation_data", {})
 					if cd.get("appointment_booked"):
 						current_node = "exit"  # Already done
@@ -696,13 +741,25 @@ List specific actions needed based on conversation outcome.
 						current_node = "answer"  # Already qualified, answer questions
 						logger.info(f"🔄 Returning caller - resuming at ANSWER node")
 					else:
-						logger.info(f"🆕 New caller - starting at GREET node")
+						if lead_context:
+							logger.info(f"🔄 Returning caller with lead context - starting at GREET node")
+						else:
+							logger.info(f"🆕 New caller - starting at GREET node")
 				else:
-					logger.info(f"🆕 New caller - no state found, starting at GREET node")
+					if lead_context:
+						logger.info(f"🔄 New call for existing lead - starting at GREET node")
+					else:
+						logger.info(f"🆕 New caller - no state found, starting at GREET node")
 				
-				# ==================== STEP 4: LOAD BARBGRAPH PROMPT ====================
+				# ==================== STEP 7: LOAD BARBGRAPH PROMPT ====================
 				# Load BarbGraph node prompt with context injection
 				from equity_connect.services.prompt_loader import build_instructions_for_node
+				
+				# Log lead context for debugging
+				if lead_context:
+					logger.info(f"📋 Lead context for prompt injection: name={lead_context.get('name')}, lead_id={lead_context.get('lead_id')}, qualified={lead_context.get('qualified')}")
+				else:
+					logger.info(f"📋 No lead context available - will use generic prompt")
 				
 				instructions = build_instructions_for_node(
 					node_name=current_node,
@@ -712,21 +769,30 @@ List specific actions needed based on conversation outcome.
 					vertical="reverse_mortgage"
 				)
 				
-				# ==================== STEP 5: APPLY PROMPT ====================
+				# ==================== STEP 8: APPLY PROMPT ====================
 				# Update agent instructions with context-aware BarbGraph prompt
 				self.set_prompt_text(instructions)
 				
-				# ==================== STEP 6: UPDATE INSTANCE VARIABLES ====================
+				# ==================== STEP 9: UPDATE INSTANCE VARIABLES ====================
 				self.current_node = current_node
 				
-				logger.info(f"✅ Agent fully configured: voice=rachel, model=gpt-4o, node={current_node}, phone={phone}")
+				# Ensure minimum delay of ~2 seconds (2 rings) for natural call experience
+				# If DB queries were fast, add remaining delay
+				elapsed = time.time() - start_time
+				min_delay = 4.0  # 4 seconds = ~2 rings
+				if elapsed < min_delay:
+					remaining_delay = min_delay - elapsed
+					logger.info(f"⏳ Adding {remaining_delay:.2f}s delay to reach {min_delay}s total (elapsed: {elapsed:.2f}s)")
+					time.sleep(remaining_delay)
+				
+				logger.info(f"✅ Agent fully configured: voice=rachel, model=gpt-4o, node={current_node}, phone={phone} (total time: {time.time() - start_time:.2f}s)")
 			else:
 				logger.warning("⚠️ No phone number found in request - using default configuration")
 				# Apply fallback prompt if no phone number
 				self.set_prompt_text("You are Barbara, a friendly AI assistant for reverse mortgage inquiries. Greet the caller warmly.")
 				self.current_node = "greet"
 			
-			# ==================== STEP 7: RETURN ====================
+			# ==================== STEP 11: RETURN ====================
 			# Return None - no SWML modifications needed, use SDK defaults
 			return None
 			
