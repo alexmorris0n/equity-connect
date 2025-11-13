@@ -38,7 +38,7 @@ class BarbaraAgent(AgentBase):
 			route="/agent",
 			host="0.0.0.0",  # Listen on all interfaces for Docker/Fly.io
 			port=8080,
-			use_pom=True,  # Enable Prompt Object Model for structured prompts
+			use_pom=False,  # Disable POM - we use raw text with set_prompt_text()
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
