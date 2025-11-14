@@ -14,6 +14,7 @@ This replaces:
 import logging
 from typing import Dict, List, Optional
 from equity_connect.services.supabase import get_supabase_client
+from equity_connect.services.default_contexts import DEFAULT_CONTEXTS, get_default_context
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +52,35 @@ def build_contexts_object(
         logger.error(f"❌ No contexts found for vertical: {vertical}")
         raise ValueError(f"No contexts configured for vertical: {vertical}")
     
+    # Backfill contexts that are missing or have no steps with default v1 definitions
+    fallback_applied = []
+    for ctx_name in DEFAULT_CONTEXTS.keys():
+        if ctx_name not in contexts_data or not contexts_data[ctx_name]["steps"]:
+            contexts_data[ctx_name] = get_default_context(ctx_name)
+            fallback_applied.append(ctx_name)
+    
+    if fallback_applied:
+        logger.warning(f"⚠️ Applied default v1 prompts for contexts: {fallback_applied}")
+    
+    # Filter out contexts that still have no steps (should not happen, but guard anyway)
+    empty_contexts = [name for name, config in contexts_data.items() if not config["steps"]]
+    if empty_contexts:
+        logger.warning(f"⚠️ Skipping contexts with no active prompts: {empty_contexts}")
+    
+    contexts_with_steps = {name: cfg for name, cfg in contexts_data.items() if cfg["steps"]}
+    
+    if not contexts_with_steps:
+        logger.error("❌ No contexts with steps available after filtering. Check prompt versions.")
+        raise ValueError("No contexts contain steps. Ensure each node has an active prompt version.")
+    
     # Build contexts object
     contexts_obj = {}
     
     # Add "default" context (required by SignalWire)
     contexts_obj["default"] = _build_default_context(initial_context)
     
-    # Add each context (greet, verify, qualify, etc.)
-    for context_name, context_config in contexts_data.items():
+    # Add each context (greet, verify, qualify, etc.) that has steps
+    for context_name, context_config in contexts_with_steps.items():
         contexts_obj[context_name] = _build_context(context_name, context_config)
     
     logger.info(f"✅ Built {len(contexts_obj)} contexts: {list(contexts_obj.keys())}")

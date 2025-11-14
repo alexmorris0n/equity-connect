@@ -218,8 +218,10 @@ async def record_interaction(
 	
 	raise Exception("Failed to save interaction")
 
-def normalize_phone(phone: str) -> str:
-	"""Normalize phone number to last 10 digits"""
+def normalize_phone(phone: Optional[str]) -> Optional[str]:
+	"""Normalize phone number to last 10 digits (gracefully handle missing input)."""
+	if not phone:
+		return None
 	digits = ''.join(filter(str.isdigit, phone))
 	return digits[-10:] if len(digits) >= 10 else digits
 

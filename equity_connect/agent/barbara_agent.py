@@ -1,10 +1,11 @@
 """Barbara - AI Voice Agent for EquityConnect using SignalWire SDK"""
 import os
 import logging
-from typing import Optional, Dict, Any
-from signalwire_agents import AgentBase  # type: ignore
+from typing import Optional, Dict, Any, List
+from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
+from signalwire_pom import PromptObjectModel  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,12 @@ class BarbaraAgent(AgentBase):
 			logger.error(f"❌ Failed to get lead context: {e}")
 			raise
 		
+		# Use lead context phone as fallback when not provided (e.g., CLI tests)
+		if not phone:
+			phone = lead_context.get("phone") or lead_context.get("lead_phone") or lead_context.get("lead_id")
+			if phone:
+				logger.info(f"ℹ️ Using lead context phone fallback: {phone}")
+		
 		# 4. Set meta_data variables (SignalWire substitutes in prompts)
 		agent.set_global_data({
 			"lead": {
@@ -204,7 +211,11 @@ class BarbaraAgent(AgentBase):
 		logger.info(f"✅ Variables set for {lead_context.get('name', 'Unknown')}")
 		
 		# 4. Determine initial context
-		initial_context = self._get_initial_context(phone)
+		if phone:
+			initial_context = self._get_initial_context(phone)
+		else:
+			logger.info("ℹ️ No phone available; defaulting initial context to 'greet'")
+			initial_context = "greet"
 		logger.info(f"🎯 Initial context: {initial_context}")
 		
 		# 5. Build contexts from DB
@@ -226,11 +237,7 @@ class BarbaraAgent(AgentBase):
 			raise
 		
 		# 7. Configure agent with contexts
-		agent.set_prompt({
-			"text": theme_text,
-			"contexts": contexts_obj
-		})
-		
+		self._apply_prompt_and_contexts(theme_text, contexts_obj, agent_instance=agent)
 		logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
 	
 	def _override_prompt_for_test(self, agent, vertical: str, node_name: str, content: dict):
@@ -282,12 +289,69 @@ class BarbaraAgent(AgentBase):
 		}
 		
 		# Configure agent with test prompt
-		agent.set_prompt({
-			"text": theme_text,
-			"contexts": contexts_obj
-		})
-		
+		self._apply_prompt_and_contexts(theme_text, contexts_obj, agent_instance=agent)
 		logger.info(f"✅ Prompt override complete for test: {node_name}")
+
+	def _apply_prompt_and_contexts(self, theme_text: Optional[str], contexts_obj: Dict[str, Any], agent_instance=None):
+		"""Apply prompt text and contexts using the current SignalWire SDK API."""
+		target_agent = agent_instance or self
+		target_agent.pom = PromptObjectModel()
+		if theme_text:
+			target_agent.prompt_add_section("Base Prompt", theme_text)
+		self._populate_contexts_from_dict(target_agent, contexts_obj)
+
+	def _populate_contexts_from_dict(self, agent_instance, contexts_obj: Dict[str, Any]):
+		contexts_builder = ContextBuilder(agent_instance)
+		for ctx_name, ctx_config in contexts_obj.items():
+			if not ctx_config:
+				continue
+			context = contexts_builder.add_context(ctx_name)
+			valid_contexts = self._ensure_list(ctx_config.get("valid_contexts"))
+			if valid_contexts:
+				context.set_valid_contexts(valid_contexts)
+			if ctx_config.get("isolated") and hasattr(context, "set_isolated"):
+				context.set_isolated(True)
+			if ctx_config.get("enter_fillers") and hasattr(context, "set_enter_fillers"):
+				context.set_enter_fillers(ctx_config["enter_fillers"])
+			if ctx_config.get("exit_fillers") and hasattr(context, "set_exit_fillers"):
+				context.set_exit_fillers(ctx_config["exit_fillers"])
+
+			context_step_names = set()
+			for idx, step_cfg in enumerate(ctx_config.get("steps", [])):
+				step_name = step_cfg.get("name") or f"step_{idx}"
+				if step_name in context_step_names:
+					step_name = f"{step_name}_{idx}"
+				context_step_names.add(step_name)
+				step = context.add_step(step_name)
+				if step_cfg.get("text"):
+					step.set_text(step_cfg["text"])
+				if step_cfg.get("step_criteria"):
+					step.set_step_criteria(step_cfg["step_criteria"])
+				functions = self._ensure_list(step_cfg.get("functions"))
+				if functions:
+					step.set_functions(functions)
+				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
+				if valid_steps:
+					step.set_valid_steps(valid_steps)
+
+				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
+				action = step_cfg.get("action")
+				if action and action.get("type") == "set_context":
+					target_ctx = action.get("context")
+					if target_ctx and target_ctx not in step_valid_contexts:
+						step_valid_contexts.append(target_ctx)
+				if step_valid_contexts:
+					step.set_valid_contexts(step_valid_contexts)
+
+		agent_instance.define_contexts(contexts_builder)
+
+	@staticmethod
+	def _ensure_list(value: Optional[Any]) -> List[Any]:
+		if value is None:
+			return []
+		if isinstance(value, list):
+			return value
+		return [value]
 	
 	def _get_lead_context(self, phone: str, broker_id: Optional[str] = None) -> Dict[str, Any]:
 		"""Query Supabase directly for lead information
@@ -1289,10 +1353,7 @@ List specific actions needed based on conversation outcome.
 					raise
 				
 				# ==================== STEP 10: APPLY CONTEXTS ====================
-				self.set_prompt({
-					"text": theme_text,
-					"contexts": contexts_obj
-				})
+				self._apply_prompt_and_contexts(theme_text, contexts_obj)
 				logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
 				
 				logger.info(f"✅ Agent configured with contexts: voice=rachel, model=gpt-4o, initial_context={initial_context}, phone={phone}")
@@ -1306,10 +1367,7 @@ List specific actions needed based on conversation outcome.
 						lead_context=None
 					)
 					theme_text = load_theme("reverse_mortgage")
-					self.set_prompt({
-						"text": theme_text,
-						"contexts": contexts_obj
-					})
+					self._apply_prompt_and_contexts(theme_text, contexts_obj)
 				except Exception as e:
 					logger.error(f"Failed to build fallback contexts: {e}")
 					raise

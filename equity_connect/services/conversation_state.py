@@ -80,6 +80,9 @@ def deep_merge_json(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, 
 
 def _fetch_by_phone(phone: str) -> Optional[Dict[str, Any]]:
 	"""Fetch the single conversation_state row for a phone number (various normalizations)."""
+	if not phone:
+		logger.debug("🛈 _fetch_by_phone called with empty phone; skipping lookup")
+		return None
 	supabase = get_supabase_client()
 	normalized = normalize_phone(phone)
 	candidates = [phone]
