@@ -1,5 +1,9 @@
 # ElevenLabs Agent Platform - Barbara Webhook
 
+> **⚠️ DEPRECATED:** This service is deprecated. The active agent is now `equity_connect/agent/barbara_agent.py` using SignalWire SDK's native agent framework. This folder is kept for historical reference only.
+
+---
+
 Personalization webhook and tool endpoints for Barbara on ElevenLabs Agent Platform.
 
 ## What This Does

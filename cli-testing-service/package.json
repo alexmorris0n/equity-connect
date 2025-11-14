@@ -1,0 +1,19 @@
+{
+  "name": "cli-testing-service",
+  "version": "1.0.0",
+  "description": "Complete CLI testing service for Barbara prompt nodes",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "fastify": "^4.24.3",
+    "@fastify/cors": "^8.4.0",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

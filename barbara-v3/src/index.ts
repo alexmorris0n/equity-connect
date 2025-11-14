@@ -1,5 +1,9 @@
 /**
  * Barbara Voice Assistant V3
+ * 
+ * ⚠️ DEPRECATED: This service is deprecated. The active agent is now `equity_connect/agent/barbara_agent.py`
+ * using SignalWire SDK's native agent framework. This file is kept for historical reference only.
+ * 
  * SignalWire + OpenAI Realtime API Integration
  * 
  * Flow:

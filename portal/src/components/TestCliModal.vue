@@ -287,10 +287,11 @@ async function runTest() {
   }, 1000);
 
   // Use environment variable with fallback for local development
-  const BRIDGE_URL = import.meta.env.VITE_BRIDGE_URL || 'http://localhost:8080';
+  // Use CLI testing service URL (separate from deprecated bridge)
+  const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080';
   
   try {
-    const response = await fetch(`${BRIDGE_URL}/api/test-cli`, {
+    const response = await fetch(`${CLI_TESTING_URL}/api/test-cli`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

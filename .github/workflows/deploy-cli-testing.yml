@@ -1,0 +1,37 @@
+name: Deploy CLI Testing Service to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'cli-testing-service/**'
+      - 'equity_connect/test_barbara.py'
+      - 'equity_connect/agent/barbara_agent.py'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-cli-testing.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy CLI Testing Service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --config cli-testing-service/fly.toml --dockerfile cli-testing-service/Dockerfile --remote-only --no-cache --app equity-connect-cli-testing
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify deployment
+        run: flyctl status --app equity-connect-cli-testing
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+

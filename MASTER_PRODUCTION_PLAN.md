@@ -68,11 +68,13 @@ equity-connect/ (Git Monorepo)
 │   └── index.js                  → Outbound calls via SignalWire Voice API
 ├── portal/                       → Vue.js admin (Vercel)
 │   └── src/views/admin/         → PromptManagement, LeadManagement, etc.
+├── cli-testing-service/          → Fly.io CLI testing API (runs swaig-test for PromptManagement)
 ├── propertyradar-mcp/            → Docker/Local (property lookups)
 ├── swarmtrace-mcp/               → Docker/Local (analytics)
 ├── database/                     → Shared Supabase schema
 ├── workflows/                    → N8N workflow definitions
-└── config/                       → API configurations
+├── config/                       → API configurations
+└── deprecated/                   → Archived services (bridge/, barbara-v3/, elevenlabs-webhook/)
 ```
 
 **Why Monorepo:**

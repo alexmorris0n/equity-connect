@@ -1,6 +1,9 @@
 /**
  * OpenAI Realtime Voice Bridge - Main Server
  * 
+ * ⚠️ DEPRECATED: This bridge is deprecated. The active agent is now `equity_connect/agent/barbara_agent.py`
+ * using SignalWire SDK's native agent framework. This file is kept for historical reference only.
+ * 
  * Production server for handling SignalWire PSTN calls via OpenAI Realtime API.
  * 
  * Features:

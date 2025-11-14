@@ -1,5 +1,9 @@
 # OpenAI Realtime Voice Bridge
 
+> **⚠️ DEPRECATED:** This bridge is deprecated. The active agent is now `equity_connect/agent/barbara_agent.py` using SignalWire SDK's native agent framework. This folder is kept for historical reference only.
+
+---
+
 Production-ready WebSocket bridge connecting SignalWire PSTN calls to OpenAI Realtime API with Supabase integration.
 
 ## Features

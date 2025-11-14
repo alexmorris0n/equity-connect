@@ -1,5 +1,9 @@
 # Barbara V3 - Voice AI Assistant
 
+> **⚠️ DEPRECATED:** This service is deprecated. The active agent is now `equity_connect/agent/barbara_agent.py` using SignalWire SDK's native agent framework. This folder is kept for historical reference only.
+
+---
+
 **Production-ready voice AI assistant for reverse mortgage lead engagement.**
 
 Built with SignalWire cXML streaming + OpenAI Realtime API + OpenAI Agents SDK.
