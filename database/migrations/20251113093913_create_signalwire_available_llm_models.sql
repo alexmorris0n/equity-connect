@@ -29,3 +29,4 @@ VALUES
   ('openai', 'gpt-4o-mini', 'openai.gpt-4o-mini', 'GPT-4o Mini', 128000, 'standard', 150, 'Faster, more cost-effective version')
 ON CONFLICT (model_id_full) DO NOTHING;
 
+

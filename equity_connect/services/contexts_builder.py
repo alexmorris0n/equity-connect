@@ -14,7 +14,7 @@ This replaces:
 import logging
 from typing import Dict, List, Optional
 from equity_connect.services.supabase import get_supabase_client
-from equity_connect.services.default_contexts import DEFAULT_CONTEXTS, get_default_context
+from equity_connect.services.default_contexts import DEFAULT_CONTEXTS
 
 logger = logging.getLogger(__name__)
 
@@ -52,26 +52,23 @@ def build_contexts_object(
         logger.error(f"❌ No contexts found for vertical: {vertical}")
         raise ValueError(f"No contexts configured for vertical: {vertical}")
     
-    # Backfill contexts that are missing or have no steps with default v1 definitions
-    fallback_applied = []
-    for ctx_name in DEFAULT_CONTEXTS.keys():
-        if ctx_name not in contexts_data or not contexts_data[ctx_name]["steps"]:
-            contexts_data[ctx_name] = get_default_context(ctx_name)
-            fallback_applied.append(ctx_name)
-    
-    if fallback_applied:
-        logger.warning(f"⚠️ Applied default v1 prompts for contexts: {fallback_applied}")
-    
-    # Filter out contexts that still have no steps (should not happen, but guard anyway)
+    # Validate all required contexts exist and have at least one step
+    missing_contexts = [ctx for ctx in DEFAULT_CONTEXTS.keys() if ctx not in contexts_data]
     empty_contexts = [name for name, config in contexts_data.items() if not config["steps"]]
-    if empty_contexts:
-        logger.warning(f"⚠️ Skipping contexts with no active prompts: {empty_contexts}")
     
-    contexts_with_steps = {name: cfg for name, cfg in contexts_data.items() if cfg["steps"]}
+    if missing_contexts or empty_contexts:
+        logger.error(
+            "❌ Context validation failed. Missing contexts: %s | Empty contexts: %s",
+            missing_contexts or [],
+            empty_contexts or []
+        )
+        raise ValueError(
+            "Contexts validation failed. "
+            f"Missing contexts: {missing_contexts or 'none'} | "
+            f"Empty contexts: {empty_contexts or 'none'}"
+        )
     
-    if not contexts_with_steps:
-        logger.error("❌ No contexts with steps available after filtering. Check prompt versions.")
-        raise ValueError("No contexts contain steps. Ensure each node has an active prompt version.")
+    contexts_with_steps = contexts_data
     
     # Build contexts object
     contexts_obj = {}

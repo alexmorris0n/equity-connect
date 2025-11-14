@@ -70,7 +70,7 @@ class BarbaraAgent(AgentBase):
 		
 		# First, check query_params directly (primary location for swaig-test --user-vars)
 		if query_params.get('test_mode') or query_params.get('version_id'):
-			test_mode = query_params.get('test_mode', '').lower() == 'true' or query_params.get('test_mode') is True
+			test_mode = self._to_bool(query_params.get('test_mode'))
 			version_id = query_params.get('version_id')
 			vertical = query_params.get('vertical')
 			node_name = query_params.get('node_name')
@@ -98,7 +98,7 @@ class BarbaraAgent(AgentBase):
 					raise ValueError(f"Failed to parse userVariables: {e}") from e
 			
 			if user_vars:
-				test_mode = user_vars.get('test_mode', False)
+				test_mode = self._to_bool(user_vars.get('test_mode', False))
 				version_id = user_vars.get('version_id')
 				vertical = user_vars.get('vertical')
 				node_name = user_vars.get('node_name')
@@ -373,6 +373,15 @@ class BarbaraAgent(AgentBase):
 		if isinstance(value, list):
 			return value
 		return [value]
+	
+	@staticmethod
+	def _to_bool(value: Optional[Any]) -> bool:
+		"""Coerce various representations into a boolean."""
+		if isinstance(value, bool):
+			return value
+		if isinstance(value, str):
+			return value.strip().lower() in {"true", "1", "yes", "on"}
+		return bool(value)
 	
 	def _get_lead_context(self, phone: str, broker_id: Optional[str] = None) -> Dict[str, Any]:
 		"""Query Supabase directly for lead information

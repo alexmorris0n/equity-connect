@@ -44,3 +44,4 @@ VALUES
   ('cartesia', 'ink-whisper', 'cartesia.ink-whisper', 'Ink Whisper', ARRAY['en-US', 'en-GB', 'es-MX', 'es-ES'], 'premium', 150, true, 'Fast, accurate transcription')
 ON CONFLICT (model_id_full) DO NOTHING;
 
+

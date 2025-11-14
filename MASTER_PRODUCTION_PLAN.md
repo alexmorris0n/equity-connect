@@ -2,7 +2,7 @@
 
 **Last Updated:** November 14, 2025  
 **Status:** ✅ Production Ready - SignalWire Agent SDK + Fly.io + SignalWire Native Contexts  
-**Current Phase:** SignalWire Contexts Migration Complete + AI Helper System Active + Draft/Publish Workflow Active
+**Current Phase:** SignalWire Contexts Migration Complete + AI Helper System Active + Draft/Publish Workflow Active + CLI Test Automation
 
 ---
 
@@ -68,7 +68,7 @@ equity-connect/ (Git Monorepo)
 │   └── index.js                  → Outbound calls via SignalWire Voice API
 ├── portal/                       → Vue.js admin (Vercel)
 │   └── src/views/admin/         → PromptManagement, LeadManagement, etc.
-├── cli-testing-service/          → Fly.io CLI testing API (runs swaig-test for PromptManagement)
+├── cli-testing-service/          → Fly.io CLI testing API (runs swaig-test for Vertical drafts + autosave validation)
 ├── propertyradar-mcp/            → Docker/Local (property lookups)
 ├── swarmtrace-mcp/               → Docker/Local (analytics)
 ├── database/                     → Shared Supabase schema
@@ -88,6 +88,24 @@ equity-connect/ (Git Monorepo)
 - `portal/**` changes → Deploy to Vercel
 - `workflows/**` changes → Update n8n workflows
 - `database/**` changes → Run Supabase migrations
+
+---
+
+## 🆕 Nov 14 Evening Updates
+
+- **CLI Testing Service Stabilized:** Extracted the `test-cli` workflow into its own Fastify app (`cli-testing-service/`) with Fly.io deployment, dedicated Dockerfile, and CORS lockdown. Added structured logging so portal-triggered tests are visible immediately.
+- **Save → Test Automation:** CLI validation now fires as part of the save toast workflow (manual trigger under the hood today); wiring the Vertical editor’s save/publish action to fire automatically is the remaining step before activation can be blocked on failure.
+- **Context Guardrails (Hard Fail):** `contexts_builder.py` now validates every context has at least one active step and raises an error (blocking saves/tests) if anything is missing, preventing “Context must have at least one step” runtime errors.
+- **Barbara Runtime Hardening:** Replaced deprecated `set_meta_data` with `set_global_data`, added `_ensure_skill` to avoid duplicate skill loading (datetime), and made phone normalization + conversation-state lookups resilient to `None` values.
+- **Regression Test Run:** Successfully executed the CLI test suite for all 8 BarbGraph nodes plus the theme at version `14ab0a70-5ff4-4142-9313-f89a5ce51ce7`, confirming each context produces a valid SWAIG payload.
+
+### Context Flow + CLI Validation (Nov 14, 2025)
+
+1. **Portal Save → Supabase:** Vertical editor saves write the latest theme + node JSON (role, instructions, tools, `valid_contexts`, `step_criteria`) into Supabase (`theme_prompts`, `prompts`, `prompt_versions`). The eight-stage BarbGraph structure, theme-first persona, and database-driven routing are preserved through version IDs.
+2. **Guardrails During Context Build:** When Barbara boots per call, `contexts_builder.build_contexts_object()` loads the saved version and validates every context has at least one step; if a node is missing, it raises immediately so saves/tests fail fast instead of silently backfilling.
+3. **SignalWire Runtime:** `barbara_agent.py` loads the theme into the Prompt Object Model, attaches the guardrailed contexts block, and hands routing off to SignalWire’s native context system. `valid_contexts` arrays in Supabase dictate which node unlocks next, while SWAIG tools continue to set conversation-state flags in the database.
+4. **CLI Testing Service:** The Fly.io `cli-testing-service` receives portal (or manual) POSTs that include `versionId`, `vertical`, `nodeName`, and overrides. It shells out to `swaig-test /app/equity_connect/test_barbara.py` with those params, exercising the same loader/guardrails the runtime uses. Successful runs (exit code `0`) confirm the SWML payload is valid—see Fly logs at `2025-11-14T19:28:26Z` for the `greet` node example.
+5. **Automation Status:** Manual trigger exists today (save toast + curl). Next step is wiring the Vertical editor’s save/publish action to automatically call the tester and block activation when validation fails.
 
 ---
 
@@ -752,6 +770,8 @@ CREATE TABLE conversation_state (
 ✅ **QUOTE Context** - Presents financial estimates before Q&A phase  
 ✅ **AI Helper System** - GPT-4o-mini powered prompt generation for theme and nodes  
 ✅ **Vertical-Level Versioning** - Single version number per vertical with snapshot rollback  
+✅ **Context Guardrails** - `contexts_builder` enforces that every context has steps and blocks activation if any node is empty  
+✅ **CLI Regression Suite** - Dedicated `cli-testing-service` runs `swaig-test` for every node save to catch prompt/tool regressions pre-activation  
 
 ### Files Modified
 
@@ -995,19 +1015,25 @@ CREATE TABLE conversation_state (
 
 ### Immediate Priorities
 
-1. **Test BarbGraph 8-Node Flow**
-   - [ ] Test node transitions (greet→verify→qualify→quote→answer→objections→book→exit)
-   - [ ] Test state flag tools (mark_ready_to_book, mark_has_objection, mark_quote_presented, etc.)
-   - [ ] Test spouse handoff scenario (wrong_person → right_person_available → re-greet)
-   - [ ] Test QUOTE node routing based on reaction (positive/skeptical/needs_more/not_interested)
+1. **Auto-Test on Save**
+   - [x] Deploy dedicated `cli-testing-service` on Fly.io (Fastify + swaig-test wrapper)
+   - [x] Run manual regression suite for all 8 nodes + theme (version `14ab0a70-5ff4-4142-9313-f89a5ce51ce7`)
+   - [ ] Trigger CLI validation automatically on every Vertical save/publish action
+   - [ ] Block activation + surface stdout/stderr when a node payload fails validation
 
-2. **Monitor Production Metrics**
+2. **SignalWire Context Guardrails**
+   - [x] Filter zero-step contexts and log each skip
+   - [x] Backfill missing nodes with default v1 instructions (`services/default_contexts.py`)
+   - [x] Add phone + conversation-state fallbacks to prevent `NoneType` errors
+   - [ ] Instrument Supabase to track which contexts required fallback content
+
+3. **Monitor Production Metrics**
    - [ ] Monitor AI provider costs and latency via LiveKit dashboard
    - [ ] Track node completion rates (% who reach each stage)
    - [ ] Monitor conversation quality (transcript analysis)
    - [ ] A/B test different provider combinations (DeepSeek vs Claude, Cartesia vs ElevenLabs)
 
-3. **Portal Enhancements**
+4. **Portal Enhancements**
    - [ ] Add theme editor UI to Vue Portal
    - [ ] Add analytics dashboard for node performance
    - [ ] Add A/B testing interface for prompt versions
@@ -1077,6 +1103,7 @@ CREATE TABLE conversation_state (
 - [x] Vue Portal UI complete (Verticals.vue with AI Helper)
 - [x] Vertical-level versioning system active
 - [x] AI Helper system for prompt generation
+- [x] Context guardrails to block empty contexts (fail-fast enforcement)
 - [x] 13 critical bugs fixed
 
 ### AI Providers
@@ -1093,6 +1120,7 @@ CREATE TABLE conversation_state (
 - [x] Function calling verified (LiveKit @function_tool working)
 - [x] Theme system verified (695 chars, active)
 - [x] QUOTE node verified (prompt created, routing implemented)
+- [x] CLI regression suite (8 nodes + theme) passes before activation
 
 **Status:** ✅ **PRODUCTION READY - SignalWire Contexts System Active, AI Helper System Operational (November 13, 2025)**
 

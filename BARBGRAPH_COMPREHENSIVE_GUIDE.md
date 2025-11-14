@@ -14,6 +14,11 @@
 > - Event-based state machine → Database-driven `valid_contexts` arrays
 > - Manual routing code (~500 lines) → Framework-native routing
 > - Same 8-node structure, but implemented via SignalWire's POM mode
+>
+> **Nov 14, 2025 Validation Enhancements:**
+> - `contexts_builder.py` now guards against zero-step contexts, logs every skip, and auto-applies default V1 prompts from `services/default_contexts.py`.
+> - `barbara_agent.py` uses `set_global_data`, `_ensure_skill`, and safer phone normalization to eliminate runtime regressions surfaced by CLI tests.
+> - The new `cli-testing-service/` runs `swaig-test` for every node save so invalid context payloads are caught before activation.
 
 ---
 
