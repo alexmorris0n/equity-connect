@@ -13,7 +13,7 @@ This replaces:
 
 import logging
 from typing import Dict, List, Optional
-from equity_connect.services.supabase import supabase
+from equity_connect.services.supabase import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ def _query_contexts_from_db(vertical: str) -> Dict:
     """
     
     # Query prompts table for this vertical
+    supabase = get_supabase_client()
     response = supabase.table('prompts') \
         .select('*, prompt_versions!inner(*)') \
         .eq('vertical', vertical) \
@@ -212,6 +213,7 @@ def load_theme(vertical: str) -> str:
         Theme text content
     """
     
+    supabase = get_supabase_client()
     response = supabase.table('theme_prompts') \
         .select('content') \
         .eq('vertical', vertical) \
