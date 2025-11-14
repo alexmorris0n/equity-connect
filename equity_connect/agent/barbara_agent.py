@@ -1070,7 +1070,7 @@ List specific actions needed based on conversation outcome.
 							"first_name": lead_context.get("first_name", "there"),
 							"name": lead_context.get("name", "Unknown"),
 							"phone": phone,
-							"email": lead_context.get("primary_email", ""),
+							"email": lead_context.get("email", ""),
 							"id": lead_context.get("lead_id", "")
 						},
 						"property": {

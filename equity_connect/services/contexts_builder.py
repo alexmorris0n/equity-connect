@@ -85,7 +85,6 @@ def _query_contexts_from_db(vertical: str) -> Dict:
     response = supabase.table('prompts') \
         .select('*, prompt_versions!inner(*)') \
         .eq('vertical', vertical) \
-        .eq('is_active', True) \
         .execute()
     
     if not response.data:

@@ -64,7 +64,12 @@
         <!-- Theme Tab -->
         <div v-if="activeTab === 'theme'" class="tab-content">
           <div class="theme-editor-section">
-            <h2>Theme Content</h2>
+            <div class="theme-header">
+              <h2>Theme Content</h2>
+              <button class="btn-ai-helper" @click="openThemeHelper" title="AI Theme Generator">
+                ✨ AI Helper
+              </button>
+            </div>
             <div class="editor-wrapper">
               <textarea
                 v-model="themeContent"
@@ -242,27 +247,80 @@
               :class="{ expanded: expandedNodes[node], active: selectedNode === node }"
             >
               <div class="node-card-header" @click.stop="toggleNode(node)">
-                <span class="node-name">{{ node.charAt(0).toUpperCase() + node.slice(1) }}</span>
+                <span class="node-name">
+                  {{ node.charAt(0).toUpperCase() + node.slice(1) }}
+                  <span class="tooltip-indicator" :title="getNodeTooltip(node)">*</span>
+                </span>
                 <span class="node-toggle">{{ expandedNodes[node] ? '−' : '+' }}</span>
               </div>
               
               <div v-if="expandedNodes[node]" class="node-card-content">
                 <div class="node-editor">
                   <div class="editor-field">
-                    <label>Role</label>
+                    <div class="field-header">
+                      <label>Instructions</label>
+                      <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <div 
+                          class="variable-dropdown-wrapper" 
+                          :class="{ 'open': openVariableDropdowns[node], 'drop-up': variableDropdownPositions[node]?.dropUp }"
+                          :data-dropdown-node="node"
+                          :ref="el => setVariableDropdownWrapperRef(node, el)"
+                        >
+                          <button
+                            type="button"
+                            class="variable-button"
+                            @click.stop="toggleVariableDropdown(node)"
+                            title="Insert variable"
+                          >
+                            <span class="variable-icon">⚡</span>
+                          </button>
+                          <div 
+                            v-if="openVariableDropdowns[node]" 
+                            class="variable-dropdown-panel"
+                            :style="variableDropdownPositions[node]?.style"
+                          >
+                            <div class="dropdown-search">
+                              <input
+                                type="text"
+                                v-model="variableSearch[node]"
+                                placeholder="Search variables..."
+                                class="search-input"
+                                @click.stop
+                              />
+                            </div>
+                            <div class="dropdown-options">
+                              <div class="variable-category" v-for="category in variableCategories" :key="category.name">
+                                <div class="category-header">{{ category.label }}</div>
+                                <div
+                                  v-for="variable in filteredVariables(node, category.variables)"
+                                  :key="variable.key"
+                                  class="variable-option"
+                                  @click.stop="insertVariable(node, variable.key)"
+                                >
+                                  <span class="variable-name">{{ variable.display }}</span>
+                                  <span class="variable-desc">{{ variable.desc }}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <!-- AI helper button -->
+                        <button 
+                          class="btn-ai-helper-small" 
+                          @click.stop="openNodeHelper(node)"
+                          title="AI Node Generator"
+                        >
+                          ✨
+                        </button>
+                      </div>
+                    </div>
                     <textarea
-                      :value="nodeContent[node]?.role || ''"
-                      @input="(e) => updateRole(node, e.target.value)"
-                      placeholder="Who is Barbara in this stage?"
-                      rows="3"
-                    ></textarea>
-                  </div>
-                  
-                  <div class="editor-field">
-                    <label>Instructions</label>
-                    <textarea
+                      :id="`instructions-${node}`"
+                      :ref="el => setTextareaRef(node, el)"
                       :value="nodeContent[node]?.instructions || ''"
-                      @input="(e) => updateInstructions(node, e.target.value)"
+                      @input="(e) => { updateInstructions(node, e.target.value); setTextareaCursor(node, e); }"
+                      @focus="(e) => setTextareaCursor(node, e)"
+                      @click="(e) => setTextareaCursor(node, e)"
                       placeholder="What should Barbara do?"
                       rows="6"
                     ></textarea>
@@ -377,12 +435,207 @@
         <button class="btn-close" @click="showTestModal = false">Close</button>
       </div>
     </div>
+
+    <!-- Theme AI Helper Modal -->
+    <div v-if="showThemeHelperModal" class="modal-overlay" @click="closeThemeHelper">
+      <div class="modal-content ai-helper-modal" @click.stop>
+        <div class="modal-header">
+          <h3>✨ AI Theme Generator</h3>
+          <button class="btn-close-icon" @click="closeThemeHelper">×</button>
+        </div>
+        
+        <div v-if="!aiHelperSuggestion" class="helper-form">
+          <div class="form-field">
+            <label>Who is the AI assistant? *</label>
+            <input v-model="themeHelperAnswers.assistantName" placeholder="e.g., Barbara" />
+          </div>
+          
+          <div class="form-field">
+            <label>Company name *</label>
+            <input v-model="themeHelperAnswers.company" placeholder="e.g., Equity Connect" />
+          </div>
+          
+          <div class="form-field">
+            <label>What product/service? * (be specific)</label>
+            <textarea v-model="themeHelperAnswers.productService" placeholder="e.g., Government-insured reverse mortgages (HECM) for seniors 62+" rows="3"></textarea>
+          </div>
+          
+          <div class="form-field">
+            <label>Target audience?</label>
+            <input v-model="themeHelperAnswers.targetAudience" placeholder="e.g., Homeowners 62+, seniors" />
+          </div>
+          
+          <div class="form-field">
+            <label>Tone and style?</label>
+            <div class="quick-chips">
+              <button type="button" class="chip" @click="themeHelperAnswers.toneStyle = 'Warm and patient'">Warm and patient</button>
+              <button type="button" class="chip" @click="themeHelperAnswers.toneStyle = 'Professional and friendly'">Professional</button>
+              <button type="button" class="chip" @click="themeHelperAnswers.toneStyle = 'Conversational and empathetic'">Conversational</button>
+            </div>
+            <input v-model="themeHelperAnswers.toneStyle" placeholder="e.g., Warm, patient, senior-friendly" />
+          </div>
+          
+          <div class="form-field">
+            <label>Core values?</label>
+            <textarea v-model="themeHelperAnswers.coreValues" placeholder="e.g., Honesty, education over sales, patience" rows="2"></textarea>
+          </div>
+          
+          <div class="form-field">
+            <label>Any restrictions?</label>
+            <textarea v-model="themeHelperAnswers.restrictions" placeholder="e.g., Never pressure, be patient with seniors" rows="2"></textarea>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn-cancel" @click="closeThemeHelper">Cancel</button>
+            <button class="btn-generate" @click="generateTheme" :disabled="aiHelperIsLoading || !themeHelperAnswers.productService.trim()">
+              {{ aiHelperIsLoading ? 'Generating...' : '✨ Generate Theme' }}
+            </button>
+          </div>
+        </div>
+        
+        <div v-else class="helper-result">
+          <div class="result-preview">
+            <h4>Generated Theme:</h4>
+            <div v-if="aiHelperDiff.length > 0" class="diff-display">
+              <span
+                v-for="(part, index) in aiHelperDiff"
+                :key="index"
+                :class="{
+                  'diff-added': part.added,
+                  'diff-removed': part.removed,
+                  'diff-unchanged': !part.added && !part.removed
+                }"
+              >{{ part.value }}</span>
+            </div>
+            <pre v-else class="preview-text">{{ aiHelperSuggestion }}</pre>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn-cancel" @click="closeThemeHelper">Cancel</button>
+            <button class="btn-regenerate" @click="aiHelperSuggestion = ''; generateTheme()">🔄 Regenerate</button>
+            <button class="btn-accept" @click="acceptThemeSuggestion">✅ Accept & Insert</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Node AI Helper Modal -->
+    <div v-if="showNodeHelperModal" class="modal-overlay" @click="closeNodeHelper">
+      <div class="modal-content ai-helper-modal node-helper" @click.stop>
+        <div class="modal-header">
+          <h3>✨ AI Node Generator - {{ aiHelperNode }}</h3>
+          <button class="btn-close-icon" @click="closeNodeHelper">×</button>
+        </div>
+        
+        <div v-if="!aiHelperSuggestion" class="helper-form">
+          <button class="btn-quick-fill" @click="useQuickFill" v-if="nodeQuickFills[aiHelperNode]">
+            ⚡ Quick Fill with Template
+          </button>
+          
+          <div class="form-field">
+            <label>What is the goal of this step? *</label>
+            <textarea v-model="nodeHelperAnswers.goal" placeholder="e.g., Warmly greet caller, confirm identity, build rapport" rows="2"></textarea>
+          </div>
+          
+          <div class="form-field">
+            <label>What call scenarios can happen?</label>
+            <div class="scenario-checkboxes">
+              <label 
+                v-for="scenario in CALL_SCENARIOS" 
+                :key="scenario.value"
+                class="scenario-checkbox"
+              >
+                <input 
+                  type="checkbox" 
+                  :value="scenario.value"
+                  :checked="nodeHelperAnswers.callDirections.includes(scenario.value)"
+                  @change="toggleScenario(scenario.value)"
+                />
+                <div class="scenario-label">
+                  <span class="scenario-name">{{ scenario.label }}</span>
+                  <span class="scenario-desc">{{ scenario.desc }}</span>
+                </div>
+              </label>
+            </div>
+            <textarea 
+              v-model="nodeHelperAnswers.customScenarios" 
+              placeholder="+ Add custom scenarios (e.g., caller is confused, language barrier, etc.)" 
+              rows="2"
+              style="margin-top: 0.5rem;"
+            ></textarea>
+          </div>
+          
+          <div class="form-field">
+            <label>How should each scenario be handled?</label>
+            <textarea v-model="nodeHelperAnswers.handling" placeholder="AI will auto-suggest, or describe custom handling..." rows="3"></textarea>
+            <span class="field-hint">AI will suggest handling based on scenarios</span>
+          </div>
+          
+          <div class="form-field">
+            <label>What information needs to be gathered?</label>
+            <textarea v-model="nodeHelperAnswers.infoGathering" placeholder="e.g., Confirm name, verify property address" rows="2"></textarea>
+          </div>
+          
+          <div class="form-field">
+            <label>Where can this step transition to?</label>
+            <textarea v-model="nodeHelperAnswers.transitions" placeholder="e.g., Success → verify, Wrong person → exit" rows="2"></textarea>
+            <span class="field-hint">AI will suggest transitions based on scenarios</span>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="btn-cancel" @click="closeNodeHelper">Cancel</button>
+            <button class="btn-generate" @click="generateNodePrompt" :disabled="aiHelperIsLoading || !nodeHelperAnswers.goal.trim()">
+              {{ aiHelperIsLoading ? 'Generating...' : '✨ Generate Instructions' }}
+            </button>
+          </div>
+        </div>
+        
+        <div v-else class="helper-result">
+          <div class="result-preview">
+            <h4>Generated Instructions:</h4>
+            <div v-if="aiHelperDiff.length > 0" class="diff-display">
+              <span
+                v-for="(part, index) in aiHelperDiff"
+                :key="index"
+                :class="{
+                  'diff-added': part.added,
+                  'diff-removed': part.removed,
+                  'diff-unchanged': !part.added && !part.removed
+                }"
+              >{{ part.value }}</span>
+            </div>
+            <pre v-else class="preview-text">{{ aiHelperSuggestion }}</pre>
+          </div>
+          
+          <div v-if="aiToolReasoning" class="tool-reasoning">
+            <h5>🛠️ Tool Selection Reasoning:</h5>
+            <p>{{ aiToolReasoning }}</p>
+          </div>
+          
+          <div v-if="aiSuggestedScenarios.length > 0" class="suggested-scenarios">
+            <h5>💡 AI Suggested Additional Scenarios:</h5>
+            <ul>
+              <li v-for="scenario in aiSuggestedScenarios" :key="scenario">{{ scenario }}</li>
+            </ul>
+          </div>
+          
+          <p class="tool-notice">✅ {{ nodeContent[aiHelperNode]?.tools?.length || 0 }} tools auto-selected in Tools dropdown</p>
+          
+          <div class="modal-actions">
+            <button class="btn-cancel" @click="closeNodeHelper">Cancel</button>
+            <button class="btn-regenerate" @click="aiHelperSuggestion = ''; generateNodePrompt()">🔄 Regenerate</button>
+            <button class="btn-accept" @click="acceptNodeSuggestion">✅ Accept & Insert</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
+import * as Diff from 'diff'
 
 // Constants
 const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'exit']
@@ -390,9 +643,46 @@ const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections',
 // All available tools for multi-select
 // Dropdown state
 const openDropdowns = ref({})
+const openVariableDropdowns = ref({})
+const variableSearch = ref({})
+const variableDropdownPositions = ref({})
+const variableDropdownWrapperRefs = ref({})
+const textareaRefs = ref({})
+const textareaCursors = ref({})
 const toolSearch = ref({})
 const dropdownPositions = ref({})
 const isUpdatingPosition = ref({}) // Guard to prevent infinite loops
+
+// AI Helper state
+const showThemeHelperModal = ref(false)
+const showNodeHelperModal = ref(false)
+const aiHelperNode = ref(null)
+const aiHelperIsLoading = ref(false)
+const aiHelperSuggestion = ref('')
+const aiHelperDiff = ref([])
+const aiSuggestedScenarios = ref([])
+const aiToolReasoning = ref('')
+
+// Theme helper form
+const themeHelperAnswers = ref({
+  assistantName: 'Barbara',
+  company: 'Equity Connect',
+  productService: '',
+  targetAudience: '',
+  toneStyle: '',
+  coreValues: '',
+  restrictions: ''
+})
+
+// Node helper form
+const nodeHelperAnswers = ref({
+  goal: '',
+  callDirections: [], // Array of selected scenario values
+  customScenarios: '', // Custom scenario text
+  handling: '',
+  infoGathering: '',
+  transitions: ''
+})
 
 // Baseline BarbGraph flow flags - not user-editable, enforced in backend
 const BASELINE_FLOW_TOOLS = [
@@ -576,6 +866,163 @@ async function loadLLMModelsFromDB() {
 }
 
 // Computed: Available LLM models for selected provider (from DB or fallback)
+// All 21 tools with descriptions for AI awareness
+const ALL_TOOLS_WITH_DESCRIPTIONS = {
+  lead: [
+    { name: 'get_lead_context', desc: 'Fetch lead info (name, email, phone, property details, broker assignment)' },
+    { name: 'verify_caller_identity', desc: 'Confirm caller is who they say they are' },
+    { name: 'check_consent_dnc', desc: 'Check if lead consented to contact and isn\'t on DNC list' },
+    { name: 'update_lead_info', desc: 'Update lead details (last name, address, age, property value, mortgage balance)' },
+    { name: 'find_broker_by_territory', desc: 'Find appropriate broker for lead\'s city/ZIP' }
+  ],
+  calendar: [
+    { name: 'check_broker_availability', desc: 'Get broker\'s available time slots for next 7 days' },
+    { name: 'book_appointment', desc: 'Create calendar event and send invites' },
+    { name: 'reschedule_appointment', desc: 'Move appointment to new time' },
+    { name: 'cancel_appointment', desc: 'Cancel existing appointment' }
+  ],
+  knowledge: [
+    { name: 'search_knowledge', desc: 'Search reverse mortgage knowledge base for answers' }
+  ],
+  interaction: [
+    { name: 'save_interaction', desc: 'Log call summary at end of call' },
+    { name: 'assign_tracking_number', desc: 'Assign SignalWire number to lead/broker pair (call after booking)' },
+    { name: 'send_appointment_confirmation', desc: 'Send appointment details to lead' },
+    { name: 'verify_appointment_confirmation', desc: 'Confirm lead received appointment details' }
+  ],
+  flags: [
+    { name: 'mark_ready_to_book', desc: 'Signal lead is ready to schedule' },
+    { name: 'mark_has_objection', desc: 'Signal lead has concerns' },
+    { name: 'mark_objection_handled', desc: 'Signal objection was resolved' },
+    { name: 'mark_questions_answered', desc: 'Signal Q&A phase complete' },
+    { name: 'mark_qualification_result', desc: 'Log qualification outcome (qualified/not_qualified)' },
+    { name: 'mark_quote_presented', desc: 'Log quote presentation and lead\'s reaction' },
+    { name: 'mark_wrong_person', desc: 'Mark when wrong person answers phone' },
+    { name: 'clear_conversation_flags', desc: 'Reset all workflow flags' }
+  ]
+}
+
+// Scenario options for multi-checkbox
+const CALL_SCENARIOS = [
+  { value: 'inbound_known', label: 'Inbound - Known Lead', desc: 'Lead already in system, have their info' },
+  { value: 'inbound_unknown', label: 'Inbound - Unknown Lead', desc: 'New caller, no prior info' },
+  { value: 'outbound', label: 'Outbound Call', desc: 'We called them' },
+  { value: 'voicemail', label: 'Voicemail', desc: 'Reached voicemail instead of person' },
+  { value: 'wrong_person', label: 'Wrong Person', desc: 'Wrong number or spouse/family member answers' },
+  { value: 'call_screening', label: 'Call Screening', desc: 'Caller asks "who is this" or is suspicious' }
+]
+
+// Quick-fill templates per node
+const nodeQuickFills = {
+  greet: {
+    goal: 'Warmly greet the caller, confirm you\'re speaking with the right person, build initial rapport',
+    callDirections: ['inbound_known', 'inbound_unknown', 'outbound', 'wrong_person', 'call_screening'],
+    handling: 'If inbound known: use {lead.first_name}. If unknown: ask for name. If wrong person: ask if {lead.first_name} is available. If screening: identify as Barbara from Equity Connect.',
+    infoGathering: 'Confirm caller identity, verify you\'re speaking with property owner',
+    transitions: 'Right person → verify. Wrong person available → re-greet. Wrong person unavailable → exit. Screening → verify after explanation.'
+  },
+  verify: {
+    goal: 'Confirm caller identity and retrieve/verify their lead information',
+    callDirections: ['wrong_person', 'inbound_known', 'inbound_unknown'],
+    handling: 'If known: confirm name and pull context. If unknown: gather basic info. If wrong person: use mark_wrong_person tool.',
+    infoGathering: 'Full name, property address, phone, email',
+    transitions: 'Verified → qualify. Wrong person → exit or re-greet. Missing info → gather then qualify.'
+  },
+  qualify: {
+    goal: 'Determine if lead meets basic eligibility for reverse mortgage',
+    callDirections: ['inbound_known', 'inbound_unknown'],
+    handling: 'If already qualified ({status.qualified} = true): skip to quote. If not: ask age (62+), confirm ownership, estimate equity.',
+    infoGathering: 'Age, homeownership status, approximate equity/mortgage balance',
+    transitions: 'Qualified → quote. Not qualified → exit gracefully. Has questions → answer.'
+  },
+  quote: {
+    goal: 'Present equity estimate and gauge interest level',
+    callDirections: ['inbound_known'],
+    handling: 'Present {property.equity_formatted}, explain 50-60% accessibility. Use mark_quote_presented to log reaction (positive/skeptical/needs_more/not_interested).',
+    infoGathering: 'Gauge interest level, note concerns',
+    transitions: 'Interested → answer/book. Has objections → objections. Not interested → exit. Needs more → answer.'
+  },
+  answer: {
+    goal: 'Answer questions about reverse mortgages using knowledge base',
+    callDirections: ['inbound_known'],
+    handling: 'Use search_knowledge for factual answers. Keep brief. If concerns arise → objections.',
+    infoGathering: 'What questions they have, remaining concerns',
+    transitions: 'Answered → book. Has objections → objections. Needs time → exit with callback.'
+  },
+  objections: {
+    goal: 'Address concerns and objections empathetically',
+    callDirections: ['inbound_known'],
+    handling: 'Listen. Use search_knowledge for facts. Common: scams, losing home, heirs. Call mark_objection_handled when resolved.',
+    infoGathering: 'Type of objection, severity, remaining concerns',
+    transitions: 'Resolved → answer/book. Unresolved → exit with broker callback. Multiple → stay in loop.'
+  },
+  book: {
+    goal: 'Schedule appointment between lead and assigned broker',
+    callDirections: ['inbound_known'],
+    handling: 'Use check_broker_availability to find times. Present 2-3 options. Use book_appointment to confirm. Call assign_tracking_number and mark_appointment_booked.',
+    infoGathering: 'Preferred date/time, time zone, contact details confirmation',
+    transitions: 'Booked → exit with confirmation. Can\'t find time → exit with callback. Hesitant → answer/objections.'
+  },
+  exit: {
+    goal: 'End call professionally, confirm next steps if any',
+    callDirections: ['inbound_known', 'wrong_person', 'voicemail'],
+    handling: 'If booked: confirm details. If wrong person available: transition to greet. If VM: leave callback message. Thank caller.',
+    infoGathering: 'Confirm they have what they need',
+    transitions: 'Wrong person available → greet. Otherwise → end call. Save interaction before ending.'
+  }
+}
+
+// Variable categories for insertion
+const variableCategories = [
+  {
+    name: 'lead',
+    label: 'Lead Info',
+    variables: [
+      { key: 'lead.first_name', display: '{lead.first_name}', desc: 'Lead first name' },
+      { key: 'lead.last_name', display: '{lead.last_name}', desc: 'Lead last name' },
+      { key: 'lead.full_name', display: '{lead.full_name}', desc: 'Lead full name' },
+      { key: 'lead.email', display: '{lead.email}', desc: 'Lead email address' },
+      { key: 'lead.phone', display: '{lead.phone}', desc: 'Lead phone number' },
+      { key: 'lead.age', display: '{lead.age}', desc: 'Lead age' }
+    ]
+  },
+  {
+    name: 'property',
+    label: 'Property Info',
+    variables: [
+      { key: 'property.address', display: '{property.address}', desc: 'Full property address' },
+      { key: 'property.city', display: '{property.city}', desc: 'Property city' },
+      { key: 'property.state', display: '{property.state}', desc: 'Property state' },
+      { key: 'property.zipcode', display: '{property.zipcode}', desc: 'Property ZIP code' },
+      { key: 'property.value', display: '{property.value}', desc: 'Property value (number)' },
+      { key: 'property.equity_formatted', display: '{property.equity_formatted}', desc: 'Property equity formatted' },
+      { key: 'property.mortgage_balance', display: '{property.mortgage_balance}', desc: 'Mortgage balance' },
+      { key: 'property.estimated_equity', display: '{property.estimated_equity}', desc: 'Estimated equity' },
+      { key: 'property.owner_occupied', display: '{property.owner_occupied}', desc: 'Owner occupied (true/false)' }
+    ]
+  },
+  {
+    name: 'broker',
+    label: 'Broker Info',
+    variables: [
+      { key: 'broker.first_name', display: '{broker.first_name}', desc: 'Broker first name' },
+      { key: 'broker.last_name', display: '{broker.last_name}', desc: 'Broker last name' },
+      { key: 'broker.full_name', display: '{broker.full_name}', desc: 'Broker full name' },
+      { key: 'broker.company', display: '{broker.company}', desc: 'Broker company name' },
+      { key: 'broker.phone', display: '{broker.phone}', desc: 'Broker phone number' }
+    ]
+  },
+  {
+    name: 'status',
+    label: 'Status Info',
+    variables: [
+      { key: 'status.qualified', display: '{status.qualified}', desc: 'Is lead qualified (true/false)' },
+      { key: 'status.broker_name', display: '{status.broker_name}', desc: 'Assigned broker name' },
+      { key: 'status.broker_company', display: '{status.broker_company}', desc: 'Assigned broker company' }
+    ]
+  }
+]
+
 const availableLLMModels = computed(() => {
   const provider = config.value.models.llm.provider
   // Use DB models if available, otherwise fallback to hardcoded
@@ -725,7 +1172,6 @@ function initNodeContent() {
   nodeKeys.forEach(node => {
     if (!nodeContent.value[node]) {
       nodeContent.value[node] = {
-        role: '',
         instructions: '',
         tools: [] // Initialize as empty array for multi-select
       }
@@ -1309,7 +1755,6 @@ async function saveNode(nodeName) {
     // Merge: preserve migration fields, update edited fields
     const contentObj = {
       ...existingContent,  // PRESERVE: valid_contexts, step_criteria, valid_steps, etc.
-      role: nodeContent.value[nodeName].role || '',
       instructions: nodeContent.value[nodeName].instructions || '',
       tools: toolsArray
     }
@@ -1450,7 +1895,6 @@ async function toggleNode(node) {
     // Ensure nodeContent exists for this node
     if (!nodeContent.value[node]) {
       nodeContent.value[node] = {
-        role: '',
         instructions: '',
         tools: []
       }
@@ -1511,7 +1955,6 @@ async function toggleNode(node) {
       // Initialize empty if no content exists
       console.log('No content found, initializing empty for', node)
       nodeContent.value[node] = {
-        role: '',
         instructions: '',
         tools: [] // Initialize as empty array for multi-select
       }
@@ -1527,19 +1970,25 @@ function markNodeChanged(node) {
   nodeHasChanges.value[node] = true
 }
 
-// Update role
-function updateRole(node, value) {
-  if (!nodeContent.value[node]) {
-    nodeContent.value[node] = { role: '', instructions: '', tools: [] }
+// Get tooltip description for each node
+function getNodeTooltip(node) {
+  const tooltips = {
+    greet: 'First contact - Welcome the caller, introduce Barbara, and set friendly tone',
+    verify: 'Gather basic info - Collect property details and homeowner qualifications (age 62+, equity)',
+    qualify: 'Assess fit - Determine if reverse mortgage meets their needs and goals',
+    educate: 'Explain product - Answer questions about how reverse mortgages work',
+    schedule: 'Book appointment - Connect with licensed broker for detailed consultation',
+    confirm: 'Appointment details - Verify scheduled time and send confirmation',
+    followup: 'Post-call actions - Handle callbacks, answer follow-up questions',
+    exit: 'End conversation - Polite goodbye, next steps, or opt-out handling'
   }
-  nodeContent.value[node].role = value
-  markNodeChanged(node)
+  return tooltips[node] || 'Configure this conversation node'
 }
 
 // Update instructions
 function updateInstructions(node, value) {
   if (!nodeContent.value[node]) {
-    nodeContent.value[node] = { role: '', instructions: '', tools: [] }
+    nodeContent.value[node] = { instructions: '', tools: [] }
   }
   nodeContent.value[node].instructions = value
   markNodeChanged(node)
@@ -1656,7 +2105,6 @@ function isAllToolsSelected(node) {
 function toggleSelectAll(node) {
   if (!nodeContent.value[node]) {
     nodeContent.value[node] = {
-      role: '',
       instructions: '',
       tools: []
     }
@@ -1693,7 +2141,6 @@ function toggleSelectAll(node) {
 function toggleTool(node, tool) {
   if (!nodeContent.value[node]) {
     nodeContent.value[node] = {
-      role: '',
       instructions: '',
       tools: []
     }
@@ -1714,6 +2161,469 @@ function toggleTool(node, tool) {
 }
 
 // Show preview
+// Variable dropdown functions
+function filteredVariables(node, variables) {
+  const search = variableSearch.value[node] || ''
+  if (!search) return variables
+  const searchLower = search.toLowerCase()
+  return variables.filter(v => 
+    v.key.toLowerCase().includes(searchLower) ||
+    v.desc.toLowerCase().includes(searchLower) ||
+    v.display.toLowerCase().includes(searchLower)
+  )
+}
+
+function toggleVariableDropdown(node) {
+  openVariableDropdowns.value[node] = !openVariableDropdowns.value[node]
+  if (openVariableDropdowns.value[node]) {
+    if (!variableSearch.value[node]) {
+      variableSearch.value[node] = ''
+    }
+    // Update position after opening
+    nextTick(() => {
+      const wrapper = variableDropdownWrapperRefs.value[node]
+      if (wrapper) {
+        updateVariableDropdownPosition(node, wrapper)
+      }
+    })
+  } else {
+    delete variableDropdownPositions.value[node]
+  }
+}
+
+function updateVariableDropdownPosition(node, wrapperEl) {
+  if (!openVariableDropdowns.value[node] || !wrapperEl) return
+  
+  const trigger = wrapperEl.querySelector('.variable-button')
+  if (!trigger) return
+  
+  const rect = trigger.getBoundingClientRect()
+  const viewportHeight = window.innerHeight
+  const dropdownMaxHeight = 300
+  const spaceBelow = viewportHeight - rect.bottom
+  const spaceAbove = rect.top
+  
+  const shouldDropUp = spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow
+  
+  variableDropdownPositions.value[node] = {
+    dropUp: shouldDropUp,
+    style: {
+      position: 'fixed',
+      top: shouldDropUp ? 'auto' : `${rect.bottom + 4}px`,
+      bottom: shouldDropUp ? `${viewportHeight - rect.top + 4}px` : 'auto',
+      left: `${rect.left}px`,
+      width: '300px',
+      maxHeight: `${dropdownMaxHeight}px`,
+      overflowY: 'auto',
+      zIndex: 10000
+    }
+  }
+}
+
+function setVariableDropdownWrapperRef(node, el) {
+  if (el) {
+    variableDropdownWrapperRefs.value[node] = el
+  }
+}
+
+function setTextareaRef(node, el) {
+  if (el) {
+    textareaRefs.value[node] = el
+  }
+}
+
+function setTextareaCursor(node, event) {
+  const textarea = event.target
+  textareaCursors.value[node] = {
+    start: textarea.selectionStart,
+    end: textarea.selectionEnd
+  }
+}
+
+function insertVariable(node, variableKey) {
+  const textarea = textareaRefs.value[node]
+  if (!textarea) return
+  
+  const variableText = `{${variableKey}}`
+  const currentValue = nodeContent.value[node]?.instructions || ''
+  
+  // Get cursor position
+  const cursorPos = textarea.selectionStart || currentValue.length
+  
+  // Insert variable at cursor position
+  const newValue = 
+    currentValue.slice(0, cursorPos) + 
+    variableText + 
+    currentValue.slice(cursorPos)
+  
+  // Update the content
+  updateInstructions(node, newValue)
+  
+  // Set cursor position after inserted variable
+  nextTick(() => {
+    const newCursorPos = cursorPos + variableText.length
+    textarea.setSelectionRange(newCursorPos, newCursorPos)
+    textarea.focus()
+  })
+  
+  // Close dropdown
+  openVariableDropdowns.value[node] = false
+  delete variableDropdownPositions.value[node]
+}
+
+// ============================
+// THEME AI HELPER FUNCTIONS
+// ============================
+
+function openThemeHelper() {
+  themeHelperAnswers.value = {
+    assistantName: 'Barbara',
+    company: 'Equity Connect',
+    productService: '',
+    targetAudience: '',
+    toneStyle: '',
+    coreValues: '',
+    restrictions: ''
+  }
+  aiHelperSuggestion.value = ''
+  aiHelperDiff.value = []
+  showThemeHelperModal.value = true
+}
+
+function closeThemeHelper() {
+  showThemeHelperModal.value = false
+  aiHelperSuggestion.value = ''
+  aiHelperDiff.value = []
+}
+
+async function generateTheme() {
+  if (!themeHelperAnswers.value.productService.trim()) {
+    window.alert('Please fill in the product/service field')
+    return
+  }
+  
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY
+  if (!apiKey) {
+    window.alert('OpenAI API key not found. Add VITE_OPENAI_API_KEY to portal/.env.local and restart dev server.')
+    return
+  }
+  
+  aiHelperIsLoading.value = true
+  
+  try {
+    const systemPrompt = `Generate a comprehensive AI voice assistant theme/personality prompt.
+
+**Assistant Name:** ${themeHelperAnswers.value.assistantName}
+**Company:** ${themeHelperAnswers.value.company}
+**Product/Service:** ${themeHelperAnswers.value.productService}
+**Target Audience:** ${themeHelperAnswers.value.targetAudience || 'General audience'}
+**Tone:** ${themeHelperAnswers.value.toneStyle || 'Professional and friendly'}
+**Core Values:** ${themeHelperAnswers.value.coreValues || 'Honesty, transparency, customer-first'}
+**Restrictions:** ${themeHelperAnswers.value.restrictions || 'None'}
+
+Create a theme prompt optimized for SignalWire voice AI that includes:
+
+## Who You Are
+- Clear identity and role
+- Company and product
+
+## Speaking Style
+- Tone characteristics
+- Sentence length (2-3 sentences per turn for voice)
+- Response pacing
+- Natural conversational elements
+
+## Core Rules
+- Key principles
+- Restrictions
+- Interaction guidelines
+
+## Response Format
+- Structure guidelines
+- Pacing rules
+
+## Values
+- Core values guiding behavior
+
+FORMAT:
+- Use markdown headers (##)
+- Use bullet points (-)
+- Keep concise but complete
+- NO variables (theme is universal)
+- Optimize for voice AI`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an expert at creating AI voice assistant personality prompts. Create clear, actionable prompts using markdown.' },
+          { role: 'user', content: systemPrompt }
+        ],
+        max_completion_tokens: 2000
+      })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(`API error: ${response.status} - ${errorData.error?.message}`)
+    }
+    
+    const data = await response.json()
+    aiHelperSuggestion.value = data.choices[0].message.content
+    
+    // Generate diff
+    if (themeContent.value) {
+      aiHelperDiff.value = Diff.diffWords(themeContent.value, aiHelperSuggestion.value)
+    }
+    
+  } catch (error) {
+    console.error('Theme generation error:', error)
+    window.alert(`Failed to generate theme: ${error.message}`)
+  } finally {
+    aiHelperIsLoading.value = false
+  }
+}
+
+function acceptThemeSuggestion() {
+  themeContent.value = aiHelperSuggestion.value
+  themeHasChanges.value = true
+  closeThemeHelper()
+}
+
+// ============================
+// NODE AI HELPER FUNCTIONS
+// ============================
+
+function openNodeHelper(nodeName) {
+  aiHelperNode.value = nodeName
+  
+  // Load quick-fill if available
+  const quickFill = nodeQuickFills[nodeName]
+  if (quickFill) {
+    nodeHelperAnswers.value = {
+      goal: quickFill.goal,
+      callDirections: quickFill.callDirections || [],
+      customScenarios: '',
+      handling: quickFill.handling || '',
+      infoGathering: quickFill.infoGathering || '',
+      transitions: quickFill.transitions || ''
+    }
+  } else {
+    nodeHelperAnswers.value = {
+      goal: '',
+      callDirections: [],
+      customScenarios: '',
+      handling: '',
+      infoGathering: '',
+      transitions: ''
+    }
+  }
+  
+  aiHelperSuggestion.value = ''
+  aiHelperDiff.value = []
+  aiSuggestedScenarios.value = []
+  aiToolReasoning.value = ''
+  showNodeHelperModal.value = true
+}
+
+function closeNodeHelper() {
+  showNodeHelperModal.value = false
+  aiHelperNode.value = null
+  aiHelperSuggestion.value = ''
+  aiHelperDiff.value = []
+  aiSuggestedScenarios.value = []
+  aiToolReasoning.value = ''
+}
+
+function toggleScenario(scenarioValue) {
+  const index = nodeHelperAnswers.value.callDirections.indexOf(scenarioValue)
+  if (index > -1) {
+    nodeHelperAnswers.value.callDirections.splice(index, 1)
+  } else {
+    nodeHelperAnswers.value.callDirections.push(scenarioValue)
+  }
+}
+
+function useQuickFill() {
+  const quickFill = nodeQuickFills[aiHelperNode.value]
+  if (quickFill) {
+    nodeHelperAnswers.value = {
+      goal: quickFill.goal,
+      callDirections: quickFill.callDirections || [],
+      customScenarios: '',
+      handling: quickFill.handling || '',
+      infoGathering: quickFill.infoGathering || '',
+      transitions: quickFill.transitions || ''
+    }
+  }
+}
+
+async function generateNodePrompt() {
+  if (!nodeHelperAnswers.value.goal.trim()) {
+    window.alert('Please fill in the goal field')
+    return
+  }
+  
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY
+  if (!apiKey) {
+    window.alert('OpenAI API key not found. Add VITE_OPENAI_API_KEY to portal/.env.local')
+    return
+  }
+  
+  aiHelperIsLoading.value = true
+  
+  try {
+    // Build scenarios text
+    const selectedScenarios = nodeHelperAnswers.value.callDirections
+      .map(val => CALL_SCENARIOS.find(s => s.value === val)?.label)
+      .filter(Boolean)
+      .join(', ')
+    const allScenarios = [selectedScenarios, nodeHelperAnswers.value.customScenarios].filter(Boolean).join('; ')
+    
+    // Build tools list for AI
+    const toolsList = Object.values(ALL_TOOLS_WITH_DESCRIPTIONS)
+      .flat()
+      .map(t => `- ${t.name}: ${t.desc}`)
+      .join('\n')
+    
+    const systemPrompt = `Create voice AI node instructions for SignalWire contexts.
+
+**SIGNALWIRE CONTEXT SYSTEM (CRITICAL):**
+- This is a SignalWire context node, NOT a standalone prompt
+- Theme/personality is ALREADY applied globally - DO NOT repeat it
+- Focus ONLY on ACTIONS and LOGIC for this specific step
+- Valid transitions are handled by valid_contexts array - just mention where to go
+- Variables ({lead.first_name}) will be substituted by SignalWire at runtime
+- Keep instructions CONCISE and ACTION-FOCUSED
+
+**Node:** ${aiHelperNode.value}
+**Goal:** ${nodeHelperAnswers.value.goal}
+**Call Scenarios:** ${allScenarios || 'Not specified - suggest common ones'}
+**Handling:** ${nodeHelperAnswers.value.handling || 'Use best practices'}
+**Info to Gather:** ${nodeHelperAnswers.value.infoGathering || 'Determine from goal'}
+**Transitions:** ${nodeHelperAnswers.value.transitions || 'Determine from scenarios'}
+
+**CURRENT THEME:**
+${themeContent.value || '(No theme - use professional tone)'}
+
+**AVAILABLE TOOLS (select 2-5 relevant ones):**
+${toolsList}
+
+**AVAILABLE VARIABLES (insert naturally for personalization):**
+Lead: {lead.first_name}, {lead.last_name}, {lead.full_name}, {lead.email}, {lead.phone}, {lead.age}, {lead.id}
+Property: {property.address}, {property.city}, {property.state}, {property.zipcode}, {property.value}, {property.equity_formatted}, {property.mortgage_balance}, {property.estimated_equity}, {property.owner_occupied}
+Broker: {broker.first_name}, {broker.last_name}, {broker.full_name}, {broker.company}, {broker.phone}
+Status: {status.qualified}, {status.call_type}, {status.broker_name}, {status.broker_company}
+
+**CRITICAL FORMAT REQUIREMENTS:**
+1. Variables: Use SINGLE BRACE DOT NOTATION: {lead.first_name} NOT {{leadFirstName}}
+2. Tools: Dynamically select based on goal/scenarios (NOT hardcoded by node type)
+3. Personalization: Insert variables naturally (greetings, confirmations, property references)
+4. Scenarios: Handle all user-specified scenarios + suggest 2-3 additional edge cases
+5. Voice-friendly: Brief responses, 2-3 sentences per turn, natural flow
+6. NO personality - theme handles that. Focus on ACTIONS ONLY.
+
+**CRITICAL: SUGGEST ADDITIONAL SCENARIOS**
+Beyond user's selected scenarios, think of 2-3 edge cases for the ${aiHelperNode.value} step:
+- Hearing impaired caller?
+- Business number callback?
+- Wants to speak to manager?
+- In a hurry?
+- Confused about who you are?
+- Language barrier?
+
+**YOUR TASK:**
+1. Analyze goal and scenarios
+2. Select 2-5 tools that enable the actions needed
+3. Insert variables naturally for personalization
+4. Write specific handling for each scenario
+5. Suggest additional edge cases
+6. Keep voice-friendly and brief
+7. Focus on LOGIC and ACTIONS, not personality
+
+Return valid JSON:
+{
+  "instructions": "Bullet-point instructions with {variables} and tool references",
+  "recommended_tools": ["tool1", "tool2"],
+  "reasoning": "Why these tools were chosen",
+  "suggested_scenarios": ["Additional edge case 1", "Additional edge case 2"]
+}`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an expert at creating voice AI conversation instructions for SignalWire contexts. Return valid JSON with instructions, recommended_tools, reasoning, and suggested_scenarios.' },
+          { role: 'user', content: systemPrompt }
+        ],
+        max_completion_tokens: 1500,
+        response_format: { type: 'json_object' }
+      })
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(`API error: ${response.status} - ${errorData.error?.message}`)
+    }
+    
+    const data = await response.json()
+    const result = JSON.parse(data.choices[0].message.content)
+    
+    aiHelperSuggestion.value = result.instructions
+    aiToolReasoning.value = result.reasoning || ''
+    aiSuggestedScenarios.value = result.suggested_scenarios || []
+    
+    // Auto-select recommended tools
+    if (result.recommended_tools && Array.isArray(result.recommended_tools)) {
+      const validTools = result.recommended_tools.filter(tool => 
+        availableTools.includes(tool)
+      )
+      if (!nodeContent.value[aiHelperNode.value]) {
+        nodeContent.value[aiHelperNode.value] = { instructions: '', tools: [] }
+      }
+      // Merge with existing tools
+      const existingTools = nodeContent.value[aiHelperNode.value].tools || []
+      nodeContent.value[aiHelperNode.value].tools = [
+        ...new Set([...existingTools, ...validTools])
+      ]
+      markNodeChanged(aiHelperNode.value)
+    }
+    
+    // Generate diff (ensure both values are strings)
+    const currentInstructions = nodeContent.value[aiHelperNode.value]?.instructions || ''
+    const currentStr = String(currentInstructions || '')
+    const suggestionStr = String(aiHelperSuggestion.value || '')
+    if (currentStr) {
+      aiHelperDiff.value = Diff.diffWords(currentStr, suggestionStr)
+    }
+    
+  } catch (error) {
+    console.error('Node generation error:', error)
+    window.alert(`Failed to generate: ${error.message}`)
+  } finally {
+    aiHelperIsLoading.value = false
+  }
+}
+
+function acceptNodeSuggestion() {
+  if (!nodeContent.value[aiHelperNode.value]) {
+    nodeContent.value[aiHelperNode.value] = { instructions: '', tools: [] }
+  }
+  nodeContent.value[aiHelperNode.value].instructions = aiHelperSuggestion.value
+  markNodeChanged(aiHelperNode.value)
+  closeNodeHelper()
+}
+
 function showPreview(node) {
   const nodeData = nodeContent.value[node]
   const theme = themeContent.value || '[Theme not loaded]'
@@ -1735,9 +2645,6 @@ Assigned Broker: Walter White (ABC Mortgage)
 ===================
 
 ---
-
-## Role
-${nodeData.role || '[No role defined]'}
 
 ## Instructions
 ${nodeData.instructions || '[No instructions defined]'}
@@ -1845,13 +2752,21 @@ function handleClickOutside(event) {
     return
   }
   // Don't close if clicking on the dropdown panel itself (it's teleported to body)
-  if (target.closest('.tools-dropdown-panel')) {
+  if (target.closest('.tools-dropdown-panel') || target.closest('.variable-dropdown-panel')) {
     return
   }
   if (!target.closest('.tools-dropdown-wrapper')) {
-    // Close all dropdowns
+    // Close all tool dropdowns
     Object.keys(openDropdowns.value).forEach(node => {
       openDropdowns.value[node] = false
+    })
+  }
+  
+  // Close variable dropdowns if clicking outside
+  if (!target.closest('.variable-dropdown-wrapper')) {
+    Object.keys(openVariableDropdowns.value).forEach(node => {
+      openVariableDropdowns.value[node] = false
+      delete variableDropdownPositions.value[node]
     })
   }
 }
@@ -2319,8 +3234,8 @@ onUnmounted(() => {
 .nodes-section {
   margin-top: 2rem;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: visible; /* Allow dropdown to extend vertically */
+  overflow-x: visible;
+  overflow-y: visible;
   padding-bottom: 1rem;
 }
 
@@ -2333,21 +3248,23 @@ onUnmounted(() => {
 .nodes-grid {
   display: flex;
   gap: 1rem;
-  overflow-x: auto;
+  overflow-x: auto; /* Enable horizontal scrolling */
   overflow-y: visible; /* Allow dropdown to extend vertically */
   padding-bottom: 0.5rem;
+  direction: rtl; /* Move scrollbar to top */
 }
 
 /* Desktop/Tablet: versions bar on left, nodes align left-to-right horizontally */
 @media (min-width: 768px) {
   .nodes-grid {
-    flex-direction: row;
+    flex-direction: row-reverse; /* Reverse to compensate for rtl direction */
     flex-wrap: nowrap;
     align-items: flex-start;
   }
   
   .node-card {
     min-width: 280px;
+    direction: ltr; /* Restore normal text direction for card content */
   }
 }
 
@@ -2356,6 +3273,17 @@ onUnmounted(() => {
   .nodes-grid {
     flex-direction: column;
     overflow-x: visible;
+    direction: ltr; /* Normal direction for vertical layout */
+  }
+  
+  .node-card {
+    direction: ltr; /* Ensure normal text direction */
+    width: 100%; /* Full width on mobile */
+  }
+  
+  .node-card.expanded {
+    width: 100%; /* Ensure expanded card fits screen on mobile */
+    max-width: 100%; /* Override max-width on very narrow screens */
   }
 }
 
@@ -2381,21 +3309,51 @@ onUnmounted(() => {
 
 /* Expanded state: wider horizontally */
 .node-card.expanded {
-  width: 550px;
+  max-width: 550px; /* Don't exceed 550px */
+  width: 100%; /* Responsive - shrink on narrow screens */
+  min-height: 400px; /* Keep full height when expanded */
 }
 
 .node-card-header {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
+/* Collapsed state: reduce height by 50% */
+.node-card:not(.expanded) {
+  min-height: auto; /* Remove min-height constraint */
+  height: fit-content; /* Only as tall as content */
+}
+
+/* Override header padding for collapsed cards - must come after base rule */
+.node-card:not(.expanded) .node-card-header {
+  padding: 0.5rem 1rem !important; /* ~67% of 0.75rem - approximately half height */
+}
+
 .node-name {
   font-weight: 600;
   text-transform: capitalize;
   color: #fff !important;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tooltip-indicator {
+  color: #ff4444;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: help;
+  transition: opacity 0.2s;
+  user-select: none;
+  opacity: 0.8;
+}
+
+.tooltip-indicator:hover {
+  opacity: 1;
 }
 
 .node-toggle {
@@ -2426,6 +3384,93 @@ onUnmounted(() => {
   font-weight: 500;
   font-size: 0.875rem;
   color: #fff !important;
+}
+
+.field-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.variable-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.variable-button {
+  padding: 0.25rem 0.5rem;
+  background: rgba(138, 43, 226, 0.2);
+  border: 1px solid rgba(138, 43, 226, 0.4);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.variable-button:hover {
+  background: rgba(138, 43, 226, 0.3);
+  border-color: rgba(138, 43, 226, 0.6);
+}
+
+.variable-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.variable-dropdown-panel {
+  z-index: 10000;
+  background: rgba(20, 20, 30, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.variable-category {
+  padding: 0.5rem 0;
+}
+
+.category-header {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6) !important;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 0.25rem;
+}
+
+.variable-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #fff !important;
+}
+
+.variable-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.variable-name {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: #8a2be2 !important;
+  font-weight: 600;
+}
+
+.variable-desc {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7) !important;
 }
 
 .editor-field textarea,
@@ -2713,6 +3758,388 @@ onUnmounted(() => {
   .tab-button {
     white-space: nowrap;
   }
+}
+
+/* AI Helper Modals */
+.ai-helper-modal {
+  max-width: 750px !important;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.ai-helper-modal.node-helper {
+  max-width: 800px !important;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #fff !important;
+}
+
+.btn-close-icon {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.btn-close-icon:hover {
+  color: #fff;
+}
+
+.helper-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-field label {
+  font-weight: 600;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.form-field input,
+.form-field textarea {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  font-size: 0.875rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.form-field input:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: #8a2be2;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.quick-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.chip {
+  padding: 0.35rem 0.75rem;
+  background: rgba(138, 43, 226, 0.2);
+  border: 1px solid rgba(138, 43, 226, 0.3);
+  border-radius: 1rem;
+  color: #fff;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chip:hover {
+  background: rgba(138, 43, 226, 0.3);
+  border-color: rgba(138, 43, 226, 0.5);
+}
+
+.scenario-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0.5rem;
+}
+
+.scenario-checkbox {
+  display: flex;
+  align-items: start;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.scenario-checkbox input[type="checkbox"] {
+  margin-top: 0.25rem;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #8a2be2;
+  flex-shrink: 0;
+}
+
+.scenario-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.scenario-name {
+  font-weight: 600;
+  color: #fff;
+  font-size: 0.875rem;
+}
+
+.scenario-desc {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.btn-quick-fill {
+  padding: 0.5rem 1rem;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: 0.5rem;
+  color: #10b981;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.btn-quick-fill:hover {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.6);
+}
+
+.helper-result {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.result-preview h4,
+.tool-reasoning h5,
+.suggested-scenarios h5 {
+  margin: 0 0 0.75rem 0;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.diff-display {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  font-family: 'Courier New', monospace;
+}
+
+.preview-text {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #fff;
+  margin: 0;
+}
+
+.diff-added {
+  background: rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  padding: 0.1rem 0.2rem;
+  border-radius: 3px;
+}
+
+.diff-removed {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  text-decoration: line-through;
+  padding: 0.1rem 0.2rem;
+  border-radius: 3px;
+}
+
+.diff-unchanged {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tool-reasoning,
+.suggested-scenarios {
+  padding: 1rem;
+  background: rgba(138, 43, 226, 0.1);
+  border-left: 3px solid #8a2be2;
+  border-radius: 0.25rem;
+}
+
+.tool-reasoning p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+}
+
+.suggested-scenarios ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.tool-notice {
+  margin: 0;
+  padding: 0.75rem;
+  background: rgba(16, 185, 129, 0.2);
+  border-left: 3px solid #10b981;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 0.5rem;
+}
+
+.btn-generate,
+.btn-accept,
+.btn-regenerate,
+.btn-cancel {
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  border: none;
+}
+
+.btn-generate {
+  background: #8a2be2;
+  color: #fff;
+}
+
+.btn-generate:hover:not(:disabled) {
+  background: #7c1ed9;
+}
+
+.btn-generate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-accept {
+  background: #10b981;
+  color: #fff;
+}
+
+.btn-accept:hover {
+  background: #059669;
+}
+
+.btn-regenerate {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-regenerate:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-cancel {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Theme header with AI button */
+.theme-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.theme-header h2 {
+  margin: 0;
+  color: #fff !important;
+}
+
+/* AI Helper Buttons */
+.btn-ai-helper {
+  padding: 0.5rem 1rem;
+  background: rgba(138, 43, 226, 0.2);
+  border: 1px solid rgba(138, 43, 226, 0.4);
+  border-radius: 0.5rem;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-ai-helper:hover {
+  background: rgba(138, 43, 226, 0.3);
+  border-color: rgba(138, 43, 226, 0.6);
+}
+
+.btn-ai-helper-small {
+  padding: 0.25rem 0.5rem;
+  background: rgba(138, 43, 226, 0.2);
+  border: 1px solid rgba(138, 43, 226, 0.4);
+  border-radius: 0.25rem;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.btn-ai-helper-small:hover {
+  background: rgba(138, 43, 226, 0.3);
+  border-color: rgba(138, 43, 226, 0.6);
 }
 </style>
 
