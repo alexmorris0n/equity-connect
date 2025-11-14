@@ -91,13 +91,19 @@ app.post('/api/test-cli', async (request, reply) => {
       promptContent: promptContent || null
     });
     
+    const guardrailError = mapGuardrailError(result);
+    if (guardrailError) {
+      app.log.warn({ guardrailError }, '[test-cli] Guardrail validation failure');
+      return reply.code(422).send(guardrailError);
+    }
+    
     app.log.info({ 
       success: result.success,
       exitCode: result.exitCode,
       duration: result.duration
     }, '[test-cli] Test completed');
     
-    return reply.code(200).send(result);
+    return reply.code(result.success ? 200 : 500).send(result);
     
   } catch (err) {
     app.log.error({ err }, '[test-cli] Error executing test');
@@ -125,6 +131,74 @@ async function start() {
   } catch (err) {
     app.log.error(err);
     process.exit(1);
+  }
+}
+
+/**
+ * Detect guardrail errors (empty/missing contexts) and map to structured payload.
+ */
+function mapGuardrailError(result = {}) {
+  const combinedOutput = `${result.stderr || ''}\n${result.output || ''}`;
+  if (!combinedOutput.includes('Contexts validation failed')) {
+    return null;
+  }
+  
+  const regex = /Contexts validation failed\. Missing contexts: (?<missing>.+?) \| Empty contexts: (?<empty>.+)/;
+  const match = combinedOutput.match(regex);
+  const missingRaw = match?.groups?.missing?.trim() || '[]';
+  const emptyRaw = match?.groups?.empty?.trim() || '[]';
+  
+  const missingContexts = parseContextList(missingRaw);
+  const emptyContexts = parseContextList(emptyRaw);
+  
+  const details = { missingContexts, emptyContexts };
+  let errorCode = 'EMPTY_CONTEXT';
+  if (missingContexts.length && !emptyContexts.length) {
+    errorCode = 'MISSING_CONTEXT';
+  } else if (missingContexts.length && emptyContexts.length) {
+    errorCode = 'MISSING_AND_EMPTY_CONTEXTS';
+  }
+  
+  const friendlyParts = [];
+  if (missingContexts.length) {
+    friendlyParts.push(
+      `${missingContexts.join(', ')} ${missingContexts.length === 1 ? 'context is missing' : 'contexts are missing'} from Supabase`
+    );
+  }
+  if (emptyContexts.length) {
+    friendlyParts.push(
+      `${emptyContexts.join(', ')} ${emptyContexts.length === 1 ? 'context has no steps' : 'contexts have no steps'}`
+    );
+  }
+  const friendlyMessage = friendlyParts.length
+    ? `Fix prompt content: ${friendlyParts.join('; ')}.`
+    : 'Context guardrail blocked this save. Please ensure every node has instructions.';
+  
+  return {
+    success: false,
+    errorCode,
+    error: friendlyMessage,
+    details,
+    exitCode: result.exitCode,
+    duration: result.duration,
+    rawError: combinedOutput
+  };
+}
+
+function parseContextList(raw) {
+  if (!raw || raw === '[]' || raw.toLowerCase() === 'none') {
+    return [];
+  }
+  const normalized = raw.replace(/'/g, '"');
+  try {
+    const parsed = JSON.parse(normalized);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return raw
+      .replace(/[\[\]]/g, '')
+      .split(',')
+      .map((str) => str.trim())
+      .filter(Boolean);
   }
 }
 

@@ -1900,13 +1900,39 @@ async function validateNodeWithCli(nodeName, contentObj) {
   }
 
   if (!response.ok) {
-    const errorMessage = data?.error || `HTTP ${response.status}: ${response.statusText}`
-    throw new Error(errorMessage)
+    const friendly = formatCliValidationError(data, response)
+    throw new Error(friendly)
   }
-
+ 
   if (!data?.success) {
-    throw new Error(data?.error || 'CLI validation failed')
+    const friendly = formatCliValidationError(data)
+    throw new Error(friendly)
   }
+}
+
+function formatCliValidationError(payload = {}, response = null) {
+  if (payload?.errorCode) {
+    const missing = payload?.details?.missingContexts || []
+    const empty = payload?.details?.emptyContexts || []
+    const reasons = []
+    if (missing.length) {
+      reasons.push(`${missing.join(', ')} ${missing.length === 1 ? 'context is missing' : 'contexts are missing'} in Supabase`)
+    }
+    if (empty.length) {
+      reasons.push(`${empty.join(', ')} ${empty.length === 1 ? 'context is empty' : 'contexts are empty'}`)
+    }
+    if (reasons.length) {
+      return `Guardrail blocked save: ${reasons.join('; ')}.`
+    }
+    return payload.error || 'Context guardrail blocked this save.'
+  }
+  if (payload?.error) {
+    return payload.error
+  }
+  if (response) {
+    return `HTTP ${response.status}: ${response.statusText}`
+  }
+  return 'CLI validation failed'
 }
 
 
