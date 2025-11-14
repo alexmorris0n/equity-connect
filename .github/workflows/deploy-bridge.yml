@@ -24,16 +24,12 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy to Fly.io
-        run: |
-          # Deploy from project root with correct build context
-          fly deploy --config bridge/fly.toml --remote-only --no-cache --dockerfile Dockerfile
-        working-directory: .
+        run: flyctl deploy --config bridge/fly.toml --dockerfile Dockerfile --remote-only --no-cache --app equity-connect-bridge
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Verify deployment
-        run: |
-          fly status --app equity-connect-bridge
+        run: flyctl status --app equity-connect-bridge
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
