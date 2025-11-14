@@ -400,15 +400,9 @@
                     <button class="btn-preview" @click="showPreview(node)">
                       Preview
                     </button>
-                    <button
-                      class="btn-test"
-                      v-if="selectedNode === node"
-                      :disabled="loading || nodeHasChanges[node] || !currentVersion?.id"
-                      @click="openCliTestModal(node)"
-                      title="Run CLI test for this node"
-                    >
-                      Test Node
-                    </button>
+                    <span v-if="saveStatus !== 'idle' && selectedNode === node" class="save-status-message">
+                      {{ saveStatus === 'validating' ? 'Validating via CLI…' : 'Saving…' }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -639,13 +633,6 @@
       </div>
     </div>
 
-    <TestCliModal
-      v-model:show="showCliTestModal"
-      :vertical="cliTestVertical"
-      :node-name="cliTestNodeName"
-      :version-id="cliTestVersionId"
-      :version-label="cliTestVersionLabel"
-    />
   </div>
 </template>
 
@@ -653,7 +640,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
 import * as Diff from 'diff'
-import TestCliModal from '@/components/TestCliModal.vue'
 
 // Constants
 const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'exit']
@@ -1172,17 +1158,16 @@ const currentVersion = ref(null)
 
 // Preview state
 const previewContent = ref(null)
+const saveStatus = ref('idle')
+
+const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080'
+if (!import.meta.env.VITE_CLI_TESTING_URL) {
+  console.warn('[Verticals] VITE_CLI_TESTING_URL not set. Falling back to http://localhost:8080')
+}
 
 // Test modals
 const showTestModal = ref(false)
 const testResults = ref('')
-const showCliTestModal = ref(false)
-const cliTestVertical = computed(() => selectedVertical.value || '')
-const cliTestNodeName = computed(() => selectedNode.value || '')
-const cliTestVersionId = computed(() => currentVersion.value?.id || '')
-const cliTestVersionLabel = computed(() =>
-  currentVersion.value ? `v${currentVersion.value.version_number}` : 'Unknown'
-)
 
 // Settings tabs
 const settingsTabs = [
@@ -1757,8 +1742,13 @@ async function loadVersion(versionId) {
 // IMPORTANT: Editing any node increments the SHARED vertical version for all nodes
 async function saveNode(nodeName) {
   if (!selectedVertical.value || !nodeName) return
+  if (!nodeContent.value[nodeName]) {
+    window.$message?.error('Node content is missing or invalid.')
+    return
+  }
   
   loading.value = true
+  saveStatus.value = 'validating'
   try {
     // 1) Prepare edited node content
     // Ensure tools is an array
@@ -1779,10 +1769,13 @@ async function saveNode(nodeName) {
     
     // Merge: preserve migration fields, update edited fields
     const contentObj = {
-      ...existingContent,  // PRESERVE: valid_contexts, step_criteria, valid_steps, etc.
+      ...existingContent,
       instructions: nodeContent.value[nodeName].instructions || '',
       tools: toolsArray
     }
+
+    await validateNodeWithCli(nodeName, contentObj)
+    saveStatus.value = 'saving'
     
     // Get current vertical version from theme_prompts
     const { data: themeData, error: themeError } = await supabase
@@ -1868,9 +1861,51 @@ async function saveNode(nodeName) {
     await loadVersions(nodeName)
   } catch (error) {
     console.error('Error saving node:', error)
-    window.$message?.error('Failed to save node: ' + error.message)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    if (saveStatus.value === 'validating') {
+      window.$message?.error(`CLI validation failed: ${errorMessage}`)
+    } else {
+      window.$message?.error('Failed to save node: ' + errorMessage)
+    }
   } finally {
     loading.value = false
+    saveStatus.value = 'idle'
+  }
+}
+
+async function validateNodeWithCli(nodeName, contentObj) {
+  if (!selectedVertical.value) {
+    throw new Error('No vertical selected for validation')
+  }
+
+  const versionId = currentVersion.value?.id || 'inline'
+  const response = await fetch(`${CLI_TESTING_URL}/api/test-cli`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      versionId,
+      vertical: selectedVertical.value,
+      nodeName,
+      promptContent: contentObj
+    })
+  })
+
+  let data = {}
+  try {
+    data = await response.json()
+  } catch (err) {
+    console.error('[Verticals] Failed parsing CLI response', err)
+  }
+
+  if (!response.ok) {
+    const errorMessage = data?.error || `HTTP ${response.status}: ${response.statusText}`
+    throw new Error(errorMessage)
+  }
+
+  if (!data?.success) {
+    throw new Error(data?.error || 'CLI validation failed')
   }
 }
 
@@ -2722,22 +2757,6 @@ function testSettings() {
     utterance.pitch = 1
     speechSynthesis.speak(utterance)
   }
-}
-
-function openCliTestModal(node) {
-  if (!selectedVertical.value || !node || selectedNode.value !== node) {
-    window.$message?.warning('Select a node before testing.')
-    return
-  }
-  if (!currentVersion.value?.id) {
-    window.$message?.warning('Save this node to create a version before testing.')
-    return
-  }
-  if (nodeHasChanges.value[node]) {
-    window.$message?.warning('Save changes before running a test.')
-    return
-  }
-  showCliTestModal.value = true
 }
 
 // Format date
@@ -3647,6 +3666,12 @@ onUnmounted(() => {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.save-status-message {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  align-self: center;
 }
 
 .btn-preview {

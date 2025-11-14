@@ -55,32 +55,40 @@ app.get('/healthz', async (request, reply) => {
  * Execute swaig-test for prompt node testing from Portal UI
  * POST /api/test-cli
  * 
- * Body: { versionId, vertical, nodeName }
+ * Body: { versionId?, vertical, nodeName, promptContent? }
  * Returns: { success, output, stderr, exitCode, duration }
  */
 app.post('/api/test-cli', async (request, reply) => {
   try {
-    const { versionId, vertical, nodeName } = request.body;
+    const { versionId, vertical, nodeName, promptContent } = request.body || {};
     
-    // Validate required fields
-    if (!versionId || !vertical || !nodeName) {
+    if (!vertical || !nodeName) {
       return reply.code(400).send({
         success: false,
-        error: 'Missing required fields: versionId, vertical, nodeName'
+        error: 'Missing required fields: vertical, nodeName'
+      });
+    }
+
+    if (!versionId && !promptContent) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Provide either versionId or promptContent for validation'
       });
     }
     
     app.log.info({ 
-      versionId, 
+      versionId: versionId || 'inline',
       vertical, 
-      nodeName 
+      nodeName,
+      hasPromptOverride: Boolean(promptContent)
     }, '[test-cli] Received test request');
     
     // Execute test (this may take 10-45 seconds)
     const result = await executeCliTest({ 
-      versionId, 
+      versionId: versionId || null, 
       vertical, 
-      nodeName 
+      nodeName,
+      promptContent: promptContent || null
     });
     
     app.log.info({ 

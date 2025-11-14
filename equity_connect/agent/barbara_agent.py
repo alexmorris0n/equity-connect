@@ -1,6 +1,7 @@
 """Barbara - AI Voice Agent for EquityConnect using SignalWire SDK"""
 import os
 import logging
+import json
 from typing import Optional, Dict, Any, List
 from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
@@ -65,6 +66,7 @@ class BarbaraAgent(AgentBase):
 		version_id = None
 		vertical = None
 		node_name = None
+		prompt_payload = None
 		
 		# First, check query_params directly (primary location for swaig-test --user-vars)
 		if query_params.get('test_mode') or query_params.get('version_id'):
@@ -72,6 +74,11 @@ class BarbaraAgent(AgentBase):
 			version_id = query_params.get('version_id')
 			vertical = query_params.get('vertical')
 			node_name = query_params.get('node_name')
+			if query_params.get('prompt_payload'):
+				try:
+					prompt_payload = json.loads(query_params.get('prompt_payload'))
+				except Exception as e:
+					logger.warning(f"⚠️ Failed to parse prompt_payload from query params: {e}")
 			logger.info(f"🧪 Found test mode vars in query_params: test_mode={test_mode}, version_id={version_id}")
 		
 		# Fallback: Check body_params for nested format (alternative/legacy format)
@@ -80,7 +87,6 @@ class BarbaraAgent(AgentBase):
 			if isinstance(user_vars, str):
 				# Sometimes user_vars comes as JSON string
 				try:
-					import json
 					user_vars = json.loads(user_vars)
 				except json.JSONDecodeError as e:
 					# JSON parsing failed - log error and raise to prevent silent failure
@@ -96,19 +102,34 @@ class BarbaraAgent(AgentBase):
 				version_id = user_vars.get('version_id')
 				vertical = user_vars.get('vertical')
 				node_name = user_vars.get('node_name')
+				if user_vars.get('prompt_payload'):
+					prompt_payload = user_vars.get('prompt_payload')
 				logger.info(f"🧪 Found test mode vars in body_params: test_mode={test_mode}, version_id={version_id}")
 		
-		if test_mode and version_id:
-			logger.info(f"🧪 TEST MODE: Loading prompt version {version_id}")
+		# Normalize prompt payload (if string)
+		if isinstance(prompt_payload, str):
+			try:
+				prompt_payload = json.loads(prompt_payload)
+			except Exception as e:
+				logger.warning(f"⚠️ Failed to decode prompt_payload JSON: {e}")
+				prompt_payload = None
+		
+		if test_mode and (version_id or prompt_payload):
+			logger.info(f"🧪 TEST MODE: Loading prompt {'payload override' if prompt_payload else f'version {version_id}'}")
 			
 			# Load prompt content from database
 			try:
 				from equity_connect.test_barbara import get_prompt_version_from_db
-				version_data = get_prompt_version_from_db(version_id)
-				# Use vertical/node_name from query_params/body_params, or fallback to defaults
+				if prompt_payload:
+					prompt_content = prompt_payload
+					logger.info("🧪 Using inline prompt payload override for test mode")
+					version_data = {}
+				else:
+					version_data = get_prompt_version_from_db(version_id)
+					prompt_content = version_data.get('content', {})
+				# Use vertical/node_name from query_params/body_params, or fallback to defaults / payload hints
 				vertical = vertical or version_data.get('vertical') or 'reverse_mortgage'
-				node_name = node_name or 'greet'
-				prompt_content = version_data.get('content', {})
+				node_name = node_name or version_data.get('node_name') or 'greet'
 				
 				logger.info(f"✓ Loaded test prompt: {vertical}/{node_name}")
 				
@@ -799,7 +820,6 @@ class BarbaraAgent(AgentBase):
 		- channel_active: Whether call is still active
 		"""
 		from equity_connect.tools.interaction import save_interaction
-		import json
 		
 		# Extract transcript from raw_data if available
 		transcript = raw_data.get("raw_call_log") if raw_data else None

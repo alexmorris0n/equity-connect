@@ -15,7 +15,7 @@ const fs = require('fs');
  * @returns {Promise<Object>} Test results with stdout, stderr, exitCode
  */
 async function executeCliTest(params) {
-  const { versionId, vertical, nodeName } = params;
+  const { versionId, vertical, nodeName, promptContent } = params;
   
   // Path to test entry point (relative to project root)
   const testAgentPath = path.join(__dirname, '../equity_connect/test_barbara.py');
@@ -26,20 +26,27 @@ async function executeCliTest(params) {
   }
   
   console.log('[test-cli] Starting test execution:', {
-    versionId,
+    versionId: versionId || 'inline',
     vertical,
     nodeName,
+    hasPromptOverride: Boolean(promptContent),
     testAgentPath
   });
   
   // Build user-vars JSON to pass context to Barbara
   // Barbara will use version_id to query Supabase for prompt content
-  const userVars = JSON.stringify({
-    version_id: versionId,
+  const userVarsPayload = {
+    version_id: versionId || 'inline',
     vertical: vertical,
     node_name: nodeName,
     test_mode: true
-  });
+  };
+
+  if (promptContent) {
+    userVarsPayload.prompt_payload = promptContent;
+  }
+
+  const userVars = JSON.stringify(userVarsPayload);
   
   // Build swaig-test command
   // Use swaig-test command directly (installed via pip install signalwire-agents)
