@@ -21,6 +21,9 @@ COPY cli-testing-service/package*.json ./
 # Install Node.js dependencies
 RUN npm install --production
 
+# Allow pip to install system-wide in Debian-based image
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
 # Copy CLI testing service code
 COPY cli-testing-service/ ./cli-testing-service/
 

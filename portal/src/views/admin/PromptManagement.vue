@@ -160,21 +160,6 @@
             </template>
             {{ selectedVertical ? 'Save Node' : 'Save' }}
           </n-button>
-          <!-- Test Node Button -->
-          <n-button 
-            v-if="selectedVertical && selectedNode && currentVersion?.id"
-            size="small" 
-            round
-            type="info"
-            :disabled="loading || hasChanges"
-            :title="hasChanges ? 'Save changes before testing' : 'Test this prompt node'"
-            @click="showTestModal = true"
-          >
-            <template #icon>
-              <n-icon><Flask /></n-icon>
-            </template>
-            Test Node
-          </n-button>
           <n-button size="small" round type="info" :disabled="loading || !currentVersion?.id || currentVersion?.is_active" @click="openDeployModal">
             <template #icon>
               <n-icon><RocketOutline /></n-icon>
@@ -1713,14 +1698,6 @@
         </div>
       </template>
     </n-modal>
-    <!-- Test CLI Modal -->
-    <TestCliModal
-      v-model:show="showTestModal"
-      :vertical="selectedVertical"
-      :node-name="selectedNode"
-      :version-id="currentVersion?.id || ''"
-      :version-label="currentVersion ? `v${currentVersion.version_number}` : 'Unknown'"
-    />
   </div>
 </template>
 
@@ -1786,10 +1763,8 @@ import {
   WarningOutline,
   BarChartOutline,
   ArrowBackOutline,
-  ArrowForwardOutline,
-  Flask
+  ArrowForwardOutline
 } from '@vicons/ionicons5'
-import TestCliModal from '@/components/TestCliModal.vue'
 
 const loading = ref(false)
 const error = ref('')
@@ -1823,7 +1798,6 @@ const versions = ref([])
 const showPreviewModal = ref(false)
 const showDeployModal = ref(false)
 const showNewPromptModal = ref(false)
-const showTestModal = ref(false)
 const newPromptName = ref('')
 const newPromptCategory = ref('voice-assistant')
 const activeVersion = ref(null)

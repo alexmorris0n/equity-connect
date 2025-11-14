@@ -400,6 +400,15 @@
                     <button class="btn-preview" @click="showPreview(node)">
                       Preview
                     </button>
+                    <button
+                      class="btn-test"
+                      v-if="selectedNode === node"
+                      :disabled="loading || nodeHasChanges[node] || !currentVersion?.id"
+                      @click="openCliTestModal(node)"
+                      title="Run CLI test for this node"
+                    >
+                      Test Node
+                    </button>
                   </div>
                 </div>
               </div>
@@ -629,6 +638,14 @@
         </div>
       </div>
     </div>
+
+    <TestCliModal
+      v-model:show="showCliTestModal"
+      :vertical="cliTestVertical"
+      :node-name="cliTestNodeName"
+      :version-id="cliTestVersionId"
+      :version-label="cliTestVersionLabel"
+    />
   </div>
 </template>
 
@@ -636,6 +653,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
 import * as Diff from 'diff'
+import TestCliModal from '@/components/TestCliModal.vue'
 
 // Constants
 const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'exit']
@@ -1155,9 +1173,16 @@ const currentVersion = ref(null)
 // Preview state
 const previewContent = ref(null)
 
-// Test modal
+// Test modals
 const showTestModal = ref(false)
 const testResults = ref('')
+const showCliTestModal = ref(false)
+const cliTestVertical = computed(() => selectedVertical.value || '')
+const cliTestNodeName = computed(() => selectedNode.value || '')
+const cliTestVersionId = computed(() => currentVersion.value?.id || '')
+const cliTestVersionLabel = computed(() =>
+  currentVersion.value ? `v${currentVersion.value.version_number}` : 'Unknown'
+)
 
 // Settings tabs
 const settingsTabs = [
@@ -2697,6 +2722,22 @@ function testSettings() {
     utterance.pitch = 1
     speechSynthesis.speak(utterance)
   }
+}
+
+function openCliTestModal(node) {
+  if (!selectedVertical.value || !node || selectedNode.value !== node) {
+    window.$message?.warning('Select a node before testing.')
+    return
+  }
+  if (!currentVersion.value?.id) {
+    window.$message?.warning('Save this node to create a version before testing.')
+    return
+  }
+  if (nodeHasChanges.value[node]) {
+    window.$message?.warning('Save changes before running a test.')
+    return
+  }
+  showCliTestModal.value = true
 }
 
 // Format date
