@@ -127,8 +127,8 @@ class BarbaraAgent(AgentBase):
 					language_params["model"] = voice_config["model"]
 				agent.add_language(**language_params)
 				agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
-				agent.add_skill("datetime")
-				agent.add_skill("math")
+				self._ensure_skill(agent, "datetime")
+				self._ensure_skill(agent, "math")
 				
 				logger.info(f"✅ Test mode configuration complete")
 				return
@@ -167,8 +167,8 @@ class BarbaraAgent(AgentBase):
 		logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
 		
 		agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
-		agent.add_skill("datetime")
-		agent.add_skill("math")
+		self._ensure_skill(agent, "datetime")
+		self._ensure_skill(agent, "math")
 		
 		# 3. Get lead context
 		try:
@@ -178,7 +178,7 @@ class BarbaraAgent(AgentBase):
 			raise
 		
 		# 4. Set meta_data variables (SignalWire substitutes in prompts)
-		agent.set_meta_data({
+		agent.set_global_data({
 			"lead": {
 				"first_name": lead_context.get("first_name", "there"),
 				"name": lead_context.get("name", "Unknown"),
@@ -509,6 +509,20 @@ class BarbaraAgent(AgentBase):
 			"voice_name": voice_name,
 			"model": model
 		}
+
+	def _ensure_skill(self, agent_obj, skill_name: str):
+		"""
+		Safely load a SignalWire skill only if it's not already present.
+		This prevents ValueError: Skill already loaded.
+		"""
+		try:
+			if hasattr(agent_obj, "has_skill") and agent_obj.has_skill(skill_name):
+				logger.debug(f"🔁 Skill '{skill_name}' already loaded, skipping")
+				return
+			agent_obj.add_skill(skill_name)
+			logger.info(f"✅ Added skill '{skill_name}'")
+		except Exception as exc:
+			logger.warning(f"⚠️ Could not add skill '{skill_name}': {exc}")
 	
 	def _build_voice_string(self, engine: str, voice_name: str) -> str:
 		"""Build provider-specific voice string
@@ -1201,10 +1215,10 @@ List specific actions needed based on conversation outcome.
 							"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
 						}
 				
-				# ==================== STEP 6: SET META_DATA VARIABLES ====================
+				# ==================== STEP 6: SET GLOBAL DATA VARIABLES ====================
 				# Set variables for SignalWire to substitute in context prompts
 				if lead_context:
-					self.set_meta_data({
+					self.set_global_data({
 						"lead": {
 							"first_name": lead_context.get("first_name", "there"),
 							"name": lead_context.get("name", "Unknown"),
@@ -1228,8 +1242,8 @@ List specific actions needed based on conversation outcome.
 					})
 					logger.info(f"✅ Variables set for {lead_context.get('name', 'Unknown')}")
 				else:
-					# Unknown caller - minimal meta_data
-					self.set_meta_data({
+					# Unknown caller - minimal global data
+					self.set_global_data({
 						"lead": {
 							"first_name": "there",
 							"name": "Unknown",
