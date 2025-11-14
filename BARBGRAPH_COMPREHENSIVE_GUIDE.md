@@ -1,8 +1,19 @@
 # BarbGraph: Event-Based Conversation Routing System
 
 **Version:** 1.0  
-**Last Updated:** November 11, 2025  
-**Status:** ✅ Production Ready
+**Last Updated:** November 13, 2025  
+**Status:** ⚠️ **DEPRECATED - Replaced by SignalWire Native Contexts System**
+
+> **⚠️ IMPORTANT:** BarbGraph was replaced by SignalWire's native contexts system on November 13, 2025. This document is preserved for historical reference. For current implementation details, see:
+> - **`MASTER_PRODUCTION_PLAN.md`** - Current system architecture (SignalWire Contexts)
+> - **SignalWire Contexts System** - Uses `valid_contexts` arrays in database instead of custom Python routing
+> - **`equity_connect/services/contexts_builder.py`** - Current implementation
+> 
+> **Key Changes:**
+> - Custom Python routing (`routers.py`, `node_completion.py`) → SignalWire native contexts
+> - Event-based state machine → Database-driven `valid_contexts` arrays
+> - Manual routing code (~500 lines) → Framework-native routing
+> - Same 8-node structure, but implemented via SignalWire's POM mode
 
 ---
 
