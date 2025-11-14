@@ -13,6 +13,7 @@
     "setup:fabric": "node scripts/setup-fabric-resource.js"
   },
   "dependencies": {
+    "@fastify/cors": "^9.0.1",
     "@fastify/formbody": "^7.4.0",
     "@fastify/websocket": "^10.0.1",
     "@signalwire/realtime-api": "^4.1.0",

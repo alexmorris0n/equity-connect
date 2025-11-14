@@ -58,6 +58,21 @@ const app = Fastify({
 app.register(fastifyWebsocket);
 app.register(fastifyFormbody); // Parse application/x-www-form-urlencoded from SignalWire
 
+// Register CORS plugin for Portal UI
+app.register(require('@fastify/cors'), {
+  origin: [
+    // Production portal (update with your actual Vercel domain)
+    process.env.PORTAL_URL || 'https://your-portal-name.vercel.app',
+    // Local development
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',  // Vite default alternate port
+    'http://127.0.0.1:5173'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+});
+
 // Initialize SignalWire client (if credentials provided)
 let signalwire = null;
 if (SW_PROJECT && SW_TOKEN && SW_SPACE) {
@@ -143,6 +158,58 @@ app.get('/api/system-metrics', async (request, reply) => {
     return reply.code(500).send({
       success: false,
       error: err.message
+    });
+  }
+});
+
+/**
+ * Test CLI API
+ * Execute swaig-test for prompt node testing from Portal UI
+ * POST /api/test-cli
+ * 
+ * Body: { versionId, vertical, nodeName }
+ * Returns: { success, output, stderr, exitCode, duration }
+ */
+app.post('/api/test-cli', async (request, reply) => {
+  try {
+    const { executeCliTest } = require('./api/test-cli');
+    const { versionId, vertical, nodeName } = request.body;
+    
+    // Validate required fields
+    if (!versionId || !vertical || !nodeName) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Missing required fields: versionId, vertical, nodeName'
+      });
+    }
+    
+    app.log.info({ 
+      versionId, 
+      vertical, 
+      nodeName 
+    }, '[test-cli] Received test request');
+    
+    // Execute test (this may take 10-45 seconds)
+    const result = await executeCliTest({ 
+      versionId, 
+      vertical, 
+      nodeName 
+    });
+    
+    app.log.info({ 
+      success: result.success,
+      exitCode: result.exitCode,
+      duration: result.duration
+    }, '[test-cli] Test completed');
+    
+    return reply.code(200).send(result);
+    
+  } catch (err) {
+    app.log.error({ err }, '[test-cli] Error executing test');
+    return reply.code(500).send({
+      success: false,
+      error: err.message,
+      stderr: err.stderr || ''
     });
   }
 });
@@ -457,7 +524,8 @@ app.post('/api/outbound-call', async (request, reply) => {
               from_phone: selectedNumber.number,
               signalwire_number: selectedNumber.number,  // Track which number is being used
               context: 'outbound',
-              instructions: finalInstructions || null  // Custom Barbara prompt with injected number
+              instructions: finalInstructions || null,  // Custom Barbara prompt with injected number
+              created_at: Date.now()  // Required for cleanup logic to prevent memory leaks
             });
 
     // Clean up old pending calls (older than 5 minutes)

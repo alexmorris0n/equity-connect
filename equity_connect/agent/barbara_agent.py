@@ -57,6 +57,89 @@ class BarbaraAgent(AgentBase):
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts"""
 		
+		# Check if this is a CLI test (from user_vars)
+		# According to SignalWire Agent SDK, --user-vars from swaig-test appear as top-level keys in query_params
+		# Also check body_params for backwards compatibility and alternative formats
+		test_mode = False
+		version_id = None
+		vertical = None
+		node_name = None
+		
+		# First, check query_params directly (primary location for swaig-test --user-vars)
+		if query_params.get('test_mode') or query_params.get('version_id'):
+			test_mode = query_params.get('test_mode', '').lower() == 'true' or query_params.get('test_mode') is True
+			version_id = query_params.get('version_id')
+			vertical = query_params.get('vertical')
+			node_name = query_params.get('node_name')
+			logger.info(f"🧪 Found test mode vars in query_params: test_mode={test_mode}, version_id={version_id}")
+		
+		# Fallback: Check body_params for nested format (alternative/legacy format)
+		if not test_mode and not version_id:
+			user_vars = body_params.get('vars', {}).get('userVariables', {})
+			if isinstance(user_vars, str):
+				# Sometimes user_vars comes as JSON string
+				try:
+					import json
+					user_vars = json.loads(user_vars)
+				except json.JSONDecodeError as e:
+					# JSON parsing failed - log error and raise to prevent silent failure
+					logger.error(f"❌ Failed to parse user_vars JSON: {e}. Raw value: {user_vars[:100] if len(user_vars) > 100 else user_vars}")
+					raise ValueError(f"Invalid JSON in userVariables: {e}") from e
+				except Exception as e:
+					# Unexpected error during JSON parsing
+					logger.error(f"❌ Unexpected error parsing user_vars: {e}")
+					raise ValueError(f"Failed to parse userVariables: {e}") from e
+			
+			if user_vars:
+				test_mode = user_vars.get('test_mode', False)
+				version_id = user_vars.get('version_id')
+				vertical = user_vars.get('vertical')
+				node_name = user_vars.get('node_name')
+				logger.info(f"🧪 Found test mode vars in body_params: test_mode={test_mode}, version_id={version_id}")
+		
+		if test_mode and version_id:
+			logger.info(f"🧪 TEST MODE: Loading prompt version {version_id}")
+			
+			# Load prompt content from database
+			try:
+				from equity_connect.test_barbara import get_prompt_version_from_db
+				version_data = get_prompt_version_from_db(version_id)
+				# Use vertical/node_name from query_params/body_params, or fallback to defaults
+				vertical = vertical or version_data.get('vertical') or 'reverse_mortgage'
+				node_name = node_name or 'greet'
+				prompt_content = version_data.get('content', {})
+				
+				logger.info(f"✓ Loaded test prompt: {vertical}/{node_name}")
+				
+				# Override agent's prompt with test version
+				self._override_prompt_for_test(agent, vertical, node_name, prompt_content)
+				
+				# Configure basic voice settings for test
+				voice_config = self._get_voice_config(vertical=vertical, language_code="en-US")
+				voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
+				language_params = {
+					"name": "English",
+					"code": "en-US",
+					"voice": voice_string,
+					"engine": voice_config["engine"]
+				}
+				if voice_config.get("model"):
+					language_params["model"] = voice_config["model"]
+				agent.add_language(**language_params)
+				agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
+				agent.add_skill("datetime")
+				agent.add_skill("math")
+				
+				logger.info(f"✅ Test mode configuration complete")
+				return
+				
+			except Exception as e:
+				logger.error(f"❌ Failed to load test prompt: {e}")
+				raise
+		else:
+			# Normal call flow (production)
+			logger.info("📞 Production call - using active prompts")
+		
 		# 1. Extract call info
 		phone = body_params.get('From') or query_params.get('phone')
 		broker_id = query_params.get('broker_id')
@@ -149,6 +232,62 @@ class BarbaraAgent(AgentBase):
 		})
 		
 		logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
+	
+	def _override_prompt_for_test(self, agent, vertical: str, node_name: str, content: dict):
+		"""
+		Override agent's prompt configuration for testing.
+		This replaces the active prompt with the test version.
+		"""
+		logger.info(f"🧪 Overriding prompt for test: {vertical}/{node_name}")
+		
+		# Load theme for the vertical
+		try:
+			theme_text = load_theme(vertical)
+		except Exception as e:
+			logger.warning(f"Could not load theme for {vertical}: {e}, using default")
+			theme_text = f"You are Barbara, a helpful AI assistant for {vertical}."
+		
+		# Build a minimal context object for the test node
+		# The content dict should have: role, instructions, tools
+		test_context = {
+			"steps": [
+				{
+					"name": "main",
+					"text": content.get('instructions', ''),
+					"step_criteria": content.get('step_criteria', 'User has responded appropriately.'),
+					"functions": content.get('tools', []) if isinstance(content.get('tools'), list) else []
+				}
+			]
+		}
+		
+		# Add valid_contexts if present in content
+		if content.get('valid_contexts'):
+			test_context['valid_contexts'] = content['valid_contexts']
+		
+		# Build contexts object with test context as default
+		contexts_obj = {
+			"default": {
+				"steps": [
+					{
+						"name": "entry",
+						"text": f"Entering {node_name} context",
+						"action": {
+							"type": "set_context",
+							"context": node_name
+						}
+					}
+				]
+			},
+			node_name: test_context
+		}
+		
+		# Configure agent with test prompt
+		agent.set_prompt({
+			"text": theme_text,
+			"contexts": contexts_obj
+		})
+		
+		logger.info(f"✅ Prompt override complete for test: {node_name}")
 	
 	def _get_lead_context(self, phone: str, broker_id: Optional[str] = None) -> Dict[str, Any]:
 		"""Query Supabase directly for lead information
