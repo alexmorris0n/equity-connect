@@ -1713,7 +1713,10 @@ List specific actions needed based on conversation outcome.
 				if self._test_mode:
 					self._handle_test_context_change(initial_context)
 				
-				logger.info(f"✅ Agent configured with contexts: voice=rachel, model=gpt-4o, initial_context={initial_context}, phone={phone}")
+				logger.info(
+					f"✅ Agent configured with contexts: voice={voice_string}, "
+					f"model={params_payload.get('ai_model')}, initial_context={initial_context}, phone={phone}"
+				)
 			else:
 				logger.warning("⚠️ No phone number found in request - using default configuration")
 				# Apply fallback for unknown caller
