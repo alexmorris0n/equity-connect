@@ -941,9 +941,10 @@ class BarbaraAgent(AgentBase):
 			
 		except Exception as e:
 			logger.error(f"❌ Failed to optimize SWML tools: {e}", exc_info=True)
-			# Return original if optimization fails
-			return swml
-	
+			# Return deep copy (as promised by docstring) - original remains untouched
+			# Even if optimization failed, we return the deep copy to maintain contract
+			return optimized_swml
+
 	def _ensure_skill(self, agent_obj, skill_name: str, config: Optional[Dict[str, Any]] = None):
 		"""
 		Safely load a SignalWire skill only if it's not already present.
@@ -1474,78 +1475,45 @@ class BarbaraAgent(AgentBase):
 		from equity_connect.tools.interaction import verify_appointment_confirmation
 		return await verify_appointment_confirmation(args.get("phone"), args.get("code"))
 	
-	# Conversation Flags (7)
+	# Conversation Flag Management (1 consolidated tool)
 	@AgentBase.tool(
-		description="Mark caller as ready to book an appointment.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	async def mark_ready_to_book(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_ready_to_book
-		return await mark_ready_to_book(args.get("phone"))
-	
-	@AgentBase.tool(
-		description="Mark that the caller raised an objection.",
+		description="Update conversation state flags (ready_to_book, has_objection, objection_handled, questions_answered, qualified, quote_presented, wrong_person, clear_all).",
 		parameters={
 			"type": "object",
 			"properties": {
 				"phone": {"type": "string", "description": "Caller phone"},
-				"current_node": {"type": "string", "description": "Node where objection raised", "nullable": True},
-				"objection_type": {"type": "string", "description": "Type of objection", "nullable": True},
+				"flag": {
+					"type": "string",
+					"description": "Flag to update",
+					"enum": [
+						"ready_to_book",
+						"has_objection",
+						"objection_handled",
+						"questions_answered",
+						"qualified",
+						"quote_presented",
+						"wrong_person",
+						"clear_all"
+					]
+				},
+				"value": {"type": "string", "description": "Optional value (boolean for qualified/wrong_person, reaction for quote_presented)", "nullable": True},
+				"metadata": {
+					"type": "object",
+					"description": "Optional metadata (e.g., current_node, objection_type, quote_reaction)",
+					"nullable": True
+				}
 			},
-			"required": ["phone"],
+			"required": ["phone", "flag"],
 		}
 	)
-	async def mark_has_objection(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_has_objection
-		return await mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
-	
-	@AgentBase.tool(
-		description="Mark that an objection has been resolved.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	async def mark_objection_handled(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_objection_handled
-		return await mark_objection_handled(args.get("phone"))
-	
-	@AgentBase.tool(
-		description="Mark that caller's questions have been answered.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	async def mark_questions_answered(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_questions_answered
-		return await mark_questions_answered(args.get("phone"))
-	
-	@AgentBase.tool(
-		description="Persist qualification outcome.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
-	)
-	async def mark_qualification_result(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_qualification_result
-		return await mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
-	
-	@AgentBase.tool(
-		description="Mark that a quote has been presented with reaction.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
-	)
-	async def mark_quote_presented(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_quote_presented
-		return await mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
-	
-	@AgentBase.tool(
-		description="Mark wrong person; optionally indicate if right person is available.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
-	)
-	async def mark_wrong_person(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_wrong_person
-		return await mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
-	
-	@AgentBase.tool(
-		description="Clear all conversation flags for a fresh start.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	async def clear_conversation_flags(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import clear_conversation_flags
-		return await clear_conversation_flags(args.get("phone"))
+	async def update_conversation_flag_tool(self, args, raw_data):
+		from equity_connect.tools.conversation_flags import update_conversation_flag
+		return await update_conversation_flag(
+			args.get("phone"),
+			args.get("flag"),
+			args.get("value"),
+			args.get("metadata")
+		)
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
@@ -2128,11 +2096,91 @@ List specific actions needed based on conversation outcome.
 			# PHASE 1: Tool Schema Optimization - Reduce SWML payload size to prevent truncation
 			# Instead of returning None (auto-generate), we get the SWML, optimize it, and return it
 			try:
-				# Get the SDK's generated SWML document
-				generated_swml = self.get_swml_document()
+				# Try multiple ways to get the SWML document
+				generated_swml = None
+				
+				# Method 1: Direct call (if available)
+				if hasattr(self, 'get_swml_document'):
+					try:
+						generated_swml = self.get_swml_document()
+						logger.debug("✅ Got SWML via get_swml_document()")
+					except Exception as e:
+						logger.debug(f"⚠️ get_swml_document() failed: {e}")
+				
+				# Method 2: Try via parent class method resolution
+				if not generated_swml:
+					try:
+						# AgentBase extends SWMLService, try to get method from MRO
+						for base_class in self.__class__.__mro__:
+							if hasattr(base_class, 'get_swml_document'):
+								method = getattr(base_class, 'get_swml_document')
+								generated_swml = method(self)
+								logger.debug(f"✅ Got SWML via {base_class.__name__}.get_swml_document()")
+								break
+					except Exception as e:
+						logger.debug(f"⚠️ Parent class method resolution failed: {e}")
+				
+				# Method 3: Try accessing internal _swml attribute
+				if not generated_swml:
+					try:
+						if hasattr(self, '_swml') and self._swml:
+							generated_swml = self._swml
+							logger.debug("✅ Got SWML via _swml attribute")
+					except Exception as e:
+						logger.debug(f"⚠️ _swml attribute access failed: {e}")
+				
+				# Method 4: Try calling internal _build_swml or _generate_swml
+				if not generated_swml:
+					for method_name in ['_build_swml', '_generate_swml', 'build_swml', 'generate_swml']:
+						if hasattr(self, method_name):
+							try:
+								method = getattr(self, method_name)
+								if callable(method):
+									generated_swml = method()
+									logger.debug(f"✅ Got SWML via {method_name}()")
+									break
+							except Exception as e:
+								logger.debug(f"⚠️ {method_name}() failed: {e}")
+								continue
+				
+				# Method 5: Try to optimize tools in internal registry before SWML generation
+				if not generated_swml:
+					try:
+						# Try to access internal tool registry and optimize definitions
+						tool_registry_attrs = ['_tools', '_swaig_functions', '_functions', 'tools', 'swaig_functions']
+						for attr_name in tool_registry_attrs:
+							if hasattr(self, attr_name):
+								tool_registry = getattr(self, attr_name)
+								if isinstance(tool_registry, (list, dict)):
+									logger.info(f"🔧 Found tool registry: {attr_name} ({len(tool_registry) if hasattr(tool_registry, '__len__') else 'unknown'} items)")
+									# Optimize tools in registry
+									optimized_count = 0
+									if isinstance(tool_registry, list):
+										for tool in tool_registry:
+											if isinstance(tool, dict):
+												optimized_tool = self._optimize_tool_schema(tool)
+												tool.update(optimized_tool)
+												optimized_count += 1
+									elif isinstance(tool_registry, dict):
+										for tool_name, tool in tool_registry.items():
+											if isinstance(tool, dict):
+												optimized_tool = self._optimize_tool_schema(tool)
+												tool_registry[tool_name] = optimized_tool
+												optimized_count += 1
+									if optimized_count > 0:
+										logger.info(f"✅ Optimized {optimized_count} tools in registry - SDK will use optimized versions")
+										# Now try to get SWML again
+										if hasattr(self, 'get_swml_document'):
+											generated_swml = self.get_swml_document()
+											logger.debug("✅ Got SWML after optimizing tool registry")
+											break
+					except Exception as e:
+						logger.debug(f"⚠️ Tool registry optimization failed: {e}")
 				
 				if not generated_swml:
-					logger.warning("⚠️ get_swml_document() returned None - falling back to auto-generation")
+					logger.warning("⚠️ Could not retrieve SWML document - optimization skipped")
+					logger.warning("⚠️ Falling back to auto-generation (SWML may be too large)")
+					logger.warning("⚠️ Consider manually shortening tool descriptions in @AgentBase.tool decorators")
 					return None
 				
 				# Log original size
@@ -2140,15 +2188,25 @@ List specific actions needed based on conversation outcome.
 				original_size_kb = len(original_swml_json.encode('utf-8')) / 1024
 				logger.info(f"📋 Original SWML size: {original_size_kb:.2f}KB")
 				
+				if original_size_kb > 250:
+					logger.warning(f"⚠️ SWML size ({original_size_kb:.2f}KB) exceeds 250KB - optimization critical!")
+				
 				# Optimize tool schemas to reduce payload size
 				optimized_swml = self._optimize_swml_tools(generated_swml)
 				
 				# Validate optimized SWML is still valid JSON
 				try:
 					optimized_json = json.dumps(optimized_swml, default=str)
+					optimized_size_kb = len(optimized_json.encode('utf-8')) / 1024
+					
 					# Test JSON parsing
 					json.loads(optimized_json)
-					logger.info("✅ Optimized SWML is valid JSON")
+					logger.info(f"✅ Optimized SWML is valid JSON: {original_size_kb:.2f}KB → {optimized_size_kb:.2f}KB")
+					
+					if optimized_size_kb > 250:
+						logger.error(f"❌ Optimized SWML ({optimized_size_kb:.2f}KB) still exceeds 250KB limit!")
+						logger.error("❌ SignalWire will truncate this payload - call will fail!")
+					
 				except json.JSONDecodeError as e:
 					logger.error(f"❌ Optimized SWML is invalid JSON: {e}")
 					# Fall back to original if optimization broke JSON
@@ -2159,15 +2217,11 @@ List specific actions needed based on conversation outcome.
 				logger.info("✅ Returning optimized SWML to SignalWire")
 				return optimized_swml
 				
-			except AttributeError:
-				# get_swml_document() might not exist in all SDK versions
-				logger.warning("⚠️ get_swml_document() not available - falling back to auto-generation")
-				return None
 			except Exception as e:
 				logger.error(f"❌ Failed to optimize SWML: {e}", exc_info=True)
 				# Fall back to auto-generation if optimization fails
 				logger.warning("⚠️ Falling back to auto-generated SWML (optimization failed)")
-				return None
+			return None
 			
 		except Exception as e:
 			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
@@ -2197,14 +2251,15 @@ List specific actions needed based on conversation outcome.
 			
 			# Always attempt cleanup (prevents memory leak)
 			# _cleanup_test_state handles None values gracefully, but warn if both are missing
-			if not call_id and not phone:
+			if call_id or phone:
+				self._cleanup_test_state(call_id=call_id, phone=phone)
+			else:
 				logger.warning(
 					"⚠️ Cannot extract call_id or phone from raw_data for test state cleanup. "
 					"raw_data keys: {keys}. Test state may not be cleaned up, causing memory leak.".format(
 						keys=list(raw_data.keys()) if raw_data else "None"
 					)
 				)
-			self._cleanup_test_state(call_id=call_id, phone=phone)
 			
 			if not summary:
 				logger.warning("⚠️ No summary provided")

@@ -224,4 +224,59 @@ async def clear_conversation_flags(phone: str) -> str:
 	return "Conversation flags cleared. Fresh start."
 
 
+async def update_conversation_flag(phone: str, flag: str, value=None, metadata: Optional[dict] = None) -> str:
+	"""Unified flag updater used by the SignalWire tool.
+	
+	Args:
+	    phone: Caller's phone number
+	    flag: Name of the flag to update
+	    value: Optional value (varies per flag)
+	    metadata: Optional metadata dict (varies per flag)
+	"""
+	if not phone:
+		return "❌ Missing phone number for flag update."
+	
+	flag_normalized = (flag or "").strip().lower()
+	metadata = metadata or {}
+	
+	if flag_normalized == "ready_to_book":
+		return await mark_ready_to_book(phone)
+	
+	if flag_normalized == "has_objection":
+		return await mark_has_objection(
+			phone,
+			metadata.get("current_node"),
+			metadata.get("objection_type")
+		)
+	
+	if flag_normalized == "objection_handled":
+		return await mark_objection_handled(phone)
+	
+	if flag_normalized == "questions_answered":
+		return await mark_questions_answered(phone)
+	
+	if flag_normalized == "qualified":
+		bool_value = value
+		if isinstance(bool_value, str):
+			bool_value = bool_value.lower() in ["true", "1", "yes"]
+		return await mark_qualification_result(phone, bool(bool_value))
+	
+	if flag_normalized == "quote_presented":
+		reaction = value or metadata.get("quote_reaction")
+		if not reaction:
+			return "❌ quote_reaction value required for quote_presented."
+		return await mark_quote_presented(phone, reaction)
+	
+	if flag_normalized == "wrong_person":
+		right_available = value
+		if isinstance(right_available, str):
+			right_available = right_available.lower() in ["true", "1", "yes"]
+		return await mark_wrong_person(phone, bool(right_available))
+	
+	if flag_normalized == "clear_all":
+		return await clear_conversation_flags(phone)
+	
+	return f"❌ Unsupported flag '{flag}'."
+
+
 
