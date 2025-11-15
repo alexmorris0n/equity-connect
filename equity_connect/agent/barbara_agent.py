@@ -1205,7 +1205,12 @@ class BarbaraAgent(AgentBase):
 		Returns:
 			Optional SWML modifications (None = use defaults)
 		"""
-		logger.info(f"📞 RAW REQUEST DATA: {json.dumps(request_data, indent=2)}")
+		try:
+			raw_request_payload = json.dumps(request_data, indent=2, default=str)
+		except (TypeError, ValueError) as exc:
+			raw_request_payload = str(request_data)
+			logger.warning(f"⚠️ Unable to JSON serialize request_data for logging: {exc}")
+		logger.info(f"📞 RAW REQUEST DATA: {raw_request_payload}")
 		logger.info(f"📞 DEBUG: on_swml_request called with request_data keys: {list(request_data.keys()) if request_data else 'None'}")
 		logger.debug(f"📞 DEBUG: Full request_data: {request_data}")
 		logger.debug(f"📞 DEBUG: request_data type: {type(request_data)}")
@@ -1562,39 +1567,39 @@ List specific actions needed based on conversation outcome.
 								lead_context["broker_timezone"] = broker_data.get('timezone')
 								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
 								
-								# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
-								# This avoids DB queries in calendar tools (same pattern as v3)
-								if lead_context.get('broker_nylas_grant_id'):
-									self.update_global_data({
-										# Broker info (for calendar tools)
-										"broker_id": lead_context["broker_id"],
-										"broker_name": lead_context["broker_name"],
-										"broker_company": lead_context.get("broker_company"),
-										"broker_email": lead_context.get("broker_email"),
-										"broker_phone": broker_data.get('phone'),
-										"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
-										"broker_timezone": lead_context.get("broker_timezone"),
-										# Lead identity (always know who they are)
-										"lead_id": lead_context["lead_id"],
-										"lead_name": lead_context["name"],
-										"lead_first_name": lead_context["first_name"],
-										"lead_phone": phone,
-										"lead_email": lead_context.get("primary_email"),
-										"lead_age": lead_context.get("age"),
-										# Property info (this is a property-based product!)
-										"property_address": lead_context.get("property_address"),
-										"property_city": lead_context.get("property_city"),
-										"property_state": lead_context.get("property_state"),
-										"property_value": lead_context.get("property_value"),
-										"estimated_equity": lead_context.get("estimated_equity"),
-										# Status (don't re-qualify if already qualified)
-										"qualified": lead_context.get("qualified"),
-										"lead_status": lead_data.get('status'),
-										"owner_occupied": lead_data.get('owner_occupied'),
-										# Call metadata
-										"call_direction": call_direction
-									})
-									logger.info(f"✅ Injected lead & broker data into global_data for persistent LLM memory")
+							# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
+							# This avoids DB queries in calendar tools (same pattern as v3)
+							if lead_context.get('broker_nylas_grant_id'):
+								self.update_global_data({
+									# Broker info (for calendar tools)
+									"broker_id": lead_context["broker_id"],
+									"broker_name": lead_context["broker_name"],
+									"broker_company": lead_context.get("broker_company"),
+									"broker_email": lead_context.get("broker_email"),
+									"broker_phone": broker_data.get('phone'),
+									"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
+									"broker_timezone": lead_context.get("broker_timezone"),
+									# Lead identity (always know who they are)
+									"lead_id": lead_context["lead_id"],
+									"lead_name": lead_context["name"],
+									"lead_first_name": lead_context["first_name"],
+									"lead_phone": phone,
+									"lead_email": lead_context.get("primary_email"),
+									"lead_age": lead_context.get("age"),
+									# Property info (this is a property-based product!)
+									"property_address": lead_context.get("property_address"),
+									"property_city": lead_context.get("property_city"),
+									"property_state": lead_context.get("property_state"),
+									"property_value": lead_context.get("property_value"),
+									"estimated_equity": lead_context.get("estimated_equity"),
+									# Status (don't re-qualify if already qualified)
+									"qualified": lead_context.get("qualified"),
+									"lead_status": lead_data.get('status'),
+									"owner_occupied": lead_data.get('owner_occupied'),
+									# Call metadata
+									"call_direction": call_direction
+								})
+								logger.info(f"✅ Injected lead & broker data into global_data for persistent LLM memory")
 							else:
 								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
 						else:
@@ -1615,6 +1620,8 @@ List specific actions needed based on conversation outcome.
 				# ==================== STEP 6: SET GLOBAL DATA VARIABLES ====================
 				# Set variables for SignalWire to substitute in context prompts
 				if lead_context:
+					broker_full_name = lead_context.get("broker_name") or ""
+					broker_first_name = broker_full_name.split(" ")[0] if broker_full_name else ""
 					self.set_global_data({
 						"lead": {
 							"first_name": lead_context.get("first_name", "there"),
@@ -1629,6 +1636,11 @@ List specific actions needed based on conversation outcome.
 							"address": lead_context.get("property_address", ""),
 							"equity": lead_context.get("estimated_equity", 0),
 							"equity_formatted": f"${lead_context.get('estimated_equity', 0):,}" if lead_context.get('estimated_equity') else "$0"
+						},
+						"broker": {
+							"first_name": broker_first_name,
+							"full_name": broker_full_name,
+							"company": lead_context.get("broker_company", "")
 						},
 						"status": {
 							"qualified": lead_context.get("qualified", False),
@@ -1654,6 +1666,11 @@ List specific actions needed based on conversation outcome.
 							"address": "",
 							"equity": 0,
 							"equity_formatted": "$0"
+						},
+						"broker": {
+							"first_name": "",
+							"full_name": "",
+							"company": ""
 						},
 						"status": {
 							"qualified": False,
