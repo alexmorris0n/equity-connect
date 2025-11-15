@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS agent_params (
     language TEXT DEFAULT 'en-US',
 
     -- Timing & delays (all values in milliseconds unless noted)
+    ai_model TEXT DEFAULT 'gpt-4o-mini',
     attention_timeout INTEGER DEFAULT 8000,
     attention_timeout_prompt TEXT DEFAULT 'The caller may be thinking or didn''t hear the question. Gently ask if they need you to repeat anything or explain it differently. Stay warm and patient—don''t sound frustrated.',
     end_of_speech_timeout INTEGER DEFAULT 800,

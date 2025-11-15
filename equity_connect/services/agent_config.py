@@ -57,6 +57,7 @@ def get_agent_params(vertical: str = "reverse_mortgage", language: str = "en-US"
 def _get_default_params() -> Dict[str, Any]:
 	"""Fallback defaults mirroring database seed values."""
 	return {
+		"ai_model": "gpt-4o-mini",
 		"attention_timeout": 8000,
 		"attention_timeout_prompt": (
 			"The caller may be thinking or didn't hear the question. "

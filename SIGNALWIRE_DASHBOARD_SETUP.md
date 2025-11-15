@@ -67,7 +67,7 @@ flyctl logs -a barbara-agent
 | Setting | Value |
 |---------|-------|
 | **Accept Incoming** | Voice Calls |
-| **Handle Calls Using** | SWML Script / Webhook |
+| **Handle Calls Using** | SWML Script / Webhook (Answer → Connect) |
 | **When a call comes in** | `https://barbara-agent.fly.dev/agent` |
 | **HTTP Method** | POST |
 | **Voice** | (Optional) Set fallback voice if needed |
@@ -83,6 +83,42 @@ Look for these sections in the dashboard:
 ### **Save Configuration**
 
 Click **Save** at the bottom of the page.
+
+#### ✅ Required SWML Script
+
+When using a SWML Script/Webhook for PSTN calls, SignalWire still expects you to create the B‑leg that bridges the caller to Barbara. The minimal script is:
+
+```yaml
+---
+version: 1.0.0
+sections:
+  main:
+    - answer: {}
+    - connect:
+        endpoint:
+          type: sip
+          uri: "sip:barbara@barbara-agent.fly.dev"
+          username: "barbara"
+          password: "rained1MANU.endured5juices"
+```
+
+- `answer` picks up the inbound call so the caller stops ringing.
+- `connect` creates the SIP leg to the Fly.io agent and keeps the session alive.
+
+> Need to POST call metadata to Barbara?  
+> Add a `request` step **before** `connect`:
+> ```yaml
+>     - request:
+>         url: https://barbara-agent.fly.dev/agent
+>         method: POST
+>         headers:
+>           Content-Type: application/json
+>         body:
+>           From: "%{call.from}"
+>           To: "%{call.to}"
+>           CallSid: "%{call.call_id}"
+> ```
+> SignalWire will execute `request`, then run `connect`, keeping both legs active.
 
 ---
 

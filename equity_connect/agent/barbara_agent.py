@@ -1269,6 +1269,8 @@ class BarbaraAgent(AgentBase):
 					call_direction = call_direction_value.lower()
 				else:
 					call_direction = "inbound"
+				if call_direction not in {"inbound", "outbound"}:
+					call_direction = "inbound"
 				user_vars = call_data.get("user_variables") or call_data.get("userVariables") or {}
 			else:
 				call_direction = "inbound"
