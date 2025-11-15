@@ -1181,6 +1181,7 @@ class BarbaraAgent(AgentBase):
 		Returns:
 			Optional SWML modifications (None = use defaults)
 		"""
+		logger.info(f"📞 RAW REQUEST DATA: {json.dumps(request_data, indent=2)}")
 		logger.info(f"📞 DEBUG: on_swml_request called with request_data keys: {list(request_data.keys()) if request_data else 'None'}")
 		logger.debug(f"📞 DEBUG: Full request_data: {request_data}")
 		logger.debug(f"📞 DEBUG: request_data type: {type(request_data)}")
