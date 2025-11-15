@@ -435,6 +435,30 @@ class BarbaraAgent(AgentBase):
 		if isinstance(value, list):
 			return value
 		return [value]
+
+	@staticmethod
+	def _extract_signalwire_value(*candidates: Optional[str]) -> Optional[str]:
+		"""
+		Return the first candidate that looks like a real value (not a literal placeholder such as '{call.xxx}' or '%{call.xxx}').
+		Falls back to the last provided candidate even if placeholder when nothing else is available.
+		"""
+		def _is_placeholder(val: Optional[str]) -> bool:
+			if not isinstance(val, str):
+				return False
+			trimmed = val.strip()
+			return (
+				trimmed.startswith("{call.") and trimmed.endswith("}")
+				or trimmed.startswith("%{call.") and trimmed.endswith("}")
+			)
+
+		non_placeholder = [val for val in candidates if val and not _is_placeholder(val)]
+		if non_placeholder:
+			return non_placeholder[0]
+
+		for val in candidates:
+			if val:
+				return val
+		return None
 	
 	@staticmethod
 	def _to_bool(value: Optional[Any]) -> bool:
@@ -1194,23 +1218,27 @@ class BarbaraAgent(AgentBase):
 			# SignalWire sends data in nested 'call' dict
 			if request_data:
 				call_data = request_data.get("call", {}) or {}
-				from_phone = (
+				from_phone = self._extract_signalwire_value(
 					call_data.get("from")
-					or call_data.get("from_number")
-					or request_data.get("From")
-					or request_data.get("from_number")
+					or call_data.get("from_number"),
+					request_data.get("From")
+					or request_data.get("from_number"),
+					call_data.get("caller_id_num"),
 				)
-				to_phone = (
+				to_phone = self._extract_signalwire_value(
 					call_data.get("to")
-					or call_data.get("to_number")
-					or request_data.get("To")
-					or request_data.get("to_number")
+					or call_data.get("to_number"),
+					request_data.get("To")
+					or request_data.get("to_number"),
+					call_data.get("call_to"),
 				)
-				call_sid = (
+				call_sid = self._extract_signalwire_value(
 					call_data.get("call_id")
-					or call_data.get("sid")
-					or request_data.get("CallSid")
-					or request_data.get("call_id")
+					or call_data.get("sid"),
+					request_data.get("CallSid")
+					or request_data.get("call_id"),
+					call_data.get("segment_id")
+					or call_data.get("id"),
 				)
 			else:
 				from_phone = None
@@ -1223,11 +1251,10 @@ class BarbaraAgent(AgentBase):
 			user_vars = {}
 			if request_data:
 				call_data = request_data.get("call", {}) or {}
-				call_direction_value = (
-					call_data.get("direction")
-					or request_data.get("Direction")
-					or request_data.get("direction")
-					or "inbound"
+				call_direction_value = self._extract_signalwire_value(
+					call_data.get("direction"),
+					request_data.get("Direction") or request_data.get("direction"),
+					"inbound"
 				)
 				if isinstance(call_direction_value, str):
 					call_direction = call_direction_value.lower()
