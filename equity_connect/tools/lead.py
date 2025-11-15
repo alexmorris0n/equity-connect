@@ -259,7 +259,8 @@ async def update_lead_info(
 	age: Optional[int] = None,
 	money_purpose: Optional[str] = None,
 	amount_needed: Optional[float] = None,
-	timeline: Optional[str] = None
+	timeline: Optional[str] = None,
+	conversation_data: Optional[Dict[str, Any]] = None
 ) -> str:
 	"""Update lead information collected during the call.
 	
@@ -277,6 +278,12 @@ async def update_lead_info(
 	    money_purpose: Purpose for the money
 	    amount_needed: Amount needed
 	    timeline: Timeline for needing the money
+	    conversation_data: Optional dictionary of conversation_state flags to merge
+	        Examples:
+	        - {'interrupted_at_gate': 'mortgage_status'}
+	        - {'needs_family_buy_in': True}
+	        - {'pending_birthday_date': '2025-05-15'}
+	        The payload merges with existing conversation_data (does not overwrite unrelated keys).
 	"""
 	sb = get_supabase_client()
 	
@@ -304,6 +311,9 @@ async def update_lead_info(
 		if age is not None:
 			update_data['age'] = age
 		
+		updated_lead_fields = []
+		updated_conversation_fields = []
+		
 		# Update lead
 		if update_data:
 			response = sb.table('leads')\
@@ -313,16 +323,44 @@ async def update_lead_info(
 			
 			if response.error:
 				raise Exception(response.error)
+			updated_lead_fields = list(update_data.keys())
+		
+		# Update conversation data if requested
+		if conversation_data:
+			phone_number = phone
+			if not phone_number:
+				lead_resp = sb.table('leads')\
+					.select('primary_phone')\
+					.eq('id', lead_id)\
+					.single()\
+					.execute()
+				if lead_resp.data:
+					phone_number = lead_resp.data.get('primary_phone')
+			
+			if phone_number:
+				update_conversation_state(phone_number, {"conversation_data": conversation_data})
+				updated_conversation_fields = list(conversation_data.keys())
+			else:
+				logger.warning(f"⚠️ Unable to update conversation_data for lead {lead_id} because phone number is missing.")
 		
 		# Store metadata in interaction (if we have a current interaction)
 		# This will be handled by save_interaction tool
 		
 		import json
+		message_parts = []
+		if updated_lead_fields:
+			message_parts.append(f"Updated lead fields: {', '.join(updated_lead_fields)}.")
+		if updated_conversation_fields:
+			message_parts.append(f"Updated conversation data: {', '.join(updated_conversation_fields)}.")
+		if not message_parts:
+			message_parts.append("No changes applied.")
+		
 		return json.dumps({
 			"success": True,
 			"lead_id": lead_id,
-			"updated_fields": list(update_data.keys()),
-			"message": "Lead information updated successfully."
+			"updated_fields": updated_lead_fields,
+			"updated_conversation_data": updated_conversation_fields,
+			"message": " ".join(message_parts)
 		})
 		
 	except Exception as e:

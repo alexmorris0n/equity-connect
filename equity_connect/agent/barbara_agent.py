@@ -4,6 +4,7 @@ import logging
 import json
 from typing import Optional, Dict, Any, List
 from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
+from equity_connect.services.agent_config import get_agent_params
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
 from signalwire_pom import PromptObjectModel  # type: ignore
@@ -165,12 +166,25 @@ class BarbaraAgent(AgentBase):
 		# 1. Extract call info
 		phone = body_params.get('From') or query_params.get('phone')
 		broker_id = query_params.get('broker_id')
+		call_direction = (
+			body_params.get('Direction')
+			or body_params.get('direction')
+			or query_params.get('direction')
+			or "inbound"
+		)
+		if isinstance(call_direction, str):
+			call_direction = call_direction.lower()
+		else:
+			call_direction = "inbound"
+		if call_direction not in {"inbound", "outbound"}:
+			call_direction = "inbound"
+		active_vertical = vertical or "reverse_mortgage"
 		
-		logger.info(f"📞 Configuring agent for call from {phone}")
+		logger.info(f"📞 Configuring agent for {call_direction} call from {phone}")
 		
 		# 2. Configure AI providers
 		# Load voice config from database (configurable per language)
-		voice_config = self._get_voice_config(vertical="reverse_mortgage", language_code="en-US")
+		voice_config = self._get_voice_config(vertical=active_vertical, language_code="en-US")
 		voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
 		
 		# Configure language with dynamic voice
@@ -188,10 +202,6 @@ class BarbaraAgent(AgentBase):
 		agent.add_language(**language_params)
 		logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
 		
-		agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
-		self._ensure_skill(agent, "datetime")
-		self._ensure_skill(agent, "math")
-		
 		# 3. Get lead context
 		try:
 			lead_context = self._get_lead_context(phone, broker_id)
@@ -204,6 +214,53 @@ class BarbaraAgent(AgentBase):
 			phone = lead_context.get("phone") or lead_context.get("lead_phone") or lead_context.get("lead_id")
 			if phone:
 				logger.info(f"ℹ️ Using lead context phone fallback: {phone}")
+		
+		# 3b. Load runtime agent params
+		agent_params = get_agent_params(vertical=active_vertical, language="en-US")
+		caller_tz = lead_context.get("timezone") or agent_params.get("local_tz_default", "America/Los_Angeles")
+		wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
+		
+		params_payload = {
+			"ai_model": agent_params.get("ai_model", "gpt-4o"),
+			"local_tz": caller_tz,
+			"wait_for_user": wait_for_user,
+			"direction": call_direction,
+			"end_of_speech_timeout": agent_params.get("end_of_speech_timeout", 800),
+			"first_word_timeout": agent_params.get("first_word_timeout", 1000),
+			"energy_level": agent_params.get("energy_level", 52),
+			"attention_timeout": agent_params.get("attention_timeout", 8000),
+			"attention_timeout_prompt": agent_params.get("attention_timeout_prompt"),
+			"hard_stop_time": agent_params.get("hard_stop_time"),
+			"hard_stop_prompt": agent_params.get("hard_stop_prompt"),
+			"inactivity_timeout": agent_params.get("inactivity_timeout"),
+			"outbound_attention_timeout": agent_params.get("outbound_attention_timeout"),
+			"acknowledge_interruptions": agent_params.get("acknowledge_interruptions"),
+			"interrupt_prompt": agent_params.get("interrupt_prompt"),
+			"transparent_barge": agent_params.get("transparent_barge"),
+			"enable_barge": agent_params.get("enable_barge"),
+			"ai_volume": agent_params.get("ai_volume", 0),
+			"background_file": agent_params.get("background_file"),
+			"background_file_volume": agent_params.get("background_file_volume"),
+			"background_file_loops": agent_params.get("background_file_loops"),
+			"eleven_labs_stability": agent_params.get("eleven_labs_stability"),
+			"eleven_labs_similarity": agent_params.get("eleven_labs_similarity"),
+			"max_emotion": agent_params.get("max_emotion", 30),
+			"static_greeting": agent_params.get("static_greeting"),
+			"static_greeting_no_barge": agent_params.get("static_greeting_no_barge", False),
+			"swaig_allow_swml": True,
+			"swaig_allow_settings": True,
+			"swaig_set_global_data": True,
+			"function_wait_for_talking": False,
+			"debug_webhook_url": os.getenv("SIGNALWIRE_DEBUG_WEBHOOK_URL"),
+			"debug_webhook_level": 1,
+		}
+		agent.set_params(params_payload)
+		self._ensure_skill(agent, "datetime")
+		self._ensure_skill(agent, "math")
+		logger.info(
+			f"🎛️ Runtime params applied: wait_for_user={wait_for_user}, "
+			f"attention_timeout={params_payload['attention_timeout']}ms"
+		)
 		
 		# 4. Set meta_data variables (SignalWire substitutes in prompts)
 		agent.set_global_data({
@@ -223,7 +280,7 @@ class BarbaraAgent(AgentBase):
 			},
 			"status": {
 				"qualified": lead_context.get("qualified", False),
-				"call_type": "inbound",
+				"call_type": call_direction,
 				"broker_name": lead_context.get("broker_name", ""),
 				"broker_company": lead_context.get("broker_company", "")
 			}
@@ -242,7 +299,7 @@ class BarbaraAgent(AgentBase):
 		# 5. Build contexts from DB
 		try:
 			contexts_obj = build_contexts_object(
-				vertical="reverse_mortgage",
+				vertical=active_vertical,
 				initial_context=initial_context,
 				lead_context=lead_context
 			)
@@ -252,7 +309,7 @@ class BarbaraAgent(AgentBase):
 		
 		# 6. Load theme
 		try:
-			theme_text = load_theme("reverse_mortgage")
+			theme_text = load_theme(active_vertical)
 		except Exception as e:
 			logger.error(f"❌ Failed to load theme: {e}")
 			raise
@@ -676,7 +733,7 @@ class BarbaraAgent(AgentBase):
 		return await check_consent_dnc(args.get("phone"))
 	
 	@AgentBase.tool(
-		description="Update lead fields gathered during the call.",
+		description="Update lead fields gathered during the call and merge conversation_data flags.",
 		parameters={
 			"type": "object",
 			"properties": {
@@ -693,6 +750,12 @@ class BarbaraAgent(AgentBase):
 				"money_purpose": {"type": "string", "description": "Money purpose", "nullable": True},
 				"amount_needed": {"type": "number", "description": "Amount needed"},
 				"timeline": {"type": "string", "description": "Timeline", "nullable": True},
+				"conversation_data": {
+					"type": "object",
+					"description": "Conversation state flags to merge (e.g., interrupted_at_gate, needs_family_buy_in)",
+					"additionalProperties": True,
+					"nullable": True
+				},
 			},
 			"required": ["lead_id"],
 		}
@@ -703,7 +766,8 @@ class BarbaraAgent(AgentBase):
 			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
 			args.get("email"), args.get("phone"), args.get("property_address"),
 			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
-			args.get("age"), args.get("money_purpose"), args.get("amount_needed"), args.get("timeline")
+			args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
+			args.get("timeline"), args.get("conversation_data")
 		)
 	
 	@AgentBase.tool(
@@ -1016,13 +1080,14 @@ class BarbaraAgent(AgentBase):
 				phone = to_phone  # Lead's number (we're calling them)
 			
 			logger.info(f"📞 {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
+			active_vertical = "reverse_mortgage"
 			
 			# ==================== STEP 2: CONFIGURE AI ====================
 			# This is CRITICAL for SWML webhook flows - configure_per_call() is NOT called
 			# Apply ALL configuration BEFORE loading prompts
 			
 			# Load voice configuration from database (configurable per language)
-			voice_config = self._get_voice_config(vertical="reverse_mortgage", language_code="en-US")
+			voice_config = self._get_voice_config(vertical=active_vertical, language_code="en-US")
 			voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
 			
 			# Configure language with dynamic voice
@@ -1042,20 +1107,54 @@ class BarbaraAgent(AgentBase):
 			self.add_language(**language_params)
 			logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
 			
-			# LLM and conversation parameters
-			self.set_params({
-				"ai_model": "gpt-4o",  # OpenAI GPT-4o for LLM
-				"wait_for_user": False,  # Barbara can proactively speak
-				"end_of_speech_timeout": 800,  # VAD: 800ms for natural pauses
-				"attention_timeout": 30000,  # 30 seconds before timeout
-				"temperature": 0.7,  # Balanced creativity
-				"max_tokens": 150,  # Keep responses concise for voice
-				"top_p": 0.9,  # Nucleus sampling
-				"ai_volume": 5,
-				"local_tz": "America/Los_Angeles",  # Pacific time for CA customers
-				"swaig_post_conversation": True  # Send conversation history to tools
-			})
-			logger.info("✅ AI params configured: GPT-4o, VAD=800ms")
+			# LLM and conversation parameters (load from Supabase agent_params table)
+			agent_params = get_agent_params(vertical=active_vertical, language="en-US")
+			caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
+			wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
+			
+			params_payload = {
+				"ai_model": agent_params.get("ai_model", "gpt-4o"),
+				"wait_for_user": wait_for_user,
+				"direction": call_direction,
+				"local_tz": caller_tz,
+				"end_of_speech_timeout": agent_params.get("end_of_speech_timeout", 800),
+				"first_word_timeout": agent_params.get("first_word_timeout", 1000),
+				"energy_level": agent_params.get("energy_level", 52),
+				"attention_timeout": agent_params.get("attention_timeout", 8000),
+				"attention_timeout_prompt": agent_params.get("attention_timeout_prompt"),
+				"hard_stop_time": agent_params.get("hard_stop_time"),
+				"hard_stop_prompt": agent_params.get("hard_stop_prompt"),
+				"inactivity_timeout": agent_params.get("inactivity_timeout"),
+				"outbound_attention_timeout": agent_params.get("outbound_attention_timeout"),
+				"acknowledge_interruptions": agent_params.get("acknowledge_interruptions"),
+				"interrupt_prompt": agent_params.get("interrupt_prompt"),
+				"transparent_barge": agent_params.get("transparent_barge"),
+				"enable_barge": agent_params.get("enable_barge"),
+				"ai_volume": agent_params.get("ai_volume", 0),
+				"background_file": agent_params.get("background_file"),
+				"background_file_volume": agent_params.get("background_file_volume"),
+				"background_file_loops": agent_params.get("background_file_loops"),
+				"eleven_labs_stability": agent_params.get("eleven_labs_stability"),
+				"eleven_labs_similarity": agent_params.get("eleven_labs_similarity"),
+				"max_emotion": agent_params.get("max_emotion", 30),
+				"static_greeting": agent_params.get("static_greeting"),
+				"static_greeting_no_barge": agent_params.get("static_greeting_no_barge", False),
+				"temperature": 0.7,
+				"max_tokens": 150,
+				"top_p": 0.9,
+				"swaig_post_conversation": True,
+				"swaig_allow_swml": True,
+				"swaig_allow_settings": True,
+				"swaig_set_global_data": True,
+				"function_wait_for_talking": False,
+				"debug_webhook_url": os.getenv("SIGNALWIRE_DEBUG_WEBHOOK_URL"),
+				"debug_webhook_level": 1,
+			}
+			self.set_params(params_payload)
+			logger.info(
+				f"✅ AI params configured via Supabase: wait_for_user={wait_for_user}, "
+				f"attention_timeout={params_payload['attention_timeout']}ms"
+			)
 			
 			# Global data for AI to reference
 			self.set_global_data({

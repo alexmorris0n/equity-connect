@@ -99,6 +99,13 @@ equity-connect/ (Git Monorepo)
 - **Barbara Runtime Hardening:** Replaced deprecated `set_meta_data` with `set_global_data`, added `_ensure_skill` to avoid duplicate skill loading (datetime), and made phone normalization + conversation-state lookups resilient to `None` values.
 - **Regression Test Run:** Successfully executed the CLI test suite for all 8 BarbGraph nodes plus the theme at version `14ab0a70-5ff4-4142-9313-f89a5ce51ce7`, confirming each context produces a valid SWAIG payload.
 
+### 🔄 Nov 15 Prompt/Theme Reset
+
+- **Full Supabase Reset:** Deleted every `prompt_versions` row (and parent `prompts`) for `vertical='reverse_mortgage'`, plus the existing `theme_prompts` entry and dependent `vertical_snapshots`. This guarantees no legacy prompt content remains.
+- **New Baseline (v1):** Reinserted all eight node prompts (`greet`, `verify`, `qualify`, `quote`, `answer`, `objections`, `book`, `exit`) directly from `prompts/rewrite/*.md`. Each prompt now has `current_version=1` and a single active version that mirrors the rewrite files verbatim.
+- **Theme Reloaded:** Loaded `prompts/rewrite/theme_review.md` into `theme_prompts` as record `4d56083c-da10-45c3-8444-b0ceda41dba9` (`is_active=true`, `version=1`, ~5.5k chars). This is the only theme entry for the vertical.
+- **Clean Slate for Testing:** With no historical versions present, the next regression cycle should treat this as v1 of the SignalWire-native prompt stack before publishing snapshots or activating additional versions.
+
 ### Context Flow + CLI Validation (Nov 14, 2025)
 
 1. **Portal Save → Supabase:** Vertical editor saves write the latest theme + node JSON (role, instructions, tools, `valid_contexts`, `step_criteria`) into Supabase (`theme_prompts`, `prompts`, `prompt_versions`). The eight-stage BarbGraph structure, theme-first persona, and database-driven routing are preserved through version IDs.
@@ -1021,19 +1028,24 @@ CREATE TABLE conversation_state (
    - [ ] Trigger CLI validation automatically on every Vertical save/publish action
    - [ ] Block activation + surface stdout/stderr when a node payload fails validation
 
-2. **SignalWire Context Guardrails**
+2. **Regression Suite After v1 Reset**
+   - [ ] Run `prompts/rewrite/trace_test.md` (13 baseline scenarios) against the fresh Supabase prompt set
+   - [ ] Add the 7 edge-case traces to `trace_results.md` for the new baseline
+   - [ ] Snapshot the passing version ID in `vertical_snapshots` once tests succeed
+
+3. **SignalWire Context Guardrails**
    - [x] Filter zero-step contexts and log each skip
    - [x] Backfill missing nodes with default v1 instructions (`services/default_contexts.py`)
    - [x] Add phone + conversation-state fallbacks to prevent `NoneType` errors
    - [ ] Instrument Supabase to track which contexts required fallback content
 
-3. **Monitor Production Metrics**
+4. **Monitor Production Metrics**
    - [ ] Monitor AI provider costs and latency via LiveKit dashboard
    - [ ] Track node completion rates (% who reach each stage)
    - [ ] Monitor conversation quality (transcript analysis)
    - [ ] A/B test different provider combinations (DeepSeek vs Claude, Cartesia vs ElevenLabs)
 
-4. **Portal Enhancements**
+5. **Portal Enhancements**
    - [ ] Add theme editor UI to Vue Portal
    - [ ] Add analytics dashboard for node performance
    - [ ] Add A/B testing interface for prompt versions

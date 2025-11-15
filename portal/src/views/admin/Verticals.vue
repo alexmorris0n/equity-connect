@@ -233,6 +233,11 @@
           </div>
         </div>
 
+        <!-- Agent Settings Tab -->
+        <div v-if="activeTab === 'agent-settings'" class="tab-content">
+          <AgentSettings :vertical="selectedVertical" language="en-US" />
+        </div>
+
         <!-- Nodes Tab (visible when vertical selected, hidden on Models & Voice, Telephony, Safety tabs) -->
         <div v-if="activeTab === 'theme'" class="nodes-section">
           <div class="nodes-header">
@@ -640,6 +645,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
 import * as Diff from 'diff'
+import AgentSettings from '@/components/AgentSettings.vue'
 
 // Constants
 const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'exit']
@@ -1174,7 +1180,8 @@ const settingsTabs = [
   { key: 'theme', label: 'Theme' },
   { key: 'models', label: 'Models & Voice' },
   { key: 'telephony', label: 'Telephony' },
-  { key: 'safety', label: 'Safety' }
+  { key: 'safety', label: 'Safety' },
+  { key: 'agent-settings', label: 'Agent Settings' }
 ]
 
 // Initialize node content structure
