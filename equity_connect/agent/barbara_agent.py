@@ -455,7 +455,7 @@ class BarbaraAgent(AgentBase):
 		if non_placeholder:
 			return non_placeholder[0]
 
-		for val in candidates:
+		for val in reversed(candidates):
 			if val:
 				return val
 		return None
