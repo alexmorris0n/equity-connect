@@ -2,6 +2,7 @@
 import os
 import logging
 import json
+import copy
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
@@ -837,9 +838,11 @@ class BarbaraAgent(AgentBase):
 			swml: Complete SWML document from SDK
 			
 		Returns:
-			SWML with optimized tool schemas
+			SWML with optimized tool schemas (deep copy, original unchanged)
 		"""
-		optimized_swml = swml.copy()
+		# CRITICAL: Use deepcopy to prevent mutating the original swml parameter
+		# If optimization fails, we need to return the original unmodified
+		optimized_swml = copy.deepcopy(swml)
 		
 		# Navigate to SWAIG.functions array
 		try:
