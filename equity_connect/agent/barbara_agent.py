@@ -44,6 +44,13 @@ class BarbaraAgent(AgentBase):
 			basic_auth=(agent_username, agent_password)
 		)
 		
+		# Log auth credentials for debugging (using SDK helper method)
+		try:
+			username, password = self.get_basic_auth_credentials()
+			logger.info(f"🔐 Agent authentication configured: {username}:{password[:4]}***")
+		except Exception as e:
+			logger.debug(f"Could not retrieve auth credentials: {e}")
+		
 		# Enable SIP routing - REQUIRED for SignalWire to route calls to this agent
 		# This makes Barbara reachable at barbara-agent@domain and /agent@domain
 		self.enable_sip_routing(auto_map=True)
@@ -84,12 +91,33 @@ class BarbaraAgent(AgentBase):
 			ignore_case=True
 		)
 		
+		# Internal fillers for step and context transitions (static, one-time setup)
+		# These provide natural language transitions when moving between conversation steps/contexts
+		self.add_internal_filler("next_step", "en-US", [
+			"Perfect! Let's move forward...",
+			"Great! Moving to the next step...",
+			"Excellent! Let's continue...",
+			"Wonderful! Let's keep going...",
+			"Alright, moving ahead..."
+		])
+		
+		self.add_internal_filler("change_context", "en-US", [
+			"Let me help you with that...",
+			"I'll guide you through this...",
+			"Let's work through this together...",
+			"Let me assist you with that...",
+			"I'm here to help with that..."
+		])
+		
 		# Set up dynamic configuration (per-request)
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
 		
-		self._current_call_phone: Optional[str] = None
-		self._reset_test_state()
+		# Call-scoped test state storage (prevents concurrency bugs)
+		# Key: call_id, Value: dict with test state variables
+		self._test_state_by_call: Dict[str, Dict[str, Any]] = {}
+		# Mapping from phone -> call_id for methods that only have phone number
+		self._phone_to_call_id: Dict[str, str] = {}
 		
 		logger.info("✅ BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
@@ -228,7 +256,9 @@ class BarbaraAgent(AgentBase):
 			"name": "English",
 			"code": "en-US",
 			"voice": voice_string,
-			"engine": voice_config["engine"]
+			"engine": voice_config["engine"],
+			"speech_fillers": ["Let me check on that...", "One moment please...", "I'm looking that up now..."],
+			"function_fillers": ["Processing...", "Just a second...", "Looking that up..."]
 		}
 		
 		# Add model if specified (for Rime, Amazon)
@@ -293,8 +323,30 @@ class BarbaraAgent(AgentBase):
 			"debug_webhook_level": 1,
 		}
 		agent.set_params(params_payload)
-		self._ensure_skill(agent, "datetime")
-		self._ensure_skill(agent, "math")
+		
+		# Add skills with custom fillers for better UX
+		self._ensure_skill(agent, "datetime", {
+			"swaig_fields": {
+				"fillers": {
+					"en-US": [
+						"Let me check the date and time...",
+						"One moment, checking that for you...",
+						"Looking up the current time..."
+					]
+				}
+			}
+		})
+		self._ensure_skill(agent, "math", {
+			"swaig_fields": {
+				"fillers": {
+					"en-US": [
+						"Let me calculate that...",
+						"Working on those numbers...",
+						"One moment, doing the math..."
+					]
+				}
+			}
+		})
 		logger.info(
 			f"🎛️ Runtime params applied: wait_for_user={wait_for_user}, "
 			f"attention_timeout={params_payload['attention_timeout']}ms"
@@ -727,31 +779,113 @@ class BarbaraAgent(AgentBase):
 			"model": model
 		}
 
-	def _ensure_skill(self, agent_obj, skill_name: str):
+	def _ensure_skill(self, agent_obj, skill_name: str, config: Optional[Dict[str, Any]] = None):
 		"""
 		Safely load a SignalWire skill only if it's not already present.
 		This prevents ValueError: Skill already loaded.
+		
+		Args:
+			agent_obj: The agent instance to add the skill to
+			skill_name: Name of the skill (e.g., "datetime", "math")
+			config: Optional configuration dict for the skill (e.g., {"swaig_fields": {...}})
 		"""
 		try:
 			if hasattr(agent_obj, "has_skill") and agent_obj.has_skill(skill_name):
 				logger.debug(f"🔁 Skill '{skill_name}' already loaded, skipping")
 				return
-			agent_obj.add_skill(skill_name)
-			logger.info(f"✅ Added skill '{skill_name}'")
+			if config:
+				agent_obj.add_skill(skill_name, config)
+				logger.info(f"✅ Added skill '{skill_name}' with custom configuration")
+			else:
+				agent_obj.add_skill(skill_name)
+				logger.info(f"✅ Added skill '{skill_name}'")
 		except Exception as exc:
 			logger.warning(f"⚠️ Could not add skill '{skill_name}': {exc}")
 	
-	def _reset_test_state(self):
-		self._test_mode = False
-		self._test_use_draft = False
-		self._test_start_node: Optional[str] = None
-		self._test_stop_on_route = False
-		self._test_nodes_visited: List[str] = []
-		self._test_pending_events: List[Dict[str, Any]] = []
-		self._test_completed = False
-		self._current_call_phone = None
-		self._test_vertical = "reverse_mortgage"
-		self._test_call_mode = "full"
+	def _get_test_state(self, call_id: Optional[str] = None, phone: Optional[str] = None) -> Dict[str, Any]:
+		"""
+		Get test state for a specific call. Returns default state if call_id is None or not found.
+		
+		Args:
+			call_id: Unique call identifier (preferred)
+			phone: Phone number (fallback lookup if call_id not provided)
+			
+		Returns:
+			Dict with test state variables
+		"""
+		# Try call_id first
+		if call_id and call_id in self._test_state_by_call:
+			return self._test_state_by_call[call_id]
+		
+		# Fallback to phone lookup
+		if phone and phone in self._phone_to_call_id:
+			lookup_call_id = self._phone_to_call_id[phone]
+			if lookup_call_id in self._test_state_by_call:
+				return self._test_state_by_call[lookup_call_id]
+		
+		# Return default state
+		return self._get_default_test_state()
+	
+	def _set_test_state(self, call_id: Optional[str], state: Dict[str, Any], phone: Optional[str] = None) -> None:
+		"""
+		Store test state for a specific call.
+		
+		Args:
+			call_id: Unique call identifier
+			state: Dict with test state variables
+			phone: Phone number (for fallback lookup)
+		"""
+		if call_id:
+			self._test_state_by_call[call_id] = state.copy()
+			# Store phone -> call_id mapping for fallback lookup
+			if phone:
+				self._phone_to_call_id[phone] = call_id
+		else:
+			# Bug fix: Warn when trying to persist state without call_id (prevents silent data loss)
+			if state.get("test_mode") or state.get("test_pending_events"):
+				logger.warning(
+					f"⚠️ Attempted to persist test state without call_id. State will be lost. "
+					f"Phone: {phone}, Test mode: {state.get('test_mode')}, Events: {len(state.get('test_pending_events', []))}"
+				)
+	
+	def _get_default_test_state(self) -> Dict[str, Any]:
+		"""Return default test state values"""
+		return {
+			"test_mode": False,
+			"test_use_draft": False,
+			"test_start_node": None,
+			"test_stop_on_route": False,
+			"test_nodes_visited": [],
+			"test_pending_events": [],
+			"test_completed": False,
+			"current_call_phone": None,
+			"test_vertical": "reverse_mortgage",
+			"test_call_mode": "full"
+		}
+	
+	def _cleanup_test_state(self, call_id: Optional[str] = None, phone: Optional[str] = None) -> None:
+		"""
+		Remove test state for a completed call to prevent memory leaks.
+		
+		Args:
+			call_id: Unique call identifier (preferred)
+			phone: Phone number (fallback lookup if call_id not provided)
+		"""
+		# Try call_id first
+		if call_id and call_id in self._test_state_by_call:
+			del self._test_state_by_call[call_id]
+			# Clean up phone mapping
+			if phone and phone in self._phone_to_call_id:
+				del self._phone_to_call_id[phone]
+			logger.debug(f"🧹 Cleaned up test state for call {call_id}")
+		
+		# Fallback to phone lookup
+		elif phone and phone in self._phone_to_call_id:
+			lookup_call_id = self._phone_to_call_id[phone]
+			if lookup_call_id in self._test_state_by_call:
+				del self._test_state_by_call[lookup_call_id]
+			del self._phone_to_call_id[phone]
+			logger.debug(f"🧹 Cleaned up test state for phone {phone} (call_id: {lookup_call_id})")
 	
 	def _extract_test_config(self, user_vars: Dict[str, Any]) -> Dict[str, Any]:
 		if not user_vars:
@@ -780,34 +914,51 @@ class BarbaraAgent(AgentBase):
 			"mode": mode
 		}
 	
-	def _queue_test_event(self, event: Dict[str, Any]) -> None:
-		self._test_pending_events.append(event)
+	def _queue_test_event(self, call_id: Optional[str], event: Dict[str, Any], phone: Optional[str] = None) -> None:
+		"""Queue a test event for a specific call"""
+		if not call_id:
+			logger.warning(f"⚠️ Attempted to queue test event without call_id. Event will be lost: {event.get('type', 'unknown')}")
+			return
+		state = self._get_test_state(call_id=call_id, phone=phone)
+		state["test_pending_events"].append(event)
+		self._set_test_state(call_id, state, phone=phone)
 	
-	def _dequeue_test_events(self) -> List[Dict[str, Any]]:
-		if not self._test_pending_events:
+	def _dequeue_test_events(self, call_id: Optional[str], phone: Optional[str] = None) -> List[Dict[str, Any]]:
+		"""Dequeue all test events for a specific call"""
+		if not call_id:
+			logger.warning("⚠️ Attempted to dequeue test events without call_id. Returning empty list.")
 			return []
-		events = list(self._test_pending_events)
-		self._test_pending_events.clear()
+		state = self._get_test_state(call_id=call_id, phone=phone)
+		if not state["test_pending_events"]:
+			return []
+		events = list(state["test_pending_events"])
+		state["test_pending_events"] = []
+		self._set_test_state(call_id, state, phone=phone)
 		return events
 	
-	def _handle_test_context_change(self, context_name: Optional[str]) -> None:
-		if not self._test_mode or not context_name or self._test_completed:
+	def _handle_test_context_change(self, call_id: Optional[str], context_name: Optional[str], phone: Optional[str] = None) -> None:
+		"""Handle test context change for a specific call"""
+		state = self._get_test_state(call_id=call_id, phone=phone)
+		if not state["test_mode"] or not context_name or state["test_completed"]:
 			return
 		
-		if self._test_nodes_visited and self._test_nodes_visited[-1] == context_name:
+		if state["test_nodes_visited"] and state["test_nodes_visited"][-1] == context_name:
 			return
 		
-		self._test_nodes_visited.append(context_name)
+		state["test_nodes_visited"].append(context_name)
 		
-		self._queue_test_event({
+		self._queue_test_event(call_id, {
 			"type": "node_transition",
 			"node_name": context_name,
-			"path": list(self._test_nodes_visited),
+			"path": list(state["test_nodes_visited"]),
 			"timestamp": datetime.utcnow().isoformat() + "Z"
-		})
+		}, phone=phone)
 		
-		if self._test_stop_on_route and len(self._test_nodes_visited) > 1:
-			self._complete_test_call()
+		if state["test_stop_on_route"] and len(state["test_nodes_visited"]) > 1:
+			self._complete_test_call(call_id, phone=phone)
+		
+		# Update stored state
+		self._set_test_state(call_id, state, phone=phone)
 	
 	def _infer_context_from_state(self, phone: Optional[str]) -> Optional[str]:
 		if not phone:
@@ -834,17 +985,21 @@ class BarbaraAgent(AgentBase):
 			return "verify"
 		return "greet"
 	
-	def _update_test_context_tracking(self):
-		if not self._test_mode or not self._current_call_phone:
+	def _update_test_context_tracking(self, call_id: Optional[str] = None, phone: Optional[str] = None):
+		"""Update test context tracking for a specific call"""
+		state = self._get_test_state(call_id=call_id, phone=phone)
+		if not state["test_mode"] or not state["current_call_phone"]:
 			return
-		context_name = self._infer_context_from_state(self._current_call_phone)
-		self._handle_test_context_change(context_name)
+		context_name = self._infer_context_from_state(state["current_call_phone"])
+		self._handle_test_context_change(call_id, context_name, phone=state["current_call_phone"])
 	
-	def _apply_test_events_to_result(self, result: Any):
-		if not self._test_mode:
+	def _apply_test_events_to_result(self, call_id: Optional[str], result: Any, phone: Optional[str] = None):
+		"""Apply test events to result for a specific call"""
+		state = self._get_test_state(call_id=call_id, phone=phone)
+		if not state["test_mode"]:
 			return result
 		
-		events = self._dequeue_test_events()
+		events = self._dequeue_test_events(call_id, phone=phone)
 		if not events:
 			return result
 		
@@ -859,17 +1014,23 @@ class BarbaraAgent(AgentBase):
 		
 		return target
 	
-	def _complete_test_call(self):
-		if self._test_completed:
+	def _complete_test_call(self, call_id: Optional[str], phone: Optional[str] = None):
+		"""Mark test call as complete for a specific call"""
+		state = self._get_test_state(call_id=call_id, phone=phone)
+		if state["test_completed"]:
 			return
 		
-		self._test_completed = True
-		self._queue_test_event({
+		state["test_completed"] = True
+		self._queue_test_event(call_id, {
 			"type": "test_complete",
-			"path": list(self._test_nodes_visited),
-			"mode": self._test_call_mode,
+			"path": list(state["test_nodes_visited"]),
+			"mode": state["test_call_mode"],
 			"timestamp": datetime.utcnow().isoformat() + "Z"
-		})
+		}, phone=phone)
+		self._set_test_state(call_id, state, phone=phone)
+		
+		# Bug fix: Clean up test state when call completes (prevents memory leak)
+		self._cleanup_test_state(call_id=call_id, phone=phone)
 	
 	def _build_voice_string(self, engine: str, voice_name: str) -> str:
 		"""Build provider-specific voice string
@@ -1253,8 +1414,6 @@ class BarbaraAgent(AgentBase):
 		logger.debug(f"📞 DEBUG: request_data type: {type(request_data)}")
 		
 		try:
-			self._reset_test_state()
-			
 			# ==================== STEP 1: EXTRACT CALL CONTEXT ====================
 			# Extract call parameters from SignalWire
 			# SignalWire sends data in nested 'call' dict
@@ -1314,12 +1473,6 @@ class BarbaraAgent(AgentBase):
 					user_vars = (request_data or {}).get("vars", {}).get("userVariables", {})
 			
 			test_config = self._extract_test_config(user_vars)
-			self._test_mode = test_config["enabled"]
-			self._test_use_draft = test_config["use_draft"]
-			self._test_start_node = test_config["start_node"]
-			self._test_stop_on_route = test_config["stop_on_route"]
-			self._test_call_mode = test_config["mode"]
-			self._test_vertical = test_config["vertical"]
 			
 			# Determine which phone number to use for DB lookup
 			if call_direction == "inbound":
@@ -1327,9 +1480,19 @@ class BarbaraAgent(AgentBase):
 			else:
 				phone = to_phone  # Lead's number (we're calling them)
 			
-			self._current_call_phone = phone
+			# Store test state per call_id (prevents concurrency bugs)
+			test_state = self._get_default_test_state()
+			test_state["test_mode"] = test_config["enabled"]
+			test_state["test_use_draft"] = test_config["use_draft"]
+			test_state["test_start_node"] = test_config["start_node"]
+			test_state["test_stop_on_route"] = test_config["stop_on_route"]
+			test_state["test_call_mode"] = test_config["mode"]
+			test_state["test_vertical"] = test_config["vertical"]
+			test_state["current_call_phone"] = phone
+			self._set_test_state(call_sid, test_state, phone=phone)
+			
 			logger.info(f"📞 {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
-			active_vertical = self._test_vertical or "reverse_mortgage"
+			active_vertical = test_state["test_vertical"] or "reverse_mortgage"
 			
 			# ==================== STEP 2: CONFIGURE AI ====================
 			# This is CRITICAL for SWML webhook flows - configure_per_call() is NOT called
@@ -1419,15 +1582,35 @@ class BarbaraAgent(AgentBase):
 			# NOTE: Hints, pronunciations, and pattern hints are now configured in __init__()
 			# to prevent duplicate accumulation across multiple webhook requests
 			
-			# Skills: datetime and math
+			# Skills: datetime and math (with custom fillers for better UX)
 			try:
-				self.add_skill("datetime")
-				logger.info("✅ Added datetime skill")
+				self.add_skill("datetime", {
+					"swaig_fields": {
+						"fillers": {
+							"en-US": [
+								"Let me check the date and time...",
+								"One moment, checking that for you...",
+								"Looking up the current time..."
+							]
+						}
+					}
+				})
+				logger.info("✅ Added datetime skill with custom fillers")
 			except Exception as e:
 				logger.debug(f"Skill 'datetime' already loaded: {e}")
 			try:
-				self.add_skill("math")
-				logger.info("✅ Added math skill")
+				self.add_skill("math", {
+					"swaig_fields": {
+						"fillers": {
+							"en-US": [
+								"Let me calculate that...",
+								"Working on those numbers...",
+								"One moment, doing the math..."
+							]
+						}
+					}
+				})
+				logger.info("✅ Added math skill with custom fillers")
 			except Exception as e:
 				logger.debug(f"Skill 'math' already loaded: {e}")
 			
@@ -1696,8 +1879,9 @@ List specific actions needed based on conversation outcome.
 					})
 				
 				# ==================== STEP 7: DETERMINE INITIAL CONTEXT ====================
-				if self._test_mode and self._test_start_node:
-					initial_context = self._test_start_node
+				test_state = self._get_test_state(call_id=call_sid, phone=phone)
+				if test_state["test_mode"] and test_state["test_start_node"]:
+					initial_context = test_state["test_start_node"]
 				else:
 					initial_context = self._get_initial_context(phone)
 				logger.info(f"🎯 Initial context: {initial_context}")
@@ -1708,7 +1892,7 @@ List specific actions needed based on conversation outcome.
 						vertical=active_vertical,
 						initial_context=initial_context,
 						lead_context=lead_context,
-						use_draft=self._test_use_draft
+						use_draft=test_state["test_use_draft"]
 					)
 				except Exception as e:
 					logger.error(f"❌ Failed to build contexts: {e}")
@@ -1716,7 +1900,7 @@ List specific actions needed based on conversation outcome.
 				
 				# ==================== STEP 9: LOAD THEME ====================
 				try:
-					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
+					theme_text = load_theme(active_vertical, use_draft=test_state["test_use_draft"])
 				except Exception as e:
 					logger.error(f"❌ Failed to load theme: {e}")
 					raise
@@ -1725,8 +1909,8 @@ List specific actions needed based on conversation outcome.
 				self._apply_prompt_and_contexts(theme_text, contexts_obj)
 				logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
 				
-				if self._test_mode:
-					self._handle_test_context_change(initial_context)
+				if test_state["test_mode"]:
+					self._handle_test_context_change(call_sid, initial_context, phone=phone)
 				
 				logger.info(
 					f"✅ Agent configured with contexts: voice={voice_string}, "
@@ -1736,20 +1920,66 @@ List specific actions needed based on conversation outcome.
 				logger.warning("⚠️ No phone number found in request - using default configuration")
 				# Apply fallback for unknown caller
 				try:
+					test_state = self._get_test_state(call_id=call_sid, phone=phone)
 					contexts_obj = build_contexts_object(
 						vertical=active_vertical,
 						initial_context="greet",
 						lead_context=None,
-						use_draft=self._test_use_draft
+						use_draft=test_state["test_use_draft"]
 					)
-					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
+					theme_text = load_theme(active_vertical, use_draft=test_state["test_use_draft"])
 					self._apply_prompt_and_contexts(theme_text, contexts_obj)
 				except Exception as e:
 					logger.error(f"Failed to build fallback contexts: {e}")
 					raise
 			
-			# ==================== STEP 11: RETURN ====================
-			# Return None - no SWML modifications needed, use SDK defaults
+			# ==================== STEP 11: VERIFY & RETURN SWML ====================
+			# Get the generated SWML document to verify it includes contexts and ai block
+			try:
+				generated_swml = self.get_swml_document()
+				if generated_swml:
+					# Log SWML structure for debugging
+					swml_str = json.dumps(generated_swml, indent=2, default=str)
+					swml_size_kb = len(swml_str.encode('utf-8')) / 1024
+					
+					# Check if ai block exists
+					has_ai_block = "ai" in generated_swml.get("sections", {}).get("main", [{}])[0] if generated_swml.get("sections", {}).get("main") else False
+					
+					# Check if contexts are present in ai block
+					ai_block = None
+					if has_ai_block:
+						main_section = generated_swml.get("sections", {}).get("main", [])
+						if main_section and isinstance(main_section, list) and len(main_section) > 0:
+							ai_block = main_section[0].get("ai")
+					
+					has_contexts = False
+					if ai_block:
+						has_contexts = "contexts" in ai_block or "context" in ai_block
+					
+					logger.info(
+						f"📋 Generated SWML: size={swml_size_kb:.2f}KB, "
+						f"has_ai_block={has_ai_block}, has_contexts={has_contexts}"
+					)
+					
+					# Log first 500 chars of SWML for debugging (full log would be too large)
+					logger.debug(f"📋 SWML preview (first 500 chars): {swml_str[:500]}")
+					
+					# Warn if SWML is too large (SignalWire limit is ~256KB)
+					if swml_size_kb > 250:
+						logger.warning(f"⚠️ SWML size ({swml_size_kb:.2f}KB) is approaching SignalWire's 256KB limit!")
+					
+					# Warn if ai block or contexts are missing
+					if not has_ai_block:
+						logger.error("❌ CRITICAL: SWML missing 'ai' block! Call will hang up.")
+					if has_ai_block and not has_contexts:
+						logger.warning("⚠️ SWML has 'ai' block but missing 'contexts'! Agent may not function correctly.")
+				else:
+					logger.warning("⚠️ get_swml_document() returned None - SDK may generate SWML differently")
+			except Exception as e:
+				logger.error(f"❌ Failed to get SWML document for verification: {e}", exc_info=True)
+			
+			# Return None - SDK will use the generated SWML from agent configuration
+			# The SDK automatically serializes contexts when _contexts_builder and _contexts_defined are set
 			return None
 			
 		except Exception as e:
@@ -1771,14 +2001,20 @@ List specific actions needed based on conversation outcome.
 			# Log the summary
 			logger.info(f"📊 Conversation completed: {summary}")
 			
+			# Extract call_id and phone from raw_data for cleanup
+			call_id = None
+			phone = None
+			if raw_data:
+				call_id = raw_data.get("call_id") or raw_data.get("call_sid") or raw_data.get("CallSid")
+				phone = raw_data.get("From") or raw_data.get("To") or raw_data.get("caller_id_num")
+			
+			# Bug fix: Clean up test state when call ends (prevents memory leak)
+			if call_id or phone:
+				self._cleanup_test_state(call_id=call_id, phone=phone)
+			
 			if not summary:
 				logger.warning("⚠️ No summary provided")
 				return
-			
-			# Extract phone number from raw_data
-			phone = None
-			if raw_data:
-				phone = raw_data.get("From") or raw_data.get("To")
 			
 			if phone:
 				# Get lead_id from conversation state
@@ -1820,13 +2056,20 @@ List specific actions needed based on conversation outcome.
 		Args:
 			name: Tool name being called
 			args: Tool arguments
-			raw_data: Raw request data
+			raw_data: Raw request data (contains call_id)
 			
 		Returns:
 			Tool result (passes through from tool) or SwaigFunctionResult if routing occurs
 		"""
 		logger.info(f"🔧 DEBUG: on_function_call invoked for tool '{name}' with args: {args}")
 		logger.debug(f"🔧 DEBUG: raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
+		
+		# Extract call_id from raw_data for call-scoped test state
+		call_id = None
+		phone = None
+		if raw_data:
+			call_id = raw_data.get("call_id") or raw_data.get("call_sid") or raw_data.get("CallSid")
+			phone = raw_data.get("caller_id_num") or raw_data.get("phone")
 		
 		# Let the tool execute normally via parent class
 		# Parent class handles async tools internally - it will await them
@@ -1844,9 +2087,11 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
 		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
 		
-		if self._test_mode:
-			self._update_test_context_tracking()
-			result = self._apply_test_events_to_result(result)
+		# Use call-scoped test state (prevents concurrency bugs)
+		test_state = self._get_test_state(call_id=call_id, phone=phone)
+		if test_state["test_mode"]:
+			self._update_test_context_tracking(call_id=call_id, phone=phone)
+			result = self._apply_test_events_to_result(call_id, result, phone=phone)
 		
 		return result
 
