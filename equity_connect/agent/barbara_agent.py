@@ -2009,9 +2009,16 @@ List specific actions needed based on conversation outcome.
 				call_id = raw_data.get("call_id") or raw_data.get("call_sid") or raw_data.get("CallSid")
 				phone = raw_data.get("From") or raw_data.get("To") or raw_data.get("caller_id_num")
 			
-			# Bug fix: Clean up test state when call ends (prevents memory leak)
-			if call_id or phone:
-				self._cleanup_test_state(call_id=call_id, phone=phone)
+			# Always attempt cleanup (prevents memory leak)
+			# _cleanup_test_state handles None values gracefully, but warn if both are missing
+			if not call_id and not phone:
+				logger.warning(
+					"⚠️ Cannot extract call_id or phone from raw_data for test state cleanup. "
+					"raw_data keys: {keys}. Test state may not be cleaned up, causing memory leak.".format(
+						keys=list(raw_data.keys()) if raw_data else "None"
+					)
+				)
+			self._cleanup_test_state(call_id=call_id, phone=phone)
 			
 			if not summary:
 				logger.warning("⚠️ No summary provided")
