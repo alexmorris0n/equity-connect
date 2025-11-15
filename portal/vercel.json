@@ -5,6 +5,10 @@
   "installCommand": "npm ci || npm install",
   "rewrites": [
     {
+      "source": "/api/test-call/:match*",
+      "destination": "https://p01--barbara-mcp--p95wlpxnp2z2.code.run/api/test-call/:match*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
