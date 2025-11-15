@@ -381,7 +381,10 @@ class BarbaraAgent(AgentBase):
 		target_agent.pom = PromptObjectModel()
 		if theme_text:
 			target_agent.prompt_add_section("Base Prompt", theme_text)
-		self._populate_contexts_from_dict(target_agent, contexts_obj)
+		contexts_builder = self._populate_contexts_from_dict(target_agent, contexts_obj)
+		# Ensure SignalWire SDK knows contexts are defined so they serialize into SWML
+		setattr(target_agent, "_contexts_builder", contexts_builder)
+		setattr(target_agent, "_contexts_defined", True)
 
 	def _populate_contexts_from_dict(self, agent_instance, contexts_obj: Dict[str, Any]):
 		contexts_builder = ContextBuilder(agent_instance)
@@ -427,6 +430,7 @@ class BarbaraAgent(AgentBase):
 					step.set_valid_contexts(step_valid_contexts)
 
 		agent_instance.define_contexts(contexts_builder)
+		return contexts_builder
 
 	@staticmethod
 	def _ensure_list(value: Optional[Any]) -> List[Any]:
