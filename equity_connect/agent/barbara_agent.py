@@ -1933,53 +1933,34 @@ List specific actions needed based on conversation outcome.
 					logger.error(f"Failed to build fallback contexts: {e}")
 					raise
 			
-			# ==================== STEP 11: VERIFY & RETURN SWML ====================
-			# Get the generated SWML document to verify it includes contexts and ai block
-			try:
-				generated_swml = self.get_swml_document()
-				if generated_swml:
-					# Log SWML structure for debugging
-					swml_str = json.dumps(generated_swml, indent=2, default=str)
-					swml_size_kb = len(swml_str.encode('utf-8')) / 1024
-					
-					# Check if ai block exists
-					has_ai_block = "ai" in generated_swml.get("sections", {}).get("main", [{}])[0] if generated_swml.get("sections", {}).get("main") else False
-					
-					# Check if contexts are present in ai block
-					ai_block = None
-					if has_ai_block:
-						main_section = generated_swml.get("sections", {}).get("main", [])
-						if main_section and isinstance(main_section, list) and len(main_section) > 0:
-							ai_block = main_section[0].get("ai")
-					
-					has_contexts = False
-					if ai_block:
-						has_contexts = "contexts" in ai_block or "context" in ai_block
-					
-					logger.info(
-						f"📋 Generated SWML: size={swml_size_kb:.2f}KB, "
-						f"has_ai_block={has_ai_block}, has_contexts={has_contexts}"
-					)
-					
-					# Log first 500 chars of SWML for debugging (full log would be too large)
-					logger.debug(f"📋 SWML preview (first 500 chars): {swml_str[:500]}")
-					
-					# Warn if SWML is too large (SignalWire limit is ~256KB)
-					if swml_size_kb > 250:
-						logger.warning(f"⚠️ SWML size ({swml_size_kb:.2f}KB) is approaching SignalWire's 256KB limit!")
-					
-					# Warn if ai block or contexts are missing
-					if not has_ai_block:
-						logger.error("❌ CRITICAL: SWML missing 'ai' block! Call will hang up.")
-					if has_ai_block and not has_contexts:
-						logger.warning("⚠️ SWML has 'ai' block but missing 'contexts'! Agent may not function correctly.")
-				else:
-					logger.warning("⚠️ get_swml_document() returned None - SDK may generate SWML differently")
-			except Exception as e:
-				logger.error(f"❌ Failed to get SWML document for verification: {e}", exc_info=True)
+			# ==================== STEP 11: VERIFY CONFIGURATION & RETURN ====================
+			# Verify that contexts are properly configured for SDK serialization
+			has_contexts_builder = hasattr(self, "_contexts_builder") and self._contexts_builder is not None
+			has_contexts_defined = hasattr(self, "_contexts_defined") and self._contexts_defined is True
+			has_pom = hasattr(self, "pom") and self.pom is not None
 			
-			# Return None - SDK will use the generated SWML from agent configuration
-			# The SDK automatically serializes contexts when _contexts_builder and _contexts_defined are set
+			logger.info(
+				f"📋 SWML Configuration Check: "
+				f"contexts_builder={has_contexts_builder}, "
+				f"contexts_defined={has_contexts_defined}, "
+				f"pom={has_pom}"
+			)
+			
+			if not has_contexts_builder or not has_contexts_defined:
+				logger.error(
+					"❌ CRITICAL: Contexts not properly configured for SWML serialization! "
+					"SDK may not include contexts in generated SWML, causing call to hang up."
+				)
+			else:
+				logger.info("✅ Contexts properly configured - SDK should serialize them into SWML")
+			
+			# Log context count for verification
+			if has_contexts_builder and hasattr(self._contexts_builder, "_contexts"):
+				context_count = len(self._contexts_builder._contexts) if hasattr(self._contexts_builder, "_contexts") else 0
+				logger.info(f"📋 Contexts ready for serialization: {context_count} contexts")
+			
+			# Return None - SDK will auto-generate SWML from agent configuration
+			# The SDK should serialize contexts when _contexts_builder and _contexts_defined are set
 			return None
 			
 		except Exception as e:
