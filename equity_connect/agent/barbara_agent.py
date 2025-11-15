@@ -2,8 +2,10 @@
 import os
 import logging
 import json
+from datetime import datetime
 from typing import Optional, Dict, Any, List
 from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
+from signalwire_agents.core.function_result import SwaigFunctionResult  # type: ignore
 from equity_connect.services.agent_config import get_agent_params
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
@@ -54,6 +56,9 @@ class BarbaraAgent(AgentBase):
 		# Set up dynamic configuration (per-request)
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
+		
+		self._current_call_phone: Optional[str] = None
+		self._reset_test_state()
 		
 		logger.info("✅ BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
@@ -675,6 +680,136 @@ class BarbaraAgent(AgentBase):
 		except Exception as exc:
 			logger.warning(f"⚠️ Could not add skill '{skill_name}': {exc}")
 	
+	def _reset_test_state(self):
+		self._test_mode = False
+		self._test_use_draft = False
+		self._test_start_node: Optional[str] = None
+		self._test_stop_on_route = False
+		self._test_nodes_visited: List[str] = []
+		self._test_pending_events: List[Dict[str, Any]] = []
+		self._test_completed = False
+		self._current_call_phone = None
+		self._test_vertical = "reverse_mortgage"
+		self._test_call_mode = "full"
+	
+	def _extract_test_config(self, user_vars: Dict[str, Any]) -> Dict[str, Any]:
+		if not user_vars:
+			return {
+				"enabled": False,
+				"use_draft": False,
+				"start_node": None,
+				"stop_on_route": False,
+				"vertical": "reverse_mortgage",
+				"mode": "full"
+			}
+		
+		enabled = self._to_bool(user_vars.get('test_mode'))
+		use_draft = self._to_bool(user_vars.get('use_draft', enabled))
+		start_node = (user_vars.get('start_node') or '').strip().lower() or None
+		stop_on_route = self._to_bool(user_vars.get('stop_on_route'))
+		vertical = (user_vars.get('vertical') or 'reverse_mortgage').strip() or 'reverse_mortgage'
+		mode = (user_vars.get('test_call_mode') or ('single' if stop_on_route else 'full')).strip().lower() or 'full'
+		
+		return {
+			"enabled": enabled,
+			"use_draft": use_draft,
+			"start_node": start_node,
+			"stop_on_route": stop_on_route,
+			"vertical": vertical,
+			"mode": mode
+		}
+	
+	def _queue_test_event(self, event: Dict[str, Any]) -> None:
+		self._test_pending_events.append(event)
+	
+	def _dequeue_test_events(self) -> List[Dict[str, Any]]:
+		if not self._test_pending_events:
+			return []
+		events = list(self._test_pending_events)
+		self._test_pending_events.clear()
+		return events
+	
+	def _handle_test_context_change(self, context_name: Optional[str]) -> None:
+		if not self._test_mode or not context_name or self._test_completed:
+			return
+		
+		if self._test_nodes_visited and self._test_nodes_visited[-1] == context_name:
+			return
+		
+		self._test_nodes_visited.append(context_name)
+		
+		self._queue_test_event({
+			"type": "node_transition",
+			"node_name": context_name,
+			"path": list(self._test_nodes_visited),
+			"timestamp": datetime.utcnow().isoformat() + "Z"
+		})
+		
+		if self._test_stop_on_route and len(self._test_nodes_visited) > 1:
+			self._complete_test_call()
+	
+	def _infer_context_from_state(self, phone: Optional[str]) -> Optional[str]:
+		if not phone:
+			return "greet"
+		
+		state = get_conversation_state(phone)
+		if not state:
+			return "greet"
+		
+		cd = state.get("conversation_data", {})
+		qualified = state.get("qualified", False)
+		
+		if cd.get("appointment_booked"):
+			return "exit"
+		if cd.get("ready_to_book"):
+			return "book"
+		if cd.get("quote_presented") and cd.get("quote_reaction") in ["positive", "skeptical"]:
+			return "answer"
+		if qualified and not cd.get("quote_presented"):
+			return "quote"
+		if cd.get("verified") and not qualified:
+			return "qualify"
+		if cd.get("greeted"):
+			return "verify"
+		return "greet"
+	
+	def _update_test_context_tracking(self):
+		if not self._test_mode or not self._current_call_phone:
+			return
+		context_name = self._infer_context_from_state(self._current_call_phone)
+		self._handle_test_context_change(context_name)
+	
+	def _apply_test_events_to_result(self, result: Any):
+		if not self._test_mode:
+			return result
+		
+		events = self._dequeue_test_events()
+		if not events:
+			return result
+		
+		if isinstance(result, SwaigFunctionResult):
+			target = result
+		else:
+			response_text = result if isinstance(result, str) else ""
+			target = SwaigFunctionResult(response_text)
+		
+		for event in events:
+			target.swml_user_event(event)
+		
+		return target
+	
+	def _complete_test_call(self):
+		if self._test_completed:
+			return
+		
+		self._test_completed = True
+		self._queue_test_event({
+			"type": "test_complete",
+			"path": list(self._test_nodes_visited),
+			"mode": self._test_call_mode,
+			"timestamp": datetime.utcnow().isoformat() + "Z"
+		})
+	
 	def _build_voice_string(self, engine: str, voice_name: str) -> str:
 		"""Build provider-specific voice string
 		
@@ -1051,6 +1186,8 @@ class BarbaraAgent(AgentBase):
 		logger.debug(f"📞 DEBUG: request_data type: {type(request_data)}")
 		
 		try:
+			self._reset_test_state()
+			
 			# ==================== STEP 1: EXTRACT CALL CONTEXT ====================
 			# Extract call parameters from SignalWire
 			# SignalWire sends data in nested 'call' dict
@@ -1067,11 +1204,26 @@ class BarbaraAgent(AgentBase):
 			# Determine call direction
 			# For inbound: From = caller's number, To = our SignalWire number
 			# For outbound: From = our SignalWire number, To = lead's number
+			user_vars = {}
 			if request_data:
 				call_data = request_data.get("call", {})
 				call_direction = call_data.get("direction", "inbound").lower()
+				user_vars = call_data.get("user_variables") or call_data.get("userVariables") or {}
 			else:
 				call_direction = "inbound"
+			
+			if not user_vars:
+				user_vars = (request_data or {}).get("userVariables") or {}
+				if not user_vars:
+					user_vars = (request_data or {}).get("vars", {}).get("userVariables", {})
+			
+			test_config = self._extract_test_config(user_vars)
+			self._test_mode = test_config["enabled"]
+			self._test_use_draft = test_config["use_draft"]
+			self._test_start_node = test_config["start_node"]
+			self._test_stop_on_route = test_config["stop_on_route"]
+			self._test_call_mode = test_config["mode"]
+			self._test_vertical = test_config["vertical"]
 			
 			# Determine which phone number to use for DB lookup
 			if call_direction == "inbound":
@@ -1079,8 +1231,9 @@ class BarbaraAgent(AgentBase):
 			else:
 				phone = to_phone  # Lead's number (we're calling them)
 			
+			self._current_call_phone = phone
 			logger.info(f"📞 {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
-			active_vertical = "reverse_mortgage"
+			active_vertical = self._test_vertical or "reverse_mortgage"
 			
 			# ==================== STEP 2: CONFIGURE AI ====================
 			# This is CRITICAL for SWML webhook flows - configure_per_call() is NOT called
@@ -1459,15 +1612,19 @@ List specific actions needed based on conversation outcome.
 					})
 				
 				# ==================== STEP 7: DETERMINE INITIAL CONTEXT ====================
-				initial_context = self._get_initial_context(phone)
+				if self._test_mode and self._test_start_node:
+					initial_context = self._test_start_node
+				else:
+					initial_context = self._get_initial_context(phone)
 				logger.info(f"🎯 Initial context: {initial_context}")
 				
 				# ==================== STEP 8: BUILD CONTEXTS FROM DB ====================
 				try:
 					contexts_obj = build_contexts_object(
-						vertical="reverse_mortgage",
+						vertical=active_vertical,
 						initial_context=initial_context,
-						lead_context=lead_context
+						lead_context=lead_context,
+						use_draft=self._test_use_draft
 					)
 				except Exception as e:
 					logger.error(f"❌ Failed to build contexts: {e}")
@@ -1475,7 +1632,7 @@ List specific actions needed based on conversation outcome.
 				
 				# ==================== STEP 9: LOAD THEME ====================
 				try:
-					theme_text = load_theme("reverse_mortgage")
+					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
 				except Exception as e:
 					logger.error(f"❌ Failed to load theme: {e}")
 					raise
@@ -1484,17 +1641,21 @@ List specific actions needed based on conversation outcome.
 				self._apply_prompt_and_contexts(theme_text, contexts_obj)
 				logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
 				
+				if self._test_mode:
+					self._handle_test_context_change(initial_context)
+				
 				logger.info(f"✅ Agent configured with contexts: voice=rachel, model=gpt-4o, initial_context={initial_context}, phone={phone}")
 			else:
 				logger.warning("⚠️ No phone number found in request - using default configuration")
 				# Apply fallback for unknown caller
 				try:
 					contexts_obj = build_contexts_object(
-						vertical="reverse_mortgage",
+						vertical=active_vertical,
 						initial_context="greet",
-						lead_context=None
+						lead_context=None,
+						use_draft=self._test_use_draft
 					)
-					theme_text = load_theme("reverse_mortgage")
+					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
 					self._apply_prompt_and_contexts(theme_text, contexts_obj)
 				except Exception as e:
 					logger.error(f"Failed to build fallback contexts: {e}")
@@ -1596,6 +1757,9 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"✅ DEBUG: Tool '{name}' executed successfully, result type: {type(result).__name__}")
 		logger.debug(f"✅ DEBUG: Tool result (first 200 chars): {str(result)[:200] if result else 'None'}")
 		
-		# Return tool result - contexts handle routing automatically
+		if self._test_mode:
+			self._update_test_context_tracking()
+			result = self._apply_test_events_to_result(result)
+		
 		return result
 

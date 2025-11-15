@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 def build_contexts_object(
     vertical: str = "reverse_mortgage",
     initial_context: str = "greet",
-    lead_context: Optional[dict] = None
+    lead_context: Optional[dict] = None,
+    use_draft: bool = False
 ) -> Dict:
     """Build complete contexts object from database
     
@@ -46,7 +47,7 @@ def build_contexts_object(
     logger.info(f"🏗️  Building contexts for {vertical}, initial: {initial_context}")
     
     # Query database for all contexts and their steps
-    contexts_data = _query_contexts_from_db(vertical)
+    contexts_data = _query_contexts_from_db(vertical, use_draft=use_draft)
     
     if not contexts_data:
         logger.error(f"❌ No contexts found for vertical: {vertical}")
@@ -78,14 +79,14 @@ def build_contexts_object(
     
     # Add each context (greet, verify, qualify, etc.) that has steps
     for context_name, context_config in contexts_with_steps.items():
-        contexts_obj[context_name] = _build_context(context_name, context_config)
+            contexts_obj[context_name] = _build_context(context_name, context_config)
     
     logger.info(f"✅ Built {len(contexts_obj)} contexts: {list(contexts_obj.keys())}")
     
     return contexts_obj
 
 
-def _query_contexts_from_db(vertical: str) -> Dict:
+def _query_contexts_from_db(vertical: str, use_draft: bool = False) -> Dict:
     """Query database for all contexts and their steps
     
     Returns:
@@ -123,16 +124,21 @@ def _query_contexts_from_db(vertical: str) -> Dict:
                 "valid_contexts": []  # Will be populated from steps
             }
         
-        # Get active version
+        draft_version = next(
+            (v for v in prompt['prompt_versions'] if v.get('is_draft')),
+            None
+        )
         active_version = next(
-            (v for v in prompt['prompt_versions'] if v['is_active']),
+            (v for v in prompt['prompt_versions'] if v.get('is_active')),
             None
         )
         
-        if not active_version:
+        version_to_use = draft_version if use_draft and draft_version else active_version
+        
+        if not version_to_use:
             continue
         
-        content = active_version['content']
+        content = version_to_use['content']
         
         # Build step object - CRITICAL: Map 'tools' field to 'functions' array
         step = {
@@ -220,7 +226,7 @@ def _build_context(context_name: str, context_config: Dict) -> Dict:
     return context
 
 
-def load_theme(vertical: str) -> str:
+def load_theme(vertical: str, use_draft: bool = False) -> str:
     """Load theme prompt for vertical
     
     Theme is the universal personality prompt applied across all contexts.
@@ -233,6 +239,18 @@ def load_theme(vertical: str) -> str:
     """
     
     supabase = get_supabase_client()
+    if use_draft:
+        draft_response = supabase.table('theme_prompts') \
+            .select('content') \
+            .eq('vertical', vertical) \
+            .eq('is_draft', True) \
+            .order('updated_at', desc=True) \
+            .limit(1) \
+            .execute()
+        
+        if draft_response.data:
+            return draft_response.data[0]['content']
+    
     response = supabase.table('theme_prompts') \
         .select('content') \
         .eq('vertical', vertical) \

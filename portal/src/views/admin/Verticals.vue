@@ -176,8 +176,8 @@
               <button class="btn-save" @click="saveConfig" :disabled="loading">
                 Save Settings
               </button>
-              <button class="btn-test" @click="testSettings" :disabled="loading">
-                Test Configuration
+              <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
+                🎯 Test Full Vertical
               </button>
             </div>
           </div>
@@ -242,6 +242,9 @@
         <div v-if="activeTab === 'theme'" class="nodes-section">
           <div class="nodes-header">
             <h2>Nodes</h2>
+            <button class="btn-test" @click="openFullVerticalTest">
+              🎯 Test Full Vertical
+            </button>
           </div>
           
           <div class="nodes-grid">
@@ -405,6 +408,9 @@
                     <button class="btn-preview" @click="showPreview(node)">
                       Preview
                     </button>
+                    <button class="btn-test" @click.stop="openNodeTest(node)">
+                      ⚡ Test This Node
+                    </button>
                     <span v-if="saveStatus !== 'idle' && selectedNode === node" class="save-status-message">
                       {{ saveStatus === 'validating' ? 'Validating via CLI…' : 'Saving…' }}
                     </span>
@@ -431,17 +437,6 @@
     <!-- Empty State -->
     <div v-else class="empty-state">
       <p>Please select a vertical to begin managing BarbGraph prompts.</p>
-    </div>
-
-    <!-- Test Modal -->
-    <div v-if="showTestModal" class="modal-overlay" @click="showTestModal = false">
-      <div class="modal-content" @click.stop>
-        <h3>Test Configuration</h3>
-        <div class="test-results">
-          <pre>{{ testResults }}</pre>
-        </div>
-        <button class="btn-close" @click="showTestModal = false">Close</button>
-      </div>
     </div>
 
     <!-- Theme AI Helper Modal -->
@@ -639,6 +634,13 @@
     </div>
 
   </div>
+  <TestCallModal
+    :show="showTestCallModal"
+    :mode="testCallMode"
+    :start-node="testStartNode"
+    :vertical="selectedVertical"
+    @close="showTestCallModal = false"
+  />
 </template>
 
 <script setup>
@@ -646,6 +648,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
 import * as Diff from 'diff'
 import AgentSettings from '@/components/AgentSettings.vue'
+import TestCallModal from '@/components/TestCallModal.vue'
 
 // Constants
 const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'exit']
@@ -1166,14 +1169,10 @@ const currentVersion = ref(null)
 const previewContent = ref(null)
 const saveStatus = ref('idle')
 
-const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080'
-if (!import.meta.env.VITE_CLI_TESTING_URL) {
-  console.warn('[Verticals] VITE_CLI_TESTING_URL not set. Falling back to http://localhost:8080')
-}
-
-// Test modals
-const showTestModal = ref(false)
-const testResults = ref('')
+// Portal Test Call modal
+const showTestCallModal = ref(false)
+const testCallMode = ref('full')
+const testStartNode = ref('greet')
 
 // Settings tabs
 const settingsTabs = [
@@ -2753,43 +2752,18 @@ ${nodeData.tools || '[No tools defined]'}`
   }
 }
 
-// Test settings
-function testSettings() {
-  const validation = {
-    valid: true,
-    errors: []
-  }
-  
-  if (!config.value.models.llm.provider || !config.value.models.llm.model) {
-    validation.valid = false
-    validation.errors.push('LLM provider and model are required')
-  }
-  
-  if (!config.value.models.stt.provider || !config.value.models.stt.model) {
-    validation.valid = false
-    validation.errors.push('STT provider and model are required')
-  }
-  
-  if (!config.value.models.tts.provider || !config.value.models.tts.voice) {
-    validation.valid = false
-    validation.errors.push('TTS provider and voice are required')
-  }
-  
-  testResults.value = JSON.stringify({
-    valid: validation.valid,
-    errors: validation.errors,
-    config: config.value
-  }, null, 2)
-  
-  showTestModal.value = true
-  
-  // Try WebSpeech API for TTS sample (if available)
-  if ('speechSynthesis' in window) {
-    const utterance = new SpeechSynthesisUtterance(`Testing ${config.value.models.tts.voice} voice`)
-    utterance.rate = 0.9
-    utterance.pitch = 1
-    speechSynthesis.speak(utterance)
-  }
+// Test call helpers
+function openNodeTest(nodeName) {
+  if (!nodeName) return
+  testCallMode.value = 'single'
+  testStartNode.value = nodeName
+  showTestCallModal.value = true
+}
+
+function openFullVerticalTest() {
+  testCallMode.value = 'full'
+  testStartNode.value = 'greet'
+  showTestCallModal.value = true
 }
 
 // Format date
