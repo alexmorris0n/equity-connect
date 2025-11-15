@@ -1193,10 +1193,25 @@ class BarbaraAgent(AgentBase):
 			# Extract call parameters from SignalWire
 			# SignalWire sends data in nested 'call' dict
 			if request_data:
-				call_data = request_data.get("call", {})
-				from_phone = call_data.get("from") or call_data.get("from_number")
-				to_phone = call_data.get("to") or call_data.get("to_number")
-				call_sid = call_data.get("call_id")
+				call_data = request_data.get("call", {}) or {}
+				from_phone = (
+					call_data.get("from")
+					or call_data.get("from_number")
+					or request_data.get("From")
+					or request_data.get("from_number")
+				)
+				to_phone = (
+					call_data.get("to")
+					or call_data.get("to_number")
+					or request_data.get("To")
+					or request_data.get("to_number")
+				)
+				call_sid = (
+					call_data.get("call_id")
+					or call_data.get("sid")
+					or request_data.get("CallSid")
+					or request_data.get("call_id")
+				)
 			else:
 				from_phone = None
 				to_phone = None
@@ -1207,8 +1222,17 @@ class BarbaraAgent(AgentBase):
 			# For outbound: From = our SignalWire number, To = lead's number
 			user_vars = {}
 			if request_data:
-				call_data = request_data.get("call", {})
-				call_direction = call_data.get("direction", "inbound").lower()
+				call_data = request_data.get("call", {}) or {}
+				call_direction_value = (
+					call_data.get("direction")
+					or request_data.get("Direction")
+					or request_data.get("direction")
+					or "inbound"
+				)
+				if isinstance(call_direction_value, str):
+					call_direction = call_direction_value.lower()
+				else:
+					call_direction = "inbound"
 				user_vars = call_data.get("user_variables") or call_data.get("userVariables") or {}
 			else:
 				call_direction = "inbound"
