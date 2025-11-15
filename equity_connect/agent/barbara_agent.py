@@ -812,7 +812,13 @@ class BarbaraAgent(AgentBase):
 			if "properties" in params and isinstance(params["properties"], dict):
 				props = {}
 				for prop_name, prop_def in params["properties"].items():
-					prop_opt = prop_def.copy() if isinstance(prop_def, dict) else prop_def
+					# Skip non-dict properties (malformed schema)
+					if not isinstance(prop_def, dict):
+						logger.warning(f"⚠️ Skipping non-dict property '{prop_name}' in tool schema optimization")
+						props[prop_name] = prop_def
+						continue
+					
+					prop_opt = prop_def.copy()
 					
 					# Shorten property descriptions (max 50 chars)
 					if "description" in prop_opt and isinstance(prop_opt["description"], str):
@@ -1248,14 +1254,6 @@ class BarbaraAgent(AgentBase):
 		return await verify_caller_identity(args.get("first_name"), args.get("phone"))
 	
 	@AgentBase.tool(
-		description="Check consent and DNC status for a phone number.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number to check"}}, "required": ["phone"]}
-	)
-	async def check_consent_dnc(self, args, raw_data):
-		from equity_connect.tools.lead import check_consent_dnc
-		return await check_consent_dnc(args.get("phone"))
-	
-	@AgentBase.tool(
 		description="Update lead fields gathered during the call and merge conversation_data flags.",
 		parameters={
 			"type": "object",
@@ -1345,37 +1343,6 @@ class BarbaraAgent(AgentBase):
 		from equity_connect.tools.calendar import book_appointment
 		return await book_appointment(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"), raw_data)
 	
-	@AgentBase.tool(
-		description="Reschedule an existing appointment.",
-		parameters={
-			"type": "object",
-			"properties": {
-				"interaction_id": {"type": "string", "description": "Appointment interaction ID"},
-				"new_scheduled_for": {"type": "string", "description": "New ISO 8601 datetime"},
-				"reason": {"type": "string", "description": "Reason", "nullable": True},
-			},
-			"required": ["interaction_id", "new_scheduled_for"],
-		}
-	)
-	async def reschedule_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import reschedule_appointment
-		return await reschedule_appointment(args.get("interaction_id"), args.get("new_scheduled_for"), args.get("reason"))
-	
-	@AgentBase.tool(
-		description="Cancel an existing appointment.",
-		parameters={
-			"type": "object",
-			"properties": {
-				"interaction_id": {"type": "string", "description": "Appointment interaction ID"},
-				"reason": {"type": "string", "description": "Reason", "nullable": True},
-			},
-			"required": ["interaction_id"],
-		}
-	)
-	async def cancel_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import cancel_appointment
-		return await cancel_appointment(args.get("interaction_id"), args.get("reason"))
-	
 	# Knowledge (1)
 	@AgentBase.tool(
 		description="Search reverse mortgage knowledge base for accurate answers.",
@@ -1450,30 +1417,6 @@ class BarbaraAgent(AgentBase):
 			args.get("lead_id"), args.get("broker_id"), args.get("duration_seconds"),
 			args.get("outcome"), args.get("content"), args.get("recording_url"), metadata_json
 		)
-	
-	@AgentBase.tool(
-		description="Assign a SignalWire tracking number to a lead for attribution.",
-		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
-	)
-	async def assign_tracking_number(self, args, raw_data):
-		from equity_connect.tools.interaction import assign_tracking_number
-		return await assign_tracking_number(args.get("lead_id"), args.get("broker_id"))
-	
-	@AgentBase.tool(
-		description="Send appointment confirmation via SMS.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "appointment_datetime": {"type": "string", "description": "ISO 8601 datetime"}}, "required": ["phone", "appointment_datetime"]}
-	)
-	async def send_appointment_confirmation(self, args, raw_data):
-		from equity_connect.tools.interaction import send_appointment_confirmation
-		return await send_appointment_confirmation(args.get("phone"), args.get("appointment_datetime"))
-	
-	@AgentBase.tool(
-		description="Verify appointment confirmation code from SMS.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "code": {"type": "string", "description": "Code to verify"}}, "required": ["phone", "code"]}
-	)
-	async def verify_appointment_confirmation(self, args, raw_data):
-		from equity_connect.tools.interaction import verify_appointment_confirmation
-		return await verify_appointment_confirmation(args.get("phone"), args.get("code"))
 	
 	# Conversation Flag Management (1 consolidated tool)
 	@AgentBase.tool(

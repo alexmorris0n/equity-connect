@@ -256,6 +256,8 @@ async def update_conversation_flag(phone: str, flag: str, value=None, metadata: 
 		return await mark_questions_answered(phone)
 	
 	if flag_normalized == "qualified":
+		if value is None:
+			return "❌ 'value' parameter required for 'qualified' flag. Use 'true' or 'false'."
 		bool_value = value
 		if isinstance(bool_value, str):
 			bool_value = bool_value.lower() in ["true", "1", "yes"]
@@ -268,6 +270,8 @@ async def update_conversation_flag(phone: str, flag: str, value=None, metadata: 
 		return await mark_quote_presented(phone, reaction)
 	
 	if flag_normalized == "wrong_person":
+		if value is None:
+			return "❌ 'value' parameter required for 'wrong_person' flag. Use 'true' (right person available) or 'false' (not available)."
 		right_available = value
 		if isinstance(right_available, str):
 			right_available = right_available.lower() in ["true", "1", "yes"]
