@@ -95,6 +95,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
+const SIGNALWIRE_DESTINATION = import.meta.env.VITE_SIGNALWIRE_DESTINATION || 'webrtc:barbara-sip'
 
 const connecting = ref(false)
 const callActive = ref(false)
@@ -172,7 +173,7 @@ async function startCall() {
     nodesVisited.value = [startNode]
 
     roomSession = await client.dial({
-      to: '/agent',
+      to: SIGNALWIRE_DESTINATION,
       audio: true,
       video: false,
       rootElement: mediaContainer.value || undefined,
