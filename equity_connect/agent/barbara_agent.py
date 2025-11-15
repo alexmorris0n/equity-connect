@@ -53,6 +53,37 @@ class BarbaraAgent(AgentBase):
 		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
+		# Static configuration (one-time setup, not per-request)
+		# Speech recognition hints for domain-specific terms
+		self.add_hints([
+			"reverse mortgage",
+			"HECM",
+			"home equity conversion",
+			"FHA",
+			"equity",
+			"lien",
+			"borrower",
+			"non-borrowing spouse",
+			"Barbara",
+			"EquityConnect"
+		])
+		
+		# Pronunciation rules for acronyms (static, set once)
+		self.set_pronunciations([
+			{"replace": "HECM", "with": "H E C M", "ignore_case": False},
+			{"replace": "FHA", "with": "F H A", "ignore_case": False},
+			{"replace": "API", "with": "A P I", "ignore_case": False},
+			{"replace": "AI", "with": "A I", "ignore_case": False}
+		])
+		
+		# Pattern hints (static)
+		self.add_pattern_hint(
+			hint="AI Agent",
+			pattern="AI\\s+Agent",
+			replace="A.I. Agent",
+			ignore_case=True
+		)
+		
 		# Set up dynamic configuration (per-request)
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
@@ -222,7 +253,9 @@ class BarbaraAgent(AgentBase):
 		
 		# 3b. Load runtime agent params
 		agent_params = get_agent_params(vertical=active_vertical, language="en-US")
-		caller_tz = lead_context.get("timezone") or agent_params.get("local_tz_default", "America/Los_Angeles")
+		# NOTE: timezone is not available in lead_context - use agent_params default
+		# (matches on_swml_request behavior at line 1360)
+		caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
 		wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
 		
 		params_payload = {
@@ -1320,7 +1353,8 @@ class BarbaraAgent(AgentBase):
 			if voice_config.get("model"):
 				language_params["model"] = voice_config["model"]
 			
-			self.add_language(**language_params)
+			# Use set_languages() to REPLACE instead of append (prevents duplicates)
+			self.set_languages([language_params])
 			logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
 			
 			# LLM and conversation parameters (load from Supabase agent_params table)
@@ -1382,33 +1416,8 @@ class BarbaraAgent(AgentBase):
 				"conversation_system": "BarbGraph 8-node routing"
 			})
 			
-			# Speech recognition hints for domain-specific terms
-			self.add_hints([
-				"reverse mortgage",
-				"HECM",
-				"home equity conversion",
-				"FHA",
-				"equity",
-				"lien",
-				"borrower",
-				"non-borrowing spouse",
-				"Barbara",
-				"EquityConnect"
-			])
-			
-			# Pronunciation rules for acronyms
-			self.add_pronunciation("HECM", "H E C M", ignore_case=False)
-			self.add_pronunciation("FHA", "F H A", ignore_case=False)
-			self.add_pronunciation("API", "A P I", ignore_case=False)
-			self.add_pronunciation("AI", "A I", ignore_case=False)
-			
-			# Pattern hints
-			self.add_pattern_hint(
-				hint="AI Agent",
-				pattern="AI\\s+Agent",
-				replace="A.I. Agent",
-				ignore_case=True
-			)
+			# NOTE: Hints, pronunciations, and pattern hints are now configured in __init__()
+			# to prevent duplicate accumulation across multiple webhook requests
 			
 			# Skills: datetime and math
 			try:
