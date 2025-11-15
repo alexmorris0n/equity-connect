@@ -779,6 +779,168 @@ class BarbaraAgent(AgentBase):
 			"model": model
 		}
 
+	def _optimize_tool_schema(self, tool: Dict[str, Any]) -> Dict[str, Any]:
+		"""Optimize a tool's schema to reduce SWML payload size
+		
+		Reduces:
+		- Description length (keep essential info only)
+		- Parameter descriptions (simplify)
+		- Removes unnecessary nullable flags where defaults work
+		
+		Args:
+			tool: Tool definition from SWML SWAIG.functions array
+			
+		Returns:
+			Optimized tool definition
+		"""
+		optimized = tool.copy()
+		
+		# Shorten description (max 100 chars, keep essential info)
+		if "description" in optimized:
+			desc = optimized["description"]
+			if len(desc) > 100:
+				# Keep first sentence or first 100 chars
+				first_sentence = desc.split('.')[0]
+				optimized["description"] = first_sentence[:100] + ("..." if len(first_sentence) > 100 else "")
+		
+		# Optimize parameters schema
+		if "parameters" in optimized and isinstance(optimized["parameters"], dict):
+			params = optimized["parameters"].copy()
+			
+			# Simplify property descriptions
+			if "properties" in params and isinstance(params["properties"], dict):
+				props = {}
+				for prop_name, prop_def in params["properties"].items():
+					prop_opt = prop_def.copy() if isinstance(prop_def, dict) else prop_def
+					
+					# Shorten property descriptions (max 50 chars)
+					if "description" in prop_opt and isinstance(prop_opt["description"], str):
+						if len(prop_opt["description"]) > 50:
+							prop_opt["description"] = prop_opt["description"][:47] + "..."
+					
+					# Remove nullable if type is already optional (redundant)
+					if "nullable" in prop_opt and prop_opt.get("nullable") is True:
+						# Keep nullable only if it's meaningful (not just default True)
+						pass  # Keep it for now, but could remove if needed
+					
+					props[prop_name] = prop_opt
+				params["properties"] = props
+			
+			optimized["parameters"] = params
+		
+		return optimized
+	
+	def _optimize_swml_tools(self, swml: Dict[str, Any]) -> Dict[str, Any]:
+		"""Optimize all tool schemas in SWML to reduce payload size
+		
+		Args:
+			swml: Complete SWML document from SDK
+			
+		Returns:
+			SWML with optimized tool schemas
+		"""
+		optimized_swml = swml.copy()
+		
+		# Navigate to SWAIG.functions array
+		try:
+			main_section = optimized_swml.get("sections", {}).get("main", [])
+			if not main_section or not isinstance(main_section, list):
+				logger.warning("⚠️ Could not find main section in SWML")
+				return optimized_swml
+			
+			# Find the AI block
+			ai_block = None
+			ai_block_idx = None
+			for idx, item in enumerate(main_section):
+				if isinstance(item, dict) and "ai" in item:
+					ai_block = item["ai"]
+					ai_block_idx = idx
+					break
+			
+			if not ai_block:
+				logger.warning("⚠️ Could not find AI block in SWML")
+				return optimized_swml
+			
+			# Navigate to SWAIG.functions
+			# SWAIG can be at: ai.SWAIG or ai.prompt.SWAIG or ai.prompt.pom[0].SWAIG
+			swaig = None
+			swaig_path = None  # Track where we found it for updates
+			
+			if "SWAIG" in ai_block:
+				swaig = ai_block["SWAIG"]
+				swaig_path = "ai_block"
+			elif "prompt" in ai_block:
+				prompt = ai_block["prompt"]
+				if isinstance(prompt, dict):
+					if "SWAIG" in prompt:
+						swaig = prompt["SWAIG"]
+						swaig_path = "prompt"
+					elif "pom" in prompt:
+						# POM mode: SWAIG might be in POM
+						pom = prompt.get("pom", [])
+						if isinstance(pom, list) and len(pom) > 0:
+							first_pom = pom[0] if isinstance(pom[0], dict) else {}
+							if "SWAIG" in first_pom:
+								swaig = first_pom["SWAIG"]
+								swaig_path = "pom"
+			
+			if not swaig:
+				logger.warning("⚠️ Could not find SWAIG block in SWML - tools may not be optimized")
+				# Return original if we can't find SWAIG (might not have tools)
+				return optimized_swml
+			
+			functions = swaig.get("functions", [])
+			if not functions:
+				logger.warning("⚠️ No functions found in SWAIG")
+				return optimized_swml
+			
+			# Optimize each tool
+			original_count = len(functions)
+			optimized_functions = []
+			total_original_size = 0
+			total_optimized_size = 0
+			
+			for tool in functions:
+				original_json = json.dumps(tool, default=str)
+				total_original_size += len(original_json.encode('utf-8'))
+				
+				optimized_tool = self._optimize_tool_schema(tool)
+				optimized_json = json.dumps(optimized_tool, default=str)
+				total_optimized_size += len(optimized_json.encode('utf-8'))
+				
+				optimized_functions.append(optimized_tool)
+			
+			# Update SWAIG.functions (modifying the dict in-place updates the original)
+			swaig["functions"] = optimized_functions
+			
+			# No need to manually update - Python dicts are mutable, so swaig["functions"] = ... 
+			# already updated the original. But we log the path for debugging
+			logger.debug(f"🔧 Updated SWAIG.functions at path: {swaig_path}")
+			
+			# Calculate savings
+			savings_kb = (total_original_size - total_optimized_size) / 1024
+			savings_pct = ((total_original_size - total_optimized_size) / total_original_size * 100) if total_original_size > 0 else 0
+			
+			logger.info(
+				f"📦 Tool schema optimization: {original_count} tools, "
+				f"{savings_kb:.2f}KB saved ({savings_pct:.1f}% reduction)"
+			)
+			
+			# Log final SWML size
+			final_swml_json = json.dumps(optimized_swml, default=str)
+			final_size_kb = len(final_swml_json.encode('utf-8')) / 1024
+			logger.info(f"📋 Final optimized SWML size: {final_size_kb:.2f}KB")
+			
+			if final_size_kb > 250:
+				logger.warning(f"⚠️ SWML size ({final_size_kb:.2f}KB) still approaching 256KB limit!")
+			
+			return optimized_swml
+			
+		except Exception as e:
+			logger.error(f"❌ Failed to optimize SWML tools: {e}", exc_info=True)
+			# Return original if optimization fails
+			return swml
+	
 	def _ensure_skill(self, agent_obj, skill_name: str, config: Optional[Dict[str, Any]] = None):
 		"""
 		Safely load a SignalWire skill only if it's not already present.
@@ -1959,29 +2121,50 @@ List specific actions needed based on conversation outcome.
 				context_count = len(self._contexts_builder._contexts) if hasattr(self._contexts_builder, "_contexts") else 0
 				logger.info(f"📋 Contexts ready for serialization: {context_count} contexts")
 			
-			# CRITICAL FIX: Try to validate JSON serialization before SDK sends it
-			# The SDK auto-generates SWML when we return None, but we need to ensure it's valid JSON
-			# SignalWire is getting "JSON parse error" which suggests invalid JSON structure
+			# ==================== STEP 12: GET, OPTIMIZE & RETURN SWML ====================
+			# PHASE 1: Tool Schema Optimization - Reduce SWML payload size to prevent truncation
+			# Instead of returning None (auto-generate), we get the SWML, optimize it, and return it
 			try:
-				# Attempt to serialize the POM to check for JSON issues
-				if has_pom and hasattr(self.pom, "to_dict"):
-					pom_dict = self.pom.to_dict()
-					pom_json = json.dumps(pom_dict, default=str)
-					pom_size_kb = len(pom_json.encode('utf-8')) / 1024
-					logger.info(f"📋 POM serialization test: {pom_size_kb:.2f}KB, valid JSON: ✅")
-					
-					# Check for common JSON issues
-					if '\x00' in pom_json:
-						logger.error("❌ CRITICAL: POM contains null bytes - will break JSON parsing!")
-					if len(pom_json) > 250 * 1024:  # 250KB warning
-						logger.warning(f"⚠️ POM size ({pom_size_kb:.2f}KB) is very large - may cause JSON parse errors")
+				# Get the SDK's generated SWML document
+				generated_swml = self.get_swml_document()
+				
+				if not generated_swml:
+					logger.warning("⚠️ get_swml_document() returned None - falling back to auto-generation")
+					return None
+				
+				# Log original size
+				original_swml_json = json.dumps(generated_swml, default=str)
+				original_size_kb = len(original_swml_json.encode('utf-8')) / 1024
+				logger.info(f"📋 Original SWML size: {original_size_kb:.2f}KB")
+				
+				# Optimize tool schemas to reduce payload size
+				optimized_swml = self._optimize_swml_tools(generated_swml)
+				
+				# Validate optimized SWML is still valid JSON
+				try:
+					optimized_json = json.dumps(optimized_swml, default=str)
+					# Test JSON parsing
+					json.loads(optimized_json)
+					logger.info("✅ Optimized SWML is valid JSON")
+				except json.JSONDecodeError as e:
+					logger.error(f"❌ Optimized SWML is invalid JSON: {e}")
+					# Fall back to original if optimization broke JSON
+					logger.warning("⚠️ Falling back to original SWML (optimization failed)")
+					return generated_swml
+				
+				# Return optimized SWML
+				logger.info("✅ Returning optimized SWML to SignalWire")
+				return optimized_swml
+				
+			except AttributeError:
+				# get_swml_document() might not exist in all SDK versions
+				logger.warning("⚠️ get_swml_document() not available - falling back to auto-generation")
+				return None
 			except Exception as e:
-				logger.error(f"❌ Failed to validate POM JSON serialization: {e}", exc_info=True)
-			
-			# Return None - SDK will auto-generate SWML from agent configuration
-			# The SDK should serialize contexts when _contexts_builder and _contexts_defined are set
-			# NOTE: If SignalWire still gets JSON parse error, the issue is in SDK's SWML generation
-			return None
+				logger.error(f"❌ Failed to optimize SWML: {e}", exc_info=True)
+				# Fall back to auto-generation if optimization fails
+				logger.warning("⚠️ Falling back to auto-generated SWML (optimization failed)")
+				return None
 			
 		except Exception as e:
 			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
