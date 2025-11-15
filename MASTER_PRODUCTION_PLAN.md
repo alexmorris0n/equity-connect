@@ -114,6 +114,16 @@ equity-connect/ (Git Monorepo)
 4. **CLI Testing Service:** The Fly.io `cli-testing-service` receives portal (or manual) POSTs that include `versionId`, `vertical`, `nodeName`, and overrides. It shells out to `swaig-test /app/equity_connect/test_barbara.py` with those params, exercising the same loader/guardrails the runtime uses. Successful runs (exit code `0`) confirm the SWML payload is valid—see Fly logs at `2025-11-14T19:28:26Z` for the `greet` node example.
 5. **Automation Status:** Manual trigger exists today (save toast + curl). Next step is wiring the Vertical editor’s save/publish action to automatically call the tester and block activation when validation fails.
 
+### 🎧 Browser Test Calls (Nov 15, 2025)
+
+- **Portal-Only Experience:** The new `TestCallModal.vue` (Models tab + node cards) opens a WebRTC session directly in the browser—no PSTN leg, no phone number input. Mic + speakers stay local, mirroring Holy Guacamole’s UX.
+- **Guest Tokens Only:** `barbara-mcp/index.js` now exposes a single `/api/test-call/token` endpoint that scopes guest tokens to `SIGNALWIRE_ALLOWED_ADDRESSES` for 60 minutes. All legacy `/start` outbound-call code has been removed.
+- **SignalWire Client:** The portal imports `@signalwire/js`, fetches a guest token, and dials the Barbara agent route (`/agent`) with `audio: true, video: false`. Remote audio attaches to a hidden `rootElement` while the UI renders `BarbaraAvatar.vue` (idle vs talking MP4 swap).
+- **Test Metadata:** User metadata is passed via `userVariables` exactly like Holy Guacamole (`test_mode`, `use_draft`, `start_node`, `stop_on_route`, `vertical`). `barbara_agent.py` reads them inside `on_swml_request`, forces draft prompts, and seeds context tracking with the requested node.
+- **Node Path Events:** During test mode the agent now emits `node_transition` and `test_complete` user events (piggybacked on SWAIG responses). The modal subscribes to `roomSession.on('user_event', ...)`, updates the live node path, and animates the avatar to “talking” whenever Barbara routes.
+- **Two Modes:** “⚡ Test This Node” (per-node button) sets `mode=single`, `stop_on_route=true` and auto-stops at the first route change. “🎯 Test Full Vertical” lives in both the Models & Voice tab and the Nodes header, starting at GREET and running the full 8-node flow.
+- **Assets:** `portal/public/barbara_idle.mp4` + `portal/public/barbara_talking.mp4` power the avatar swap. Swapping the MP4s swaps the animation—documented under `portal/src/components/BarbaraAvatar.vue`.
+
 ---
 
 ## 📊 Current Production Status
