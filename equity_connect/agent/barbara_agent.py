@@ -226,7 +226,7 @@ class BarbaraAgent(AgentBase):
 		wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
 		
 		params_payload = {
-			"ai_model": agent_params.get("ai_model", "gpt-4o"),
+			"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
 			"local_tz": caller_tz,
 			"wait_for_user": wait_for_user,
 			"direction": call_direction,
@@ -1323,7 +1323,7 @@ class BarbaraAgent(AgentBase):
 			wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
 			
 			params_payload = {
-				"ai_model": agent_params.get("ai_model", "gpt-4o"),
+				"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
 				"wait_for_user": wait_for_user,
 				"direction": call_direction,
 				"local_tz": caller_tz,
