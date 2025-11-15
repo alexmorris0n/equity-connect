@@ -1959,8 +1959,28 @@ List specific actions needed based on conversation outcome.
 				context_count = len(self._contexts_builder._contexts) if hasattr(self._contexts_builder, "_contexts") else 0
 				logger.info(f"📋 Contexts ready for serialization: {context_count} contexts")
 			
+			# CRITICAL FIX: Try to validate JSON serialization before SDK sends it
+			# The SDK auto-generates SWML when we return None, but we need to ensure it's valid JSON
+			# SignalWire is getting "JSON parse error" which suggests invalid JSON structure
+			try:
+				# Attempt to serialize the POM to check for JSON issues
+				if has_pom and hasattr(self.pom, "to_dict"):
+					pom_dict = self.pom.to_dict()
+					pom_json = json.dumps(pom_dict, default=str)
+					pom_size_kb = len(pom_json.encode('utf-8')) / 1024
+					logger.info(f"📋 POM serialization test: {pom_size_kb:.2f}KB, valid JSON: ✅")
+					
+					# Check for common JSON issues
+					if '\x00' in pom_json:
+						logger.error("❌ CRITICAL: POM contains null bytes - will break JSON parsing!")
+					if len(pom_json) > 250 * 1024:  # 250KB warning
+						logger.warning(f"⚠️ POM size ({pom_size_kb:.2f}KB) is very large - may cause JSON parse errors")
+			except Exception as e:
+				logger.error(f"❌ Failed to validate POM JSON serialization: {e}", exc_info=True)
+			
 			# Return None - SDK will auto-generate SWML from agent configuration
 			# The SDK should serialize contexts when _contexts_builder and _contexts_defined are set
+			# NOTE: If SignalWire still gets JSON parse error, the issue is in SDK's SWML generation
 			return None
 			
 		except Exception as e:
