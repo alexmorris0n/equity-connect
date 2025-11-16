@@ -868,14 +868,14 @@ class BarbaraAgent(AgentBase):
 	
 	# Lead Management (5)
 	@AgentBase.tool(
-		name="lookup_lead_info_by_phone",  # COMPLETELY DIFFERENT NAME
+		name="get_lead_context",  # MATCH PROMPTS
 		description="Get lead information by phone number; returns lead, broker, property context.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number of the lead (any format)"}}, "required": ["phone"]}
 	)
-	async def lookup_lead_info_by_phone(self, args, raw_data):
+	async def get_lead_context_tool(self, args, raw_data):
 		"""Tool: Get lead information by phone number - DIRECT IMPLEMENTATION"""
-		print("🚨🚨🚨 TOOL CALLED - lookup_lead_info_by_phone 🚨🚨🚨")  # DIAGNOSTIC
-		logger.error("🚨🚨🚨 TOOL CALLED - lookup_lead_info_by_phone 🚨🚨🚨")  # Force to ERROR level
+		print("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # DIAGNOSTIC
+		logger.error("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # Force to ERROR level
 		
 		phone = args.get("phone")
 		logger.info(f"🔍 Looking up lead by phone: {phone}")
