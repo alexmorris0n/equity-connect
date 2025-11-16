@@ -252,7 +252,7 @@ class BarbaraAgent(AgentBase):
 			"code": "en-US",
 			"voice": voice_string,
 			"engine": voice_config["engine"],
-			"speech_fillers": ["Let me check on that...", "One moment please...", "I'm looking that up now..."],
+			"speech_fillers": ["Mm-hmm...", "Uh-huh...", "I'm still here.", "Go ahead."],
 			"function_fillers": ["Processing...", "Just a second...", "Looking that up..."]
 		}
 		
@@ -1455,7 +1455,7 @@ class BarbaraAgent(AgentBase):
 				"code": "en-US",
 				"voice": voice_string,
 				"engine": voice_config["engine"],
-				"speech_fillers": ["Let me check on that...", "One moment please...", "I'm looking that up now..."],
+				"speech_fillers": ["Mm-hmm...", "Uh-huh...", "I'm still here.", "Go ahead."],
 				"function_fillers": ["Processing...", "Just a second...", "Looking that up..."]
 			}
 			
