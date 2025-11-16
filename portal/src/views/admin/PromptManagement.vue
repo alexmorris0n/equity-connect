@@ -4575,7 +4575,7 @@ function insertVariableIntoSection(sectionKey, variableKey) {
   const textarea = textareaRefs.value[sectionKey]
   if (!textarea) return
   
-  const variableText = `{{${variableKey}}}`
+  const variableText = `$${variableKey}`  // Changed from {{variable}} to $variable for Python string.Template
   
   // Get current content
   const currentContent = currentVersion.value.content[sectionKey] || ''
