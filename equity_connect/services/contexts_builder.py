@@ -162,7 +162,11 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
                 }
                 # Use safe_substitute to avoid KeyError if template has variables we don't provide
                 from string import Template
+                original_text = prompt_text[:100]  # First 100 chars for logging
                 prompt_text = Template(prompt_text).safe_substitute(template_vars)
+                substituted_text = prompt_text[:100]  # First 100 chars after substitution
+                logger.info(f"[SUBST] Before: {original_text}...")
+                logger.info(f"[SUBST] After: {substituted_text}...")
             except Exception as e:
                 logger.warning(f"[WARN] Failed to substitute variables in prompt: {e}")
                 # Keep original prompt text if substitution fails
