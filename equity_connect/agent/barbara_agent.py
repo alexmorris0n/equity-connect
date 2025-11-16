@@ -284,6 +284,9 @@ class BarbaraAgent(AgentBase):
 		wait_for_user_default = agent_params.get("wait_for_user_default", False)
 		static_greeting = agent_params.get("static_greeting")
 		static_greeting_no_barge = agent_params.get("static_greeting_no_barge", False)
+		background_file = agent_params.get("background_file")
+		background_file_volume = agent_params.get("background_file_volume")
+		background_file_loops = agent_params.get("background_file_loops")
 		initial_sleep_ms = agent_params.get("initial_sleep_ms")
 		ringback_audio_url = (
 			os.getenv("SIGNALWIRE_RINGBACK_AUDIO_URL")
@@ -302,11 +305,17 @@ class BarbaraAgent(AgentBase):
 					"Invalid SIGNALWIRE_RINGBACK_INITIAL_SLEEP_MS value: %s",
 					ringback_sleep_override,
 				)
+		if ringback_audio_url and static_greeting and isinstance(static_greeting, str):
+			if static_greeting.strip().lower() == ringback_audio_url.strip().lower() or static_greeting.strip().startswith("http"):
+				logger.info("🎧 Clearing static_greeting to prevent reading ringback URL aloud")
+				static_greeting = None
+				static_greeting_no_barge = False
 		if call_direction == "inbound":
 			wait_for_user = False
-			if ringback_audio_url and not static_greeting:
-				static_greeting = ringback_audio_url
-				static_greeting_no_barge = True
+			if ringback_audio_url and not background_file:
+				background_file = ringback_audio_url
+				background_file_volume = agent_params.get("background_file_volume", -15)
+				background_file_loops = agent_params.get("background_file_loops", 1)
 			if (initial_sleep_ms is None or initial_sleep_ms <= 0):
 				if ringback_sleep_ms is not None:
 					initial_sleep_ms = ringback_sleep_ms
@@ -316,7 +325,9 @@ class BarbaraAgent(AgentBase):
 			wait_for_user = True
 		else:
 			wait_for_user = wait_for_user_default
-			if (initial_sleep_ms is None or initial_sleep_ms <= 0) and ringback_sleep_ms is not None:
+			if (
+				initial_sleep_ms is None or initial_sleep_ms <= 0
+			) and ringback_sleep_ms is not None:
 				initial_sleep_ms = ringback_sleep_ms
 		
 		params_payload = {
@@ -338,9 +349,9 @@ class BarbaraAgent(AgentBase):
 			"transparent_barge": agent_params.get("transparent_barge"),
 			"enable_barge": agent_params.get("enable_barge"),
 			"ai_volume": agent_params.get("ai_volume", 0),
-			"background_file": agent_params.get("background_file"),
-			"background_file_volume": agent_params.get("background_file_volume"),
-			"background_file_loops": agent_params.get("background_file_loops"),
+			"background_file": background_file,
+			"background_file_volume": background_file_volume,
+			"background_file_loops": background_file_loops,
 			"eleven_labs_stability": agent_params.get("eleven_labs_stability"),
 			"eleven_labs_similarity": agent_params.get("eleven_labs_similarity"),
 			"max_emotion": agent_params.get("max_emotion", 30),
@@ -1462,6 +1473,9 @@ class BarbaraAgent(AgentBase):
 			wait_for_user_default = agent_params.get("wait_for_user_default", False)
 			static_greeting = agent_params.get("static_greeting")
 			static_greeting_no_barge = agent_params.get("static_greeting_no_barge", False)
+			background_file = agent_params.get("background_file")
+			background_file_volume = agent_params.get("background_file_volume")
+			background_file_loops = agent_params.get("background_file_loops")
 			initial_sleep_ms = agent_params.get("initial_sleep_ms")
 			ringback_audio_url = (
 				os.getenv("SIGNALWIRE_RINGBACK_AUDIO_URL")
@@ -1480,11 +1494,17 @@ class BarbaraAgent(AgentBase):
 						"Invalid SIGNALWIRE_RINGBACK_INITIAL_SLEEP_MS value: %s",
 						ringback_sleep_override,
 					)
+			if ringback_audio_url and static_greeting and isinstance(static_greeting, str):
+				if static_greeting.strip().lower() == ringback_audio_url.strip().lower() or static_greeting.strip().startswith("http"):
+					logger.info("🎧 Clearing static_greeting to prevent reading ringback URL aloud")
+					static_greeting = None
+					static_greeting_no_barge = False
 			if call_direction == "inbound":
 				wait_for_user = False
-				if ringback_audio_url and not static_greeting:
-					static_greeting = ringback_audio_url
-					static_greeting_no_barge = True
+				if ringback_audio_url and not background_file:
+					background_file = ringback_audio_url
+					background_file_volume = agent_params.get("background_file_volume", -15)
+					background_file_loops = agent_params.get("background_file_loops", 1)
 				if (initial_sleep_ms is None or initial_sleep_ms <= 0):
 					if ringback_sleep_ms is not None:
 						initial_sleep_ms = ringback_sleep_ms
@@ -1495,8 +1515,8 @@ class BarbaraAgent(AgentBase):
 			else:
 				wait_for_user = wait_for_user_default
 				if (initial_sleep_ms is None or initial_sleep_ms <= 0) and ringback_sleep_ms is not None:
-					initial_sleep_ms = ringback_sleep_ms
-			
+						initial_sleep_ms = ringback_sleep_ms
+				
 			params_payload = {
 				"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
 				"wait_for_user": wait_for_user,
@@ -1516,9 +1536,9 @@ class BarbaraAgent(AgentBase):
 				"transparent_barge": agent_params.get("transparent_barge"),
 				"enable_barge": agent_params.get("enable_barge"),
 				"ai_volume": agent_params.get("ai_volume", 0),
-				"background_file": agent_params.get("background_file"),
-				"background_file_volume": agent_params.get("background_file_volume"),
-				"background_file_loops": agent_params.get("background_file_loops"),
+				"background_file": background_file,
+				"background_file_volume": background_file_volume,
+				"background_file_loops": background_file_loops,
 				"eleven_labs_stability": agent_params.get("eleven_labs_stability"),
 				"eleven_labs_similarity": agent_params.get("eleven_labs_similarity"),
 				"max_emotion": agent_params.get("max_emotion", 30),
