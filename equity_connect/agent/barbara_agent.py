@@ -1856,24 +1856,24 @@ List specific actions needed based on conversation outcome.
 					"❌ CRITICAL: Contexts not properly configured for SWML serialization! "
 					"SDK may not include contexts in generated SWML, causing call to hang up."
 				)
-		else:
-			logger.info("✅ Contexts properly configured - SDK should serialize them into SWML")
-		
-		# Log context count for verification
-		if has_contexts_builder and hasattr(self._contexts_builder, "_contexts"):
-			context_count = len(self._contexts_builder._contexts) if hasattr(self._contexts_builder, "_contexts") else 0
-			logger.info(f"📋 Contexts ready for serialization: {context_count} contexts")
+			if has_contexts_builder and has_contexts_defined:
+				logger.info("✅ Contexts properly configured - SDK should serialize them into SWML")
+			
+			# Log context count for verification
+			if has_contexts_builder and hasattr(self._contexts_builder, "_contexts"):
+				context_count = len(self._contexts_builder._contexts) if hasattr(self._contexts_builder, "_contexts") else 0
+				logger.info(f"📋 Contexts ready for serialization: {context_count} contexts")
+			
+		except Exception as e:
+			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
+			# Fail loud - don't degrade gracefully
+			raise
 		
 		# ==================== STEP 12: RETURN FOR AUTO-GENERATION ====================
 		# Let SDK auto-generate SWML with our 9 optimized tools
 		# Tool reduction (22 → 9 tools) already solved the truncation issue
 		logger.info("✅ Returning None for SDK auto-generation with 9 tools")
 		return None
-		
-	except Exception as e:
-		logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
-		# Fail loud - don't degrade gracefully
-		raise
 	
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
 		"""Handle conversation summary after call ends
