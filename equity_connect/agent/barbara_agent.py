@@ -1649,10 +1649,12 @@ List specific actions needed based on conversation outcome.
 								"name": full_name,
 								"first_name": first_name,
 								"last_name": last_name,
+								"primary_phone": lead_data.get('primary_phone'),  # Add for variable substitution
 								"qualified": (state_row.get("qualified") if state_row else None) or lead_data.get('status') in ['qualified', 'appointment_set'],
 								"property_address": lead_data.get('property_address'),
 								"property_city": lead_data.get('property_city'),
 								"property_state": lead_data.get('property_state'),
+								"property_zip": lead_data.get('property_zip'),  # Add for variable substitution
 								"property_value": lead_data.get('property_value'),
 								"estimated_equity": lead_data.get('estimated_equity'),
 								"primary_email": lead_data.get('primary_email'),
