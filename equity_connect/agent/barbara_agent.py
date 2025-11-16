@@ -102,13 +102,7 @@ class BarbaraAgent(AgentBase):
 			"Alright, moving ahead..."
 		])
 		
-		self.add_internal_filler("change_context", "en-US", [
-			"Let me help you with that...",
-			"I'll guide you through this...",
-			"Let's work through this together...",
-			"Let me assist you with that...",
-			"I'm here to help with that..."
-		])
+		self.add_internal_filler("change_context", "en-US", [])
 		
 		# Set up dynamic configuration (per-request)
 		# This replaces static config and enables multi-tenant, per-broker customization
@@ -288,12 +282,42 @@ class BarbaraAgent(AgentBase):
 		# (matches on_swml_request behavior at line 1360)
 		caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
 		wait_for_user_default = agent_params.get("wait_for_user_default", False)
+		static_greeting = agent_params.get("static_greeting")
+		static_greeting_no_barge = agent_params.get("static_greeting_no_barge", False)
+		initial_sleep_ms = agent_params.get("initial_sleep_ms")
+		ringback_audio_url = (
+			os.getenv("SIGNALWIRE_RINGBACK_AUDIO_URL")
+			or os.getenv("SIGNALWIRE_RINGBACK_URL")
+		)
+		ringback_sleep_override = (
+			os.getenv("SIGNALWIRE_RINGBACK_INITIAL_SLEEP_MS")
+			or os.getenv("SIGNALWIRE_INITIAL_SLEEP_MS")
+		)
+		ringback_sleep_ms = None
+		if ringback_sleep_override:
+			try:
+				ringback_sleep_ms = max(0, int(ringback_sleep_override))
+			except ValueError:
+				logger.warning(
+					"Invalid SIGNALWIRE_RINGBACK_INITIAL_SLEEP_MS value: %s",
+					ringback_sleep_override,
+				)
 		if call_direction == "inbound":
 			wait_for_user = False
+			if ringback_audio_url and not static_greeting:
+				static_greeting = ringback_audio_url
+				static_greeting_no_barge = True
+			if (initial_sleep_ms is None or initial_sleep_ms <= 0):
+				if ringback_sleep_ms is not None:
+					initial_sleep_ms = ringback_sleep_ms
+				elif ringback_audio_url:
+					initial_sleep_ms = 1800
 		elif call_direction == "outbound":
 			wait_for_user = True
 		else:
 			wait_for_user = wait_for_user_default
+			if (initial_sleep_ms is None or initial_sleep_ms <= 0) and ringback_sleep_ms is not None:
+				initial_sleep_ms = ringback_sleep_ms
 		
 		params_payload = {
 			"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
@@ -320,8 +344,8 @@ class BarbaraAgent(AgentBase):
 			"eleven_labs_stability": agent_params.get("eleven_labs_stability"),
 			"eleven_labs_similarity": agent_params.get("eleven_labs_similarity"),
 			"max_emotion": agent_params.get("max_emotion", 30),
-			"static_greeting": agent_params.get("static_greeting"),
-			"static_greeting_no_barge": agent_params.get("static_greeting_no_barge", False),
+			"static_greeting": static_greeting,
+			"static_greeting_no_barge": static_greeting_no_barge,
 			"swaig_allow_swml": True,
 			"swaig_allow_settings": True,
 			"swaig_set_global_data": True,
@@ -329,6 +353,8 @@ class BarbaraAgent(AgentBase):
 			"debug_webhook_url": os.getenv("SIGNALWIRE_DEBUG_WEBHOOK_URL"),
 			"debug_webhook_level": 1,
 		}
+		if initial_sleep_ms is not None:
+			params_payload["initial_sleep_ms"] = initial_sleep_ms
 		agent.set_params(params_payload)
 		
 		# Add skills with custom fillers for better UX
@@ -1434,12 +1460,42 @@ class BarbaraAgent(AgentBase):
 			agent_params = get_agent_params(vertical=active_vertical, language="en-US")
 			caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
 			wait_for_user_default = agent_params.get("wait_for_user_default", False)
+			static_greeting = agent_params.get("static_greeting")
+			static_greeting_no_barge = agent_params.get("static_greeting_no_barge", False)
+			initial_sleep_ms = agent_params.get("initial_sleep_ms")
+			ringback_audio_url = (
+				os.getenv("SIGNALWIRE_RINGBACK_AUDIO_URL")
+				or os.getenv("SIGNALWIRE_RINGBACK_URL")
+			)
+			ringback_sleep_override = (
+				os.getenv("SIGNALWIRE_RINGBACK_INITIAL_SLEEP_MS")
+				or os.getenv("SIGNALWIRE_INITIAL_SLEEP_MS")
+			)
+			ringback_sleep_ms = None
+			if ringback_sleep_override:
+				try:
+					ringback_sleep_ms = max(0, int(ringback_sleep_override))
+				except ValueError:
+					logger.warning(
+						"Invalid SIGNALWIRE_RINGBACK_INITIAL_SLEEP_MS value: %s",
+						ringback_sleep_override,
+					)
 			if call_direction == "inbound":
 				wait_for_user = False
+				if ringback_audio_url and not static_greeting:
+					static_greeting = ringback_audio_url
+					static_greeting_no_barge = True
+				if (initial_sleep_ms is None or initial_sleep_ms <= 0):
+					if ringback_sleep_ms is not None:
+						initial_sleep_ms = ringback_sleep_ms
+					elif ringback_audio_url:
+						initial_sleep_ms = 1800
 			elif call_direction == "outbound":
 				wait_for_user = True
 			else:
 				wait_for_user = wait_for_user_default
+				if (initial_sleep_ms is None or initial_sleep_ms <= 0) and ringback_sleep_ms is not None:
+					initial_sleep_ms = ringback_sleep_ms
 			
 			params_payload = {
 				"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
@@ -1466,8 +1522,8 @@ class BarbaraAgent(AgentBase):
 				"eleven_labs_stability": agent_params.get("eleven_labs_stability"),
 				"eleven_labs_similarity": agent_params.get("eleven_labs_similarity"),
 				"max_emotion": agent_params.get("max_emotion", 30),
-				"static_greeting": agent_params.get("static_greeting"),
-				"static_greeting_no_barge": agent_params.get("static_greeting_no_barge", False),
+				"static_greeting": static_greeting,
+				"static_greeting_no_barge": static_greeting_no_barge,
 				"temperature": 0.7,
 				"max_tokens": 150,
 				"top_p": 0.9,
@@ -1479,6 +1535,8 @@ class BarbaraAgent(AgentBase):
 				"debug_webhook_url": os.getenv("SIGNALWIRE_DEBUG_WEBHOOK_URL"),
 				"debug_webhook_level": 1,
 			}
+			if initial_sleep_ms is not None:
+				params_payload["initial_sleep_ms"] = initial_sleep_ms
 			self.set_params(params_payload)
 			logger.info(
 				f"✅ AI params configured via Supabase: wait_for_user={wait_for_user}, "

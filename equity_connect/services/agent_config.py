@@ -80,6 +80,7 @@ def _get_default_params() -> Dict[str, Any]:
 		"transparent_barge": True,
 		"enable_barge": "complete,partial",
 		"ai_volume": 0,
+		"initial_sleep_ms": 0,
 		"background_file": None,
 		"background_file_volume": -40,
 		"background_file_loops": -1,
