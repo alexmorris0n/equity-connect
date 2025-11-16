@@ -1807,31 +1807,32 @@ List specific actions needed based on conversation outcome.
 					logger.error(f"[ERROR] Failed to load theme: {e}")
 					raise
 				
-				# ==================== STEP 10: APPLY PROMPTS AND CONTEXTS VIA BUILDER API ====================
-				# CRITICAL: Use builder API exclusively - no custom dict returns
-				# CRITICAL: POM mode requires NO return value - SDK handles serialization
+				# ==================== STEP 10: RETURN POM STRUCTURE ====================
+				# With use_pom=True, we RETURN the structure for POM to apply
+				# DO NOT manually call builder API methods (causes double registration)
 				
 				if self._test_mode:
 					self._handle_test_context_change(initial_context)
 				
-				# Apply theme using prompt_add_section
-				self.prompt_add_section("Personality", body=theme_text)
-				
-				# Build contexts using builder API
-				self._apply_contexts_via_builder(self, contexts_obj)
-				
 				logger.info(
-					f"[OK] Applied POM via builder API with {len(contexts_obj)} contexts: "
+					f"[OK] Returning POM structure with {len(contexts_obj)} contexts: "
 					f"voice={voice_string}, model={params_payload.get('ai_model')}, "
 					f"initial_context={initial_context}, phone={phone}"
 				)
 				
-				# CRITICAL: POM mode requires NO return value
-				# If you see a return dict here, you're doing it wrong
-				return None
+				return {
+					"prompt": {
+						"pom": {
+							"sections": {
+								"main": theme_text
+							},
+							"contexts": contexts_obj
+						}
+					}
+				}
 			else:
 				logger.warning("[WARN] No phone number found in request - using default configuration")
-				# Apply fallback using builder API
+				# Return fallback POM structure
 				try:
 					contexts_obj = build_contexts_object(
 						vertical=active_vertical,
@@ -1841,17 +1842,18 @@ List specific actions needed based on conversation outcome.
 					)
 					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
 					
-					# Apply theme using prompt_add_section
-					self.prompt_add_section("Personality", body=theme_text)
+					logger.info(f"[OK] Returning fallback POM structure with {len(contexts_obj)} contexts")
 					
-					# Build contexts using builder API
-					self._apply_contexts_via_builder(self, contexts_obj)
-					
-					logger.info(f"[OK] Applied fallback POM via builder API with {len(contexts_obj)} contexts")
-					
-					# CRITICAL: POM mode requires NO return value
-					# If you see a return dict here, you're doing it wrong
-					return None
+					return {
+						"prompt": {
+							"pom": {
+								"sections": {
+									"main": theme_text
+								},
+								"contexts": contexts_obj
+							}
+						}
+					}
 				except Exception as e:
 					logger.error(f"Failed to build fallback contexts: {e}")
 					raise
