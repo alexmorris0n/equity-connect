@@ -231,7 +231,9 @@ class BarbaraAgent(AgentBase):
 		# 3b. Load runtime agent params
 		agent_params = get_agent_params(vertical=active_vertical, language="en-US")
 		caller_tz = lead_context.get("timezone") or agent_params.get("local_tz_default", "America/Los_Angeles")
-		wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
+		# Inbound: Barbara answers, should greet first (wait_for_user=False)
+		# Outbound: Barbara calls, should wait for them to say hello (wait_for_user=True)
+		wait_for_user = False if call_direction == "inbound" else agent_params.get("wait_for_user_default", True)
 		
 		params_payload = {
 			"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
@@ -1421,7 +1423,9 @@ class BarbaraAgent(AgentBase):
 			# LLM and conversation parameters (load from Supabase agent_params table)
 			agent_params = get_agent_params(vertical=active_vertical, language="en-US")
 			caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
-			wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
+			# Inbound: Barbara answers, should greet first (wait_for_user=False)
+			# Outbound: Barbara calls, should wait for them to say hello (wait_for_user=True)
+			wait_for_user = False if call_direction == "inbound" else agent_params.get("wait_for_user_default", True)
 			
 			params_payload = {
 				"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
