@@ -1083,9 +1083,21 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"first_name": {"type": "string", "description": "Caller first name"}, "phone": {"type": "string", "description": "Caller phone"}}, "required": ["first_name", "phone"]}
 	)
 	def verify_caller_identity(self, args, raw_data):
+		"""Tool: Verify caller identity (one-time use).
+		
+		After verifying, toggles itself OFF to save tokens (caller already verified).
+		"""
 		logger.error("=== TOOL CALLED - verify_caller_identity ===")
-		return lead_service.verify_caller_identity_core(
+		result = lead_service.verify_caller_identity_core(
 			args.get("first_name"), args.get("phone")
+		)
+		
+		# Toggle off after verification (one-time use per call)
+		logger.info("[TOGGLE] Disabling verify_caller_identity - caller already verified")
+		return SwaigFunctionResult(
+			response=result,
+			action="toggle",
+			action_params={"functions": ["verify_caller_identity"], "active": False}
 		)
 	
 	@AgentBase.tool(
@@ -1147,9 +1159,21 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	def find_broker_by_territory(self, args, raw_data):
+		"""Tool: Find a broker by territory (one-time use).
+		
+		After finding broker, toggles itself OFF - broker assignment doesn't change mid-call.
+		"""
 		logger.error("=== TOOL CALLED - find_broker_by_territory ===")
-		return lead_service.find_broker_by_territory_core(
+		result = lead_service.find_broker_by_territory_core(
 			args.get("zip_code"), args.get("city"), args.get("state")
+		)
+		
+		# Toggle off after finding broker (one-time use per call)
+		logger.info("[TOGGLE] Disabling find_broker_by_territory - broker already assigned")
+		return SwaigFunctionResult(
+			response=result,
+			action="toggle",
+			action_params={"functions": ["find_broker_by_territory"], "active": False}
 		)
 	
 	# Calendar (4)
@@ -1190,13 +1214,25 @@ class BarbaraAgent(AgentBase):
 		meta_data_token="book_appointment_v1"
 	)
 	def book_appointment(self, args, raw_data):
+		"""Tool: Book an appointment (one-time use).
+		
+		After booking, toggles itself OFF - can't book twice in one call.
+		"""
 		logger.error("=== TOOL CALLED - book_appointment ===")
-		return calendar_service.book_appointment_core(
+		result = calendar_service.book_appointment_core(
 			args.get("lead_id"),
 			args.get("broker_id"),
 			args.get("scheduled_for"),
 			args.get("notes"),
 			raw_data,
+		)
+		
+		# Toggle off after booking (one-time use per call)
+		logger.info("[TOGGLE] Disabling book_appointment - appointment already booked")
+		return SwaigFunctionResult(
+			response=result,
+			action="toggle",
+			action_params={"functions": ["book_appointment"], "active": False}
 		)
 	
 	@AgentBase.tool(
@@ -1252,9 +1288,21 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
 	)
 	def assign_tracking_number(self, args, raw_data):
+		"""Tool: Assign tracking number (one-time use).
+		
+		After assigning, toggles itself OFF - tracking number doesn't change mid-call.
+		"""
 		logger.error("=== TOOL CALLED - assign_tracking_number ===")
-		return interaction_service.assign_tracking_number_core(
+		result = interaction_service.assign_tracking_number_core(
 			args.get("lead_id"), args.get("broker_id")
+		)
+		
+		# Toggle off after assigning (one-time use per call)
+		logger.info("[TOGGLE] Disabling assign_tracking_number - number already assigned")
+		return SwaigFunctionResult(
+			response=result,
+			action="toggle",
+			action_params={"functions": ["assign_tracking_number"], "active": False}
 		)
 	
 	@AgentBase.tool(
@@ -1319,14 +1367,38 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
 	)
 	def mark_qualification_result(self, args, raw_data):
-		return conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
+		"""Tool: Mark qualification result (one-time use).
+		
+		After setting qualification, toggles itself OFF - qualification doesn't change mid-call.
+		"""
+		result = conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
+		
+		# Toggle off after setting qualification (one-time use per call)
+		logger.info("[TOGGLE] Disabling mark_qualification_result - qualification already set")
+		return SwaigFunctionResult(
+			response=result,
+			action="toggle",
+			action_params={"functions": ["mark_qualification_result"], "active": False}
+		)
 	
 	@AgentBase.tool(
 		description="Mark that a quote has been presented with reaction.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
 	)
 	def mark_quote_presented(self, args, raw_data):
-		return conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
+		"""Tool: Mark quote presented (one-time use).
+		
+		After marking quote, toggles itself OFF - quote already presented this call.
+		"""
+		result = conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
+		
+		# Toggle off after marking quote (one-time use per call)
+		logger.info("[TOGGLE] Disabling mark_quote_presented - quote already marked")
+		return SwaigFunctionResult(
+			response=result,
+			action="toggle",
+			action_params={"functions": ["mark_quote_presented"], "active": False}
+		)
 	
 	@AgentBase.tool(
 		description="Mark wrong person; optionally indicate if right person is available.",
