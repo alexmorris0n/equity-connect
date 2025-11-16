@@ -1011,7 +1011,8 @@ class BarbaraAgent(AgentBase):
 		"""Tool: Get lead information by phone number via lead_service.
 		
 		Checks metadata cache first (set in on_swml_request) to avoid duplicate DB lookups.
-		This follows SignalWire's recommended pattern from the Adam healthcare agent demo.
+		After returning data, toggles itself OFF so AI won't call it again (saves tokens).
+		This follows SignalWire's recommended pattern from Devon's context-aware call transfer demo.
 		"""
 		try:
 			logger.error("=== TOOL CALLED - get_lead_context ===")
@@ -1019,7 +1020,7 @@ class BarbaraAgent(AgentBase):
 			# Check metadata cache first (set in on_swml_request)
 			if self.metadata.get('lead_id'):
 				logger.info("[CACHE] Returning lead data from metadata (no DB lookup needed)")
-				return json.dumps({
+				result_data = {
 					"found": True,
 					"lead": {
 						"id": self.metadata.get('lead_id'),
@@ -1049,7 +1050,15 @@ class BarbaraAgent(AgentBase):
 						"estimated_equity": self.metadata.get('estimated_equity')
 					},
 					"conversation_data": self.metadata.get('conversation_data', {})
-				})
+				}
+				
+				# Toggle this tool OFF for the rest of the call (saves LLM tokens)
+				logger.info("[TOGGLE] Disabling get_lead_context tool - data already provided")
+				return SwaigFunctionResult(
+					response=json.dumps(result_data),
+					action="toggle",
+					action_params={"functions": ["get_lead_context"], "active": False}
+				)
 			
 			# Fallback to DB lookup if metadata not available
 			logger.warning("[WARN] Metadata not available, falling back to DB lookup")
@@ -1058,7 +1067,13 @@ class BarbaraAgent(AgentBase):
 				logger.warning(f"[WARN] get_lead_context called with no phone: args={args}")
 			result = lead_service.get_lead_context_core(phone or "")
 			logger.error(f"=== TOOL COMPLETE - get_lead_context returned {len(str(result))} chars ===")
-			return result
+			
+			# Also toggle off after DB lookup
+			return SwaigFunctionResult(
+				response=result,
+				action="toggle",
+				action_params={"functions": ["get_lead_context"], "active": False}
+			)
 		except RecursionError as e:
 			logger.error(f"[FATAL] RecursionError in get_lead_context: {e}")
 			return json.dumps({"found": False, "error": "System error - recursion detected"})
