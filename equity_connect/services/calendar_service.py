@@ -24,12 +24,16 @@ def check_broker_availability_core(
 	preferred_time: Optional[str] = None,
 	raw_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-	"""Return JSON describing broker availability for the next 14 days."""
+	"""Return JSON describing broker availability for the next 14 days.
+	
+	Returns up to 10 best-matching slots to save tokens.
+	If preferred_day or preferred_time provided, filters to those constraints.
+	"""
 	sb = get_supabase_client()
 	start_time = time.time()
 	
 	try:
-		logger.info(f"Checking availability for broker: {broker_id}")
+		logger.info(f"Checking availability for broker: {broker_id}, preferred_day={preferred_day}, preferred_time={preferred_time}")
 		
 		broker_nylas_grant_id = None
 		broker_calendar_id = None
@@ -94,9 +98,16 @@ def check_broker_availability_core(
 			preferred_time,
 		)
 		
+		# Limit to 10 best slots to save tokens (prioritize sooner slots)
+		# If preferences provided, filter to those; otherwise show earliest available
+		max_slots_to_return = 10
+		if len(available_slots) > max_slots_to_return:
+			logger.info(f"Limiting response from {len(available_slots)} slots to {max_slots_to_return} best matches")
+			available_slots = available_slots[:max_slots_to_return]
+		
 		duration_ms = int((time.time() - start_time) * 1000)
 		logger.info(
-			f"Availability check complete in {duration_ms}ms - found {len(available_slots)} slots"
+			f"Availability check complete in {duration_ms}ms - returning {len(available_slots)} slots"
 		)
 		
 		if not available_slots:
@@ -118,7 +129,8 @@ def check_broker_availability_core(
 				)
 			else:
 				message = (
-					f"{broker_name or 'Broker'} has {len(available_slots)} available times over the next 2 weeks."
+					f"{broker_name or 'Broker'} has available times over the next 2 weeks. "
+					f"Showing {len(available_slots)} best options."
 				)
 		
 		return json.dumps(
@@ -128,6 +140,7 @@ def check_broker_availability_core(
 				"broker_name": broker_name or "Broker",
 				"broker_timezone": broker_timezone,
 				"message": message,
+				"note": "These are the next available times. If none work, ask for different days/times.",
 			}
 		)
 	except Exception as e:
