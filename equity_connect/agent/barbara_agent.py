@@ -16,6 +16,7 @@ from equity_connect.services import (
 )
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
+from equity_connect.tools import conversation_flags
 from signalwire_pom import PromptObjectModel  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -1192,8 +1193,7 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def mark_ready_to_book(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_ready_to_book as mark_ready_to_book_impl
-		return mark_ready_to_book_impl(args.get("phone"))
+		return conversation_flags.mark_ready_to_book(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Mark that the caller raised an objection.",
@@ -1208,56 +1208,49 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	def mark_has_objection(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_has_objection as mark_has_objection_impl
-		return mark_has_objection_impl(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+		return conversation_flags.mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
 	
 	@AgentBase.tool(
 		description="Mark that an objection has been resolved.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def mark_objection_handled(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_objection_handled as mark_objection_handled_impl
-		return mark_objection_handled_impl(args.get("phone"))
+		return conversation_flags.mark_objection_handled(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Mark that caller's questions have been answered.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def mark_questions_answered(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_questions_answered as mark_questions_answered_impl
-		return mark_questions_answered_impl(args.get("phone"))
+		return conversation_flags.mark_questions_answered(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Persist qualification outcome.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
 	)
 	def mark_qualification_result(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_qualification_result as mark_qualification_result_impl
-		return mark_qualification_result_impl(args.get("phone"), bool(args.get("qualified")))
+		return conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
 	
 	@AgentBase.tool(
 		description="Mark that a quote has been presented with reaction.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
 	)
 	def mark_quote_presented(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_quote_presented as mark_quote_presented_impl
-		return mark_quote_presented_impl(args.get("phone"), args.get("quote_reaction"))
+		return conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
 	
 	@AgentBase.tool(
 		description="Mark wrong person; optionally indicate if right person is available.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
 	)
 	def mark_wrong_person(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_wrong_person as mark_wrong_person_impl
-		return mark_wrong_person_impl(args.get("phone"), bool(args.get("right_person_available")))
+		return conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
 	
 	@AgentBase.tool(
 		description="Clear all conversation flags for a fresh start.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
-	def clear_conversation_flags(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import clear_conversation_flags as clear_conversation_flags_impl
-		return clear_conversation_flags_impl(args.get("phone"))
+	def clear_conversation_flags_tool(self, args, raw_data):
+		return conversation_flags.clear_conversation_flags(args.get("phone"))
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
