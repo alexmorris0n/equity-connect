@@ -287,7 +287,13 @@ class BarbaraAgent(AgentBase):
 		# NOTE: timezone is not available in lead_context - use agent_params default
 		# (matches on_swml_request behavior at line 1360)
 		caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
-		wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
+		wait_for_user_default = agent_params.get("wait_for_user_default", False)
+		if call_direction == "inbound":
+			wait_for_user = False
+		elif call_direction == "outbound":
+			wait_for_user = True
+		else:
+			wait_for_user = wait_for_user_default
 		
 		params_payload = {
 			"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
@@ -1427,7 +1433,13 @@ class BarbaraAgent(AgentBase):
 			# LLM and conversation parameters (load from Supabase agent_params table)
 			agent_params = get_agent_params(vertical=active_vertical, language="en-US")
 			caller_tz = agent_params.get("local_tz_default", "America/Los_Angeles")
-			wait_for_user = True if call_direction == "inbound" else agent_params.get("wait_for_user_default", False)
+			wait_for_user_default = agent_params.get("wait_for_user_default", False)
+			if call_direction == "inbound":
+				wait_for_user = False
+			elif call_direction == "outbound":
+				wait_for_user = True
+			else:
+				wait_for_user = wait_for_user_default
 			
 			params_payload = {
 				"ai_model": agent_params.get("ai_model", "gpt-4o-mini"),
