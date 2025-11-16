@@ -874,8 +874,8 @@ class BarbaraAgent(AgentBase):
 	async def get_lead_context(self, args, raw_data):
 		"""Tool wrapper: Get lead information by phone number"""
 		logger.debug(f"🔧 DEBUG: get_lead_context wrapper called with args: {args}")
-		from equity_connect.tools.lead import get_lead_context
-		result = await get_lead_context(args.get("phone"))
+		from equity_connect.tools.lead import get_lead_context as get_lead_context_impl
+		result = await get_lead_context_impl(args.get("phone"))
 		logger.debug(f"✅ DEBUG: get_lead_context tool returned result (length: {len(str(result)) if result else 0} chars)")
 		return result
 	
@@ -884,16 +884,16 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"first_name": {"type": "string", "description": "Caller first name"}, "phone": {"type": "string", "description": "Caller phone"}}, "required": ["first_name", "phone"]}
 	)
 	async def verify_caller_identity(self, args, raw_data):
-		from equity_connect.tools.lead import verify_caller_identity
-		return await verify_caller_identity(args.get("first_name"), args.get("phone"))
+		from equity_connect.tools.lead import verify_caller_identity as verify_caller_identity_impl
+		return await verify_caller_identity_impl(args.get("first_name"), args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Check consent and DNC status for a phone number.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number to check"}}, "required": ["phone"]}
 	)
 	async def check_consent_dnc(self, args, raw_data):
-		from equity_connect.tools.lead import check_consent_dnc
-		return await check_consent_dnc(args.get("phone"))
+		from equity_connect.tools.lead import check_consent_dnc as check_consent_dnc_impl
+		return await check_consent_dnc_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Update lead fields gathered during the call and merge conversation_data flags.",
@@ -924,8 +924,8 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	async def update_lead_info(self, args, raw_data):
-		from equity_connect.tools.lead import update_lead_info
-		return await update_lead_info(
+		from equity_connect.tools.lead import update_lead_info as update_lead_info_impl
+		return await update_lead_info_impl(
 			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
 			args.get("email"), args.get("phone"), args.get("property_address"),
 			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
@@ -946,8 +946,8 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	async def find_broker_by_territory(self, args, raw_data):
-		from equity_connect.tools.lead import find_broker_by_territory
-		return await find_broker_by_territory(args.get("zip_code"), args.get("city"), args.get("state"))
+		from equity_connect.tools.lead import find_broker_by_territory as find_broker_by_territory_impl
+		return await find_broker_by_territory_impl(args.get("zip_code"), args.get("city"), args.get("state"))
 	
 	# Calendar (4)
 	@AgentBase.tool(
@@ -964,8 +964,8 @@ class BarbaraAgent(AgentBase):
 		meta_data_token="check_broker_availability_v1"
 	)
 	async def check_broker_availability(self, args, raw_data):
-		from equity_connect.tools.calendar import check_broker_availability
-		return await check_broker_availability(args.get("broker_id"), args.get("preferred_day"), args.get("preferred_time"), raw_data)
+		from equity_connect.tools.calendar import check_broker_availability as check_broker_availability_impl
+		return await check_broker_availability_impl(args.get("broker_id"), args.get("preferred_day"), args.get("preferred_time"), raw_data)
 	
 	@AgentBase.tool(
 		description="Book an appointment and create calendar event.",
@@ -982,8 +982,8 @@ class BarbaraAgent(AgentBase):
 		meta_data_token="book_appointment_v1"
 	)
 	async def book_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import book_appointment
-		return await book_appointment(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"), raw_data)
+		from equity_connect.tools.calendar import book_appointment as book_appointment_impl
+		return await book_appointment_impl(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"), raw_data)
 	
 	@AgentBase.tool(
 		description="Reschedule an existing appointment.",
@@ -998,8 +998,8 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	async def reschedule_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import reschedule_appointment
-		return await reschedule_appointment(args.get("interaction_id"), args.get("new_scheduled_for"), args.get("reason"))
+		from equity_connect.tools.calendar import reschedule_appointment as reschedule_appointment_impl
+		return await reschedule_appointment_impl(args.get("interaction_id"), args.get("new_scheduled_for"), args.get("reason"))
 	
 	@AgentBase.tool(
 		description="Cancel an existing appointment.",
@@ -1013,8 +1013,8 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	async def cancel_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import cancel_appointment
-		return await cancel_appointment(args.get("interaction_id"), args.get("reason"))
+		from equity_connect.tools.calendar import cancel_appointment as cancel_appointment_impl
+		return await cancel_appointment_impl(args.get("interaction_id"), args.get("reason"))
 	
 	# Knowledge (1)
 	@AgentBase.tool(
@@ -1023,8 +1023,8 @@ class BarbaraAgent(AgentBase):
 		meta_data_token="search_knowledge_v1"
 	)
 	async def search_knowledge(self, args, raw_data):
-		from equity_connect.tools.knowledge import search_knowledge
-		return await search_knowledge(args.get("question"), raw_data)
+		from equity_connect.tools.knowledge import search_knowledge as search_knowledge_impl
+		return await search_knowledge_impl(args.get("question"), raw_data)
 	
 	# Interaction (4)
 	@AgentBase.tool(
@@ -1055,7 +1055,7 @@ class BarbaraAgent(AgentBase):
 		- raw_call_log: Full conversation transcript (never consolidated)
 		- channel_active: Whether call is still active
 		"""
-		from equity_connect.tools.interaction import save_interaction
+		from equity_connect.tools.interaction import save_interaction as save_interaction_impl
 		
 		# Extract transcript from raw_data if available
 		transcript = raw_data.get("raw_call_log") if raw_data else None
@@ -1086,7 +1086,7 @@ class BarbaraAgent(AgentBase):
 		# Convert metadata back to JSON string
 		metadata_json = json.dumps(metadata_dict) if metadata_dict else None
 		
-		return await save_interaction(
+		return await save_interaction_impl(
 			args.get("lead_id"), args.get("broker_id"), args.get("duration_seconds"),
 			args.get("outcome"), args.get("content"), args.get("recording_url"), metadata_json
 		)
@@ -1096,24 +1096,24 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
 	)
 	async def assign_tracking_number(self, args, raw_data):
-		from equity_connect.tools.interaction import assign_tracking_number
-		return await assign_tracking_number(args.get("lead_id"), args.get("broker_id"))
+		from equity_connect.tools.interaction import assign_tracking_number as assign_tracking_number_impl
+		return await assign_tracking_number_impl(args.get("lead_id"), args.get("broker_id"))
 	
 	@AgentBase.tool(
 		description="Send appointment confirmation via SMS.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "appointment_datetime": {"type": "string", "description": "ISO 8601 datetime"}}, "required": ["phone", "appointment_datetime"]}
 	)
 	async def send_appointment_confirmation(self, args, raw_data):
-		from equity_connect.tools.interaction import send_appointment_confirmation
-		return await send_appointment_confirmation(args.get("phone"), args.get("appointment_datetime"))
+		from equity_connect.tools.interaction import send_appointment_confirmation as send_appointment_confirmation_impl
+		return await send_appointment_confirmation_impl(args.get("phone"), args.get("appointment_datetime"))
 	
 	@AgentBase.tool(
 		description="Verify appointment confirmation code from SMS.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "code": {"type": "string", "description": "Code to verify"}}, "required": ["phone", "code"]}
 	)
 	async def verify_appointment_confirmation(self, args, raw_data):
-		from equity_connect.tools.interaction import verify_appointment_confirmation
-		return await verify_appointment_confirmation(args.get("phone"), args.get("code"))
+		from equity_connect.tools.interaction import verify_appointment_confirmation as verify_appointment_confirmation_impl
+		return await verify_appointment_confirmation_impl(args.get("phone"), args.get("code"))
 	
 	# Conversation Flags (7)
 	@AgentBase.tool(
@@ -1121,8 +1121,8 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	async def mark_ready_to_book(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_ready_to_book
-		return await mark_ready_to_book(args.get("phone"))
+		from equity_connect.tools.conversation_flags import mark_ready_to_book as mark_ready_to_book_impl
+		return await mark_ready_to_book_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Mark that the caller raised an objection.",
@@ -1137,56 +1137,56 @@ class BarbaraAgent(AgentBase):
 		}
 	)
 	async def mark_has_objection(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_has_objection
-		return await mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+		from equity_connect.tools.conversation_flags import mark_has_objection as mark_has_objection_impl
+		return await mark_has_objection_impl(args.get("phone"), args.get("current_node"), args.get("objection_type"))
 	
 	@AgentBase.tool(
 		description="Mark that an objection has been resolved.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	async def mark_objection_handled(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_objection_handled
-		return await mark_objection_handled(args.get("phone"))
+		from equity_connect.tools.conversation_flags import mark_objection_handled as mark_objection_handled_impl
+		return await mark_objection_handled_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Mark that caller's questions have been answered.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	async def mark_questions_answered(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_questions_answered
-		return await mark_questions_answered(args.get("phone"))
+		from equity_connect.tools.conversation_flags import mark_questions_answered as mark_questions_answered_impl
+		return await mark_questions_answered_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Persist qualification outcome.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
 	)
 	async def mark_qualification_result(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_qualification_result
-		return await mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
+		from equity_connect.tools.conversation_flags import mark_qualification_result as mark_qualification_result_impl
+		return await mark_qualification_result_impl(args.get("phone"), bool(args.get("qualified")))
 	
 	@AgentBase.tool(
 		description="Mark that a quote has been presented with reaction.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
 	)
 	async def mark_quote_presented(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_quote_presented
-		return await mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
+		from equity_connect.tools.conversation_flags import mark_quote_presented as mark_quote_presented_impl
+		return await mark_quote_presented_impl(args.get("phone"), args.get("quote_reaction"))
 	
 	@AgentBase.tool(
 		description="Mark wrong person; optionally indicate if right person is available.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
 	)
 	async def mark_wrong_person(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import mark_wrong_person
-		return await mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
+		from equity_connect.tools.conversation_flags import mark_wrong_person as mark_wrong_person_impl
+		return await mark_wrong_person_impl(args.get("phone"), bool(args.get("right_person_available")))
 	
 	@AgentBase.tool(
 		description="Clear all conversation flags for a fresh start.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	async def clear_conversation_flags(self, args, raw_data):
-		from equity_connect.tools.conversation_flags import clear_conversation_flags
-		return await clear_conversation_flags(args.get("phone"))
+		from equity_connect.tools.conversation_flags import clear_conversation_flags as clear_conversation_flags_impl
+		return await clear_conversation_flags_impl(args.get("phone"))
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
