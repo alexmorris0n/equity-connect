@@ -678,10 +678,8 @@ class BarbaraAgent(AgentBase):
 			logger.info("[LOOKUP] Verified, not qualified - starting at qualify")
 			return "qualify"
 		
-		if cd.get("greeted"):
-			logger.info("[HELLO] Greeted, not verified - starting at verify")
-			return "verify"
-		
+		# Always start at greet for a new call (even if greeted before)
+		# The greet context handles returning callers appropriately
 		logger.info("[SCENE] Starting from greet")
 		return "greet"
 	
