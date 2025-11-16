@@ -1,5 +1,5 @@
-# SignalWire Agent SDK
-signalwire-agents>=0.1.0
+# SignalWire Agent SDK (pinned for stability)
+signalwire-agents==0.1.55
 
 # Database
 supabase>=2.0.0

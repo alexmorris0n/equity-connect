@@ -1009,11 +1009,17 @@ class BarbaraAgent(AgentBase):
 	)
 	def get_lead_context(self, args, raw_data):
 		"""Tool: Get lead information by phone number via lead_service."""
-		logger.error("=== TOOL CALLED - get_lead_context ===")
-		phone = args.get("phone") if args else None
-		if not phone:
-			logger.warning(f"[WARN] get_lead_context called with no phone: args={args}")
-		return lead_service.get_lead_context_core(phone or "")
+		try:
+			logger.error("=== TOOL CALLED - get_lead_context ===")
+			phone = args.get("phone") if args else None
+			if not phone:
+				logger.warning(f"[WARN] get_lead_context called with no phone: args={args}")
+			result = lead_service.get_lead_context_core(phone or "")
+			logger.error(f"=== TOOL COMPLETE - get_lead_context returned {len(str(result))} chars ===")
+			return result
+		except RecursionError as e:
+			logger.error(f"[FATAL] RecursionError in get_lead_context: {e}")
+			return json.dumps({"found": False, "error": "System error - recursion detected"})
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
