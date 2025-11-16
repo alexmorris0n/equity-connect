@@ -873,6 +873,8 @@ class BarbaraAgent(AgentBase):
 	)
 	async def get_lead_context(self, args, raw_data):
 		"""Tool wrapper: Get lead information by phone number"""
+		print("🚨🚨🚨 WRAPPER CALLED - get_lead_context 🚨🚨🚨")  # DIAGNOSTIC
+		logger.error("🚨🚨🚨 WRAPPER CALLED - get_lead_context 🚨🚨🚨")  # Force to ERROR level
 		logger.debug(f"🔧 DEBUG: get_lead_context wrapper called with args: {args}")
 		from equity_connect.tools.lead import get_lead_context as get_lead_context_impl
 		result = await get_lead_context_impl(args.get("phone"))
