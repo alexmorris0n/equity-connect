@@ -872,14 +872,82 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number of the lead (any format)"}}, "required": ["phone"]}
 	)
 	async def get_lead_context(self, args, raw_data):
-		"""Tool wrapper: Get lead information by phone number"""
-		print("🚨🚨🚨 WRAPPER CALLED - get_lead_context 🚨🚨🚨")  # DIAGNOSTIC
-		logger.error("🚨🚨🚨 WRAPPER CALLED - get_lead_context 🚨🚨🚨")  # Force to ERROR level
-		logger.debug(f"🔧 DEBUG: get_lead_context wrapper called with args: {args}")
-		from equity_connect.tools.lead import get_lead_context as get_lead_context_impl
-		result = await get_lead_context_impl(args.get("phone"))
-		logger.debug(f"✅ DEBUG: get_lead_context tool returned result (length: {len(str(result)) if result else 0} chars)")
-		return result
+		"""Tool: Get lead information by phone number - DIRECT IMPLEMENTATION"""
+		print("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # DIAGNOSTIC
+		logger.error("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # Force to ERROR level
+		
+		phone = args.get("phone")
+		logger.info(f"🔍 Looking up lead by phone: {phone}")
+		
+		# NO IMPORTS - do everything inline to avoid any collision
+		from equity_connect.services.supabase import get_supabase_client
+		import re
+		import json
+		
+		sb = get_supabase_client()
+		
+		try:
+			# Generate search patterns
+			phone_digits = re.sub(r'\D', '', phone)
+			last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+			patterns = [phone, last10, f"+1{last10}" if len(last10) == 10 else phone]
+			
+			# Build OR query
+			or_conditions = []
+			for pattern in patterns:
+				if pattern:
+					or_conditions.append(f"primary_phone.ilike.%{pattern}%")
+					or_conditions.append(f"primary_phone_e164.eq.{pattern}")
+			
+			if not or_conditions:
+				return '{"found": false, "error": "Invalid phone number"}'
+			
+			# Query lead
+			query = sb.table('leads').select('''
+				id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
+				property_address, property_city, property_state, property_zip,
+				property_value, estimated_equity, age, status, qualified, owner_occupied,
+				assigned_broker_id, assigned_persona, persona_heritage,
+				brokers:assigned_broker_id (
+					id, contact_name, company_name, phone, nmls_number, nylas_grant_id
+				)
+			''')
+			or_filter = ','.join(or_conditions)
+			response = query.or_(or_filter).limit(1).execute()
+			
+			if not response.data:
+				logger.info('Lead not found')
+				return '{"found": false, "message": "No lead found with that phone number. This appears to be a new caller."}'
+			
+			lead = response.data[0]
+			broker = lead.get('brokers')
+			is_qualified = lead.get('status') in ['qualified', 'appointment_set', 'showed', 'application', 'funded']
+			
+			logger.info(f"✅ Lead found: {lead.get('first_name')} {lead.get('last_name')}")
+			
+			return json.dumps({
+				"found": True,
+				"lead_id": str(lead['id']),
+				"broker_id": str(lead['assigned_broker_id']) if lead.get('assigned_broker_id') else None,
+				"broker": {
+					"name": broker.get('contact_name') if broker else 'Not assigned',
+					"company": broker.get('company_name') if broker else '',
+					"phone": broker.get('phone') if broker else ''
+				},
+				"lead": {
+					"first_name": lead.get('first_name', ''),
+					"last_name": lead.get('last_name', ''),
+					"email": lead.get('primary_email', ''),
+					"phone": lead.get('primary_phone', ''),
+					"property_city": lead.get('property_city', ''),
+					"property_state": lead.get('property_state', ''),
+					"estimated_equity": lead.get('estimated_equity'),
+					"qualified": is_qualified
+				}
+			})
+		except Exception as e:
+			logger.error(f'Error in get_lead_context: {e}')
+			return json.dumps({"error": str(e), "found": False})
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
