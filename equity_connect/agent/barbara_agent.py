@@ -874,11 +874,10 @@ class BarbaraAgent(AgentBase):
 	)
 	def get_lead_context_tool(self, args, raw_data):
 		"""Tool: Get lead information by phone number - DIRECT IMPLEMENTATION - SYNCHRONOUS"""
-		print("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # DIAGNOSTIC
-		logger.error("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # Force to ERROR level
+		logger.error("=== TOOL CALLED - get_lead_context ===")  # DIAGNOSTIC - no emoji for CLI
 		
 		phone = args.get("phone")
-		logger.info(f"🔍 Looking up lead by phone: {phone}")
+		logger.info(f"Looking up lead by phone: {phone}")
 		
 		# NO IMPORTS - do everything inline to avoid any collision
 		from equity_connect.services.supabase import get_supabase_client
