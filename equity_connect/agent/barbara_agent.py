@@ -1008,9 +1008,51 @@ class BarbaraAgent(AgentBase):
 		},
 	)
 	def get_lead_context(self, args, raw_data):
-		"""Tool: Get lead information by phone number via lead_service."""
+		"""Tool: Get lead information by phone number via lead_service.
+		
+		Checks metadata cache first (set in on_swml_request) to avoid duplicate DB lookups.
+		This follows SignalWire's recommended pattern from the Adam healthcare agent demo.
+		"""
 		try:
 			logger.error("=== TOOL CALLED - get_lead_context ===")
+			
+			# Check metadata cache first (set in on_swml_request)
+			if self.metadata.get('lead_id'):
+				logger.info("[CACHE] Returning lead data from metadata (no DB lookup needed)")
+				return json.dumps({
+					"found": True,
+					"lead": {
+						"id": self.metadata.get('lead_id'),
+						"first_name": self.metadata.get('first_name'),
+						"last_name": self.metadata.get('last_name'),
+						"name": self.metadata.get('name'),
+						"primary_phone": self.metadata.get('primary_phone'),
+						"primary_email": self.metadata.get('primary_email'),
+						"age": self.metadata.get('age'),
+						"qualified": self.metadata.get('qualified')
+					},
+					"broker": {
+						"id": self.metadata.get('broker_id'),
+						"name": self.metadata.get('broker_name'),
+						"company": self.metadata.get('broker_company'),
+						"email": self.metadata.get('broker_email'),
+						"phone": self.metadata.get('broker_phone'),
+						"nylas_grant_id": self.metadata.get('broker_nylas_grant_id'),
+						"timezone": self.metadata.get('broker_timezone')
+					},
+					"property": {
+						"address": self.metadata.get('property_address'),
+						"city": self.metadata.get('property_city'),
+						"state": self.metadata.get('property_state'),
+						"zip": self.metadata.get('property_zip'),
+						"value": self.metadata.get('property_value'),
+						"estimated_equity": self.metadata.get('estimated_equity')
+					},
+					"conversation_data": self.metadata.get('conversation_data', {})
+				})
+			
+			# Fallback to DB lookup if metadata not available
+			logger.warning("[WARN] Metadata not available, falling back to DB lookup")
 			phone = args.get("phone") if args else None
 			if not phone:
 				logger.warning(f"[WARN] get_lead_context called with no phone: args={args}")
@@ -1723,7 +1765,7 @@ List specific actions needed based on conversation outcome.
 							"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
 						}
 				
-				# ==================== STEP 6: SET GLOBAL DATA VARIABLES ====================
+				# ==================== STEP 6: SET GLOBAL DATA VARIABLES & METADATA ====================
 				# Set variables for SignalWire to substitute in context prompts
 				if lead_context:
 					broker_full_name = lead_context.get("broker_name") or ""
@@ -1756,6 +1798,35 @@ List specific actions needed based on conversation outcome.
 						}
 					})
 					logger.info(f"[OK] Variables set for {lead_context.get('name', 'Unknown')}")
+					
+					# ==================== CACHE LEAD DATA IN METADATA ====================
+					# Store lead data in metadata so get_lead_context tool doesn't need DB lookups
+					# This follows SignalWire's recommended pattern (see Adam healthcare agent demo)
+					self.metadata.update({
+						'lead_id': lead_context.get('lead_id'),
+						'first_name': lead_context.get('first_name'),
+						'last_name': lead_context.get('last_name'),
+						'name': lead_context.get('name'),
+						'primary_phone': phone,
+						'primary_email': lead_context.get('primary_email'),
+						'age': lead_context.get('age'),
+						'broker_id': lead_context.get('broker_id'),
+						'broker_name': lead_context.get('broker_name'),
+						'broker_company': lead_context.get('broker_company'),
+						'broker_email': lead_context.get('broker_email'),
+						'broker_phone': lead_context.get('broker_phone'),
+						'broker_nylas_grant_id': lead_context.get('broker_nylas_grant_id'),
+						'broker_timezone': lead_context.get('broker_timezone'),
+						'property_address': lead_context.get('property_address'),
+						'property_city': lead_context.get('property_city'),
+						'property_state': lead_context.get('property_state'),
+						'property_zip': lead_context.get('property_zip'),
+						'property_value': lead_context.get('property_value'),
+						'estimated_equity': lead_context.get('estimated_equity'),
+						'qualified': lead_context.get('qualified'),
+						'conversation_data': lead_context.get('conversation_data', {})
+					})
+					logger.info(f"[CACHE] Stored lead data in metadata for {lead_context.get('name')}")
 				else:
 					# Unknown caller - minimal global data
 					self.set_global_data({
