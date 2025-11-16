@@ -4,9 +4,16 @@ import logging
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+from contextvars import ContextVar
 from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
 from signalwire_agents.core.function_result import SwaigFunctionResult  # type: ignore
 from equity_connect.services.agent_config import get_agent_params
+from equity_connect.services import (
+	lead_service,
+	calendar_service,
+	knowledge_service,
+	interaction_service,
+)
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
 from signalwire_pom import PromptObjectModel  # type: ignore
@@ -57,10 +64,11 @@ class BarbaraAgent(AgentBase):
 		# This replaces static config and enables multi-tenant, per-broker customization
 		self.set_dynamic_config_callback(self.configure_per_call)
 		
-		self._current_call_phone: Optional[str] = None
+		self._test_state_ctx = ContextVar("barbara_test_state")
 		self._reset_test_state()
+		self._current_call_phone = None
 		
-		logger.info("✅ BarbaraAgent initialized with dynamic configuration and 21 tools")
+		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts"""
@@ -84,8 +92,8 @@ class BarbaraAgent(AgentBase):
 				try:
 					prompt_payload = json.loads(query_params.get('prompt_payload'))
 				except Exception as e:
-					logger.warning(f"⚠️ Failed to parse prompt_payload from query params: {e}")
-			logger.info(f"🧪 Found test mode vars in query_params: test_mode={test_mode}, version_id={version_id}")
+					logger.warning(f"[WARN] Failed to parse prompt_payload from query params: {e}")
+			logger.info(f"[TEST] Found test mode vars in query_params: test_mode={test_mode}, version_id={version_id}")
 		
 		# Fallback: Check body_params for nested format (alternative/legacy format)
 		if not test_mode and not version_id:
@@ -96,11 +104,11 @@ class BarbaraAgent(AgentBase):
 					user_vars = json.loads(user_vars)
 				except json.JSONDecodeError as e:
 					# JSON parsing failed - log error and raise to prevent silent failure
-					logger.error(f"❌ Failed to parse user_vars JSON: {e}. Raw value: {user_vars[:100] if len(user_vars) > 100 else user_vars}")
+					logger.error(f"[ERROR] Failed to parse user_vars JSON: {e}. Raw value: {user_vars[:100] if len(user_vars) > 100 else user_vars}")
 					raise ValueError(f"Invalid JSON in userVariables: {e}") from e
 				except Exception as e:
 					# Unexpected error during JSON parsing
-					logger.error(f"❌ Unexpected error parsing user_vars: {e}")
+					logger.error(f"[ERROR] Unexpected error parsing user_vars: {e}")
 					raise ValueError(f"Failed to parse userVariables: {e}") from e
 			
 			if user_vars:
@@ -110,25 +118,25 @@ class BarbaraAgent(AgentBase):
 				node_name = user_vars.get('node_name')
 				if user_vars.get('prompt_payload'):
 					prompt_payload = user_vars.get('prompt_payload')
-				logger.info(f"🧪 Found test mode vars in body_params: test_mode={test_mode}, version_id={version_id}")
+				logger.info(f"[TEST] Found test mode vars in body_params: test_mode={test_mode}, version_id={version_id}")
 		
 		# Normalize prompt payload (if string)
 		if isinstance(prompt_payload, str):
 			try:
 				prompt_payload = json.loads(prompt_payload)
 			except Exception as e:
-				logger.warning(f"⚠️ Failed to decode prompt_payload JSON: {e}")
+				logger.warning(f"[WARN] Failed to decode prompt_payload JSON: {e}")
 				prompt_payload = None
 		
 		if test_mode and (version_id or prompt_payload):
-			logger.info(f"🧪 TEST MODE: Loading prompt {'payload override' if prompt_payload else f'version {version_id}'}")
+			logger.info(f"[TEST] TEST MODE: Loading prompt {'payload override' if prompt_payload else f'version {version_id}'}")
 			
 			# Load prompt content from database
 			try:
 				from equity_connect.test_barbara import get_prompt_version_from_db
 				if prompt_payload:
 					prompt_content = prompt_payload
-					logger.info("🧪 Using inline prompt payload override for test mode")
+					logger.info("[TEST] Using inline prompt payload override for test mode")
 					version_data = {}
 				else:
 					version_data = get_prompt_version_from_db(version_id)
@@ -137,7 +145,7 @@ class BarbaraAgent(AgentBase):
 				vertical = vertical or version_data.get('vertical') or 'reverse_mortgage'
 				node_name = node_name or version_data.get('node_name') or 'greet'
 				
-				logger.info(f"✓ Loaded test prompt: {vertical}/{node_name}")
+				logger.info(f"[OK] Loaded test prompt: {vertical}/{node_name}")
 				
 				# Override agent's prompt with test version
 				self._override_prompt_for_test(agent, vertical, node_name, prompt_content)
@@ -158,15 +166,15 @@ class BarbaraAgent(AgentBase):
 				self._ensure_skill(agent, "datetime")
 				self._ensure_skill(agent, "math")
 				
-				logger.info(f"✅ Test mode configuration complete")
+				logger.info(f"[OK] Test mode configuration complete")
 				return
 				
 			except Exception as e:
-				logger.error(f"❌ Failed to load test prompt: {e}")
+				logger.error(f"[ERROR] Failed to load test prompt: {e}")
 				raise
 		else:
 			# Normal call flow (production)
-			logger.info("📞 Production call - using active prompts")
+			logger.info("[CALL] Production call - using active prompts")
 		
 		# 1. Extract call info
 		phone = body_params.get('From') or query_params.get('phone')
@@ -185,7 +193,7 @@ class BarbaraAgent(AgentBase):
 			call_direction = "inbound"
 		active_vertical = vertical or "reverse_mortgage"
 		
-		logger.info(f"📞 Configuring agent for {call_direction} call from {phone}")
+		logger.info(f"[CALL] Configuring agent for {call_direction} call from {phone}")
 		
 		# 2. Configure AI providers
 		# Load voice config from database (configurable per language)
@@ -205,20 +213,20 @@ class BarbaraAgent(AgentBase):
 			language_params["model"] = voice_config["model"]
 		
 		agent.add_language(**language_params)
-		logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
+		logger.info(f"[OK] Voice configured: {voice_string} ({voice_config['engine']})")
 		
 		# 3. Get lead context
 		try:
 			lead_context = self._get_lead_context(phone, broker_id)
 		except Exception as e:
-			logger.error(f"❌ Failed to get lead context: {e}")
+			logger.error(f"[ERROR] Failed to get lead context: {e}")
 			raise
 		
 		# Use lead context phone as fallback when not provided (e.g., CLI tests)
 		if not phone:
 			phone = lead_context.get("phone") or lead_context.get("lead_phone") or lead_context.get("lead_id")
 			if phone:
-				logger.info(f"ℹ️ Using lead context phone fallback: {phone}")
+				logger.info(f"[INFO] Using lead context phone fallback: {phone}")
 		
 		# 3b. Load runtime agent params
 		agent_params = get_agent_params(vertical=active_vertical, language="en-US")
@@ -263,7 +271,7 @@ class BarbaraAgent(AgentBase):
 		self._ensure_skill(agent, "datetime")
 		self._ensure_skill(agent, "math")
 		logger.info(
-			f"🎛️ Runtime params applied: wait_for_user={wait_for_user}, "
+			f"[CONTROL] Runtime params applied: wait_for_user={wait_for_user}, "
 			f"attention_timeout={params_payload['attention_timeout']}ms"
 		)
 		
@@ -291,15 +299,15 @@ class BarbaraAgent(AgentBase):
 			}
 		})
 		
-		logger.info(f"✅ Variables set for {lead_context.get('name', 'Unknown')}")
+		logger.info(f"[OK] Variables set for {lead_context.get('name', 'Unknown')}")
 		
 		# 4. Determine initial context
 		if phone:
 			initial_context = self._get_initial_context(phone)
 		else:
-			logger.info("ℹ️ No phone available; defaulting initial context to 'greet'")
+			logger.info("[INFO] No phone available; defaulting initial context to 'greet'")
 			initial_context = "greet"
-		logger.info(f"🎯 Initial context: {initial_context}")
+		logger.info(f"[TARGET] Initial context: {initial_context}")
 		
 		# 5. Build contexts from DB
 		try:
@@ -309,26 +317,26 @@ class BarbaraAgent(AgentBase):
 				lead_context=lead_context
 			)
 		except Exception as e:
-			logger.error(f"❌ Failed to build contexts: {e}")
+			logger.error(f"[ERROR] Failed to build contexts: {e}")
 			raise
 		
 		# 6. Load theme
 		try:
 			theme_text = load_theme(active_vertical)
 		except Exception as e:
-			logger.error(f"❌ Failed to load theme: {e}")
+			logger.error(f"[ERROR] Failed to load theme: {e}")
 			raise
 		
 		# 7. Configure agent with contexts
 		self._apply_prompt_and_contexts(theme_text, contexts_obj, agent_instance=agent)
-		logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
+		logger.info(f"[OK] Agent configured with {len(contexts_obj)} contexts")
 	
 	def _override_prompt_for_test(self, agent, vertical: str, node_name: str, content: dict):
 		"""
 		Override agent's prompt configuration for testing.
 		This replaces the active prompt with the test version.
 		"""
-		logger.info(f"🧪 Overriding prompt for test: {vertical}/{node_name}")
+		logger.info(f"[TEST] Overriding prompt for test: {vertical}/{node_name}")
 		
 		# Load theme for the vertical
 		try:
@@ -373,7 +381,7 @@ class BarbaraAgent(AgentBase):
 		
 		# Configure agent with test prompt
 		self._apply_prompt_and_contexts(theme_text, contexts_obj, agent_instance=agent)
-		logger.info(f"✅ Prompt override complete for test: {node_name}")
+		logger.info(f"[OK] Prompt override complete for test: {node_name}")
 
 	def _apply_prompt_and_contexts(self, theme_text: Optional[str], contexts_obj: Dict[str, Any], agent_instance=None):
 		"""Apply prompt text and contexts using the current SignalWire SDK API."""
@@ -492,7 +500,7 @@ class BarbaraAgent(AgentBase):
 		sb = get_supabase_client()
 		
 		try:
-			logger.info(f"🔍 Looking up lead by phone: {phone}")
+			logger.info(f"[LOOKUP] Looking up lead by phone: {phone}")
 			
 			# Generate search patterns (same logic as tool)
 			phone_digits = re.sub(r'\D', '', phone)
@@ -567,7 +575,7 @@ class BarbaraAgent(AgentBase):
 			last_name = lead.get('last_name', '')
 			full_name = f"{first_name} {last_name}".strip() or "Unknown"
 			
-			logger.info(f"✅ Lead found: {full_name} ({lead.get('status')})")
+			logger.info(f"[OK] Lead found: {full_name} ({lead.get('status')})")
 			
 			# Return structured dict
 			return {
@@ -586,7 +594,7 @@ class BarbaraAgent(AgentBase):
 			}
 			
 		except Exception as e:
-			logger.error(f'❌ Error getting lead context: {e}')
+			logger.error(f'[ERROR] Error getting lead context: {e}')
 			return {
 				"name": "Unknown",
 				"first_name": "there",
@@ -616,7 +624,7 @@ class BarbaraAgent(AgentBase):
 		state = get_conversation_state(phone)
 		
 		if not state:
-			logger.info("🆕 New caller - starting at greet")
+			logger.info("[NEW] New caller - starting at greet")
 			return "greet"
 		
 		cd = state.get("conversation_data", {})
@@ -624,30 +632,30 @@ class BarbaraAgent(AgentBase):
 		
 		# Check in priority order (most complete first)
 		if cd.get("appointment_booked"):
-			logger.info("✅ Appointment booked - starting at exit")
+			logger.info("[OK] Appointment booked - starting at exit")
 			return "exit"
 		
 		if cd.get("ready_to_book"):
-			logger.info("📅 Ready to book - starting at book")
+			logger.info("[CALENDAR] Ready to book - starting at book")
 			return "book"
 		
 		if cd.get("quote_presented") and cd.get("quote_reaction") in ["positive", "skeptical"]:
-			logger.info("💰 Quote presented - starting at answer")
+			logger.info("[MONEY] Quote presented - starting at answer")
 			return "answer"
 		
 		if qualified and not cd.get("quote_presented"):
-			logger.info("✅ Qualified, no quote - starting at quote")
+			logger.info("[OK] Qualified, no quote - starting at quote")
 			return "quote"
 		
 		if cd.get("verified") and not qualified:
-			logger.info("🔍 Verified, not qualified - starting at qualify")
+			logger.info("[LOOKUP] Verified, not qualified - starting at qualify")
 			return "qualify"
 		
 		if cd.get("greeted"):
-			logger.info("👋 Greeted, not verified - starting at verify")
+			logger.info("[HELLO] Greeted, not verified - starting at verify")
 			return "verify"
 		
-		logger.info("🎬 Starting from greet")
+		logger.info("[SCENE] Starting from greet")
 		return "greet"
 	
 	def _get_voice_config(self, vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
@@ -673,7 +681,7 @@ class BarbaraAgent(AgentBase):
 				.execute()
 			
 			if result.data:
-				logger.info(f"✅ Loaded voice config from DB: {result.data['tts_engine']} - {result.data['voice_name']}")
+				logger.info(f"[OK] Loaded voice config from DB: {result.data['tts_engine']} - {result.data['voice_name']}")
 				return {
 					"engine": result.data['tts_engine'],
 					"voice_name": result.data['voice_name'],
@@ -701,24 +709,117 @@ class BarbaraAgent(AgentBase):
 		"""
 		try:
 			if hasattr(agent_obj, "has_skill") and agent_obj.has_skill(skill_name):
-				logger.debug(f"🔁 Skill '{skill_name}' already loaded, skipping")
+				logger.debug(f"[REPEAT] Skill '{skill_name}' already loaded, skipping")
 				return
 			agent_obj.add_skill(skill_name)
-			logger.info(f"✅ Added skill '{skill_name}'")
+			logger.info(f"[OK] Added skill '{skill_name}'")
 		except Exception as exc:
-			logger.warning(f"⚠️ Could not add skill '{skill_name}': {exc}")
+			logger.warning(f"[WARN] Could not add skill '{skill_name}': {exc}")
+	
+	def _create_test_state(self) -> Dict[str, Any]:
+		return {
+			"mode": False,
+			"use_draft": False,
+			"start_node": None,
+			"stop_on_route": False,
+			"nodes_visited": [],
+			"pending_events": [],
+			"completed": False,
+			"current_call_phone": None,
+			"vertical": "reverse_mortgage",
+			"call_mode": "full",
+		}
+	
+	def _get_test_state(self) -> Dict[str, Any]:
+		try:
+			return self._test_state_ctx.get()
+		except LookupError:
+			state = self._create_test_state()
+			self._test_state_ctx.set(state)
+			return state
+	
+	@property
+	def _test_mode(self) -> bool:
+		return self._get_test_state()["mode"]
+	
+	@_test_mode.setter
+	def _test_mode(self, value: bool) -> None:
+		self._get_test_state()["mode"] = bool(value)
+	
+	@property
+	def _test_use_draft(self) -> bool:
+		return self._get_test_state()["use_draft"]
+	
+	@_test_use_draft.setter
+	def _test_use_draft(self, value: bool) -> None:
+		self._get_test_state()["use_draft"] = bool(value)
+	
+	@property
+	def _test_start_node(self) -> Optional[str]:
+		return self._get_test_state()["start_node"]
+	
+	@_test_start_node.setter
+	def _test_start_node(self, value: Optional[str]) -> None:
+		self._get_test_state()["start_node"] = value
+	
+	@property
+	def _test_stop_on_route(self) -> bool:
+		return self._get_test_state()["stop_on_route"]
+	
+	@_test_stop_on_route.setter
+	def _test_stop_on_route(self, value: bool) -> None:
+		self._get_test_state()["stop_on_route"] = bool(value)
+	
+	@property
+	def _test_nodes_visited(self) -> List[str]:
+		return self._get_test_state()["nodes_visited"]
+	
+	@_test_nodes_visited.setter
+	def _test_nodes_visited(self, value: Optional[List[str]]) -> None:
+		self._get_test_state()["nodes_visited"] = list(value or [])
+	
+	@property
+	def _test_pending_events(self) -> List[Dict[str, Any]]:
+		return self._get_test_state()["pending_events"]
+	
+	@_test_pending_events.setter
+	def _test_pending_events(self, value: Optional[List[Dict[str, Any]]]) -> None:
+		self._get_test_state()["pending_events"] = list(value or [])
+	
+	@property
+	def _test_completed(self) -> bool:
+		return self._get_test_state()["completed"]
+	
+	@_test_completed.setter
+	def _test_completed(self, value: bool) -> None:
+		self._get_test_state()["completed"] = bool(value)
+	
+	@property
+	def _current_call_phone(self) -> Optional[str]:
+		return self._get_test_state()["current_call_phone"]
+	
+	@_current_call_phone.setter
+	def _current_call_phone(self, value: Optional[str]) -> None:
+		self._get_test_state()["current_call_phone"] = value
+	
+	@property
+	def _test_vertical(self) -> str:
+		return self._get_test_state()["vertical"]
+	
+	@_test_vertical.setter
+	def _test_vertical(self, value: Optional[str]) -> None:
+		self._get_test_state()["vertical"] = (value or "reverse_mortgage").strip() or "reverse_mortgage"
+	
+	@property
+	def _test_call_mode(self) -> str:
+		return self._get_test_state()["call_mode"]
+	
+	@_test_call_mode.setter
+	def _test_call_mode(self, value: Optional[str]) -> None:
+		self._get_test_state()["call_mode"] = (value or "full").strip() or "full"
 	
 	def _reset_test_state(self):
-		self._test_mode = False
-		self._test_use_draft = False
-		self._test_start_node: Optional[str] = None
-		self._test_stop_on_route = False
-		self._test_nodes_visited: List[str] = []
-		self._test_pending_events: List[Dict[str, Any]] = []
-		self._test_completed = False
-		self._current_call_phone = None
-		self._test_vertical = "reverse_mortgage"
-		self._test_call_mode = "full"
+		self._test_state_ctx.set(self._create_test_state())
 	
 	def _extract_test_config(self, user_vars: Dict[str, Any]) -> Dict[str, Any]:
 		if not user_vars:
@@ -870,100 +971,39 @@ class BarbaraAgent(AgentBase):
 	@AgentBase.tool(
 		name="get_lead_context",  # MATCH PROMPTS
 		description="Get lead information by phone number; returns lead, broker, property context.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number of the lead (any format)"}}, "required": ["phone"]}
+		parameters={
+			"type": "object",
+			"properties": {
+				"phone": {
+					"type": "string",
+					"description": "Phone number of the lead (any format)",
+				}
+			},
+			"required": ["phone"],
+		},
 	)
 	def get_lead_context_tool(self, args, raw_data):
-		"""Tool: Get lead information by phone number - DIRECT IMPLEMENTATION - SYNCHRONOUS"""
-		logger.error("=== TOOL CALLED - get_lead_context ===")  # DIAGNOSTIC - no emoji for CLI
-		
-		phone = args.get("phone")
-		logger.info(f"Looking up lead by phone: {phone}")
-		
-		# NO IMPORTS - do everything inline to avoid any collision
-		from equity_connect.services.supabase import get_supabase_client
-		import re
-		import json
-		
-		sb = get_supabase_client()
-		
-		try:
-			# Generate search patterns
-			phone_digits = re.sub(r'\D', '', phone)
-			last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
-			patterns = [phone, last10, f"+1{last10}" if len(last10) == 10 else phone]
-			
-			# Build OR query
-			or_conditions = []
-			for pattern in patterns:
-				if pattern:
-					or_conditions.append(f"primary_phone.ilike.%{pattern}%")
-					or_conditions.append(f"primary_phone_e164.eq.{pattern}")
-			
-			if not or_conditions:
-				return '{"found": false, "error": "Invalid phone number"}'
-			
-			# Query lead
-			query = sb.table('leads').select('''
-				id, first_name, last_name, primary_email, primary_phone, primary_phone_e164,
-				property_address, property_city, property_state, property_zip,
-				property_value, estimated_equity, age, status, qualified, owner_occupied,
-				assigned_broker_id, assigned_persona, persona_heritage,
-				brokers:assigned_broker_id (
-					id, contact_name, company_name, phone, nmls_number, nylas_grant_id
-				)
-			''')
-			or_filter = ','.join(or_conditions)
-			response = query.or_(or_filter).limit(1).execute()
-			
-			if not response.data:
-				logger.info('Lead not found')
-				return '{"found": false, "message": "No lead found with that phone number. This appears to be a new caller."}'
-			
-			lead = response.data[0]
-			broker = lead.get('brokers')
-			is_qualified = lead.get('status') in ['qualified', 'appointment_set', 'showed', 'application', 'funded']
-			
-			logger.info(f"✅ Lead found: {lead.get('first_name')} {lead.get('last_name')}")
-			
-			return json.dumps({
-				"found": True,
-				"lead_id": str(lead['id']),
-				"broker_id": str(lead['assigned_broker_id']) if lead.get('assigned_broker_id') else None,
-				"broker": {
-					"name": broker.get('contact_name') if broker else 'Not assigned',
-					"company": broker.get('company_name') if broker else '',
-					"phone": broker.get('phone') if broker else ''
-				},
-				"lead": {
-					"first_name": lead.get('first_name', ''),
-					"last_name": lead.get('last_name', ''),
-					"email": lead.get('primary_email', ''),
-					"phone": lead.get('primary_phone', ''),
-					"property_city": lead.get('property_city', ''),
-					"property_state": lead.get('property_state', ''),
-					"estimated_equity": lead.get('estimated_equity'),
-					"qualified": is_qualified
-				}
-			})
-		except Exception as e:
-			logger.error(f'Error in get_lead_context: {e}')
-			return json.dumps({"error": str(e), "found": False})
+		"""Tool: Get lead information by phone number via lead_service."""
+		logger.error("=== TOOL CALLED - get_lead_context ===")
+		return lead_service.get_lead_context_core(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
 		parameters={"type": "object", "properties": {"first_name": {"type": "string", "description": "Caller first name"}, "phone": {"type": "string", "description": "Caller phone"}}, "required": ["first_name", "phone"]}
 	)
-	async def verify_caller_identity(self, args, raw_data):
-		from equity_connect.tools.lead import verify_caller_identity as verify_caller_identity_impl
-		return await verify_caller_identity_impl(args.get("first_name"), args.get("phone"))
+	def verify_caller_identity(self, args, raw_data):
+		logger.error("=== TOOL CALLED - verify_caller_identity ===")
+		return lead_service.verify_caller_identity_core(
+			args.get("first_name"), args.get("phone")
+		)
 	
 	@AgentBase.tool(
 		description="Check consent and DNC status for a phone number.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number to check"}}, "required": ["phone"]}
 	)
-	async def check_consent_dnc(self, args, raw_data):
-		from equity_connect.tools.lead import check_consent_dnc as check_consent_dnc_impl
-		return await check_consent_dnc_impl(args.get("phone"))
+	def check_consent_dnc(self, args, raw_data):
+		logger.error("=== TOOL CALLED - check_consent_dnc ===")
+		return lead_service.check_consent_dnc_core(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Update lead fields gathered during the call and merge conversation_data flags.",
@@ -993,9 +1033,9 @@ class BarbaraAgent(AgentBase):
 			"required": ["lead_id"],
 		}
 	)
-	async def update_lead_info(self, args, raw_data):
-		from equity_connect.tools.lead import update_lead_info as update_lead_info_impl
-		return await update_lead_info_impl(
+	def update_lead_info(self, args, raw_data):
+		logger.error("=== TOOL CALLED - update_lead_info ===")
+		return lead_service.update_lead_info_core(
 			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
 			args.get("email"), args.get("phone"), args.get("property_address"),
 			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
@@ -1015,9 +1055,11 @@ class BarbaraAgent(AgentBase):
 			"required": [],
 		}
 	)
-	async def find_broker_by_territory(self, args, raw_data):
-		from equity_connect.tools.lead import find_broker_by_territory as find_broker_by_territory_impl
-		return await find_broker_by_territory_impl(args.get("zip_code"), args.get("city"), args.get("state"))
+	def find_broker_by_territory(self, args, raw_data):
+		logger.error("=== TOOL CALLED - find_broker_by_territory ===")
+		return lead_service.find_broker_by_territory_core(
+			args.get("zip_code"), args.get("city"), args.get("state")
+		)
 	
 	# Calendar (4)
 	@AgentBase.tool(
@@ -1033,9 +1075,14 @@ class BarbaraAgent(AgentBase):
 		},
 		meta_data_token="check_broker_availability_v1"
 	)
-	async def check_broker_availability(self, args, raw_data):
-		from equity_connect.tools.calendar import check_broker_availability as check_broker_availability_impl
-		return await check_broker_availability_impl(args.get("broker_id"), args.get("preferred_day"), args.get("preferred_time"), raw_data)
+	def check_broker_availability(self, args, raw_data):
+		logger.error("=== TOOL CALLED - check_broker_availability ===")
+		return calendar_service.check_broker_availability_core(
+			args.get("broker_id"),
+			args.get("preferred_day"),
+			args.get("preferred_time"),
+			raw_data,
+		)
 	
 	@AgentBase.tool(
 		description="Book an appointment and create calendar event.",
@@ -1051,9 +1098,15 @@ class BarbaraAgent(AgentBase):
 		},
 		meta_data_token="book_appointment_v1"
 	)
-	async def book_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import book_appointment as book_appointment_impl
-		return await book_appointment_impl(args.get("lead_id"), args.get("broker_id"), args.get("scheduled_for"), args.get("notes"), raw_data)
+	def book_appointment(self, args, raw_data):
+		logger.error("=== TOOL CALLED - book_appointment ===")
+		return calendar_service.book_appointment_core(
+			args.get("lead_id"),
+			args.get("broker_id"),
+			args.get("scheduled_for"),
+			args.get("notes"),
+			raw_data,
+		)
 	
 	@AgentBase.tool(
 		description="Reschedule an existing appointment.",
@@ -1067,9 +1120,13 @@ class BarbaraAgent(AgentBase):
 			"required": ["interaction_id", "new_scheduled_for"],
 		}
 	)
-	async def reschedule_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import reschedule_appointment as reschedule_appointment_impl
-		return await reschedule_appointment_impl(args.get("interaction_id"), args.get("new_scheduled_for"), args.get("reason"))
+	def reschedule_appointment(self, args, raw_data):
+		logger.error("=== TOOL CALLED - reschedule_appointment ===")
+		return calendar_service.reschedule_appointment_core(
+			args.get("interaction_id"),
+			args.get("new_scheduled_for"),
+			args.get("reason"),
+		)
 	
 	@AgentBase.tool(
 		description="Cancel an existing appointment.",
@@ -1082,9 +1139,12 @@ class BarbaraAgent(AgentBase):
 			"required": ["interaction_id"],
 		}
 	)
-	async def cancel_appointment(self, args, raw_data):
-		from equity_connect.tools.calendar import cancel_appointment as cancel_appointment_impl
-		return await cancel_appointment_impl(args.get("interaction_id"), args.get("reason"))
+	def cancel_appointment(self, args, raw_data):
+		logger.error("=== TOOL CALLED - cancel_appointment ===")
+		return calendar_service.cancel_appointment_core(
+			args.get("interaction_id"),
+			args.get("reason"),
+		)
 	
 	# Knowledge (1)
 	@AgentBase.tool(
@@ -1092,107 +1152,48 @@ class BarbaraAgent(AgentBase):
 		parameters={"type": "object", "properties": {"question": {"type": "string", "description": "Question text"}}, "required": ["question"]},
 		meta_data_token="search_knowledge_v1"
 	)
-	async def search_knowledge(self, args, raw_data):
-		from equity_connect.tools.knowledge import search_knowledge as search_knowledge_impl
-		return await search_knowledge_impl(args.get("question"), raw_data)
-	
-	# Interaction (4)
-	@AgentBase.tool(
-		description="Save a call interaction summary and outcome.",
-		parameters={
-			"type": "object",
-			"properties": {
-				"lead_id": {"type": "string", "description": "Lead UUID"},
-				"broker_id": {"type": "string", "description": "Broker UUID", "nullable": True},
-				"duration_seconds": {"type": "integer", "description": "Call duration (seconds)"},
-				"outcome": {"type": "string", "description": "Outcome"},
-				"content": {"type": "string", "description": "Summary content"},
-				"recording_url": {"type": "string", "description": "Recording URL", "nullable": True},
-				"metadata": {"type": "string", "description": "JSON metadata string", "nullable": True},
-			},
-			"required": ["lead_id", "outcome", "content"],
-		}
-	)
-	async def save_interaction(self, args, raw_data):
-		"""Save interaction with full context
-		
-		Available in raw_data (SWAIG post_data):
-		- call_id: Unique call UUID
-		- caller_id_num: Caller's phone number
-		- caller_id_name: Caller's name (if available)
-		- global_data: Lead context (lead_id, qualified, home_value, etc.)
-		- call_log: Processed conversation history (with latency metrics)
-		- raw_call_log: Full conversation transcript (never consolidated)
-		- channel_active: Whether call is still active
-		"""
-		from equity_connect.tools.interaction import save_interaction as save_interaction_impl
-		
-		# Extract transcript from raw_data if available
-		transcript = raw_data.get("raw_call_log") if raw_data else None
-		
-		# Parse existing metadata or create new dict
-		metadata_str = args.get("metadata")
-		metadata_dict = {}
-		if metadata_str:
-			try:
-				metadata_dict = json.loads(metadata_str) if isinstance(metadata_str, str) else metadata_str
-			except:
-				metadata_dict = {}
-		
-		# Add transcript to metadata if available
-		if transcript:
-			metadata_dict["conversation_transcript"] = transcript
-			logger.info(f"📝 Extracted transcript with {len(transcript)} messages from raw_data")
-		
-		# Add call_id and other raw_data context to metadata
-		if raw_data:
-			if not metadata_dict.get("call_id"):
-				metadata_dict["call_id"] = raw_data.get("call_id")
-			if not metadata_dict.get("caller_id_num"):
-				metadata_dict["caller_id_num"] = raw_data.get("caller_id_num")
-			if not metadata_dict.get("caller_id_name"):
-				metadata_dict["caller_id_name"] = raw_data.get("caller_id_name")
-		
-		# Convert metadata back to JSON string
-		metadata_json = json.dumps(metadata_dict) if metadata_dict else None
-		
-		return await save_interaction_impl(
-			args.get("lead_id"), args.get("broker_id"), args.get("duration_seconds"),
-			args.get("outcome"), args.get("content"), args.get("recording_url"), metadata_json
-		)
+	def search_knowledge(self, args, raw_data):
+		logger.error("=== TOOL CALLED - search_knowledge ===")
+		return knowledge_service.search_knowledge_core(args.get("question"), raw_data)
 	
 	@AgentBase.tool(
 		description="Assign a SignalWire tracking number to a lead for attribution.",
 		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
 	)
-	async def assign_tracking_number(self, args, raw_data):
-		from equity_connect.tools.interaction import assign_tracking_number as assign_tracking_number_impl
-		return await assign_tracking_number_impl(args.get("lead_id"), args.get("broker_id"))
+	def assign_tracking_number(self, args, raw_data):
+		logger.error("=== TOOL CALLED - assign_tracking_number ===")
+		return interaction_service.assign_tracking_number_core(
+			args.get("lead_id"), args.get("broker_id")
+		)
 	
 	@AgentBase.tool(
 		description="Send appointment confirmation via SMS.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "appointment_datetime": {"type": "string", "description": "ISO 8601 datetime"}}, "required": ["phone", "appointment_datetime"]}
 	)
-	async def send_appointment_confirmation(self, args, raw_data):
-		from equity_connect.tools.interaction import send_appointment_confirmation as send_appointment_confirmation_impl
-		return await send_appointment_confirmation_impl(args.get("phone"), args.get("appointment_datetime"))
+	def send_appointment_confirmation(self, args, raw_data):
+		logger.error("=== TOOL CALLED - send_appointment_confirmation ===")
+		return interaction_service.send_appointment_confirmation_core(
+			args.get("phone"), args.get("appointment_datetime")
+		)
 	
 	@AgentBase.tool(
 		description="Verify appointment confirmation code from SMS.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "code": {"type": "string", "description": "Code to verify"}}, "required": ["phone", "code"]}
 	)
-	async def verify_appointment_confirmation(self, args, raw_data):
-		from equity_connect.tools.interaction import verify_appointment_confirmation as verify_appointment_confirmation_impl
-		return await verify_appointment_confirmation_impl(args.get("phone"), args.get("code"))
+	def verify_appointment_confirmation(self, args, raw_data):
+		logger.error("=== TOOL CALLED - verify_appointment_confirmation ===")
+		return interaction_service.verify_appointment_confirmation_core(
+			args.get("phone"), args.get("code")
+		)
 	
 	# Conversation Flags (7)
 	@AgentBase.tool(
 		description="Mark caller as ready to book an appointment.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
-	async def mark_ready_to_book(self, args, raw_data):
+	def mark_ready_to_book(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_ready_to_book as mark_ready_to_book_impl
-		return await mark_ready_to_book_impl(args.get("phone"))
+		return mark_ready_to_book_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Mark that the caller raised an objection.",
@@ -1206,57 +1207,57 @@ class BarbaraAgent(AgentBase):
 			"required": ["phone"],
 		}
 	)
-	async def mark_has_objection(self, args, raw_data):
+	def mark_has_objection(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_has_objection as mark_has_objection_impl
-		return await mark_has_objection_impl(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+		return mark_has_objection_impl(args.get("phone"), args.get("current_node"), args.get("objection_type"))
 	
 	@AgentBase.tool(
 		description="Mark that an objection has been resolved.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
-	async def mark_objection_handled(self, args, raw_data):
+	def mark_objection_handled(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_objection_handled as mark_objection_handled_impl
-		return await mark_objection_handled_impl(args.get("phone"))
+		return mark_objection_handled_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Mark that caller's questions have been answered.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
-	async def mark_questions_answered(self, args, raw_data):
+	def mark_questions_answered(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_questions_answered as mark_questions_answered_impl
-		return await mark_questions_answered_impl(args.get("phone"))
+		return mark_questions_answered_impl(args.get("phone"))
 	
 	@AgentBase.tool(
 		description="Persist qualification outcome.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
 	)
-	async def mark_qualification_result(self, args, raw_data):
+	def mark_qualification_result(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_qualification_result as mark_qualification_result_impl
-		return await mark_qualification_result_impl(args.get("phone"), bool(args.get("qualified")))
+		return mark_qualification_result_impl(args.get("phone"), bool(args.get("qualified")))
 	
 	@AgentBase.tool(
 		description="Mark that a quote has been presented with reaction.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
 	)
-	async def mark_quote_presented(self, args, raw_data):
+	def mark_quote_presented(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_quote_presented as mark_quote_presented_impl
-		return await mark_quote_presented_impl(args.get("phone"), args.get("quote_reaction"))
+		return mark_quote_presented_impl(args.get("phone"), args.get("quote_reaction"))
 	
 	@AgentBase.tool(
 		description="Mark wrong person; optionally indicate if right person is available.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
 	)
-	async def mark_wrong_person(self, args, raw_data):
+	def mark_wrong_person(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import mark_wrong_person as mark_wrong_person_impl
-		return await mark_wrong_person_impl(args.get("phone"), bool(args.get("right_person_available")))
+		return mark_wrong_person_impl(args.get("phone"), bool(args.get("right_person_available")))
 	
 	@AgentBase.tool(
 		description="Clear all conversation flags for a fresh start.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
-	async def clear_conversation_flags(self, args, raw_data):
+	def clear_conversation_flags(self, args, raw_data):
 		from equity_connect.tools.conversation_flags import clear_conversation_flags as clear_conversation_flags_impl
-		return await clear_conversation_flags_impl(args.get("phone"))
+		return clear_conversation_flags_impl(args.get("phone"))
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
@@ -1283,11 +1284,11 @@ class BarbaraAgent(AgentBase):
 			raw_request_payload = json.dumps(request_data, indent=2, default=str)
 		except (TypeError, ValueError) as exc:
 			raw_request_payload = str(request_data)
-			logger.warning(f"⚠️ Unable to JSON serialize request_data for logging: {exc}")
-		logger.info(f"📞 RAW REQUEST DATA: {raw_request_payload}")
-		logger.info(f"📞 DEBUG: on_swml_request called with request_data keys: {list(request_data.keys()) if request_data else 'None'}")
-		logger.debug(f"📞 DEBUG: Full request_data: {request_data}")
-		logger.debug(f"📞 DEBUG: request_data type: {type(request_data)}")
+			logger.warning(f"[WARN] Unable to JSON serialize request_data for logging: {exc}")
+		logger.info(f"[CALL] RAW REQUEST DATA: {raw_request_payload}")
+		logger.info(f"[CALL] DEBUG: on_swml_request called with request_data keys: {list(request_data.keys()) if request_data else 'None'}")
+		logger.debug(f"[CALL] DEBUG: Full request_data: {request_data}")
+		logger.debug(f"[CALL] DEBUG: request_data type: {type(request_data)}")
 		
 		try:
 			self._reset_test_state()
@@ -1363,7 +1364,7 @@ class BarbaraAgent(AgentBase):
 				phone = to_phone  # Lead's number (we're calling them)
 			
 			self._current_call_phone = phone
-			logger.info(f"📞 {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
+			logger.info(f"[CALL] {call_direction.upper()} call: From={from_phone}, To={to_phone}, CallSid={call_sid}")
 			active_vertical = self._test_vertical or "reverse_mortgage"
 			
 			# ==================== STEP 2: CONFIGURE AI ====================
@@ -1389,7 +1390,7 @@ class BarbaraAgent(AgentBase):
 				language_params["model"] = voice_config["model"]
 			
 			self.add_language(**language_params)
-			logger.info(f"✅ Voice configured: {voice_string} ({voice_config['engine']})")
+			logger.info(f"[OK] Voice configured: {voice_string} ({voice_config['engine']})")
 			
 			# LLM and conversation parameters (load from Supabase agent_params table)
 			agent_params = get_agent_params(vertical=active_vertical, language="en-US")
@@ -1436,7 +1437,7 @@ class BarbaraAgent(AgentBase):
 			}
 			self.set_params(params_payload)
 			logger.info(
-				f"✅ AI params configured via Supabase: wait_for_user={wait_for_user}, "
+				f"[OK] AI params configured via Supabase: wait_for_user={wait_for_user}, "
 				f"attention_timeout={params_payload['attention_timeout']}ms"
 			)
 			
@@ -1481,12 +1482,12 @@ class BarbaraAgent(AgentBase):
 			# Skills: datetime and math
 			try:
 				self.add_skill("datetime")
-				logger.info("✅ Added datetime skill")
+				logger.info("[OK] Added datetime skill")
 			except Exception as e:
 				logger.debug(f"Skill 'datetime' already loaded: {e}")
 			try:
 				self.add_skill("math")
-				logger.info("✅ Added math skill")
+				logger.info("[OK] Added math skill")
 			except Exception as e:
 				logger.debug(f"Skill 'math' already loaded: {e}")
 			
@@ -1518,7 +1519,7 @@ Analyze the complete conversation and provide a structured summary:
 List specific actions needed based on conversation outcome.
 			""")
 			
-			logger.info("✅ All AI configuration applied successfully")
+			logger.info("[OK] All AI configuration applied successfully")
 			
 			# ==================== STEP 3: LOAD LEAD BY PHONE NUMBER ====================
 			# SignalWire only provides phone number, so we MUST look up lead by phone
@@ -1533,11 +1534,11 @@ List specific actions needed based on conversation outcome.
 				# This ensures caller hears 1-2 rings while we load context
 				import time
 				start_time = time.time()
-				logger.info(f"⏳ Starting context injection (call will ring during this time)")
+				logger.info(f"[WAIT] Starting context injection (call will ring during this time)")
 				
 				# CRITICAL: Always look up lead by phone number FIRST
 				# SignalWire doesn't provide lead_id, we must find it from phone number
-				logger.info(f"🔍 Looking up lead by phone number: {phone} (direction: {call_direction})")
+				logger.info(f"[LOOKUP] Looking up lead by phone number: {phone} (direction: {call_direction})")
 				from equity_connect.services.supabase import get_supabase_client
 				import re
 				try:
@@ -1560,9 +1561,9 @@ List specific actions needed based on conversation outcome.
 						
 						if lead_lookup.data and len(lead_lookup.data) > 0:
 							lead_id = str(lead_lookup.data[0]['id'])
-							logger.info(f"✅ Found existing lead by phone: {lead_id}")
+							logger.info(f"[OK] Found existing lead by phone: {lead_id}")
 						else:
-							logger.info(f"🆕 No lead found for {phone} - this is a new caller")
+							logger.info(f"[NEW] No lead found for {phone} - this is a new caller")
 				except Exception as e:
 					logger.warning(f"Failed to lookup lead by phone: {e}")
 				
@@ -1580,12 +1581,12 @@ List specific actions needed based on conversation outcome.
 				
 				# Start call session (creates row if new, reuses if returning caller)
 				start_call(phone, metadata=call_metadata)
-				logger.info(f"📞 Call session initialized for {phone}")
+				logger.info(f"[CALL] Call session initialized for {phone}")
 				
 				# If we found a lead_id, update conversation_state with it
 				if lead_id:
 					update_conversation_state(phone, {"lead_id": lead_id})
-					logger.info(f"✅ Updated conversation_state with lead_id: {lead_id}")
+					logger.info(f"[OK] Updated conversation_state with lead_id: {lead_id}")
 				
 				# Get conversation state (now with lead_id if found)
 				state_row = get_conversation_state(phone)
@@ -1639,7 +1640,7 @@ List specific actions needed based on conversation outcome.
 								lead_context["broker_email"] = broker_data.get('email')
 								lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
 								lead_context["broker_timezone"] = broker_data.get('timezone')
-								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+								logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
 								
 							# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
 							# This avoids DB queries in calendar tools (same pattern as v3)
@@ -1673,9 +1674,9 @@ List specific actions needed based on conversation outcome.
 									# Call metadata
 									"call_direction": call_direction
 								})
-								logger.info(f"✅ Injected lead & broker data into global_data for persistent LLM memory")
+								logger.info(f"[OK] Injected lead & broker data into global_data for persistent LLM memory")
 							else:
-								logger.info(f"👤 Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
+								logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
 						else:
 							logger.warning(f"Lead {lead_id} not found in leads table")
 							lead_context = {
@@ -1723,7 +1724,7 @@ List specific actions needed based on conversation outcome.
 							"broker_company": lead_context.get("broker_company", "")
 						}
 					})
-					logger.info(f"✅ Variables set for {lead_context.get('name', 'Unknown')}")
+					logger.info(f"[OK] Variables set for {lead_context.get('name', 'Unknown')}")
 				else:
 					# Unknown caller - minimal global data
 					self.set_global_data({
@@ -1759,7 +1760,7 @@ List specific actions needed based on conversation outcome.
 					initial_context = self._test_start_node
 				else:
 					initial_context = self._get_initial_context(phone)
-				logger.info(f"🎯 Initial context: {initial_context}")
+				logger.info(f"[TARGET] Initial context: {initial_context}")
 				
 				# ==================== STEP 8: BUILD CONTEXTS FROM DB ====================
 				try:
@@ -1770,29 +1771,29 @@ List specific actions needed based on conversation outcome.
 						use_draft=self._test_use_draft
 					)
 				except Exception as e:
-					logger.error(f"❌ Failed to build contexts: {e}")
+					logger.error(f"[ERROR] Failed to build contexts: {e}")
 					raise
 				
 				# ==================== STEP 9: LOAD THEME ====================
 				try:
 					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
 				except Exception as e:
-					logger.error(f"❌ Failed to load theme: {e}")
+					logger.error(f"[ERROR] Failed to load theme: {e}")
 					raise
 				
 				# ==================== STEP 10: APPLY CONTEXTS ====================
 				self._apply_prompt_and_contexts(theme_text, contexts_obj)
-				logger.info(f"✅ Agent configured with {len(contexts_obj)} contexts")
+				logger.info(f"[OK] Agent configured with {len(contexts_obj)} contexts")
 				
 				if self._test_mode:
 					self._handle_test_context_change(initial_context)
 				
 				logger.info(
-					f"✅ Agent configured with contexts: voice={voice_string}, "
+					f"[OK] Agent configured with contexts: voice={voice_string}, "
 					f"model={params_payload.get('ai_model')}, initial_context={initial_context}, phone={phone}"
 				)
 			else:
-				logger.warning("⚠️ No phone number found in request - using default configuration")
+				logger.warning("[WARN] No phone number found in request - using default configuration")
 				# Apply fallback for unknown caller
 				try:
 					contexts_obj = build_contexts_object(
@@ -1812,7 +1813,7 @@ List specific actions needed based on conversation outcome.
 			return None
 			
 		except Exception as e:
-			logger.error(f"❌ Error in on_swml_request: {e}", exc_info=True)
+			logger.error(f"[ERROR] Error in on_swml_request: {e}", exc_info=True)
 			# Fail loud - don't degrade gracefully
 			raise
 	
@@ -1828,10 +1829,10 @@ List specific actions needed based on conversation outcome.
 		"""
 		try:
 			# Log the summary
-			logger.info(f"📊 Conversation completed: {summary}")
+			logger.info(f"[STATS] Conversation completed: {summary}")
 			
 			if not summary:
-				logger.warning("⚠️ No summary provided")
+				logger.warning("[WARN] No summary provided")
 				return
 			
 			# Extract phone number from raw_data
@@ -1861,10 +1862,10 @@ List specific actions needed based on conversation outcome.
 						}
 					}).execute()
 					
-					logger.info(f"✅ Call summary saved for lead {state_row['lead_id']}")
+					logger.info(f"[OK] Call summary saved for lead {state_row['lead_id']}")
 			else:
-				logger.warning("⚠️ No phone number available to save summary")
+				logger.warning("[WARN] No phone number available to save summary")
 				
 		except Exception as e:
-			logger.error(f"❌ Failed to save call summary: {e}", exc_info=True)
+			logger.error(f"[ERROR] Failed to save call summary: {e}", exc_info=True)
 	

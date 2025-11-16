@@ -11,7 +11,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-async def mark_ready_to_book(phone: str) -> str:
+def mark_ready_to_book(phone: str) -> str:
 	"""Mark that the caller is ready to schedule an appointment.
 	
 	Use this when the caller:
@@ -37,7 +37,7 @@ async def mark_ready_to_book(phone: str) -> str:
 	return "Caller marked as ready to book. Transition to booking node will occur."
 
 
-async def mark_has_objection(phone: str, current_node: Optional[str] = None, objection_type: Optional[str] = None) -> str:
+def mark_has_objection(phone: str, current_node: Optional[str] = None, objection_type: Optional[str] = None) -> str:
 	"""Mark that the caller has raised an objection or concern.
 	
 	Use this when the caller:
@@ -69,7 +69,7 @@ async def mark_has_objection(phone: str, current_node: Optional[str] = None, obj
 	return "Objection noted. Will transition to objection handling."
 
 
-async def mark_objection_handled(phone: str) -> str:
+def mark_objection_handled(phone: str) -> str:
 	"""Mark that an objection has been successfully addressed.
 	
 	Use this when:
@@ -95,7 +95,7 @@ async def mark_objection_handled(phone: str) -> str:
 	return "Objection marked as handled. Will route back to answer node."
 
 
-async def mark_questions_answered(phone: str) -> str:
+def mark_questions_answered(phone: str) -> str:
 	"""Mark that the caller's questions have been answered.
 	
 	Use this when:
@@ -120,7 +120,7 @@ async def mark_questions_answered(phone: str) -> str:
 	return "Questions marked as answered. Ready for next conversation phase."
 
 
-async def mark_qualification_result(phone: str, qualified: bool) -> str:
+def mark_qualification_result(phone: str, qualified: bool) -> str:
 	"""Persist qualification outcome to conversation state.
 	
 	Sets both the top-level 'qualified' field (used by routers) and
@@ -137,7 +137,7 @@ async def mark_qualification_result(phone: str, qualified: bool) -> str:
 	
 	return f"Qualification status saved: {'qualified' if qualified else 'not qualified'}."
 
-async def mark_quote_presented(phone: str, quote_reaction: str) -> str:
+def mark_quote_presented(phone: str, quote_reaction: str) -> str:
 	"""Mark that a financial quote has been presented and record the caller's reaction.
 	
 	Use this when:
@@ -164,7 +164,7 @@ async def mark_quote_presented(phone: str, quote_reaction: str) -> str:
 	return f"Quote marked as presented with reaction: {quote_reaction}. Will route based on reaction."
 
 
-async def mark_wrong_person(phone: str, right_person_available: bool = False) -> str:
+def mark_wrong_person(phone: str, right_person_available: bool = False) -> str:
 	"""Mark that you're speaking with the wrong person.
 	
 	Use this when:
@@ -194,7 +194,7 @@ async def mark_wrong_person(phone: str, right_person_available: bool = False) ->
 		return "Wrong person and right person not available. Will route to exit."
 
 
-async def clear_conversation_flags(phone: str) -> str:
+def clear_conversation_flags(phone: str) -> str:
 	"""Clear all conversation flags for a fresh start.
 	
 	Use this when:

@@ -117,10 +117,10 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 		"steps": [
 			_step(
 				"farewell",
-				"Summarize any next steps, thank the caller, handle wrong-person or "
-				"callback scenarios, and log the interaction.",
-				"Conversation closed and interaction saved.",
-				["save_interaction", "mark_wrong_person"]
+				"Summarize any next steps, thank the caller, and handle wrong-person or "
+				"callback scenarios. Confirm the caller feels taken care of.",
+				"Conversation closed with a clear next step.",
+				["mark_wrong_person"]
 			)
 		],
 		"valid_contexts": []

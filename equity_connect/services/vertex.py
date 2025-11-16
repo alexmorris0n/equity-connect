@@ -9,7 +9,7 @@ from google.auth.transport.requests import Request
 
 logger = logging.getLogger(__name__)
 
-async def generate_embedding(question: str) -> List[float]:
+def generate_embedding(question: str) -> List[float]:
 	"""Generate embedding vector for a text query using Vertex AI text-embedding-005
 	
 	Args:
@@ -38,8 +38,8 @@ async def generate_embedding(question: str) -> List[float]:
 	model = "text-embedding-005"
 	url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model}:predict"
 	
-	async with httpx.AsyncClient() as client:
-		response = await client.post(
+	with httpx.Client() as client:
+		response = client.post(
 			url,
 			headers={
 				"Authorization": f"Bearer {token}",

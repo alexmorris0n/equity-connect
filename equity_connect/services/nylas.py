@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 NYLAS_API_KEY = os.getenv("NYLAS_API_KEY")
 NYLAS_API_URL = os.getenv("NYLAS_API_URL", "https://api.us.nylas.com")
 
-async def get_broker_events(grant_id: str, start_time: int, end_time: int) -> List[Dict[str, int]]:
+def get_broker_events(grant_id: str, start_time: int, end_time: int) -> List[Dict[str, int]]:
 	"""Get broker's calendar events for availability checking
 	
 	Args:
@@ -26,8 +26,8 @@ async def get_broker_events(grant_id: str, start_time: int, end_time: int) -> Li
 	
 	url = f"{NYLAS_API_URL}/v3/grants/{grant_id}/events?calendar_id=primary&start={start_time}&end={end_time}"
 	
-	async with httpx.AsyncClient(timeout=15.0) as client:  # 15 second timeout
-		response = await client.get(
+	with httpx.Client(timeout=15.0) as client:  # 15 second timeout
+		response = client.get(
 			url,
 			headers={
 				"Authorization": f"Bearer {NYLAS_API_KEY}",
@@ -176,7 +176,7 @@ def format_available_slots(
 	
 	return formatted_slots[:5]  # Return top 5
 
-async def create_calendar_event(grant_id: str, event_data: Dict[str, Any]) -> str:
+def create_calendar_event(grant_id: str, event_data: Dict[str, Any], calendar_id: Optional[str] = None) -> str:
 	"""Create a calendar event via Nylas
 	
 	Args:
@@ -189,15 +189,21 @@ async def create_calendar_event(grant_id: str, event_data: Dict[str, Any]) -> st
 	if not NYLAS_API_KEY:
 		raise ValueError("NYLAS_API_KEY not configured")
 	
-	url = f"{NYLAS_API_URL}/v3/grants/{grant_id}/events"
+	calendar_param = calendar_id or "primary"
+	url = f"{NYLAS_API_URL}/v3/grants/{grant_id}/events?calendar_id={calendar_param}"
 	
 	# Format participants
 	participants = []
 	for p in event_data.get("participants", []):
+		email = (p.get("email") or "").strip()
+		if not email:
+			continue
 		participants.append({
-			"email": p["email"],
+			"email": email,
 			"name": p.get("name", "")
 		})
+	if not participants:
+		raise ValueError("Cannot create calendar event without participant emails.")
 	
 	payload = {
 		"title": event_data["title"],
@@ -209,8 +215,8 @@ async def create_calendar_event(grant_id: str, event_data: Dict[str, Any]) -> st
 		"participants": participants
 	}
 	
-	async with httpx.AsyncClient(timeout=15.0) as client:  # 15 second timeout
-		response = await client.post(
+	with httpx.Client(timeout=15.0) as client:  # 15 second timeout
+		response = client.post(
 			url,
 			headers={
 				"Authorization": f"Bearer {NYLAS_API_KEY}",

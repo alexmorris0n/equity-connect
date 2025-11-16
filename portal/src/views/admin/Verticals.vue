@@ -730,7 +730,6 @@ const availableTools = [
   // Knowledge
   'search_knowledge',
   // Interaction & Tracking
-  'save_interaction',
   'assign_tracking_number',
   'send_appointment_confirmation',
   'verify_appointment_confirmation',
@@ -898,7 +897,6 @@ const ALL_TOOLS_WITH_DESCRIPTIONS = {
     { name: 'search_knowledge', desc: 'Search reverse mortgage knowledge base for answers' }
   ],
   interaction: [
-    { name: 'save_interaction', desc: 'Log call summary at end of call' },
     { name: 'assign_tracking_number', desc: 'Assign SignalWire number to lead/broker pair (call after booking)' },
     { name: 'send_appointment_confirmation', desc: 'Send appointment details to lead' },
     { name: 'verify_appointment_confirmation', desc: 'Confirm lead received appointment details' }

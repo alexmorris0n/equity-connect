@@ -1971,7 +1971,6 @@ const availableTools = {
     { key: 'assign_tracking_number', name: 'assign_tracking_number', desc: 'Assign the current SignalWire number to this lead/broker pair for call tracking. Should be called immediately after booking an appointment.' }
   ],
   tracking: [
-    { key: 'save_interaction', name: 'save_interaction', desc: 'Save call interaction details at the end of the call. Include transcript summary and outcome.' }
   ]
 }
 
@@ -3635,7 +3634,7 @@ Keep it simple, bullet format.`,
 - Format: "- tool_name: What it does and when to use it"
 - Include timing expectations for tools
 - Add note about fillers: "IMPORTANT: Talk naturally while tools are running. Use conversational fillers: 'just pulling that up', 'one sec', 'loading'"
-- Common tools: get_lead_context, search_knowledge, check_broker_availability, book_appointment, save_interaction
+        - Common tools: get_lead_context, search_knowledge, check_broker_availability, book_appointment
 - Keep descriptions concise but clear about purpose`,
 
     instructions: `INSTRUCTIONS & RULES GUIDELINES:
