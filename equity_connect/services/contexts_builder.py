@@ -47,7 +47,7 @@ def build_contexts_object(
     logger.info(f"🏗️  Building contexts for {vertical}, initial: {initial_context}")
     
     # Query database for all contexts and their steps
-    contexts_data = _query_contexts_from_db(vertical, use_draft=use_draft)
+    contexts_data = _query_contexts_from_db(vertical, use_draft=use_draft, lead_context=lead_context)
     
     if not contexts_data:
         logger.error(f"❌ No contexts found for vertical: {vertical}")
@@ -86,7 +86,7 @@ def build_contexts_object(
     return contexts_obj
 
 
-def _query_contexts_from_db(vertical: str, use_draft: bool = False) -> Dict:
+def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context: Optional[dict] = None) -> Dict:
     """Query database for all contexts and their steps
     
     Returns:
@@ -140,10 +140,37 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False) -> Dict:
         
         content = version_to_use['content']
         
+        # Substitute variables in prompt text if lead_context provided
+        prompt_text = content.get('instructions', '')
+        if lead_context and prompt_text:
+            try:
+                # Create a safe dict with only the variables we want to expose
+                template_vars = {
+                    'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "the caller",
+                    'first_name': lead_context.get('first_name', 'the caller'),
+                    'last_name': lead_context.get('last_name', ''),
+                    'lead_phone': lead_context.get('primary_phone', ''),
+                    'broker_name': lead_context.get('broker', {}).get('contact_name', 'your broker') if isinstance(lead_context.get('broker'), dict) else 'your broker',
+                    'broker_company': lead_context.get('broker', {}).get('company_name', '') if isinstance(lead_context.get('broker'), dict) else '',
+                    'broker_phone': lead_context.get('broker', {}).get('phone', '') if isinstance(lead_context.get('broker'), dict) else '',
+                    'property_address': lead_context.get('property_address', ''),
+                    'property_city': lead_context.get('property_city', ''),
+                    'property_state': lead_context.get('property_state', ''),
+                    'property_zip': lead_context.get('property_zip', ''),
+                    'property_value': lead_context.get('property_value', ''),
+                    'estimated_equity': lead_context.get('estimated_equity', ''),
+                }
+                # Use safe_substitute to avoid KeyError if template has variables we don't provide
+                from string import Template
+                prompt_text = Template(prompt_text).safe_substitute(template_vars)
+            except Exception as e:
+                logger.warning(f"[WARN] Failed to substitute variables in prompt: {e}")
+                # Keep original prompt text if substitution fails
+        
         # Build step object - CRITICAL: Map 'tools' field to 'functions' array
         step = {
             "name": prompt.get('step_name', 'main'),  # Default step name
-            "text": content.get('instructions', ''),
+            "text": prompt_text,  # ← Now with substituted variables
             "step_criteria": content.get('step_criteria', 'User has responded appropriately.'),
             "functions": content.get('tools', [])  # ← READ "tools" FROM DB, OUTPUT AS "functions"
         }
