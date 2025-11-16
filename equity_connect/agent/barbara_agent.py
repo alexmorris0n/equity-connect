@@ -1774,20 +1774,32 @@ List specific actions needed based on conversation outcome.
 					logger.error(f"[ERROR] Failed to load theme: {e}")
 					raise
 				
-				# ==================== STEP 10: APPLY CONTEXTS ====================
-				self._apply_prompt_and_contexts(theme_text, contexts_obj)
-				logger.info(f"[OK] Agent configured with {len(contexts_obj)} contexts")
+				# ==================== STEP 10: RETURN POM STRUCTURE ====================
+				# With use_pom=True, we RETURN the structure for POM to apply
+				# DO NOT manually call _apply_prompt_and_contexts (causes recursion)
 				
 				if self._test_mode:
 					self._handle_test_context_change(initial_context)
 				
 				logger.info(
-					f"[OK] Agent configured with contexts: voice={voice_string}, "
-					f"model={params_payload.get('ai_model')}, initial_context={initial_context}, phone={phone}"
+					f"[OK] Returning POM structure with {len(contexts_obj)} contexts: "
+					f"voice={voice_string}, model={params_payload.get('ai_model')}, "
+					f"initial_context={initial_context}, phone={phone}"
 				)
+				
+				return {
+					"prompt": {
+						"pom": {
+							"sections": {
+								"main": theme_text
+							},
+							"contexts": contexts_obj
+						}
+					}
+				}
 			else:
 				logger.warning("[WARN] No phone number found in request - using default configuration")
-				# Apply fallback for unknown caller
+				# Return fallback POM structure
 				try:
 					contexts_obj = build_contexts_object(
 						vertical=active_vertical,
@@ -1796,14 +1808,20 @@ List specific actions needed based on conversation outcome.
 						use_draft=self._test_use_draft
 					)
 					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
-					self._apply_prompt_and_contexts(theme_text, contexts_obj)
+					
+					return {
+						"prompt": {
+							"pom": {
+								"sections": {
+									"main": theme_text
+								},
+								"contexts": contexts_obj
+							}
+						}
+					}
 				except Exception as e:
 					logger.error(f"Failed to build fallback contexts: {e}")
 					raise
-			
-			# ==================== STEP 11: RETURN ====================
-			# Return None - no SWML modifications needed, use SDK defaults
-			return None
 			
 		except Exception as e:
 			logger.error(f"[ERROR] Error in on_swml_request: {e}", exc_info=True)
