@@ -25,10 +25,18 @@ def get_lead_context_core(phone: str) -> str:
 	sb = get_supabase_client()
 	
 	try:
+		# Guard against None/empty phone
+		if not phone:
+			return json.dumps({
+				"found": False,
+				"error": "Phone number is required",
+				"message": "No phone number provided.",
+			})
+		
 		logger.info(f"Looking up lead by phone: {phone}")
 		
 		# Generate search patterns
-		phone_digits = re.sub(r"\D", "", phone or "")
+		phone_digits = re.sub(r"\D", "", str(phone))
 		last10 = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
 		patterns = [
 			phone,  # Original format

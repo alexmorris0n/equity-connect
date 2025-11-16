@@ -17,7 +17,6 @@ from equity_connect.services import (
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
 from equity_connect.tools import conversation_flags
-from signalwire_pom import PromptObjectModel  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -328,9 +327,17 @@ class BarbaraAgent(AgentBase):
 			logger.error(f"[ERROR] Failed to load theme: {e}")
 			raise
 		
-		# 7. Configure agent with contexts
-		self._apply_prompt_and_contexts(theme_text, contexts_obj, agent_instance=agent)
-		logger.info(f"[OK] Agent configured with {len(contexts_obj)} contexts")
+		# 7. Configure agent with contexts using builder API
+		# Apply theme using prompt_add_section
+		agent.prompt_add_section("Personality", body=theme_text)
+		
+		# Build contexts using builder API
+		self._apply_contexts_via_builder(agent, contexts_obj)
+		
+		logger.info(f"[OK] Agent configured with {len(contexts_obj)} contexts via builder API")
+		
+		# CRITICAL: configure_per_call requires NO return value
+		# If you see a return dict here, you're doing it wrong
 	
 	def _override_prompt_for_test(self, agent, vertical: str, node_name: str, content: dict):
 		"""
@@ -380,27 +387,43 @@ class BarbaraAgent(AgentBase):
 			node_name: test_context
 		}
 		
-		# Configure agent with test prompt
-		self._apply_prompt_and_contexts(theme_text, contexts_obj, agent_instance=agent)
-		logger.info(f"[OK] Prompt override complete for test: {node_name}")
+		# Configure agent with test prompt using builder API
+		# Apply theme using prompt_add_section
+		agent.prompt_add_section("Personality", body=theme_text)
+		
+		# Build contexts using builder API
+		self._apply_contexts_via_builder(agent, contexts_obj)
+		
+		logger.info(f"[OK] Prompt override complete for test: {node_name} via builder API")
+		
+		# CRITICAL: _override_prompt_for_test requires NO return value
+		# If you see a return dict here, you're doing it wrong
 
-	def _apply_prompt_and_contexts(self, theme_text: Optional[str], contexts_obj: Dict[str, Any], agent_instance=None):
-		"""Apply prompt text and contexts using the current SignalWire SDK API."""
-		target_agent = agent_instance or self
-		target_agent.pom = PromptObjectModel()
-		if theme_text:
-			target_agent.prompt_add_section("Base Prompt", theme_text)
-		contexts_builder = self._populate_contexts_from_dict(target_agent, contexts_obj)
-		# Ensure SignalWire SDK knows contexts are defined so they serialize into SWML
-		setattr(target_agent, "_contexts_builder", contexts_builder)
-		setattr(target_agent, "_contexts_defined", True)
 
-	def _populate_contexts_from_dict(self, agent_instance, contexts_obj: Dict[str, Any]):
-		contexts_builder = ContextBuilder(agent_instance)
-		for ctx_name, ctx_config in contexts_obj.items():
+	def _apply_contexts_via_builder(self, agent_instance, contexts_data: Dict[str, Any]) -> None:
+		"""Apply contexts using proper ContextBuilder API
+		
+		Args:
+			agent_instance: Agent or EphemeralAgentConfig instance
+			contexts_data: Dict from build_contexts_object() with structure:
+				{
+					"context_name": {
+						"steps": [{"name": "...", "text": "...", "functions": [...], ...}],
+						"valid_contexts": [...]
+					}
+				}
+		
+		CRITICAL: Uses builder API exclusively - no custom dict returns
+		CRITICAL: DO NOT return anything - SDK handles serialization automatically
+		"""
+		contexts_builder = agent_instance.define_contexts()
+		
+		for ctx_name, ctx_config in contexts_data.items():
 			if not ctx_config:
 				continue
 			context = contexts_builder.add_context(ctx_name)
+			
+			# Context-level properties
 			valid_contexts = self._ensure_list(ctx_config.get("valid_contexts"))
 			if valid_contexts:
 				context.set_valid_contexts(valid_contexts)
@@ -410,7 +433,8 @@ class BarbaraAgent(AgentBase):
 				context.set_enter_fillers(ctx_config["enter_fillers"])
 			if ctx_config.get("exit_fillers") and hasattr(context, "set_exit_fillers"):
 				context.set_exit_fillers(ctx_config["exit_fillers"])
-
+			
+			# Add each step
 			context_step_names = set()
 			for idx, step_cfg in enumerate(ctx_config.get("steps", [])):
 				step_name = step_cfg.get("name") or f"step_{idx}"
@@ -418,6 +442,7 @@ class BarbaraAgent(AgentBase):
 					step_name = f"{step_name}_{idx}"
 				context_step_names.add(step_name)
 				step = context.add_step(step_name)
+				
 				if step_cfg.get("text"):
 					step.set_text(step_cfg["text"])
 				if step_cfg.get("step_criteria"):
@@ -428,7 +453,7 @@ class BarbaraAgent(AgentBase):
 				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
 				if valid_steps:
 					step.set_valid_steps(valid_steps)
-
+				
 				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
 				action = step_cfg.get("action")
 				if action and action.get("type") == "set_context":
@@ -437,9 +462,8 @@ class BarbaraAgent(AgentBase):
 						step_valid_contexts.append(target_ctx)
 				if step_valid_contexts:
 					step.set_valid_contexts(step_valid_contexts)
-
-		agent_instance.define_contexts(contexts_builder)
-		return contexts_builder
+		
+		# NO RETURN - SDK handles serialization automatically
 
 	@staticmethod
 	def _ensure_list(value: Optional[Any]) -> List[Any]:
@@ -986,7 +1010,10 @@ class BarbaraAgent(AgentBase):
 	def get_lead_context(self, args, raw_data):
 		"""Tool: Get lead information by phone number via lead_service."""
 		logger.error("=== TOOL CALLED - get_lead_context ===")
-		return lead_service.get_lead_context_core(args.get("phone"))
+		phone = args.get("phone") if args else None
+		if not phone:
+			logger.warning(f"[WARN] get_lead_context called with no phone: args={args}")
+		return lead_service.get_lead_context_core(phone or "")
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
@@ -1774,32 +1801,31 @@ List specific actions needed based on conversation outcome.
 					logger.error(f"[ERROR] Failed to load theme: {e}")
 					raise
 				
-				# ==================== STEP 10: RETURN POM STRUCTURE ====================
-				# With use_pom=True, we RETURN the structure for POM to apply
-				# DO NOT manually call _apply_prompt_and_contexts (causes recursion)
+				# ==================== STEP 10: APPLY PROMPTS AND CONTEXTS VIA BUILDER API ====================
+				# CRITICAL: Use builder API exclusively - no custom dict returns
+				# CRITICAL: POM mode requires NO return value - SDK handles serialization
 				
 				if self._test_mode:
 					self._handle_test_context_change(initial_context)
 				
+				# Apply theme using prompt_add_section
+				self.prompt_add_section("Personality", body=theme_text)
+				
+				# Build contexts using builder API
+				self._apply_contexts_via_builder(self, contexts_obj)
+				
 				logger.info(
-					f"[OK] Returning POM structure with {len(contexts_obj)} contexts: "
+					f"[OK] Applied POM via builder API with {len(contexts_obj)} contexts: "
 					f"voice={voice_string}, model={params_payload.get('ai_model')}, "
 					f"initial_context={initial_context}, phone={phone}"
 				)
 				
-				return {
-					"prompt": {
-						"pom": {
-							"sections": {
-								"main": theme_text
-							},
-							"contexts": contexts_obj
-						}
-					}
-				}
+				# CRITICAL: POM mode requires NO return value
+				# If you see a return dict here, you're doing it wrong
+				return None
 			else:
 				logger.warning("[WARN] No phone number found in request - using default configuration")
-				# Return fallback POM structure
+				# Apply fallback using builder API
 				try:
 					contexts_obj = build_contexts_object(
 						vertical=active_vertical,
@@ -1809,16 +1835,17 @@ List specific actions needed based on conversation outcome.
 					)
 					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
 					
-					return {
-						"prompt": {
-							"pom": {
-								"sections": {
-									"main": theme_text
-								},
-								"contexts": contexts_obj
-							}
-						}
-					}
+					# Apply theme using prompt_add_section
+					self.prompt_add_section("Personality", body=theme_text)
+					
+					# Build contexts using builder API
+					self._apply_contexts_via_builder(self, contexts_obj)
+					
+					logger.info(f"[OK] Applied fallback POM via builder API with {len(contexts_obj)} contexts")
+					
+					# CRITICAL: POM mode requires NO return value
+					# If you see a return dict here, you're doing it wrong
+					return None
 				except Exception as e:
 					logger.error(f"Failed to build fallback contexts: {e}")
 					raise
