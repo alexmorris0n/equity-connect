@@ -1030,8 +1030,7 @@ class BarbaraAgent(AgentBase):
 		}, phone=phone)
 		self._set_test_state(call_id, state, phone=phone)
 		
-		# Bug fix: Clean up test state when call completes (prevents memory leak)
-		self._cleanup_test_state(call_id=call_id, phone=phone)
+		# Cleanup happens in on_summary when call actually ends to ensure events persist
 	
 	def _build_voice_string(self, engine: str, voice_name: str) -> str:
 		"""Build provider-specific voice string
