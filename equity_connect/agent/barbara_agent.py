@@ -973,20 +973,16 @@ class BarbaraAgent(AgentBase):
 		name="get_lead_context",  # MATCH PROMPTS
 		description="Get lead information by phone number; returns lead, broker, property context.",
 		parameters={
-			"type": "object",
-			"properties": {
-				"phone": {
-					"type": "string",
-					"description": "Phone number of the lead (any format)",
-				}
-			},
-			"required": ["phone"],
+			"phone": {
+				"type": "string",
+				"description": "Phone number of the lead (any format)",
+			}
 		},
 	)
-	def get_lead_context_tool(self, args, raw_data):
+	def get_lead_context_tool(self, phone):
 		"""Tool: Get lead information by phone number via lead_service."""
 		logger.error("=== TOOL CALLED - get_lead_context ===")
-		return lead_service.get_lead_context_core(args.get("phone"))
+		return lead_service.get_lead_context_core(phone)
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
