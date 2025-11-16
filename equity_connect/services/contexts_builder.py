@@ -150,9 +150,10 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
                     'first_name': lead_context.get('first_name', 'the caller'),
                     'last_name': lead_context.get('last_name', ''),
                     'lead_phone': lead_context.get('primary_phone', ''),
-                    'broker_name': lead_context.get('broker', {}).get('contact_name', 'your broker') if isinstance(lead_context.get('broker'), dict) else 'your broker',
-                    'broker_company': lead_context.get('broker', {}).get('company_name', '') if isinstance(lead_context.get('broker'), dict) else '',
-                    'broker_phone': lead_context.get('broker', {}).get('phone', '') if isinstance(lead_context.get('broker'), dict) else '',
+                    # Broker fields are flat in lead_context (not nested)
+                    'broker_name': lead_context.get('broker_name', 'your broker'),
+                    'broker_company': lead_context.get('broker_company', ''),
+                    'broker_phone': lead_context.get('broker_phone', ''),
                     'property_address': lead_context.get('property_address', ''),
                     'property_city': lead_context.get('property_city', ''),
                     'property_state': lead_context.get('property_state', ''),

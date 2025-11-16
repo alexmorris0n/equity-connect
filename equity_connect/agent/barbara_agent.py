@@ -1666,6 +1666,7 @@ List specific actions needed based on conversation outcome.
 								lead_context["broker_name"] = broker_data.get('contact_name')
 								lead_context["broker_company"] = broker_data.get('company_name')
 								lead_context["broker_email"] = broker_data.get('email')
+								lead_context["broker_phone"] = broker_data.get('phone')  # Add for variable substitution
 								lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
 								lead_context["broker_timezone"] = broker_data.get('timezone')
 								logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
