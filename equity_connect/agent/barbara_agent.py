@@ -218,7 +218,7 @@ class BarbaraAgent(AgentBase):
 		
 		# 3. Get lead context
 		try:
-			lead_context = self._get_lead_context(phone, broker_id)
+			lead_context = self._query_lead_direct(phone, broker_id)
 		except Exception as e:
 			logger.error(f"[ERROR] Failed to get lead context: {e}")
 			raise
@@ -482,11 +482,11 @@ class BarbaraAgent(AgentBase):
 			return value.strip().lower() in {"true", "1", "yes", "on"}
 		return bool(value)
 	
-	def _get_lead_context(self, phone: str, broker_id: Optional[str] = None) -> Dict[str, Any]:
+	def _query_lead_direct(self, phone: str, broker_id: Optional[str] = None) -> Dict[str, Any]:
 		"""Query Supabase directly for lead information
 		
 		Cannot call tools from configure_per_call (sync vs async mismatch).
-		Duplicates query logic from tools/lead.py get_lead_context.
+		Duplicates query logic from lead_service.get_lead_context_core.
 		
 		Args:
 			phone: Caller phone number
