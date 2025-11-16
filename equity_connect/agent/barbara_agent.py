@@ -872,8 +872,8 @@ class BarbaraAgent(AgentBase):
 		description="Get lead information by phone number; returns lead, broker, property context.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number of the lead (any format)"}}, "required": ["phone"]}
 	)
-	async def get_lead_context_tool(self, args, raw_data):
-		"""Tool: Get lead information by phone number - DIRECT IMPLEMENTATION"""
+	def get_lead_context_tool(self, args, raw_data):
+		"""Tool: Get lead information by phone number - DIRECT IMPLEMENTATION - SYNCHRONOUS"""
 		print("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # DIAGNOSTIC
 		logger.error("🚨🚨🚨 TOOL CALLED - get_lead_context 🚨🚨🚨")  # Force to ERROR level
 		
