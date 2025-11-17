@@ -860,9 +860,9 @@ List specific actions needed based on conversation outcome.
 		qualified = state.get("qualified", False)
 		
 		# Check in priority order (most complete first)
-		if cd.get("appointment_booked"):
-			logger.info("[OK] Appointment booked - starting at exit")
-			return "exit"
+		# NOTE: appointment_booked removed - booked callbacks should start at GREET
+		# so Barbara can determine intent (questions, reschedule, or just confirm)
+		# EXIT context is only for ending conversations, not handling callbacks
 		
 		if cd.get("ready_to_book"):
 			logger.info("[CALENDAR] Ready to book - starting at book")
@@ -1115,8 +1115,10 @@ List specific actions needed based on conversation outcome.
 		cd = state.get("conversation_data", {})
 		qualified = state.get("qualified", False)
 		
-		if cd.get("appointment_booked"):
-			return "exit"
+		# NOTE: appointment_booked removed - booked callbacks should start at GREET
+		# EXIT context is only for ending conversations, not handling callbacks
+		# All calls should start at an active context (greet, book, answer, etc.)
+		
 		if cd.get("ready_to_book"):
 			return "book"
 		if cd.get("quote_presented") and cd.get("quote_reaction") in ["positive", "skeptical"]:
@@ -1193,120 +1195,6 @@ List specific actions needed based on conversation outcome.
 		voice_string = formats.get(engine.lower(), f"{engine}.{voice_name}")
 		logger.debug(f"Built voice string: {voice_string} (engine: {engine}, voice: {voice_name})")
 		return voice_string
-	
-	@AgentBase.tool(
-		name="route_to_context",
-		description="Programmatically route conversation to a different context when automatic routing via valid_contexts is insufficient. Use when user intent requires immediate context switch (e.g., questions → answer, objections → objections, ready to book → book).",
-		parameters={
-			"type": "object",
-			"properties": {
-				"target_context": {
-					"type": "string",
-					"description": "Target context name (answer, objections, book, exit, greet, qualify, quote, verify)",
-					"enum": ["answer", "objections", "book", "exit", "greet", "qualify", "quote", "verify"]
-				},
-				"reason": {
-					"type": "string",
-					"description": "Reason for routing (e.g., 'user_asked_question', 'objection_raised', 'ready_to_book')",
-					"nullable": True
-				}
-			},
-			"required": ["target_context"],
-		},
-	)
-	def route_to_context(self, args, raw_data):
-		"""Tool: Programmatic context routing for special cases.
-		
-		Handles programmatic context switching when automatic routing via valid_contexts
-		doesn't catch the user intent. Always available (does not toggle off).
-		"""
-		try:
-			logger.info("=== TOOL CALLED - route_to_context ===")
-			target_context = args.get("target_context") if args else None
-			reason = args.get("reason") if args else None
-			
-			if not target_context:
-				logger.warning("[WARN] route_to_context called with no target_context")
-				return json.dumps({"success": False, "error": "No target_context provided"})
-			
-			# Get lead context for variable substitution in prompts
-			global_data = raw_data.get('global_data', {}) if raw_data else {}
-			lead = global_data.get('lead', {})
-			broker = global_data.get('broker', {})
-			prop = global_data.get('property', {})
-			
-			lead_context = {
-				"first_name": lead.get('first_name', 'there'),
-				"last_name": lead.get('last_name', ''),
-				"name": lead.get('name', 'Unknown'),
-				"phone": lead.get('phone', ''),
-				"email": lead.get('email', ''),
-				"broker_name": broker.get('full_name', 'your mortgage advisor'),
-				"broker_company": broker.get('company', 'our team'),
-				"property_city": prop.get('city', 'your area'),
-				"property_state": prop.get('state', ''),
-				"qualified": global_data.get('status', {}).get('qualified', False)
-			}
-			
-			# Load ONLY target context instructions (theme already established, don't resend)
-			from equity_connect.services.supabase import get_supabase_client
-			
-			supabase = get_supabase_client()
-			context_prompt = supabase.table('prompts') \
-				.select('prompt_versions!inner(content)') \
-				.eq('vertical', 'reverse_mortgage') \
-				.eq('node_name', target_context) \
-				.eq('prompt_versions.is_active', True) \
-				.single() \
-				.execute()
-			
-			context_instructions = ""
-			if context_prompt.data and context_prompt.data.get('prompt_versions'):
-				content = context_prompt.data['prompt_versions'][0].get('content', {})
-				context_instructions = content.get('instructions', '')
-			
-			# Build appropriate user prompt based on reason
-			user_prompt = "Continuing conversation in new context."
-			if reason == "user_asked_question":
-				user_prompt = "The user has asked a question. Use the search_knowledge tool to find the answer."
-			elif reason == "objection_raised":
-				user_prompt = "The user has raised an objection. Address their concern using the objection handling protocols."
-			elif reason == "ready_to_book":
-				user_prompt = "The user is ready to book an appointment. Proceed with the booking flow."
-			
-			# Calculate payload size BEFORE sending
-			system_prompt_size = len(context_instructions.encode('utf-8'))
-			user_prompt_size = len(user_prompt.encode('utf-8'))
-			total_switch_payload = system_prompt_size + user_prompt_size
-			
-			logger.info(f"[PAYLOAD] Context switch to '{target_context}':")
-			logger.info(f"[PAYLOAD]   - System prompt: {system_prompt_size:,} bytes ({system_prompt_size/1024:.2f} KB)")
-			logger.info(f"[PAYLOAD]   - User prompt: {user_prompt_size:,} bytes ({user_prompt_size/1024:.2f} KB)")
-			logger.info(f"[PAYLOAD]   - Total switch payload: {total_switch_payload:,} bytes ({total_switch_payload/1024:.2f} KB)")
-			
-			if total_switch_payload > 30 * 1024:
-				logger.error(f"[PAYLOAD] ERROR: Context switch payload exceeds 30 KB - will likely cause hangups!")
-			elif total_switch_payload > 20 * 1024:
-				logger.warning(f"[PAYLOAD] WARNING: Context switch payload exceeds 20 KB - close to limit!")
-			else:
-				logger.info(f"[PAYLOAD] OK: Context switch payload within safe limits")
-			
-			# Switch to target context programmatically
-			# CRITICAL: Only send target context instructions, NOT full theme (theme already established at call start)
-			# CRITICAL: Tools persist - don't resend tool schemas
-			# This reduces payload size from ~10 KB to ~6-8 KB per switch
-			result = SwaigFunctionResult(json.dumps({"success": True, "routed_to": target_context, "reason": reason}))
-			result.switch_context(
-				system_prompt=context_instructions,  # ← ONLY target context instructions, no theme, no tools
-				user_prompt=user_prompt,
-				consolidate=True  # Consolidate conversation history to save tokens
-			)
-			logger.info(f"[ROUTING] Successfully switched to {target_context} context (reason: {reason})")
-			return result
-			
-		except Exception as e:
-			logger.error(f"[ERROR] route_to_context failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e), "message": "Unable to route to context."})
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
