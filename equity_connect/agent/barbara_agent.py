@@ -1866,7 +1866,7 @@ List specific actions needed based on conversation outcome.
 								lead_context["broker_timezone"] = broker_data.get('timezone')
 
 							if lead_context.get('broker_nylas_grant_id'):
-								# Set global_data with FLAT keys matching %{variable} in prompts
+								# Set global_data for tool execution context
 								self.set_global_data({
 									"first_name": lead_context["first_name"],
 									"last_name": lead_context.get("last_name", ""),
