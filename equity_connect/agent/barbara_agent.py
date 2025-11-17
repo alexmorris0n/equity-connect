@@ -347,6 +347,7 @@ List specific actions needed based on conversation outcome.
 			lead_context = {
 				"lead_id": lead_data_sw.get('id'),
 				"first_name": lead_data_sw.get('first_name', 'there'),
+				"last_name": lead_data_sw.get('last_name', ''),
 				"name": lead_data_sw.get('name', 'Unknown'),
 				"phone": lead_data_sw.get('phone') or phone,
 				"email": lead_data_sw.get('email', ''),
@@ -618,7 +619,7 @@ List specific actions needed based on conversation outcome.
 				context.set_enter_fillers(ctx_config["enter_fillers"])
 			if ctx_config.get("exit_fillers") and hasattr(context, "set_exit_fillers"):
 				context.set_exit_fillers(ctx_config["exit_fillers"])
-			
+
 			# Add each step
 			context_step_names = set()
 			for idx, step_cfg in enumerate(ctx_config.get("steps", [])):
@@ -638,7 +639,7 @@ List specific actions needed based on conversation outcome.
 				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
 				if valid_steps:
 					step.set_valid_steps(valid_steps)
-				
+
 				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
 				action = step_cfg.get("action")
 				if action and action.get("type") == "set_context":
@@ -647,7 +648,7 @@ List specific actions needed based on conversation outcome.
 						step_valid_contexts.append(target_ctx)
 				if step_valid_contexts:
 					step.set_valid_contexts(step_valid_contexts)
-		
+
 		# NO RETURN - SDK handles serialization automatically
 
 	@staticmethod
@@ -919,7 +920,7 @@ List specific actions needed based on conversation outcome.
 			if hasattr(agent_obj, "has_skill") and agent_obj.has_skill(skill_name):
 				logger.debug(f"[REPEAT] Skill '{skill_name}' already loaded, skipping")
 				return
-			agent_obj.add_skill(skill_name)
+				agent_obj.add_skill(skill_name)
 			logger.info(f"[OK] Added skill '{skill_name}'")
 		except Exception as exc:
 			logger.warning(f"[WARN] Could not add skill '{skill_name}': {exc}")
@@ -1658,4 +1659,4 @@ List specific actions needed based on conversation outcome.
 				
 		except Exception as e:
 			logger.error(f"[ERROR] Failed to save call summary: {e}", exc_info=True)
-	
+
