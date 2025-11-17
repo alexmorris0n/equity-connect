@@ -1260,10 +1260,16 @@ List specific actions needed based on conversation outcome.
 			return swaig_result
 		except RecursionError as e:
 			logger.error(f"[FATAL] RecursionError in get_lead_context: {e}")
-			return json.dumps({"found": False, "error": "System error - recursion detected"})
+			error_result = json.dumps({"found": False, "error": "System error - recursion detected"})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] get_lead_context failed: {e}", exc_info=True)
-			return json.dumps({"found": False, "error": str(e), "message": "Unable to retrieve lead information."})
+			error_result = json.dumps({"found": False, "error": str(e), "message": "Unable to retrieve lead information."})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
