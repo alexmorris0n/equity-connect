@@ -1771,11 +1771,11 @@ List specific actions needed based on conversation outcome.
 							lead_data = lead_result.data
 							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
 							
-							# Build name - handle None/empty last_name gracefully (Pythonic pattern)
-							full_name = " ".join([s for s in [lead_data.get('first_name'), lead_data.get('last_name')] if s])
-							first_name = lead_data.get('first_name') or ''
-							last_name = lead_data.get('last_name')
-							
+						# Build name - handle None/empty last_name gracefully (Pythonic pattern)
+						full_name = " ".join([s for s in [lead_data.get('first_name'), lead_data.get('last_name')] if s])
+						first_name = lead_data.get('first_name') or ''
+						last_name = lead_data.get('last_name')
+						
 						lead_context = {
 							"lead_id": lead_id,
 							"name": full_name,
@@ -1792,69 +1792,69 @@ List specific actions needed based on conversation outcome.
 							"primary_email": lead_data.get('primary_email'),
 							"age": lead_data.get('age'),
 							"conversation_data": state_row.get("conversation_data", {}) if state_row else {},
-						"call_direction": call_direction  # Add for conditional greeting
-					}
-					
-					# Add broker info if assigned
-					if broker_data:
-						lead_context["broker_id"] = broker_data.get('id')
-						lead_context["broker_name"] = broker_data.get('contact_name')
-						lead_context["broker_company"] = broker_data.get('company_name')
-						lead_context["broker_email"] = broker_data.get('email')
-						lead_context["broker_phone"] = broker_data.get('phone')  # Add for variable substitution
-						lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
-						lead_context["broker_timezone"] = broker_data.get('timezone')
-						logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+							"call_direction": call_direction  # Add for conditional greeting
+						}
 						
-					# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
-					# This avoids DB queries in calendar tools (same pattern as v3)
-					if lead_context.get('broker_nylas_grant_id'):
-						self.update_global_data({
-									# Broker info (for calendar tools)
-									"broker_id": lead_context["broker_id"],
-									"broker_name": lead_context["broker_name"],
-									"broker_company": lead_context.get("broker_company"),
-									"broker_email": lead_context.get("broker_email"),
-									"broker_phone": broker_data.get('phone'),
-									"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
-									"broker_timezone": lead_context.get("broker_timezone"),
-									# Lead identity (always know who they are)
-									"lead_id": lead_context["lead_id"],
-									"lead_name": lead_context["name"],
-									"lead_first_name": lead_context["first_name"],
-									"lead_phone": phone,
-									"lead_email": lead_context.get("primary_email"),
-									"lead_age": lead_context.get("age"),
-									# Property info (this is a property-based product!)
-									"property_address": lead_context.get("property_address"),
-									"property_city": lead_context.get("property_city"),
-									"property_state": lead_context.get("property_state"),
-									"property_value": lead_context.get("property_value"),
-									"estimated_equity": lead_context.get("estimated_equity"),
-									# Status (don't re-qualify if already qualified)
-									"qualified": lead_context.get("qualified"),
-									"lead_status": lead_data.get('status'),
-									"owner_occupied": lead_data.get('owner_occupied'),
-									# Call metadata
-									"call_direction": call_direction
-								})
-								logger.info(f"[OK] Injected lead & broker data into global_data for persistent LLM memory")
-							else:
-								logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
+						# Add broker info if assigned
+						if broker_data:
+							lead_context["broker_id"] = broker_data.get('id')
+							lead_context["broker_name"] = broker_data.get('contact_name')
+							lead_context["broker_company"] = broker_data.get('company_name')
+							lead_context["broker_email"] = broker_data.get('email')
+							lead_context["broker_phone"] = broker_data.get('phone')  # Add for variable substitution
+							lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
+							lead_context["broker_timezone"] = broker_data.get('timezone')
+							logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+							
+						# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
+						# This avoids DB queries in calendar tools (same pattern as v3)
+						if lead_context.get('broker_nylas_grant_id'):
+							self.update_global_data({
+								# Broker info (for calendar tools)
+								"broker_id": lead_context["broker_id"],
+								"broker_name": lead_context["broker_name"],
+								"broker_company": lead_context.get("broker_company"),
+								"broker_email": lead_context.get("broker_email"),
+								"broker_phone": broker_data.get('phone'),
+								"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
+								"broker_timezone": lead_context.get("broker_timezone"),
+								# Lead identity (always know who they are)
+								"lead_id": lead_context["lead_id"],
+								"lead_name": lead_context["name"],
+								"lead_first_name": lead_context["first_name"],
+								"lead_phone": phone,
+								"lead_email": lead_context.get("primary_email"),
+								"lead_age": lead_context.get("age"),
+								# Property info (this is a property-based product!)
+								"property_address": lead_context.get("property_address"),
+								"property_city": lead_context.get("property_city"),
+								"property_state": lead_context.get("property_state"),
+								"property_value": lead_context.get("property_value"),
+								"estimated_equity": lead_context.get("estimated_equity"),
+								# Status (don't re-qualify if already qualified)
+								"qualified": lead_context.get("qualified"),
+								"lead_status": lead_data.get('status'),
+								"owner_occupied": lead_data.get('owner_occupied'),
+								# Call metadata
+								"call_direction": call_direction
+							})
+							logger.info(f"[OK] Injected lead & broker data into global_data for persistent LLM memory")
 						else:
-							logger.warning(f"Lead {lead_id} not found in leads table")
-							lead_context = {
-								"lead_id": lead_id,
-								"qualified": state_row.get("qualified") if state_row else False,
-								"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
-							}
-					except Exception as e:
-						logger.error(f"Failed to load lead data: {e}")
+							logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, {lead_context.get('property_city')}, {lead_context.get('property_state')} (no broker assigned)")
+					else:
+						logger.warning(f"Lead {lead_id} not found in leads table")
 						lead_context = {
 							"lead_id": lead_id,
 							"qualified": state_row.get("qualified") if state_row else False,
 							"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
 						}
+				except Exception as e:
+					logger.error(f"Failed to load lead data: {e}")
+					lead_context = {
+						"lead_id": lead_id,
+						"qualified": state_row.get("qualified") if state_row else False,
+						"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
+					}
 				
 				# ==================== STEP 6: SET GLOBAL DATA VARIABLES & METADATA ====================
 				# Set variables for SignalWire to substitute in context prompts
