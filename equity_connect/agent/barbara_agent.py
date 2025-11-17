@@ -472,6 +472,14 @@ List specific actions needed based on conversation outcome.
 			"verified": "false"
 		})
 		
+		# Log global_data size
+		import json
+		global_data_json = json.dumps(agent.get_global_data() if hasattr(agent, 'get_global_data') else {})
+		global_data_size = len(global_data_json.encode('utf-8'))
+		logger.info(f"[PAYLOAD] Global data size: {global_data_size:,} bytes ({global_data_size/1024:.2f} KB)")
+		if global_data_size > 10 * 1024:
+			logger.warning(f"[PAYLOAD] WARNING: Global data exceeds 10 KB - consider trimming")
+		
 		logger.info(f"[OK] Global data set with nested+flat structure for {lead_context.get('name', 'Unknown')}")
 		
 		# 4. Determine initial context
@@ -502,10 +510,37 @@ List specific actions needed based on conversation outcome.
 		
 		# 7. Configure agent with contexts using builder API
 		# Apply theme using prompt_add_section
+		theme_size = len(theme_text.encode('utf-8'))
+		logger.info(f"[PAYLOAD] Theme text size: {theme_size:,} bytes ({theme_size/1024:.2f} KB)")
 		agent.prompt_add_section("Personality", body=theme_text)
 		
+		# Log context instructions sizes
+		total_context_size = 0
+		for ctx_name, ctx_config in contexts_obj.items():
+			ctx_size = 0
+			for step in ctx_config.get("steps", []):
+				step_text = step.get("text", "")
+				step_size = len(step_text.encode('utf-8'))
+				ctx_size += step_size
+			total_context_size += ctx_size
+			if ctx_size > 0:
+				logger.info(f"[PAYLOAD] Context '{ctx_name}' instructions: {ctx_size:,} bytes ({ctx_size/1024:.2f} KB)")
+		logger.info(f"[PAYLOAD] Total context instructions: {total_context_size:,} bytes ({total_context_size/1024:.2f} KB)")
+		
 		# Build contexts using builder API
-		self._apply_contexts_via_builder(agent, contexts_obj)
+		# Filter out get_lead_context if data is already loaded
+		has_lead_data = bool(lead_context and lead_context.get("lead_id"))
+		if has_lead_data:
+			logger.info("[TOOLS] Lead data already loaded - excluding get_lead_context from all contexts")
+		self._apply_contexts_via_builder(agent, contexts_obj, exclude_get_lead_context=has_lead_data)
+		
+		# Estimate total payload size
+		estimated_total = global_data_size + theme_size + total_context_size
+		logger.info(f"[PAYLOAD] Estimated total payload: {estimated_total:,} bytes ({estimated_total/1024:.2f} KB)")
+		if estimated_total > 50 * 1024:
+			logger.warning(f"[PAYLOAD] WARNING: Estimated payload exceeds 50 KB - close to 64 KB limit!")
+		elif estimated_total > 60 * 1024:
+			logger.error(f"[PAYLOAD] ERROR: Estimated payload exceeds 60 KB - may cause hangups!")
 		
 		logger.info(f"[OK] Agent configured with {len(contexts_obj)} contexts via builder API")
 		
@@ -565,7 +600,8 @@ List specific actions needed based on conversation outcome.
 		agent.prompt_add_section("Personality", body=theme_text)
 		
 		# Build contexts using builder API
-		self._apply_contexts_via_builder(agent, contexts_obj)
+		# For test mode, don't exclude get_lead_context (test might need it)
+		self._apply_contexts_via_builder(agent, contexts_obj, exclude_get_lead_context=False)
 		
 		logger.info(f"[OK] Prompt override complete for test: {node_name} via builder API")
 		
@@ -573,7 +609,7 @@ List specific actions needed based on conversation outcome.
 		# If you see a return dict here, you're doing it wrong
 
 
-	def _apply_contexts_via_builder(self, agent_instance, contexts_data: Dict[str, Any]) -> None:
+	def _apply_contexts_via_builder(self, agent_instance, contexts_data: Dict[str, Any], exclude_get_lead_context: bool = False) -> None:
 		"""Apply contexts using proper ContextBuilder API
 		
 		Args:
@@ -585,6 +621,7 @@ List specific actions needed based on conversation outcome.
 						"valid_contexts": [...]
 					}
 				}
+			exclude_get_lead_context: If True, remove get_lead_context from all function lists
 		
 		CRITICAL: Uses builder API exclusively - no custom dict returns
 		CRITICAL: DO NOT return anything - SDK handles serialization automatically
@@ -621,6 +658,11 @@ List specific actions needed based on conversation outcome.
 				if step_cfg.get("step_criteria"):
 					step.set_step_criteria(step_cfg["step_criteria"])
 				functions = self._ensure_list(step_cfg.get("functions"))
+				# Filter out get_lead_context if data is already loaded
+				if exclude_get_lead_context and functions:
+					functions = [f for f in functions if f != "get_lead_context"]
+					if "get_lead_context" in step_cfg.get("functions", []):
+						logger.info(f"[TOOLS] Removed get_lead_context from {ctx_name}/{step_name} - data already loaded")
 				if functions:
 					step.set_functions(functions)
 				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
@@ -1188,6 +1230,8 @@ List specific actions needed based on conversation outcome.
 		"""
 		try:
 			logger.error("=== TOOL CALLED - get_lead_context ===")
+			logger.error(f"[DEBUG] get_lead_context called with args: {args}")
+			logger.error(f"[DEBUG] raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
 			
 			# Check global_data cache first (passed via raw_data from SignalWire)
 			global_data = raw_data.get('global_data', {}) if raw_data else {}
@@ -1201,37 +1245,50 @@ List specific actions needed based on conversation outcome.
 					"found": True,
 					"lead": {
 						"id": lead.get('id'),
-						"first_name": lead.get('first_name'),
-						"last_name": lead.get('last_name'),
-						"name": lead.get('name'),
-						"primary_phone": lead.get('phone'),
-						"primary_email": lead.get('email'),
+						"first_name": lead.get('first_name') or "",
+						"last_name": lead.get('last_name') or "",
+						"name": lead.get('name') or "",
+						"primary_phone": lead.get('phone') or "",
+						"primary_email": lead.get('email') or "",
 						"age": lead.get('age'),
-						"qualified": global_data.get('status', {}).get('qualified', False)
+						"qualified": bool(global_data.get('status', {}).get('qualified', False))
 					},
 					"broker": {
 						"id": broker.get('id'),
-						"name": broker.get('full_name'),
-						"company": broker.get('company'),
-						"email": broker.get('email'),
-						"phone": broker.get('phone'),
-						"nylas_grant_id": broker.get('nylas_grant_id'),
-						"timezone": broker.get('timezone')
+						"name": broker.get('full_name') or "",
+						"company": broker.get('company') or "",
+						"email": broker.get('email') or "",
+						"phone": broker.get('phone') or "",
+						"nylas_grant_id": broker.get('nylas_grant_id') or "",
+						"timezone": broker.get('timezone') or ""
 					},
 					"property": {
-						"address": prop.get('address'),
-						"city": prop.get('city'),
-						"state": prop.get('state'),
-						"zip": prop.get('zip'),
-						"value": prop.get('value'),
-						"estimated_equity": prop.get('equity')
+						"address": prop.get('address') or "",
+						"city": prop.get('city') or "",
+						"state": prop.get('state') or "",
+						"zip": prop.get('zip') or "",
+						"value": prop.get('value') or 0,
+						"estimated_equity": prop.get('equity') or 0
 					},
-					"conversation_data": global_data.get('conversation_data', {})
+					"conversation_data": global_data.get('conversation_data', {}) or {}
 				}
+				
+				# Validate JSON serialization before creating SwaigFunctionResult
+				try:
+					json_str = json.dumps(result_data, default=str)
+					json_size = len(json_str.encode('utf-8'))
+					logger.info(f"[PAYLOAD] get_lead_context response: {json_size:,} bytes ({json_size/1024:.2f} KB)")
+					if json_size > 10 * 1024:
+						logger.warning(f"[PAYLOAD] WARNING: get_lead_context response exceeds 10 KB - may cause issues!")
+				except (TypeError, ValueError) as json_err:
+					logger.error(f"[ERROR] JSON serialization failed in get_lead_context: {json_err}")
+					logger.error(f"[ERROR] Problematic data: {result_data}")
+					# Fallback to minimal response
+					json_str = json.dumps({"found": True, "error": "Data serialization error"})
 				
 				# Toggle this tool OFF for the rest of the call (saves LLM tokens)
 				logger.info("[TOGGLE] Disabling get_lead_context tool - data already provided")
-				result = SwaigFunctionResult(json.dumps(result_data))
+				result = SwaigFunctionResult(json_str)
 				result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
 				return result
 			
@@ -1314,13 +1371,9 @@ List specific actions needed based on conversation outcome.
 				"qualified": global_data.get('status', {}).get('qualified', False)
 			}
 			
-			# Load theme
-			from equity_connect.services.contexts_builder import load_theme
+			# Load ONLY target context instructions (theme already established, don't resend)
 			from equity_connect.services.supabase import get_supabase_client
 			
-			theme_text = load_theme("reverse_mortgage", use_draft=False, lead_context=lead_context)
-			
-			# Load target context instructions directly from DB
 			supabase = get_supabase_client()
 			context_prompt = supabase.table('prompts') \
 				.select('prompt_versions!inner(content)') \
@@ -1344,13 +1397,32 @@ List specific actions needed based on conversation outcome.
 			elif reason == "ready_to_book":
 				user_prompt = "The user is ready to book an appointment. Proceed with the booking flow."
 			
+			# Calculate payload size BEFORE sending
+			system_prompt_size = len(context_instructions.encode('utf-8'))
+			user_prompt_size = len(user_prompt.encode('utf-8'))
+			total_switch_payload = system_prompt_size + user_prompt_size
+			
+			logger.info(f"[PAYLOAD] Context switch to '{target_context}':")
+			logger.info(f"[PAYLOAD]   - System prompt: {system_prompt_size:,} bytes ({system_prompt_size/1024:.2f} KB)")
+			logger.info(f"[PAYLOAD]   - User prompt: {user_prompt_size:,} bytes ({user_prompt_size/1024:.2f} KB)")
+			logger.info(f"[PAYLOAD]   - Total switch payload: {total_switch_payload:,} bytes ({total_switch_payload/1024:.2f} KB)")
+			
+			if total_switch_payload > 30 * 1024:
+				logger.error(f"[PAYLOAD] ERROR: Context switch payload exceeds 30 KB - will likely cause hangups!")
+			elif total_switch_payload > 20 * 1024:
+				logger.warning(f"[PAYLOAD] WARNING: Context switch payload exceeds 20 KB - close to limit!")
+			else:
+				logger.info(f"[PAYLOAD] OK: Context switch payload within safe limits")
+			
 			# Switch to target context programmatically
+			# CRITICAL: Only send target context instructions, NOT full theme (theme already established at call start)
+			# CRITICAL: Tools persist - don't resend tool schemas
+			# This reduces payload size from ~10 KB to ~6-8 KB per switch
 			result = SwaigFunctionResult(json.dumps({"success": True, "routed_to": target_context, "reason": reason}))
-			result.switchcontext(
-				target_context,
-				systemprompt=f"{theme_text}\n\n{context_instructions}",
-				userprompt=user_prompt,
-				consolidate=True
+			result.switch_context(
+				system_prompt=context_instructions,  # ← ONLY target context instructions, no theme, no tools
+				user_prompt=user_prompt,
+				consolidate=True  # Consolidate conversation history to save tokens
 			)
 			logger.info(f"[ROUTING] Successfully switched to {target_context} context (reason: {reason})")
 			return result

@@ -81,6 +81,33 @@ def build_contexts_object(
     for context_name, context_config in contexts_with_steps.items():
             contexts_obj[context_name] = _build_context(context_name, context_config)
     
+    # DIAGNOSTIC: Log payload size and validate JSON structure
+    import json
+    try:
+        contexts_json = json.dumps(contexts_obj)
+        contexts_size = len(contexts_json.encode('utf-8'))
+        logger.info(f"[PAYLOAD] Contexts object size: {contexts_size:,} bytes ({contexts_size/1024:.2f} KB)")
+        
+        if contexts_size > 50 * 1024:
+            logger.warning(f"[PAYLOAD] WARNING: Contexts payload exceeds 50 KB - close to 64 KB limit!")
+        elif contexts_size > 60 * 1024:
+            logger.error(f"[PAYLOAD] ERROR: Contexts payload exceeds 60 KB - may cause hangups!")
+        
+        # Log size per context
+        for ctx_name, ctx_config in contexts_obj.items():
+            ctx_json = json.dumps(ctx_config)
+            ctx_size = len(ctx_json.encode('utf-8'))
+            if ctx_size > 5 * 1024:
+                logger.warning(f"[PAYLOAD] Context '{ctx_name}': {ctx_size:,} bytes ({ctx_size/1024:.2f} KB) - large!")
+            else:
+                logger.info(f"[PAYLOAD] Context '{ctx_name}': {ctx_size:,} bytes ({ctx_size/1024:.2f} KB)")
+        
+        logger.info("[PAYLOAD] Contexts JSON structure is valid")
+    except Exception as e:
+        logger.error(f"[PAYLOAD] ERROR: Contexts JSON validation failed: {e}")
+        logger.error(f"[PAYLOAD] This will cause serialization failures and hangups!")
+        raise ValueError(f"Contexts JSON structure is invalid: {e}") from e
+    
     logger.info(f"✅ Built {len(contexts_obj)} contexts: {list(contexts_obj.keys())}")
     
     return contexts_obj
@@ -210,29 +237,29 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
 
 
 def _build_default_context(initial_context: str) -> Dict:
-	"""Build the required 'default' context that routes to initial context
-	
-	SignalWire requires a "default" context as the entry point.
-	We use it to route immediately to the actual initial context.
-	
-	Args:
-		initial_context: Context name to route to (e.g., "greet", "answer")
-		
-	Returns:
-		Context object with single routing step
-	"""
-	
-	return {
-		"steps": [
-			{
-				"name": "route_to_initial",
+    """Build the required 'default' context that routes to initial context
+    
+    SignalWire requires a "default" context as the entry point.
+    We use it to route immediately to the actual initial context.
+    
+    Args:
+        initial_context: Context name to route to (e.g., "greet", "answer")
+        
+    Returns:
+        Context object with single routing step
+    """
+    
+    return {
+        "steps": [
+            {
+                "name": "route_to_initial",
 				"text": "You are Barbara, a professional assistant. Follow the context instructions carefully.",
 				"step_criteria": "none",  # Route immediately without evaluating completion
-				"valid_contexts": [initial_context],
-				"skip_user_turn": True  # Don't wait for user, just route
-			}
-		]
-	}
+                "valid_contexts": [initial_context],
+                "skip_user_turn": True  # Don't wait for user, just route
+            }
+        ]
+    }
 
 
 def _build_context(context_name: str, context_config: Dict) -> Dict:
@@ -297,20 +324,20 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
         if not draft_response.data:
             logger.error(f"❌ No draft theme found for vertical: {vertical}")
             raise ValueError(f"No draft theme found for vertical: {vertical}")
-        
+    
         theme_content = draft_response.data[0]['content']
     else:
-        response = supabase.table('theme_prompts') \
-            .select('content') \
-            .eq('vertical', vertical) \
-            .eq('is_active', True) \
-            .single() \
-            .execute()
-        
-        if not response.data:
-            logger.error(f"❌ No theme found for vertical: {vertical}")
-            raise ValueError(f"No theme found for vertical: {vertical}")
-        
+    response = supabase.table('theme_prompts') \
+        .select('content') \
+        .eq('vertical', vertical) \
+        .eq('is_active', True) \
+        .single() \
+        .execute()
+    
+    if not response.data:
+        logger.error(f"❌ No theme found for vertical: {vertical}")
+        raise ValueError(f"No theme found for vertical: {vertical}")
+    
         theme_content = response.data['content']
     
     # Substitute variables if lead_context provided
