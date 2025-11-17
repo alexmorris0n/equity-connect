@@ -69,6 +69,62 @@ class BarbaraAgent(AgentBase):
 		
 		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
+	def _build_prompts_with_data(self, agent, lead_context: dict, vertical: str = "reverse_mortgage"):
+		"""Build prompts dynamically using agent.prompt_add_section()
+		
+		This follows the official SignalWire pattern where prompts are built fresh
+		for each request using actual data, not variable placeholders.
+		
+		Reference: SignalWire AI Agents SDK Dynamic Configuration docs
+		"""
+		from string import Template
+		from equity_connect.services.contexts_builder import load_theme
+		from equity_connect.services.supabase import get_supabase_client
+		
+		# Prepare template variables with safe fallbacks
+		template_vars = {
+			'first_name': lead_context.get('first_name') or "there",
+			'last_name': lead_context.get('last_name') or "",
+			'full_name': lead_context.get('name') or "Unknown",
+			'lead_phone': lead_context.get('primary_phone') or lead_context.get('phone') or "",
+			'lead_email': lead_context.get('primary_email') or lead_context.get('email') or "",
+			'lead_age': lead_context.get('age') or "",
+			'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
+			'broker_company': lead_context.get('broker_company') or "our team",
+			'broker_phone': lead_context.get('broker_phone') or "",
+			'broker_email': lead_context.get('broker_email') or "",
+			'property_address': lead_context.get('property_address') or "your property",
+			'property_city': lead_context.get('property_city') or "your area",
+			'property_state': lead_context.get('property_state') or "",
+			'property_zip': lead_context.get('property_zip') or "",
+			'property_value': lead_context.get('property_value') or "",
+			'estimated_equity': lead_context.get('estimated_equity') or "",
+			'qualified': str(lead_context.get('qualified', False)).lower(),
+			'call_direction': lead_context.get('call_direction') or "inbound",
+			'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
+			'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
+		}
+		
+		# 1. Load and add theme
+		theme_template = load_theme(vertical, use_draft=self._test_use_draft, lead_context=None)
+		theme_text = Template(theme_template).safe_substitute(template_vars)
+		agent.prompt_add_section("Personality", theme_text)
+		
+		# 2. Load and add initial context prompt
+		initial_context = lead_context.get('initial_context', 'greet')
+		sb = get_supabase_client()
+		response = sb.table('prompts').select('*, prompt_versions!inner(*)').eq('vertical', vertical).eq('node_name', initial_context).eq('is_active', True).single().execute()
+		
+		if response.data:
+			prompt_data = response.data
+			version = next((v for v in prompt_data['prompt_versions'] if v.get('is_active')), None)
+			if version:
+				instructions_template = version['content'].get('instructions', '')
+				instructions_text = Template(instructions_template).safe_substitute(template_vars)
+				agent.prompt_add_section(f"{initial_context.title()} Instructions", instructions_text)
+		
+		logger.info(f"[OK] Built prompts dynamically with data for {template_vars['first_name']}")
+	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts
 		
@@ -345,9 +401,14 @@ class BarbaraAgent(AgentBase):
 			f"attention_timeout={params_payload['attention_timeout']}ms"
 		)
 		
-		# 4. Set global_data variables (SignalWire substitutes %{variables} in prompts at runtime)
-		# CRITICAL: Use FLAT keys that match %{variable} names in prompts
-		# Reference: https://developer.signalwire.com/swml/methods/ai/prompt/
+		# 4. Build prompts dynamically using agent.prompt_add_section()
+		# This is the official SignalWire pattern - build prompts fresh with actual data
+		lead_context['call_direction'] = call_direction
+		lead_context['initial_context'] = 'greet'  # TODO: Make dynamic based on conversation state
+		self._build_prompts_with_data(agent, lead_context, active_vertical)
+		
+		# 5. Set global_data for tool execution context
+		# Note: global_data is for tools/functions, NOT for prompt variable substitution
 		agent.set_global_data({
 			# Lead fields - match %{first_name}, %{last_name}, etc.
 			"first_name": lead_context.get("first_name", "there"),

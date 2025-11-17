@@ -2334,7 +2334,7 @@ function insertVariable(node, variableKey) {
   const textarea = textareaRefs.value[node]
   if (!textarea) return
   
-  const variableText = `%{${variableKey}}`  // SignalWire POM variable syntax
+  const variableText = `$${variableKey}`  // Python string.Template syntax for agent-side substitution
   const currentValue = nodeContent.value[node]?.instructions || ''
   
   // Get cursor position

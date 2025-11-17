@@ -4575,7 +4575,7 @@ function insertVariableIntoSection(sectionKey, variableKey) {
   const textarea = textareaRefs.value[sectionKey]
   if (!textarea) return
   
-  const variableText = `%{${variableKey}}`  // SignalWire POM variable syntax
+  const variableText = `$${variableKey}`  // Python string.Template syntax for agent-side substitution
   
   // Get current content
   const currentContent = currentVersion.value.content[sectionKey] || ''
