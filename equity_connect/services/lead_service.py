@@ -122,6 +122,9 @@ def get_lead_context_core(phone: str) -> str:
 			},
 		)
 		
+		# Compute full name from first_name + last_name
+		full_name = " ".join(filter(None, [lead.get("first_name"), lead.get("last_name")])) or "Unknown"
+		
 		return json.dumps(
 			{
 				"found": True,
@@ -135,6 +138,7 @@ def get_lead_context_core(phone: str) -> str:
 					"phone": broker.get("phone") if broker else "",
 				},
 				"lead": {
+					"name": full_name,  # Add explicit full name field
 					"first_name": lead.get("first_name", ""),
 					"last_name": lead.get("last_name", ""),
 					"email": lead.get("primary_email", ""),
