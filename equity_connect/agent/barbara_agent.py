@@ -352,9 +352,9 @@ List specific actions needed based on conversation outcome.
 			# Fallback to DB lookup if global_data not available
 			try:
 				lead_context = self._query_lead_direct(phone, broker_id)
-		except Exception as e:
+			except Exception as e:
 				logger.error(f"[ERROR] Failed to get lead context: {e}")
-			raise
+				raise
 		
 		# Use lead context phone as fallback when not provided (e.g., CLI tests)
 		if not phone:
