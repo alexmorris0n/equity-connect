@@ -254,7 +254,7 @@ def _build_default_context(initial_context: str) -> Dict:
             {
                 "name": "route_to_initial",
 				"text": "You are Barbara, a professional assistant. Follow the context instructions carefully.",
-				"step_criteria": "none",  # Route immediately without evaluating completion
+				"step_criteria": "Route immediately to the initial context.",  # Valid criteria string
                 "valid_contexts": [initial_context],
                 "skip_user_turn": True  # Don't wait for user, just route
             }
