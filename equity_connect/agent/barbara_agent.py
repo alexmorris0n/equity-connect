@@ -1242,11 +1242,9 @@ List specific actions needed based on conversation outcome.
 				
 				# Toggle this tool OFF for the rest of the call (saves LLM tokens)
 				logger.info("[TOGGLE] Disabling get_lead_context tool - data already provided")
-				return SwaigFunctionResult(
-					response=json.dumps(result_data),
-					action="toggle",
-					action_params={"functions": ["get_lead_context"], "active": False}
-				)
+				result = SwaigFunctionResult(json.dumps(result_data))
+				result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
+				return result
 			
 			# Fallback to DB lookup if global_data not available
 			logger.warning("[WARN] Global data not available, falling back to DB lookup")
@@ -1257,14 +1255,15 @@ List specific actions needed based on conversation outcome.
 			logger.error(f"=== TOOL COMPLETE - get_lead_context returned {len(str(result))} chars ===")
 			
 			# Also toggle off after DB lookup
-			return SwaigFunctionResult(
-				response=result,
-				action="toggle",
-				action_params={"functions": ["get_lead_context"], "active": False}
-			)
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
+			return swaig_result
 		except RecursionError as e:
 			logger.error(f"[FATAL] RecursionError in get_lead_context: {e}")
 			return json.dumps({"found": False, "error": "System error - recursion detected"})
+		except Exception as e:
+			logger.error(f"[ERROR] get_lead_context failed: {e}", exc_info=True)
+			return json.dumps({"found": False, "error": str(e), "message": "Unable to retrieve lead information."})
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
@@ -1276,25 +1275,71 @@ List specific actions needed based on conversation outcome.
 		After verifying, toggles itself OFF to save tokens (caller already verified).
 		"""
 		logger.error("=== TOOL CALLED - verify_caller_identity ===")
-		result = lead_service.verify_caller_identity_core(
-			args.get("first_name"), args.get("phone")
-		)
-		
-		# Toggle off after verification (one-time use per call)
-		logger.info("[TOGGLE] Disabling verify_caller_identity - caller already verified")
-		return SwaigFunctionResult(
-			response=result,
-			action="toggle",
-			action_params={"functions": ["verify_caller_identity"], "active": False}
-		)
+		try:
+			result = lead_service.verify_caller_identity_core(
+				args.get("first_name"), args.get("phone")
+			)
+			
+			# Toggle off after verification (one-time use per call)
+			logger.info("[TOGGLE] Disabling verify_caller_identity - caller already verified")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "verify_caller_identity", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] verify_caller_identity failed: {e}", exc_info=True)
+			error_result = json.dumps({"error": str(e), "message": "Unable to verify caller identity."})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "verify_caller_identity", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Check consent and DNC status for a phone number.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number to check"}}, "required": ["phone"]}
 	)
 	def check_consent_dnc(self, args, raw_data):
+		"""Tool: Check consent/DNC status (one-time use).
+		
+		After checking, toggles itself OFF - consent status doesn't change mid-call.
+		"""
 		logger.error("=== TOOL CALLED - check_consent_dnc ===")
-		return lead_service.check_consent_dnc_core(args.get("phone"))
+		phone = args.get("phone") if args else None
+		
+		if not phone:
+			logger.warning("[WARN] check_consent_dnc called with no phone")
+			error_result = json.dumps({
+				"can_call": True,  # Default to allowing call if we can't check
+				"has_consent": False,
+				"error": "No phone provided",
+				"message": "Unable to verify calling permissions."
+			})
+			# Still toggle off even on error (one-time use)
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "check_consent_dnc", "enabled": False}])
+			return swaig_result
+		
+		try:
+			result = lead_service.check_consent_dnc_core(phone)
+			logger.info(f"[OK] Consent check completed for: {phone}")
+			
+			# Toggle off after checking (one-time use per call)
+			logger.info("[TOGGLE] Disabling check_consent_dnc - consent already checked")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "check_consent_dnc", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			# CRITICAL: Always return a valid response to prevent call hangup
+			logger.error(f"[ERROR] Consent check failed: {e}", exc_info=True)
+			error_result = json.dumps({
+				"can_call": True,  # Default to allowing call on error (fail open)
+				"has_consent": False,
+				"is_dnc": False,
+				"error": str(e),
+				"message": "Unable to verify calling permissions."
+			})
+			# Still toggle off even on error (one-time use)
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "check_consent_dnc", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Update lead fields gathered during the call and merge conversation_data flags.",
@@ -1325,14 +1370,19 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def update_lead_info(self, args, raw_data):
+		"""Tool: Update lead info with robust error handling."""
 		logger.error("=== TOOL CALLED - update_lead_info ===")
-		return lead_service.update_lead_info_core(
-			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
-			args.get("email"), args.get("phone"), args.get("property_address"),
-			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
-			args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
-			args.get("timeline"), args.get("conversation_data")
-		)
+		try:
+			return lead_service.update_lead_info_core(
+				args.get("lead_id"), args.get("first_name"), args.get("last_name"),
+				args.get("email"), args.get("phone"), args.get("property_address"),
+				args.get("property_city"), args.get("property_state"), args.get("property_zip"),
+				args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
+				args.get("timeline"), args.get("conversation_data")
+			)
+		except Exception as e:
+			logger.error(f"[ERROR] update_lead_info failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e), "message": "Unable to update lead information."})
 	
 	@AgentBase.tool(
 		description="Find a broker by ZIP/city/state.",
@@ -1352,17 +1402,22 @@ List specific actions needed based on conversation outcome.
 		After finding broker, toggles itself OFF - broker assignment doesn't change mid-call.
 		"""
 		logger.error("=== TOOL CALLED - find_broker_by_territory ===")
-		result = lead_service.find_broker_by_territory_core(
-			args.get("zip_code"), args.get("city"), args.get("state")
-		)
-		
-		# Toggle off after finding broker (one-time use per call)
-		logger.info("[TOGGLE] Disabling find_broker_by_territory - broker already assigned")
-		return SwaigFunctionResult(
-			response=result,
-			action="toggle",
-			action_params={"functions": ["find_broker_by_territory"], "active": False}
-		)
+		try:
+			result = lead_service.find_broker_by_territory_core(
+				args.get("zip_code"), args.get("city"), args.get("state")
+			)
+			
+			# Toggle off after finding broker (one-time use per call)
+			logger.info("[TOGGLE] Disabling find_broker_by_territory - broker already assigned")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "find_broker_by_territory", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] find_broker_by_territory failed: {e}", exc_info=True)
+			error_result = json.dumps({"error": str(e), "message": "Unable to find broker for this territory."})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "find_broker_by_territory", "enabled": False}])
+			return swaig_result
 	
 	# Calendar (4)
 	@AgentBase.tool(
@@ -1379,13 +1434,18 @@ List specific actions needed based on conversation outcome.
 		meta_data_token="check_broker_availability_v1"
 	)
 	def check_broker_availability(self, args, raw_data):
+		"""Tool: Check broker availability with robust error handling."""
 		logger.error("=== TOOL CALLED - check_broker_availability ===")
-		return calendar_service.check_broker_availability_core(
-			args.get("broker_id"),
-			args.get("preferred_day"),
-			args.get("preferred_time"),
-			raw_data,
-		)
+		try:
+			return calendar_service.check_broker_availability_core(
+				args.get("broker_id"),
+				args.get("preferred_day"),
+				args.get("preferred_time"),
+				raw_data,
+			)
+		except Exception as e:
+			logger.error(f"[ERROR] check_broker_availability failed: {e}", exc_info=True)
+			return json.dumps({"error": str(e), "message": "Unable to check broker availability."})
 	
 	@AgentBase.tool(
 		description="Book an appointment and create calendar event.",
@@ -1407,21 +1467,26 @@ List specific actions needed based on conversation outcome.
 		After booking, toggles itself OFF - can't book twice in one call.
 		"""
 		logger.error("=== TOOL CALLED - book_appointment ===")
-		result = calendar_service.book_appointment_core(
-			args.get("lead_id"),
-			args.get("broker_id"),
-			args.get("scheduled_for"),
-			args.get("notes"),
-			raw_data,
-		)
-		
-		# Toggle off after booking (one-time use per call)
-		logger.info("[TOGGLE] Disabling book_appointment - appointment already booked")
-		return SwaigFunctionResult(
-			response=result,
-			action="toggle",
-			action_params={"functions": ["book_appointment"], "active": False}
-		)
+		try:
+			result = calendar_service.book_appointment_core(
+				args.get("lead_id"),
+				args.get("broker_id"),
+				args.get("scheduled_for"),
+				args.get("notes"),
+				raw_data,
+			)
+			
+			# Toggle off after booking (one-time use per call)
+			logger.info("[TOGGLE] Disabling book_appointment - appointment already booked")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "book_appointment", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] book_appointment failed: {e}", exc_info=True)
+			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to book appointment. Please try again or contact us directly."})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "book_appointment", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Reschedule an existing appointment.",
@@ -1436,12 +1501,17 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def reschedule_appointment(self, args, raw_data):
+		"""Tool: Reschedule appointment with robust error handling."""
 		logger.error("=== TOOL CALLED - reschedule_appointment ===")
-		return calendar_service.reschedule_appointment_core(
-			args.get("interaction_id"),
-			args.get("new_scheduled_for"),
-			args.get("reason"),
-		)
+		try:
+			return calendar_service.reschedule_appointment_core(
+				args.get("interaction_id"),
+				args.get("new_scheduled_for"),
+				args.get("reason"),
+			)
+		except Exception as e:
+			logger.error(f"[ERROR] reschedule_appointment failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e), "message": "Unable to reschedule appointment."})
 	
 	@AgentBase.tool(
 		description="Cancel an existing appointment.",
@@ -1455,11 +1525,16 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def cancel_appointment(self, args, raw_data):
+		"""Tool: Cancel appointment with robust error handling."""
 		logger.error("=== TOOL CALLED - cancel_appointment ===")
-		return calendar_service.cancel_appointment_core(
-			args.get("interaction_id"),
-			args.get("reason"),
-		)
+		try:
+			return calendar_service.cancel_appointment_core(
+				args.get("interaction_id"),
+				args.get("reason"),
+			)
+		except Exception as e:
+			logger.error(f"[ERROR] cancel_appointment failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e), "message": "Unable to cancel appointment."})
 	
 	# Knowledge (1)
 	@AgentBase.tool(
@@ -1468,8 +1543,32 @@ List specific actions needed based on conversation outcome.
 		meta_data_token="search_knowledge_v1"
 	)
 	def search_knowledge(self, args, raw_data):
+		"""Tool: Search knowledge base with robust error handling to prevent call hangups."""
 		logger.error("=== TOOL CALLED - search_knowledge ===")
-		return knowledge_service.search_knowledge_core(args.get("question"), raw_data)
+		question = args.get("question") if args else None
+		
+		if not question:
+			logger.warning("[WARN] search_knowledge called with no question")
+			return json.dumps({
+				"found": False,
+				"error": "No question provided",
+				"message": "I'd be happy to connect you with one of our specialists who can answer that question in detail."
+			})
+		
+		try:
+			# Call the knowledge service with timeout protection
+			result = knowledge_service.search_knowledge_core(question, raw_data)
+			logger.info(f"[OK] Knowledge search completed for: {question[:50]}...")
+			return result
+		except Exception as e:
+			# CRITICAL: Always return a valid response to prevent call hangup
+			logger.error(f"[ERROR] Knowledge search failed: {e}", exc_info=True)
+			return json.dumps({
+				"found": False,
+				"error": str(e),
+				"fallback": True,
+				"message": "I'm having trouble accessing that information right now. Let me connect you with one of our specialists who can help answer your question."
+			})
 	
 	@AgentBase.tool(
 		description="Assign a SignalWire tracking number to a lead for attribution.",
@@ -1481,37 +1580,52 @@ List specific actions needed based on conversation outcome.
 		After assigning, toggles itself OFF - tracking number doesn't change mid-call.
 		"""
 		logger.error("=== TOOL CALLED - assign_tracking_number ===")
-		result = interaction_service.assign_tracking_number_core(
-			args.get("lead_id"), args.get("broker_id")
-		)
-		
-		# Toggle off after assigning (one-time use per call)
-		logger.info("[TOGGLE] Disabling assign_tracking_number - number already assigned")
-		return SwaigFunctionResult(
-			response=result,
-			action="toggle",
-			action_params={"functions": ["assign_tracking_number"], "active": False}
-		)
+		try:
+			result = interaction_service.assign_tracking_number_core(
+				args.get("lead_id"), args.get("broker_id")
+			)
+			
+			# Toggle off after assigning (one-time use per call)
+			logger.info("[TOGGLE] Disabling assign_tracking_number - number already assigned")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "assign_tracking_number", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] assign_tracking_number failed: {e}", exc_info=True)
+			error_result = json.dumps({"error": str(e), "message": "Unable to assign tracking number."})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "assign_tracking_number", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Send appointment confirmation via SMS.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "appointment_datetime": {"type": "string", "description": "ISO 8601 datetime"}}, "required": ["phone", "appointment_datetime"]}
 	)
 	def send_appointment_confirmation(self, args, raw_data):
+		"""Tool: Send appointment confirmation with robust error handling."""
 		logger.error("=== TOOL CALLED - send_appointment_confirmation ===")
-		return interaction_service.send_appointment_confirmation_core(
-			args.get("phone"), args.get("appointment_datetime")
-		)
+		try:
+			return interaction_service.send_appointment_confirmation_core(
+				args.get("phone"), args.get("appointment_datetime")
+			)
+		except Exception as e:
+			logger.error(f"[ERROR] send_appointment_confirmation failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e), "message": "Unable to send confirmation."})
 	
 	@AgentBase.tool(
 		description="Verify appointment confirmation code from SMS.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "code": {"type": "string", "description": "Code to verify"}}, "required": ["phone", "code"]}
 	)
 	def verify_appointment_confirmation(self, args, raw_data):
+		"""Tool: Verify appointment confirmation with robust error handling."""
 		logger.error("=== TOOL CALLED - verify_appointment_confirmation ===")
-		return interaction_service.verify_appointment_confirmation_core(
-			args.get("phone"), args.get("code")
-		)
+		try:
+			return interaction_service.verify_appointment_confirmation_core(
+				args.get("phone"), args.get("code")
+			)
+		except Exception as e:
+			logger.error(f"[ERROR] verify_appointment_confirmation failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e), "message": "Unable to verify confirmation code."})
 	
 	# Conversation Flags (7)
 	@AgentBase.tool(
@@ -1519,7 +1633,12 @@ List specific actions needed based on conversation outcome.
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def mark_ready_to_book(self, args, raw_data):
-		return conversation_flags.mark_ready_to_book(args.get("phone"))
+		"""Tool: Mark ready to book with robust error handling."""
+		try:
+			return conversation_flags.mark_ready_to_book(args.get("phone"))
+		except Exception as e:
+			logger.error(f"[ERROR] mark_ready_to_book failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e)})
 	
 	@AgentBase.tool(
 		description="Mark that the caller raised an objection.",
@@ -1534,21 +1653,36 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def mark_has_objection(self, args, raw_data):
-		return conversation_flags.mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+		"""Tool: Mark has objection with robust error handling."""
+		try:
+			return conversation_flags.mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+		except Exception as e:
+			logger.error(f"[ERROR] mark_has_objection failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e)})
 	
 	@AgentBase.tool(
 		description="Mark that an objection has been resolved.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def mark_objection_handled(self, args, raw_data):
-		return conversation_flags.mark_objection_handled(args.get("phone"))
+		"""Tool: Mark objection handled with robust error handling."""
+		try:
+			return conversation_flags.mark_objection_handled(args.get("phone"))
+		except Exception as e:
+			logger.error(f"[ERROR] mark_objection_handled failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e)})
 	
 	@AgentBase.tool(
 		description="Mark that caller's questions have been answered.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def mark_questions_answered(self, args, raw_data):
-		return conversation_flags.mark_questions_answered(args.get("phone"))
+		"""Tool: Mark questions answered with robust error handling."""
+		try:
+			return conversation_flags.mark_questions_answered(args.get("phone"))
+		except Exception as e:
+			logger.error(f"[ERROR] mark_questions_answered failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e)})
 	
 	@AgentBase.tool(
 		description="Persist qualification outcome.",
@@ -1559,15 +1693,20 @@ List specific actions needed based on conversation outcome.
 		
 		After setting qualification, toggles itself OFF - qualification doesn't change mid-call.
 		"""
-		result = conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
-		
-		# Toggle off after setting qualification (one-time use per call)
-		logger.info("[TOGGLE] Disabling mark_qualification_result - qualification already set")
-		return SwaigFunctionResult(
-			response=result,
-			action="toggle",
-			action_params={"functions": ["mark_qualification_result"], "active": False}
-		)
+		try:
+			result = conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
+			
+			# Toggle off after setting qualification (one-time use per call)
+			logger.info("[TOGGLE] Disabling mark_qualification_result - qualification already set")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "mark_qualification_result", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] mark_qualification_result failed: {e}", exc_info=True)
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "mark_qualification_result", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Mark that a quote has been presented with reaction.",
@@ -1578,29 +1717,44 @@ List specific actions needed based on conversation outcome.
 		
 		After marking quote, toggles itself OFF - quote already presented this call.
 		"""
-		result = conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
-		
-		# Toggle off after marking quote (one-time use per call)
-		logger.info("[TOGGLE] Disabling mark_quote_presented - quote already marked")
-		return SwaigFunctionResult(
-			response=result,
-			action="toggle",
-			action_params={"functions": ["mark_quote_presented"], "active": False}
-		)
+		try:
+			result = conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
+			
+			# Toggle off after marking quote (one-time use per call)
+			logger.info("[TOGGLE] Disabling mark_quote_presented - quote already marked")
+			swaig_result = SwaigFunctionResult(result)
+			swaig_result.toggle_functions([{"name": "mark_quote_presented", "enabled": False}])
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] mark_quote_presented failed: {e}", exc_info=True)
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			swaig_result.toggle_functions([{"name": "mark_quote_presented", "enabled": False}])
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Mark wrong person; optionally indicate if right person is available.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
 	)
 	def mark_wrong_person(self, args, raw_data):
-		return conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
+		"""Tool: Mark wrong person with robust error handling."""
+		try:
+			return conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
+		except Exception as e:
+			logger.error(f"[ERROR] mark_wrong_person failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e)})
 	
 	@AgentBase.tool(
 		description="Clear all conversation flags for a fresh start.",
 		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
 	)
 	def clear_conversation_flags_tool(self, args, raw_data):
-		return conversation_flags.clear_conversation_flags(args.get("phone"))
+		"""Tool: Clear conversation flags with robust error handling."""
+		try:
+			return conversation_flags.clear_conversation_flags(args.get("phone"))
+		except Exception as e:
+			logger.error(f"[ERROR] clear_conversation_flags_tool failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e)})
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
