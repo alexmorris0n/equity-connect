@@ -1299,16 +1299,21 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Update lead info with robust error handling."""
 		logger.error("=== TOOL CALLED - update_lead_info ===")
 		try:
-			return lead_service.update_lead_info_core(
-			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
-			args.get("email"), args.get("phone"), args.get("property_address"),
-			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
-			args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
-			args.get("timeline"), args.get("conversation_data")
-		)
+			result = lead_service.update_lead_info_core(
+				args.get("lead_id"), args.get("first_name"), args.get("last_name"),
+				args.get("email"), args.get("phone"), args.get("property_address"),
+				args.get("property_city"), args.get("property_state"), args.get("property_zip"),
+				args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
+				args.get("timeline"), args.get("conversation_data")
+			)
+			# CRITICAL: Return SwaigFunctionResult to ensure SignalWire handles the response correctly
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] update_lead_info failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e), "message": "Unable to update lead information."})
+			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to update lead information."})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Find a broker by ZIP/city/state.",
@@ -1359,15 +1364,20 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Check broker availability with robust error handling."""
 		logger.error("=== TOOL CALLED - check_broker_availability ===")
 		try:
-			return calendar_service.check_broker_availability_core(
+			result = calendar_service.check_broker_availability_core(
 				args.get("broker_id"),
 				args.get("preferred_day"),
 				args.get("preferred_time"),
 				raw_data,
 			)
+			# CRITICAL: Return SwaigFunctionResult to ensure SignalWire handles the response correctly
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] check_broker_availability failed: {e}", exc_info=True)
-			return json.dumps({"error": str(e), "message": "Unable to check broker availability."})
+			error_result = json.dumps({"error": str(e), "message": "Unable to check broker availability."})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Book an appointment and create calendar event.",
@@ -1467,26 +1477,32 @@ List specific actions needed based on conversation outcome.
 		
 		if not question:
 			logger.warning("[WARN] search_knowledge called with no question")
-			return json.dumps({
+			error_result = json.dumps({
 				"found": False,
 				"error": "No question provided",
 				"message": "I'd be happy to connect you with one of our specialists who can answer that question in detail."
 			})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 		
 		try:
 			# Call the knowledge service with timeout protection
 			result = knowledge_service.search_knowledge_core(question, raw_data)
 			logger.info(f"[OK] Knowledge search completed for: {question[:50]}...")
-			return result
+			# CRITICAL: Return SwaigFunctionResult to ensure SignalWire handles the response correctly
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
-			# CRITICAL: Always return a valid response to prevent call hangup
+			# CRITICAL: Always return a valid SwaigFunctionResult to prevent call hangup
 			logger.error(f"[ERROR] Knowledge search failed: {e}", exc_info=True)
-			return json.dumps({
+			error_result = json.dumps({
 				"found": False,
 				"error": str(e),
 				"fallback": True,
 				"message": "I'm having trouble accessing that information right now. Let me connect you with one of our specialists who can help answer your question."
 			})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Assign a SignalWire tracking number to a lead for attribution.",
