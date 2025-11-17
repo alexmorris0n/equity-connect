@@ -1976,32 +1976,36 @@ const availableTools = {
 
 const availableVariables = {
   lead: [
-    { key: 'leadFirstName', desc: 'Lead first name' },
-    { key: 'leadLastName', desc: 'Lead last name' },
-    { key: 'leadFullName', desc: 'Lead full name' },
-    { key: 'leadEmail', desc: 'Lead email address' },
-    { key: 'leadPhone', desc: 'Lead phone number' },
-    { key: 'leadAge', desc: 'Lead age' }
+    { key: 'first_name', desc: 'Lead first name' },
+    { key: 'last_name', desc: 'Lead last name' },
+    { key: 'full_name', desc: 'Lead full name' },
+    { key: 'lead_email', desc: 'Lead email address' },
+    { key: 'lead_phone', desc: 'Lead phone number' },
+    { key: 'lead_age', desc: 'Lead age' }
   ],
   property: [
-    { key: 'propertyAddress', desc: 'Full property address' },
-    { key: 'propertyCity', desc: 'Property city' },
-    { key: 'propertyState', desc: 'Property state' },
-    { key: 'propertyZipcode', desc: 'Property ZIP code' },
-    { key: 'propertyValue', desc: 'Property value (number)' },
-    { key: 'propertyValueWords', desc: 'Property value in words' },
-    { key: 'mortgageBalance', desc: 'Mortgage balance (number)' },
-    { key: 'mortgageBalanceWords', desc: 'Mortgage balance in words' },
-    { key: 'estimatedEquity', desc: 'Estimated equity (number)' },
-    { key: 'estimatedEquityWords', desc: 'Estimated equity in words' },
-    { key: 'ownerOccupied', desc: 'Owner occupied (true/false)' }
+    { key: 'property_address', desc: 'Full property address' },
+    { key: 'property_city', desc: 'Property city' },
+    { key: 'property_state', desc: 'Property state' },
+    { key: 'property_zip', desc: 'Property ZIP code' },
+    { key: 'property_value', desc: 'Property value (number)' },
+    { key: 'estimated_equity', desc: 'Estimated equity' }
   ],
   broker: [
-    { key: 'brokerFirstName', desc: 'Broker first name' },
-    { key: 'brokerLastName', desc: 'Broker last name' },
-    { key: 'brokerFullName', desc: 'Broker full name' },
-    { key: 'brokerCompany', desc: 'Broker company name' },
-    { key: 'brokerPhone', desc: 'Broker phone number' }
+    { key: 'broker_name', desc: 'Broker name' },
+    { key: 'broker_company', desc: 'Broker company name' },
+    { key: 'broker_phone', desc: 'Broker phone number' },
+    { key: 'broker_email', desc: 'Broker email address' }
+  ],
+  call: [
+    { key: 'call_direction', desc: 'Call direction (inbound/outbound)' }
+  ],
+  status: [
+    { key: 'qualified', desc: 'Is lead qualified (true/false)' },
+    { key: 'verified', desc: 'Is caller verified (true/false)' },
+    { key: 'quote_presented', desc: 'Has quote been presented (true/false)' },
+    { key: 'appointment_booked', desc: 'Is appointment booked (true/false)' },
+    { key: 'ready_to_book', desc: 'Is caller ready to book (true/false)' }
   ]
 }
 
@@ -2009,11 +2013,13 @@ const variableDropdownOptions = computed(() => {
   const allVars = [
     ...availableVariables.lead,
     ...availableVariables.property,
-    ...availableVariables.broker
+    ...availableVariables.broker,
+    ...availableVariables.call,
+    ...availableVariables.status
   ]
   
   return allVars.map(v => ({
-    label: `{{${v.key}}} - ${v.desc}`,
+    label: `$${v.key} - ${v.desc}`,
     key: v.key
   }))
 })

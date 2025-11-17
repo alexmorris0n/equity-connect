@@ -66,9 +66,22 @@
           <div class="theme-editor-section">
             <div class="theme-header">
               <h2>Theme Content</h2>
-              <button class="btn-ai-helper" @click="openThemeHelper" title="AI Theme Generator">
-                ✨ AI Helper
-              </button>
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <button 
+                  class="btn-publish" 
+                  @click="publishDraft" 
+                  :disabled="loading || !hasDraft"
+                  title="Publish draft version to make it active"
+                >
+                  📢 Publish
+                </button>
+                <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
+                  🎯 Test Full Vertical
+                </button>
+                <button class="btn-ai-helper" @click="openThemeHelper" title="AI Theme Generator">
+                  ✨ AI Helper
+                </button>
+              </div>
             </div>
             <div class="editor-wrapper">
               <textarea
@@ -242,9 +255,6 @@
         <div v-if="activeTab === 'theme'" class="nodes-section">
           <div class="nodes-header">
             <h2>Nodes</h2>
-            <button class="btn-test" @click="openFullVerticalTest">
-              🎯 Test Full Vertical
-            </button>
           </div>
           
           <div class="nodes-grid">
@@ -335,6 +345,81 @@
                   </div>
                   
                   <div class="editor-field">
+                    <label>Step Criteria</label>
+                    <textarea
+                      :value="nodeContent[node]?.step_criteria || ''"
+                      @input="(e) => { updateStepCriteria(node, e.target.value); }"
+                      placeholder="When is this step complete?"
+                      rows="3"
+                    ></textarea>
+                  </div>
+                  
+                  <div class="editor-field">
+                    <label>Valid Contexts</label>
+                    <div 
+                      class="tools-dropdown-wrapper" 
+                      :class="{ 'open': openContextDropdowns[node], 'drop-up': contextDropdownPositions[node]?.dropUp }"
+                      :data-dropdown-node="node"
+                      data-dropdown-type="context"
+                      :ref="el => setContextDropdownWrapperRef(node, el)"
+                    >
+                      <button
+                        type="button"
+                        class="tools-dropdown-trigger"
+                        @click="toggleContextDropdown(node)"
+                      >
+                        <span v-if="!nodeContent[node]?.valid_contexts || nodeContent[node].valid_contexts.length === 0">
+                          Select contexts...
+                        </span>
+                        <span v-else>
+                          {{ nodeContent[node].valid_contexts.length }} context{{ nodeContent[node].valid_contexts.length !== 1 ? 's' : '' }} selected
+                        </span>
+                        <span class="dropdown-arrow">▼</span>
+                      </button>
+                      <div 
+                        v-if="openContextDropdowns[node]" 
+                        class="tools-dropdown-panel"
+                        :style="contextDropdownPositions[node]?.style"
+                      >
+                        <div class="dropdown-search">
+                          <input
+                            type="text"
+                            v-model="contextSearch[node]"
+                            placeholder="Search contexts..."
+                            class="search-input"
+                            @click.stop
+                          />
+                        </div>
+                        <div class="dropdown-options">
+                          <label class="dropdown-option select-all">
+                            <input
+                              type="checkbox"
+                              :checked="isAllContextsSelected(node)"
+                              @change="toggleSelectAllContexts(node)"
+                              @click.stop
+                            />
+                            <span>Select all</span>
+                          </label>
+                          <label
+                            v-for="ctx in filteredContexts(node)"
+                            :key="ctx"
+                            class="dropdown-option"
+                            @click.stop
+                          >
+                            <input
+                              type="checkbox"
+                              :value="ctx"
+                              v-model="nodeContent[node].valid_contexts"
+                              @change="markNodeChanged(node)"
+                            />
+                            <span>{{ ctx.charAt(0).toUpperCase() + ctx.slice(1) }}</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="editor-field">
                     <label>Tools</label>
                     <div 
                       class="tools-dropdown-wrapper" 
@@ -394,6 +479,22 @@
                           </label>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                  
+                  <div class="editor-field">
+                    <label>Skip User Turn</label>
+                    <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; width: fit-content;">
+                      <input
+                        type="checkbox"
+                        :id="`skip-user-turn-${node}`"
+                        :checked="nodeContent[node]?.skip_user_turn || false"
+                        @change="(e) => { updateSkipUserTurn(node, e.target.checked); }"
+                        style="width: auto; flex-shrink: 0;"
+                      />
+                      <label :for="`skip-user-turn-${node}`" style="margin: 0; font-weight: normal; cursor: pointer; white-space: nowrap;">
+                        Execute tools immediately without waiting for user?
+                      </label>
                     </div>
                   </div>
                   
@@ -665,6 +766,12 @@ const textareaCursors = ref({})
 const toolSearch = ref({})
 const dropdownPositions = ref({})
 const isUpdatingPosition = ref({}) // Guard to prevent infinite loops
+
+// Context dropdown state
+const openContextDropdowns = ref({})
+const contextSearch = ref({})
+const contextDropdownPositions = ref({})
+const contextDropdownWrapperRefs = ref({})
 
 // AI Helper state
 const showThemeHelperModal = ref(false)
@@ -989,47 +1096,52 @@ const variableCategories = [
     name: 'lead',
     label: 'Lead Info',
     variables: [
-      { key: 'lead.first_name', display: '{lead.first_name}', desc: 'Lead first name' },
-      { key: 'lead.last_name', display: '{lead.last_name}', desc: 'Lead last name' },
-      { key: 'lead.full_name', display: '{lead.full_name}', desc: 'Lead full name' },
-      { key: 'lead.email', display: '{lead.email}', desc: 'Lead email address' },
-      { key: 'lead.phone', display: '{lead.phone}', desc: 'Lead phone number' },
-      { key: 'lead.age', display: '{lead.age}', desc: 'Lead age' }
+      { key: 'first_name', display: '$first_name', desc: 'Lead first name' },
+      { key: 'last_name', display: '$last_name', desc: 'Lead last name' },
+      { key: 'full_name', display: '$full_name', desc: 'Lead full name' },
+      { key: 'lead_email', display: '$lead_email', desc: 'Lead email address' },
+      { key: 'lead_phone', display: '$lead_phone', desc: 'Lead phone number' },
+      { key: 'lead_age', display: '$lead_age', desc: 'Lead age' }
     ]
   },
   {
     name: 'property',
     label: 'Property Info',
     variables: [
-      { key: 'property.address', display: '{property.address}', desc: 'Full property address' },
-      { key: 'property.city', display: '{property.city}', desc: 'Property city' },
-      { key: 'property.state', display: '{property.state}', desc: 'Property state' },
-      { key: 'property.zipcode', display: '{property.zipcode}', desc: 'Property ZIP code' },
-      { key: 'property.value', display: '{property.value}', desc: 'Property value (number)' },
-      { key: 'property.equity_formatted', display: '{property.equity_formatted}', desc: 'Property equity formatted' },
-      { key: 'property.mortgage_balance', display: '{property.mortgage_balance}', desc: 'Mortgage balance' },
-      { key: 'property.estimated_equity', display: '{property.estimated_equity}', desc: 'Estimated equity' },
-      { key: 'property.owner_occupied', display: '{property.owner_occupied}', desc: 'Owner occupied (true/false)' }
+      { key: 'property_address', display: '$property_address', desc: 'Full property address' },
+      { key: 'property_city', display: '$property_city', desc: 'Property city' },
+      { key: 'property_state', display: '$property_state', desc: 'Property state' },
+      { key: 'property_zip', display: '$property_zip', desc: 'Property ZIP code' },
+      { key: 'property_value', display: '$property_value', desc: 'Property value (number)' },
+      { key: 'estimated_equity', display: '$estimated_equity', desc: 'Estimated equity' }
     ]
   },
   {
     name: 'broker',
     label: 'Broker Info',
     variables: [
-      { key: 'broker.first_name', display: '{broker.first_name}', desc: 'Broker first name' },
-      { key: 'broker.last_name', display: '{broker.last_name}', desc: 'Broker last name' },
-      { key: 'broker.full_name', display: '{broker.full_name}', desc: 'Broker full name' },
-      { key: 'broker.company', display: '{broker.company}', desc: 'Broker company name' },
-      { key: 'broker.phone', display: '{broker.phone}', desc: 'Broker phone number' }
+      { key: 'broker_name', display: '$broker_name', desc: 'Broker name' },
+      { key: 'broker_company', display: '$broker_company', desc: 'Broker company name' },
+      { key: 'broker_phone', display: '$broker_phone', desc: 'Broker phone number' },
+      { key: 'broker_email', display: '$broker_email', desc: 'Broker email address' }
+    ]
+  },
+  {
+    name: 'call',
+    label: 'Call Info',
+    variables: [
+      { key: 'call_direction', display: '$call_direction', desc: 'Call direction (inbound/outbound)' }
     ]
   },
   {
     name: 'status',
     label: 'Status Info',
     variables: [
-      { key: 'status.qualified', display: '{status.qualified}', desc: 'Is lead qualified (true/false)' },
-      { key: 'status.broker_name', display: '{status.broker_name}', desc: 'Assigned broker name' },
-      { key: 'status.broker_company', display: '{status.broker_company}', desc: 'Assigned broker company' }
+      { key: 'qualified', display: '$qualified', desc: 'Is lead qualified (true/false)' },
+      { key: 'verified', display: '$verified', desc: 'Is caller verified (true/false)' },
+      { key: 'quote_presented', display: '$quote_presented', desc: 'Has quote been presented (true/false)' },
+      { key: 'appointment_booked', display: '$appointment_booked', desc: 'Is appointment booked (true/false)' },
+      { key: 'ready_to_book', display: '$ready_to_book', desc: 'Is caller ready to book (true/false)' }
     ]
   }
 ]
@@ -1162,6 +1274,7 @@ function getToolCheckedState(node, tool) {
 // Versions state
 const versions = ref([])
 const currentVersion = ref(null)
+const hasDraft = ref(false) // Track if there's a draft version
 
 // Preview state
 const previewContent = ref(null)
@@ -1187,7 +1300,10 @@ function initNodeContent() {
     if (!nodeContent.value[node]) {
       nodeContent.value[node] = {
         instructions: '',
-        tools: [] // Initialize as empty array for multi-select
+        step_criteria: '',
+        valid_contexts: [], // Initialize as empty array for multi-select
+        tools: [], // Initialize as empty array for multi-select
+        skip_user_turn: false
       }
     }
     if (nodeHasChanges.value[node] === undefined) {
@@ -1206,13 +1322,30 @@ async function loadTheme() {
   loading.value = true
   try {
     console.log('Loading theme for vertical:', selectedVertical.value)
-    // Load theme with version and config columns
-    let { data, error } = await supabase
+    // Load theme - prefer draft if exists, otherwise active
+    let { data: draftData, error: draftError } = await supabase
       .from('theme_prompts')
       .select('id, content, config, version')
       .eq('vertical', selectedVertical.value)
-      .eq('is_active', true)
+      .eq('is_active', false)
       .maybeSingle()
+    
+    let { data, error } = { data: null, error: null }
+    if (draftData) {
+      // Use draft
+      data = draftData
+      error = draftError
+    } else {
+      // Load active theme
+      const result = await supabase
+        .from('theme_prompts')
+        .select('id, content, config, version')
+        .eq('vertical', selectedVertical.value)
+        .eq('is_active', true)
+        .maybeSingle()
+      data = result.data
+      error = result.error
+    }
     
     // If config or version column doesn't exist, try without them
     if (error && error.code === '42703') {
@@ -1269,33 +1402,91 @@ async function loadTheme() {
   }
 }
 
-// Save theme and config
+// Save theme and config (as draft)
 async function saveTheme() {
   if (!selectedVertical.value) return
   
   loading.value = true
   try {
-    // 1) Upsert theme content/config
-    const updateData = {
+    // Get current active vertical version
+    const { data: themeData, error: themeErr } = await supabase
+      .from('theme_prompts')
+      .select('version, id')
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (themeErr) throw themeErr
+
+    const currentActiveVersion = themeData?.version || 1
+    const activeThemeId = themeData?.id
+
+    // Check if draft already exists for nodes (to get draft version number)
+    const { data: existingDraft, error: draftCheckError } = await supabase
+      .from('prompts')
+      .select(`
+        id,
+        node_name,
+        prompt_versions!inner (
+          id,
+          version_number,
+          is_draft
+        )
+      `)
+      .eq('vertical', selectedVertical.value)
+      .eq('prompt_versions.is_draft', true)
+      .not('node_name', 'is', null)
+      .limit(1)
+    
+    if (draftCheckError) throw draftCheckError
+    
+    let draftVersionNumber
+    const hasExistingDraft = existingDraft && existingDraft.length > 0
+    
+    if (hasExistingDraft) {
+      // Use existing draft version number
+      const firstDraft = existingDraft[0]
+      const draftVersion = Array.isArray(firstDraft.prompt_versions) 
+        ? firstDraft.prompt_versions[0] 
+        : firstDraft.prompt_versions
+      draftVersionNumber = draftVersion.version_number
+    } else {
+      // Create new draft version number
+      draftVersionNumber = currentActiveVersion + 1
+    }
+
+    // Check if draft theme exists
+    const { data: draftTheme, error: draftThemeError } = await supabase
+      .from('theme_prompts')
+      .select('id')
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', false)
+      .maybeSingle()
+    
+    if (draftThemeError && draftThemeError.code !== 'PGRST116') throw draftThemeError
+
+    const draftThemeData = {
       content: themeContent.value,
       config: config.value,
-      updated_at: new Date().toISOString()
+      version: draftVersionNumber,
+      updated_at: new Date().toISOString(),
+      is_active: false
     }
-    
-    if (themeId.value) {
+
+    if (draftTheme) {
+      // Update existing draft theme
       const { error } = await supabase
         .from('theme_prompts')
-        .update(updateData)
-        .eq('id', themeId.value)
+        .update(draftThemeData)
+        .eq('id', draftTheme.id)
       if (error) throw error
+      themeId.value = draftTheme.id
     } else {
+      // Create new draft theme
       const { data, error } = await supabase
         .from('theme_prompts')
         .insert({
           vertical: selectedVertical.value,
-          content: themeContent.value,
-          config: config.value,
-          is_active: true
+          ...draftThemeData
         })
         .select()
         .single()
@@ -1303,27 +1494,7 @@ async function saveTheme() {
       themeId.value = data.id
     }
 
-    // 2) Read current vertical version and increment
-    const { data: themeData, error: themeErr } = await supabase
-      .from('theme_prompts')
-      .select('version')
-      .eq('vertical', selectedVertical.value)
-      .eq('is_active', true)
-      .maybeSingle()
-    if (themeErr) throw themeErr
-
-    const currentVersion = themeData?.version || 1
-    const newVerticalVersion = currentVersion + 1
-
-    // 3) Update theme version to the new vertical version
-    const { error: updateVerErr } = await supabase
-      .from('theme_prompts')
-      .update({ version: newVerticalVersion })
-      .eq('vertical', selectedVertical.value)
-      .eq('is_active', true)
-    if (updateVerErr) throw updateVerErr
-
-    // 4) Clone all node prompt versions to the new vertical version (content unchanged)
+    // Update or create draft versions for all nodes (carry forward active content if no draft exists)
     const { data: prompts, error: promptsErr } = await supabase
       .from('prompts')
       .select(`
@@ -1345,40 +1516,273 @@ async function saveTheme() {
       const activeVersion = Array.isArray(p.prompt_versions) ? p.prompt_versions[0] : p.prompt_versions
       const priorContent = activeVersion?.content || { role: '', instructions: '', tools: [] }
 
-      // Deactivate all existing versions for this prompt
-      await supabase
+      // Use draft content if exists, otherwise use active content
+      let newContent = priorContent
+      if (hasExistingDraft) {
+        const nodeDraft = existingDraft.find(d => d.node_name === p.node_name)
+        if (nodeDraft) {
+          const draftVer = Array.isArray(nodeDraft.prompt_versions) 
+            ? nodeDraft.prompt_versions[0] 
+            : nodeDraft.prompt_versions
+          newContent = draftVer.content || priorContent
+        }
+      }
+
+      // Check if draft version already exists for this prompt
+      const { data: existingPromptDraft, error: promptDraftError } = await supabase
         .from('prompt_versions')
-        .update({ is_active: false })
+        .select('id')
         .eq('prompt_id', p.id)
+        .eq('version_number', draftVersionNumber)
+        .eq('is_draft', true)
+        .maybeSingle()
+      
+      if (promptDraftError) throw promptDraftError
 
-      // Insert the cloned version with the new vertical version
-      const { error: insertErr } = await supabase
-        .from('prompt_versions')
-        .insert({
-          prompt_id: p.id,
-          version_number: newVerticalVersion,
-          content: priorContent,
-          is_active: true,
-          is_draft: false,
-          created_by: 'portal',
-          change_summary: `Vertical v${newVerticalVersion} - theme updated; node content carried forward`
-        })
-      if (insertErr) throw insertErr
-
-      // Update prompt current_version to new vertical version
-      await supabase
-        .from('prompts')
-        .update({ current_version: newVerticalVersion })
-        .eq('id', p.id)
+      if (existingPromptDraft) {
+        // Update existing draft (keep its content, theme save doesn't change node content)
+        // No update needed unless we want to update change_summary
+      } else {
+        // Create new draft version with active content
+        const { error: insertErr } = await supabase
+          .from('prompt_versions')
+          .insert({
+            prompt_id: p.id,
+            version_number: draftVersionNumber,
+            content: newContent,
+            is_active: false,
+            is_draft: true,
+            created_by: 'portal',
+            change_summary: `Draft - theme updated; node content carried forward`
+          })
+        if (insertErr) throw insertErr
+      }
     }
 
     themeHasChanges.value = false
-    window.$message?.success(`Theme saved. Vertical version: v${newVerticalVersion}`)
+    window.$message?.success(`Theme saved as draft!`)
+    
+    await checkForDraft()
   } catch (error) {
     console.error('Error saving theme:', error)
     window.$message?.error('Failed to save theme: ' + error.message)
   } finally {
     loading.value = false
+  }
+}
+
+// Publish draft version - make it active
+async function publishDraft() {
+  if (!selectedVertical.value) return
+  
+  if (!hasDraft.value) {
+    window.$message?.warning('No draft version to publish')
+    return
+  }
+  
+  if (!confirm('Publish this draft version? This will make it the active version and cannot be undone.')) {
+    return
+  }
+  
+  loading.value = true
+  try {
+    // Get draft version number
+    const { data: draftData, error: draftError } = await supabase
+      .from('prompts')
+      .select(`
+        id,
+        prompt_versions!inner (
+          version_number,
+          is_draft
+        )
+      `)
+      .eq('vertical', selectedVertical.value)
+      .eq('prompt_versions.is_draft', true)
+      .not('node_name', 'is', null)
+      .limit(1)
+    
+    if (draftError) throw draftError
+    if (!draftData || draftData.length === 0) {
+      window.$message?.warning('No draft version found')
+      return
+    }
+    
+    const draftVersion = Array.isArray(draftData[0].prompt_versions) 
+      ? draftData[0].prompt_versions[0] 
+      : draftData[0].prompt_versions
+    const draftVersionNumber = draftVersion.version_number
+    
+    // Get current active version
+    const { data: themeData, error: themeError } = await supabase
+      .from('theme_prompts')
+      .select('version')
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (themeError) throw themeError
+    const currentActiveVersion = themeData?.version || 1
+    
+    // Deactivate all current active versions (nodes)
+    const { data: activePrompts, error: activeError } = await supabase
+      .from('prompts')
+      .select(`
+        id,
+        prompt_versions!inner (
+          id,
+          is_active
+        )
+      `)
+      .eq('vertical', selectedVertical.value)
+      .eq('prompt_versions.is_active', true)
+      .not('node_name', 'is', null)
+    
+    if (activeError) throw activeError
+    
+    for (const p of (activePrompts || [])) {
+      const activeVersions = Array.isArray(p.prompt_versions) ? p.prompt_versions : [p.prompt_versions]
+      for (const v of activeVersions) {
+        await supabase
+          .from('prompt_versions')
+          .update({ is_active: false })
+          .eq('id', v.id)
+      }
+    }
+    
+    // Make draft versions active (for all prompts in this vertical)
+    const { data: allPromptIds, error: promptIdsError } = await supabase
+      .from('prompts')
+      .select('id')
+      .eq('vertical', selectedVertical.value)
+      .not('node_name', 'is', null)
+    
+    if (promptIdsError) throw promptIdsError
+    
+    for (const prompt of (allPromptIds || [])) {
+      const { error: activateDraftError } = await supabase
+        .from('prompt_versions')
+        .update({ 
+          is_active: true,
+          is_draft: false 
+        })
+        .eq('prompt_id', prompt.id)
+        .eq('version_number', draftVersionNumber)
+        .eq('is_draft', true)
+      
+      if (activateDraftError) throw activateDraftError
+    }
+    
+    // Update prompt current_version
+    const { data: allPrompts, error: allPromptsError } = await supabase
+      .from('prompts')
+      .select('id')
+      .eq('vertical', selectedVertical.value)
+      .not('node_name', 'is', null)
+    
+    if (allPromptsError) throw allPromptsError
+    
+    for (const p of (allPrompts || [])) {
+      await supabase
+        .from('prompts')
+        .update({ current_version: draftVersionNumber })
+        .eq('id', p.id)
+    }
+    
+    // Deactivate current active theme and activate draft theme
+    const { error: deactivateThemeError } = await supabase
+      .from('theme_prompts')
+      .update({ is_active: false })
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', true)
+    
+    if (deactivateThemeError) throw deactivateThemeError
+    
+    // Find and activate draft theme
+    const { data: draftThemeData, error: draftThemeFindError } = await supabase
+      .from('theme_prompts')
+      .select('id')
+      .eq('vertical', selectedVertical.value)
+      .eq('version', draftVersionNumber)
+      .eq('is_active', false)
+      .maybeSingle()
+    
+    if (draftThemeFindError) throw draftThemeFindError
+    
+    if (draftThemeData) {
+      const { error: activateThemeError } = await supabase
+        .from('theme_prompts')
+        .update({ is_active: true })
+        .eq('id', draftThemeData.id)
+      
+      if (activateThemeError) throw activateThemeError
+    }
+    
+    window.$message?.success(`Draft published! Version v${draftVersionNumber} is now active.`)
+    
+    hasDraft.value = false
+    await loadTheme()
+    await loadNodePrompts()
+  } catch (error) {
+    console.error('Error publishing draft:', error)
+    window.$message?.error('Failed to publish draft: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Check if there's a draft version for this vertical
+async function checkForDraft() {
+  if (!selectedVertical.value) {
+    hasDraft.value = false
+    return
+  }
+  
+  try {
+    // Check if there's a draft version in prompt_versions
+    // Query prompt_versions and join with prompts to filter by vertical
+    const { data: promptsResult, error: promptsError } = await supabase
+      .from('prompt_versions')
+      .select(`
+        id,
+        prompts (
+          id,
+          vertical,
+          node_name
+        )
+      `)
+      .eq('is_draft', true)
+      .limit(100) // Get all drafts, we'll filter in JS
+    
+    if (promptsError) {
+      console.error('Error checking for draft nodes:', promptsError)
+    }
+    
+    // Filter results to only include drafts for this vertical
+    const hasDraftNodes = promptsResult && promptsResult.some(pv => {
+      const prompt = Array.isArray(pv.prompts) ? pv.prompts[0] : pv.prompts
+      return prompt && prompt.vertical === selectedVertical.value && prompt.node_name !== null
+    })
+    
+    // Check for draft theme (theme_prompts doesn't have is_draft, so check for inactive)
+    const { data: themeResult, error: themeError } = await supabase
+      .from('theme_prompts')
+      .select('id')
+      .eq('vertical', selectedVertical.value)
+      .eq('is_active', false)
+      .maybeSingle()
+    
+    if (themeError) {
+      console.error('Error checking for draft theme:', themeError)
+    }
+    
+    const hasDraftTheme = themeResult !== null
+    
+    hasDraft.value = hasDraftNodes || hasDraftTheme
+    
+    console.log('checkForDraft result:', { hasDraftNodes, hasDraftTheme, hasDraft: hasDraft.value })
+  } catch (error) {
+    console.error('Error checking for draft:', error)
+    hasDraft.value = false
   }
 }
 
@@ -1431,8 +1835,8 @@ async function loadNodePrompts() {
     const verticalVersion = themeData?.version || 1
     console.log('loadNodePrompts: Loading nodes for vertical version:', verticalVersion)
     
-    // Query prompts and their versions matching the vertical version
-    const { data, error } = await supabase
+    // Query prompts - prefer draft versions, fallback to active
+    const { data: draftData, error: draftError } = await supabase
       .from('prompts')
       .select(`
         id,
@@ -1449,9 +1853,38 @@ async function loadNodePrompts() {
         )
       `)
       .eq('vertical', selectedVertical.value)
-      // Always load the active version for each node (regardless of vertical version)
-      .eq('prompt_versions.is_active', true)  // Only active versions (includes drafts)
+      .eq('prompt_versions.is_draft', true)
       .not('node_name', 'is', null)
+    
+    let { data, error } = { data: null, error: null }
+    if (draftData && draftData.length > 0) {
+      // Use draft versions
+      data = draftData
+      error = draftError
+    } else {
+      // Load active versions
+      const result = await supabase
+        .from('prompts')
+        .select(`
+          id,
+          name,
+          vertical,
+          node_name,
+          current_version,
+          prompt_versions!inner (
+            id,
+            version_number,
+            content,
+            is_active,
+            is_draft
+          )
+        `)
+        .eq('vertical', selectedVertical.value)
+        .eq('prompt_versions.is_active', true)
+        .not('node_name', 'is', null)
+      data = result.data
+      error = result.error
+    }
     
     if (error) throw error
     
@@ -1459,10 +1892,10 @@ async function loadNodePrompts() {
     
     const grouped = {}
     for (const p of (data || [])) {
-      // Choose the active version if present, otherwise fall back to latest by version_number
+      // Choose draft version if available, otherwise active version
       let matchingVersion
       if (Array.isArray(p.prompt_versions)) {
-        matchingVersion = p.prompt_versions.find(v => v.is_active)
+        matchingVersion = p.prompt_versions.find(v => v.is_draft) || p.prompt_versions.find(v => v.is_active)
         if (!matchingVersion) {
           matchingVersion = [...p.prompt_versions].sort((a, b) => (b.version_number || 0) - (a.version_number || 0))[0]
         }
@@ -1557,13 +1990,33 @@ async function loadNodePrompts() {
           console.log('loadNodePrompts: Tools for', p.node_name, '- Raw:', toolsData, 'type:', typeof toolsData, 'isArray:', Array.isArray(toolsData))
           console.log('loadNodePrompts: Parsed toolsArray:', toolsArray, 'length:', toolsArray.length)
           
+          // Handle valid_contexts - convert to array
+          let validContextsArray = []
+          const validContextsData = matchingVersion.content.valid_contexts
+          if (Array.isArray(validContextsData)) {
+            validContextsArray = validContextsData.filter(c => typeof c === 'string' && c.trim() !== '')
+          } else if (typeof validContextsData === 'string') {
+            const trimmed = validContextsData.trim()
+            if (trimmed && trimmed !== '[]') {
+              try {
+                const parsed = JSON.parse(trimmed)
+                validContextsArray = Array.isArray(parsed) ? parsed.filter(c => typeof c === 'string' && c.trim() !== '') : []
+              } catch {
+                validContextsArray = trimmed.split(',').map(c => c.trim()).filter(c => c && c !== '[]')
+              }
+            }
+          }
+          
           // Use Vue's reactive assignment to ensure reactivity
           if (!nodeContent.value[p.node_name]) {
             nodeContent.value[p.node_name] = {}
           }
           nodeContent.value[p.node_name].role = matchingVersion.content.role || ''
           nodeContent.value[p.node_name].instructions = matchingVersion.content.instructions || ''
+          nodeContent.value[p.node_name].step_criteria = matchingVersion.content.step_criteria || ''
+          nodeContent.value[p.node_name].valid_contexts = [...validContextsArray] // Create new array copy for reactivity
           nodeContent.value[p.node_name].tools = [...toolsArray] // Create new array copy for reactivity
+          nodeContent.value[p.node_name].skip_user_turn = matchingVersion.content.skip_user_turn || false
           
           console.log('loadNodePrompts: Set nodeContent for', p.node_name, ':', nodeContent.value[p.node_name])
           console.log('loadNodePrompts: Tools in nodeContent:', nodeContent.value[p.node_name].tools)
@@ -1574,7 +2027,10 @@ async function loadNodePrompts() {
           nodeContent.value[p.node_name] = {
             role: '',
             instructions: '',
-            tools: [] // Initialize as empty array for multi-select
+            step_criteria: '',
+            valid_contexts: [], // Initialize as empty array for multi-select
+            tools: [], // Initialize as empty array for multi-select
+            skip_user_turn: false
           }
         }
       }
@@ -1717,6 +2173,23 @@ async function loadVersion(versionId) {
       console.log('loadVersion: Tools for', selectedNode.value, '- Raw:', toolsData, 'type:', typeof toolsData, 'isArray:', Array.isArray(toolsData))
       console.log('loadVersion: Parsed toolsArray:', toolsArray, 'length:', toolsArray.length)
       
+      // Handle valid_contexts - convert to array
+      let validContextsArray = []
+      const validContextsData = data.content.valid_contexts
+      if (Array.isArray(validContextsData)) {
+        validContextsArray = validContextsData.filter(c => typeof c === 'string' && c.trim() !== '')
+      } else if (typeof validContextsData === 'string') {
+        const trimmed = validContextsData.trim()
+        if (trimmed && trimmed !== '[]') {
+          try {
+            const parsed = JSON.parse(trimmed)
+            validContextsArray = Array.isArray(parsed) ? parsed.filter(c => typeof c === 'string' && c.trim() !== '') : []
+          } catch {
+            validContextsArray = trimmed.split(',').map(c => c.trim()).filter(c => c && c !== '[]')
+          }
+        }
+      }
+      
       // Always update with content from database (this is the source of truth)
       // Use Vue's reactive assignment to ensure reactivity
       if (!nodeContent.value[selectedNode.value]) {
@@ -1724,7 +2197,10 @@ async function loadVersion(versionId) {
       }
       nodeContent.value[selectedNode.value].role = data.content.role || ''
       nodeContent.value[selectedNode.value].instructions = data.content.instructions || ''
+      nodeContent.value[selectedNode.value].step_criteria = data.content.step_criteria || ''
+      nodeContent.value[selectedNode.value].valid_contexts = [...validContextsArray] // Create new array copy for reactivity
       nodeContent.value[selectedNode.value].tools = [...toolsArray] // Create new array copy for reactivity
+      nodeContent.value[selectedNode.value].skip_user_turn = data.content.skip_user_turn || false
       
       console.log('loadVersion: Set nodeContent to:', nodeContent.value[selectedNode.value])
       console.log('loadVersion: Tools in nodeContent:', nodeContent.value[selectedNode.value].tools)
@@ -1771,23 +2247,56 @@ async function saveNode(nodeName) {
     const currentPrompt = nodePrompts.value[selectedVertical.value]?.[nodeName]
     const existingContent = currentPrompt?.content || {}
     
+    // Ensure valid_contexts is an array
+    let validContextsArray = []
+    if (Array.isArray(nodeContent.value[nodeName].valid_contexts)) {
+      validContextsArray = nodeContent.value[nodeName].valid_contexts
+    } else if (typeof nodeContent.value[nodeName].valid_contexts === 'string') {
+      validContextsArray = nodeContent.value[nodeName].valid_contexts
+        .split(',')
+        .map(c => c.trim())
+        .filter(c => c)
+    }
+    
     // Merge: preserve migration fields, update edited fields
     const contentObj = {
       ...existingContent,
       instructions: nodeContent.value[nodeName].instructions || '',
-      tools: toolsArray
+      step_criteria: nodeContent.value[nodeName].step_criteria || '',
+      valid_contexts: validContextsArray,
+      tools: toolsArray,
+      skip_user_turn: nodeContent.value[nodeName].skip_user_turn || false
     }
 
-    await validateNodeWithCli(nodeName, contentObj)
+    // Try CLI validation, but don't block save if service is unavailable
+    try {
+      await validateNodeWithCli(nodeName, contentObj)
+    } catch (validationError) {
+      // If it's a connection error, warn but continue
+      if (validationError instanceof TypeError && validationError.message.includes('fetch')) {
+        console.warn('CLI validation service unavailable, skipping validation:', validationError)
+        window.$message?.warning('CLI validation service unavailable. Saving without validation.')
+      } else {
+        // If it's an actual validation error, throw it
+        throw validationError
+      }
+    }
     
     // Validate entire vertical's routing configuration BEFORE save
     // This ensures we don't save changes that would break routing
     saveStatus.value = 'validating'
-    await validateVerticalRouting()
+    try {
+      await validateVerticalRouting()
+    } catch (routingError) {
+      // If routing validation fails, warn but continue (or you can throw to block save)
+      console.warn('Routing validation failed:', routingError)
+      // Uncomment the next line if you want to block save on routing errors:
+      // throw routingError
+    }
     
     saveStatus.value = 'saving'
     
-    // Get current vertical version from theme_prompts
+    // Get current active vertical version from theme_prompts
     const { data: themeData, error: themeError } = await supabase
       .from('theme_prompts')
       .select('version')
@@ -1797,20 +2306,43 @@ async function saveNode(nodeName) {
     
     if (themeError) throw themeError
     
-    // 2) Compute next vertical version
-    let currentVerticalVersion = themeData?.version || 1
-    const newVerticalVersion = currentVerticalVersion + 1
+    const currentActiveVersion = themeData?.version || 1
     
-    // 3) Increment vertical version in theme_prompts (the canonical vertical version)
-    const { error: versionUpdateError } = await supabase
-      .from('theme_prompts')
-      .update({ version: newVerticalVersion })
+    // Check if draft already exists
+    const { data: existingDraft, error: draftCheckError } = await supabase
+      .from('prompts')
+      .select(`
+        id,
+        node_name,
+        prompt_versions!inner (
+          id,
+          version_number,
+          content,
+          is_draft
+        )
+      `)
       .eq('vertical', selectedVertical.value)
-      .eq('is_active', true)
+      .eq('prompt_versions.is_draft', true)
+      .not('node_name', 'is', null)
     
-    if (versionUpdateError) throw versionUpdateError
+    if (draftCheckError) throw draftCheckError
     
-    // 4) Load all prompts for this vertical with their active versions
+    let draftVersionNumber
+    const hasExistingDraft = existingDraft && existingDraft.length > 0
+    
+    if (hasExistingDraft) {
+      // Use existing draft version number
+      const firstDraft = existingDraft[0]
+      const draftVersion = Array.isArray(firstDraft.prompt_versions) 
+        ? firstDraft.prompt_versions[0] 
+        : firstDraft.prompt_versions
+      draftVersionNumber = draftVersion.version_number
+    } else {
+      // Create new draft version number
+      draftVersionNumber = currentActiveVersion + 1
+    }
+    
+    // Load all prompts for this vertical (active versions to use as base)
     const { data: prompts, error: promptsError } = await supabase
       .from('prompts')
       .select(`
@@ -1829,44 +2361,74 @@ async function saveNode(nodeName) {
     
     if (promptsError) throw promptsError
 
-    // 5) For every node in the vertical, create a new prompt_versions row with the new shared version
+    // For every node, update or create draft version
     for (const p of (prompts || [])) {
       const activeVersion = Array.isArray(p.prompt_versions) ? p.prompt_versions[0] : p.prompt_versions
       const priorContent = activeVersion?.content || { role: '', instructions: '', tools: [] }
 
-      // Use edited content only for the node being saved; otherwise reuse prior content
-      const newContent = p.node_name === nodeName ? contentObj : priorContent
+      // Use edited content for the node being saved; otherwise use draft content if exists, else active content
+      let newContent
+      if (p.node_name === nodeName) {
+        newContent = contentObj
+      } else if (hasExistingDraft) {
+        // Try to get draft content for this node
+        const nodeDraft = existingDraft.find(d => d.node_name === p.node_name)
+        if (nodeDraft) {
+          const draftVer = Array.isArray(nodeDraft.prompt_versions) 
+            ? nodeDraft.prompt_versions[0] 
+            : nodeDraft.prompt_versions
+          newContent = draftVer.content || priorContent
+        } else {
+          newContent = priorContent
+        }
+      } else {
+        newContent = priorContent
+      }
 
-      // Deactivate all existing versions for this prompt
-      await supabase
+      // Check if draft version already exists for this prompt
+      const { data: existingPromptDraft, error: promptDraftError } = await supabase
         .from('prompt_versions')
-        .update({ is_active: false })
+        .select('id')
         .eq('prompt_id', p.id)
+        .eq('version_number', draftVersionNumber)
+        .eq('is_draft', true)
+        .maybeSingle()
       
-      // Insert the new version for this prompt with the shared vertical version
-      const { error: insertErr } = await supabase
-        .from('prompt_versions')
-        .insert({
-          prompt_id: p.id,
-          version_number: newVerticalVersion,
-          content: newContent,
-          is_active: true,
-          is_draft: false,
-          created_by: 'portal',
-          change_summary: `Vertical v${newVerticalVersion} - ${p.node_name === nodeName ? 'updated' : 'carried forward'} content`
-        })
-      if (insertErr) throw insertErr
+      if (promptDraftError) throw promptDraftError
 
-      // Update prompt current_version to new vertical version
-      await supabase
-        .from('prompts')
-        .update({ current_version: newVerticalVersion })
-        .eq('id', p.id)
+      if (existingPromptDraft) {
+        // Update existing draft
+        const { error: updateErr } = await supabase
+          .from('prompt_versions')
+          .update({
+            content: newContent,
+            change_summary: `Draft - ${p.node_name === nodeName ? 'updated' : 'carried forward'} content`
+          })
+          .eq('id', existingPromptDraft.id)
+        if (updateErr) throw updateErr
+      } else {
+        // Create new draft version
+        const { error: insertErr } = await supabase
+          .from('prompt_versions')
+          .insert({
+            prompt_id: p.id,
+            version_number: draftVersionNumber,
+            content: newContent,
+            is_active: false,
+            is_draft: true,
+            created_by: 'portal',
+            change_summary: `Draft - ${p.node_name === nodeName ? 'updated' : 'carried forward'} content`
+          })
+        if (insertErr) throw insertErr
+      }
     }
     
     nodeHasChanges.value[nodeName] = false
-    window.$message?.success(`Node "${nodeName}" saved! Vertical version: v${newVerticalVersion}`)
+    window.$message?.success(`Node "${nodeName}" saved as draft!`)
     
+    console.log('Node saved, checking for draft...')
+    await checkForDraft()
+    console.log('After checkForDraft, hasDraft.value:', hasDraft.value)
     await loadNodePrompts()
     await loadVersions(nodeName)
   } catch (error) {
@@ -1890,18 +2452,25 @@ async function validateNodeWithCli(nodeName, contentObj) {
 
   const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080'
   const versionId = currentVersion.value?.id || 'inline'
-  const response = await fetch(`${CLI_TESTING_URL}/api/test-cli`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      versionId,
-      vertical: selectedVertical.value,
-      nodeName,
-      promptContent: contentObj
+  
+  let response
+  try {
+    response = await fetch(`${CLI_TESTING_URL}/api/test-cli`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        versionId,
+        vertical: selectedVertical.value,
+        nodeName,
+        promptContent: contentObj
+      })
     })
-  })
+  } catch (fetchError) {
+    // Re-throw fetch errors (connection refused, network errors) so they can be handled upstream
+    throw new TypeError(`Failed to fetch: ${fetchError.message}`)
+  }
 
   let data = {}
   try {
@@ -2218,11 +2787,34 @@ async function toggleNode(node) {
           }
         }
         
+        // Handle valid_contexts - convert to array
+        let validContextsArray = []
+        if (Array.isArray(content.valid_contexts)) {
+          validContextsArray = content.valid_contexts.filter(c => typeof c === 'string' && c.trim() !== '')
+        } else if (typeof content.valid_contexts === 'string') {
+          if (content.valid_contexts === '[]' || content.valid_contexts.trim() === '[]') {
+            validContextsArray = []
+          } else {
+            try {
+              const parsed = JSON.parse(content.valid_contexts)
+              validContextsArray = Array.isArray(parsed) ? parsed : []
+            } catch {
+              validContextsArray = content.valid_contexts
+                .split(',')
+                .map(c => c.trim())
+                .filter(c => c && c !== '[]')
+            }
+          }
+        }
+        
         // Create new object to ensure Vue reactivity
         const newNodeContent = {
           role: content.role || '',
           instructions: content.instructions || '',
-          tools: [...toolsArray] // Create new array copy for reactivity
+          step_criteria: content.step_criteria || '',
+          valid_contexts: [...validContextsArray], // Create new array copy for reactivity
+          tools: [...toolsArray], // Create new array copy for reactivity
+          skip_user_turn: content.skip_user_turn || false
         }
         nodeContent.value[node] = newNodeContent
       
@@ -2232,7 +2824,10 @@ async function toggleNode(node) {
       console.log('No content found, initializing empty for', node)
       nodeContent.value[node] = {
         instructions: '',
-        tools: [] // Initialize as empty array for multi-select
+        step_criteria: '',
+        valid_contexts: [], // Initialize as empty array for multi-select
+        tools: [], // Initialize as empty array for multi-select
+        skip_user_turn: false
       }
     }
     
@@ -2267,6 +2862,22 @@ function updateInstructions(node, value) {
     nodeContent.value[node] = { instructions: '', tools: [] }
   }
   nodeContent.value[node].instructions = value
+  markNodeChanged(node)
+}
+
+function updateStepCriteria(node, value) {
+  if (!nodeContent.value[node]) {
+    nodeContent.value[node] = { instructions: '', step_criteria: '', valid_contexts: [], tools: [], skip_user_turn: false }
+  }
+  nodeContent.value[node].step_criteria = value
+  markNodeChanged(node)
+}
+
+function updateSkipUserTurn(node, value) {
+  if (!nodeContent.value[node]) {
+    nodeContent.value[node] = { instructions: '', step_criteria: '', valid_contexts: [], tools: [], skip_user_turn: false }
+  }
+  nodeContent.value[node].skip_user_turn = value
   markNodeChanged(node)
 }
 
@@ -2411,6 +3022,113 @@ function toggleSelectAll(node) {
   }
   
   markNodeChanged(node)
+}
+
+// Context dropdown functions
+function toggleContextDropdown(node) {
+  openContextDropdowns.value[node] = !openContextDropdowns.value[node]
+  if (openContextDropdowns.value[node]) {
+    if (!contextSearch.value[node]) {
+      contextSearch.value[node] = ''
+    }
+    // Update position after opening with a small delay
+    setTimeout(() => {
+      const wrapper = document.querySelector(`[data-dropdown-node="${node}"][data-dropdown-type="context"]`)
+      if (wrapper) {
+        updateContextDropdownPosition(node, wrapper)
+      }
+    }, 10)
+  } else {
+    // Clear position when closing
+    delete contextDropdownPositions.value[node]
+  }
+}
+
+function filteredContexts(node) {
+  const search = contextSearch.value[node] || ''
+  const allContexts = nodeKeys
+  if (!search) return allContexts
+  return allContexts.filter(context => 
+    context.toLowerCase().includes(search.toLowerCase())
+  )
+}
+
+function isAllContextsSelected(node) {
+  const selected = nodeContent.value[node]?.valid_contexts || []
+  if (!Array.isArray(selected)) return false
+  const filtered = filteredContexts(node)
+  return filtered.length > 0 && filtered.every(context => selected.includes(context))
+}
+
+function toggleSelectAllContexts(node) {
+  if (!nodeContent.value[node]) {
+    nodeContent.value[node] = {
+      instructions: '',
+      step_criteria: '',
+      valid_contexts: [],
+      tools: [],
+      skip_user_turn: false
+    }
+  }
+  
+  if (!Array.isArray(nodeContent.value[node].valid_contexts)) {
+    nodeContent.value[node].valid_contexts = []
+  }
+  
+  const filtered = filteredContexts(node)
+  const allSelected = isAllContextsSelected(node)
+  
+  if (allSelected) {
+    // Deselect all filtered contexts
+    filtered.forEach(context => {
+      const index = nodeContent.value[node].valid_contexts.indexOf(context)
+      if (index > -1) {
+        nodeContent.value[node].valid_contexts.splice(index, 1)
+      }
+    })
+  } else {
+    // Select all filtered contexts
+    filtered.forEach(context => {
+      if (!nodeContent.value[node].valid_contexts.includes(context)) {
+        nodeContent.value[node].valid_contexts.push(context)
+      }
+    })
+  }
+  
+  markNodeChanged(node)
+}
+
+function setContextDropdownWrapperRef(node, el) {
+  if (el) {
+    contextDropdownWrapperRefs.value[node] = el
+  }
+}
+
+function updateContextDropdownPosition(node, wrapperEl) {
+  if (!openContextDropdowns.value[node] || !wrapperEl) return
+  
+  const trigger = wrapperEl.querySelector('.tools-dropdown-trigger')
+  if (!trigger) return
+  
+  const rect = trigger.getBoundingClientRect()
+  const viewportHeight = window.innerHeight
+  const dropdownMaxHeight = 300
+  const spaceBelow = viewportHeight - rect.bottom
+  const spaceAbove = rect.top
+  
+  const shouldDropUp = spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow
+  
+  contextDropdownPositions.value[node] = {
+    dropUp: shouldDropUp,
+    style: {
+      position: 'fixed',
+      top: shouldDropUp ? 'auto' : `${rect.bottom + 4}px`,
+      bottom: shouldDropUp ? `${viewportHeight - rect.top + 4}px` : 'auto',
+      left: `${rect.left}px`,
+      width: `${rect.width}px`,
+      zIndex: 10000
+    }
+  }
 }
 
 // Toggle tool selection
@@ -2964,6 +3682,7 @@ async function onVerticalChange() {
   initNodeContent()
   await loadTheme()
   await loadNodePrompts()
+  await checkForDraft()
   
   // Don't auto-expand any nodes - leave them all closed
   selectedNode.value = null
@@ -3010,6 +3729,14 @@ function handleClickOutside(event) {
     // Close all tool dropdowns
     Object.keys(openDropdowns.value).forEach(node => {
       openDropdowns.value[node] = false
+    })
+  }
+  
+  // Close context dropdowns if clicking outside
+  if (!target.closest('[data-dropdown-type="context"]')) {
+    Object.keys(openContextDropdowns.value).forEach(node => {
+      openContextDropdowns.value[node] = false
+      delete contextDropdownPositions.value[node]
     })
   }
   
@@ -3454,13 +4181,14 @@ onUnmounted(() => {
 
 .btn-save,
 .btn-test {
-  padding: 0.75rem 1.5rem;
+  padding: 0.5rem 1rem;
   background: #8a2be2;
   color: #fff;
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
   font-weight: 500;
+  font-size: 0.875rem;
   transition: all 0.2s;
 }
 
@@ -3480,6 +4208,27 @@ onUnmounted(() => {
 
 .btn-test:hover {
   background: #059669;
+}
+
+.btn-publish {
+  padding: 0.5rem 1rem;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.btn-publish:hover:not(:disabled) {
+  background: #d97706;
+}
+
+.btn-publish:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .nodes-section {
@@ -3623,12 +4372,16 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .editor-field {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .editor-field label {
@@ -3727,6 +4480,8 @@ onUnmounted(() => {
 .editor-field textarea,
 .editor-field input {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 0.75rem;
   border-radius: 0.5rem;
   border: 1px solid rgba(255, 255, 255, 0.2);

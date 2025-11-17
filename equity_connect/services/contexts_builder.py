@@ -175,6 +175,9 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
             from string import Template
             
             # Prepare template variables with safe fallbacks
+            # Get conversation_data for dynamic state variables
+            conversation_data = lead_context.get('conversation_data', {})
+            
             template_vars = {
                 'first_name': lead_context.get('first_name') or "there",
                 'last_name': lead_context.get('last_name') or "",
@@ -194,8 +197,11 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
                 'estimated_equity': lead_context.get('estimated_equity') or "",
                 'qualified': str(lead_context.get('qualified', False)).lower(),
                 'call_direction': lead_context.get('call_direction') or "inbound",
-                'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
-                'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
+                'quote_presented': str(conversation_data.get('quote_presented', False)).lower(),
+                'verified': str(conversation_data.get('verified', False)).lower(),
+                # Dynamic state variables (from conversation_data)
+                'appointment_booked': str(conversation_data.get('appointment_booked', False)).lower(),
+                'ready_to_book': str(conversation_data.get('ready_to_book', False)).lower(),
             }
             
             prompt_text = Template(prompt_template).safe_substitute(template_vars)
@@ -327,22 +333,27 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
     
         theme_content = draft_response.data[0]['content']
     else:
+        # Use maybeSingle() to handle case where no theme exists (more resilient)
         response = supabase.table('theme_prompts') \
             .select('content') \
             .eq('vertical', vertical) \
             .eq('is_active', True) \
-            .single() \
+            .maybeSingle() \
             .execute()
         
         if not response.data:
-            logger.error(f"❌ No theme found for vertical: {vertical}")
-            raise ValueError(f"No theme found for vertical: {vertical}")
+            logger.warning(f"⚠️ No active theme found for vertical: {vertical}, using fallback")
+            # Return a minimal fallback theme instead of raising error
+            return "# Barbara - Core Personality\n\nYou are Barbara, a warm and professional assistant helping homeowners explore reverse mortgage options."
         
         theme_content = response.data['content']
     
     # Substitute variables if lead_context provided
     if lead_context:
         from string import Template
+        
+        # Get conversation_data for dynamic state variables
+        conversation_data = lead_context.get('conversation_data', {})
         
         # Prepare template variables with safe fallbacks
         template_vars = {
@@ -364,8 +375,11 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
             'estimated_equity': lead_context.get('estimated_equity') or "",
             'qualified': str(lead_context.get('qualified', False)).lower(),
             'call_direction': lead_context.get('call_direction') or "inbound",
-            'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
-            'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
+            'quote_presented': str(conversation_data.get('quote_presented', False)).lower(),
+            'verified': str(conversation_data.get('verified', False)).lower(),
+            # Dynamic state variables (from conversation_data)
+            'appointment_booked': str(conversation_data.get('appointment_booked', False)).lower(),
+            'ready_to_book': str(conversation_data.get('ready_to_book', False)).lower(),
         }
         
         theme_text = Template(theme_content).safe_substitute(template_vars)
