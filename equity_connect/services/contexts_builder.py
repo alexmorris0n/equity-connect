@@ -144,29 +144,31 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         prompt_text = content.get('instructions', '')
         if lead_context and prompt_text:
             try:
-                # Create a safe dict with only the variables we want to expose
+                # CRITICAL: Provide safe fallbacks for ALL variables to avoid "None" or blank substitutions
+                # SignalWire does NOT support inline fallback syntax like ${var:-default}
+                # We MUST provide defaults in code before substitution
                 template_vars = {
-                    'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "the caller",
-                    'first_name': lead_context.get('first_name', 'the caller'),
-                    'last_name': lead_context.get('last_name', ''),
-                    'lead_phone': lead_context.get('primary_phone', ''),
-                    'lead_email': lead_context.get('primary_email', ''),
-                    'lead_age': lead_context.get('age', ''),
+                    'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "there",
+                    'first_name': lead_context.get('first_name') or "there",
+                    'last_name': lead_context.get('last_name') or "",
+                    'lead_phone': lead_context.get('primary_phone') or "the number you called from",
+                    'lead_email': lead_context.get('primary_email') or "your email address",
+                    'lead_age': lead_context.get('age') or "",
                     # Broker fields are flat in lead_context (not nested)
-                    'broker_name': lead_context.get('broker_name', 'your broker'),
-                    'broker_company': lead_context.get('broker_company', ''),
-                    'broker_phone': lead_context.get('broker_phone', ''),
-                    'broker_email': lead_context.get('broker_email', ''),
-                    # Property fields
-                    'property_address': lead_context.get('property_address', ''),
-                    'property_city': lead_context.get('property_city', ''),
-                    'property_state': lead_context.get('property_state', ''),
-                    'property_zip': lead_context.get('property_zip', ''),
-                    'property_value': lead_context.get('property_value', ''),
-                    'estimated_equity': lead_context.get('estimated_equity', ''),
+                    'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
+                    'broker_company': lead_context.get('broker_company') or "our team",
+                    'broker_phone': lead_context.get('broker_phone') or "our office",
+                    'broker_email': lead_context.get('broker_email') or "our email",
+                    # Property fields - provide meaningful fallbacks
+                    'property_address': lead_context.get('property_address') or "your property",
+                    'property_city': lead_context.get('property_city') or "your area",
+                    'property_state': lead_context.get('property_state') or "",
+                    'property_zip': lead_context.get('property_zip') or "your area",
+                    'property_value': lead_context.get('property_value') or "",
+                    'estimated_equity': lead_context.get('estimated_equity') or "",
                     # Status/flags (CRITICAL for conditional logic)
                     'qualified': str(lead_context.get('qualified', False)).lower(),  # "true" or "false" for conditionals
-                    'call_direction': lead_context.get('call_direction', 'inbound'),
+                    'call_direction': lead_context.get('call_direction') or "inbound",
                     # Conversation flags (for checking if actions already completed)
                     'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
                     'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
@@ -316,26 +318,27 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
     if lead_context and theme_content:
         try:
             from string import Template
-            # Use same template_vars as contexts for consistency
+            # CRITICAL: Use same fallbacks as contexts to ensure consistency
+            # SignalWire does NOT support inline fallback syntax like ${var:-default}
             template_vars = {
-                'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "the caller",
-                'first_name': lead_context.get('first_name', 'the caller'),
-                'last_name': lead_context.get('last_name', ''),
-                'lead_phone': lead_context.get('primary_phone', ''),
-                'lead_email': lead_context.get('primary_email', ''),
-                'lead_age': lead_context.get('age', ''),
-                'broker_name': lead_context.get('broker_name', 'your broker'),
-                'broker_company': lead_context.get('broker_company', ''),
-                'broker_phone': lead_context.get('broker_phone', ''),
-                'broker_email': lead_context.get('broker_email', ''),
-                'property_address': lead_context.get('property_address', ''),
-                'property_city': lead_context.get('property_city', ''),
-                'property_state': lead_context.get('property_state', ''),
-                'property_zip': lead_context.get('property_zip', ''),
-                'property_value': lead_context.get('property_value', ''),
-                'estimated_equity': lead_context.get('estimated_equity', ''),
+                'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "there",
+                'first_name': lead_context.get('first_name') or "there",
+                'last_name': lead_context.get('last_name') or "",
+                'lead_phone': lead_context.get('primary_phone') or "the number you called from",
+                'lead_email': lead_context.get('primary_email') or "your email address",
+                'lead_age': lead_context.get('age') or "",
+                'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
+                'broker_company': lead_context.get('broker_company') or "our team",
+                'broker_phone': lead_context.get('broker_phone') or "our office",
+                'broker_email': lead_context.get('broker_email') or "our email",
+                'property_address': lead_context.get('property_address') or "your property",
+                'property_city': lead_context.get('property_city') or "your area",
+                'property_state': lead_context.get('property_state') or "",
+                'property_zip': lead_context.get('property_zip') or "your area",
+                'property_value': lead_context.get('property_value') or "",
+                'estimated_equity': lead_context.get('estimated_equity') or "",
                 'qualified': str(lead_context.get('qualified', False)).lower(),
-                'call_direction': lead_context.get('call_direction', 'inbound'),
+                'call_direction': lead_context.get('call_direction') or "inbound",
                 'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
                 'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
             }
