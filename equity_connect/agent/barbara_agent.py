@@ -1385,8 +1385,32 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Update lead info with robust error handling."""
 		logger.error("=== TOOL CALLED - update_lead_info ===")
 		try:
+			# Get lead_id from raw_data (global_data) if not provided in args
+			lead_id = args.get("lead_id")
+			if not lead_id and raw_data:
+				global_data = raw_data.get("global_data", {})
+				lead_data = global_data.get("lead", {})
+				lead_id = lead_data.get("id")
+			
+			# If still no lead_id, try to get from phone using sync function
+			if not lead_id:
+				phone = args.get("phone")
+				if not phone and raw_data:
+					global_data = raw_data.get("global_data", {})
+					lead_data = global_data.get("lead", {})
+					phone = lead_data.get("phone")
+				
+				if phone:
+					lead_context_json = lead_service.get_lead_context_core(phone)
+					lead_context = json.loads(lead_context_json)
+					if lead_context.get("found") and lead_context.get("lead_id"):
+						lead_id = lead_context["lead_id"]
+			
+			if not lead_id:
+				raise ValueError("lead_id is required. Provide it in args or ensure phone is in global_data.")
+			
 			result_json = lead_service.update_lead_info_core(
-				args.get("lead_id"), args.get("first_name"), args.get("last_name"),
+				lead_id, args.get("first_name"), args.get("last_name"),
 				args.get("email"), args.get("phone"), args.get("property_address"),
 				args.get("property_city"), args.get("property_state"), args.get("property_zip"),
 				args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
