@@ -272,16 +272,18 @@ def _build_context(context_name: str, context_config: Dict) -> Dict:
     return context
 
 
-def load_theme(vertical: str, use_draft: bool = False) -> str:
-    """Load theme prompt for vertical
+def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[dict] = None) -> str:
+    """Load theme prompt for vertical with optional variable substitution
     
     Theme is the universal personality prompt applied across all contexts.
     
     Args:
         vertical: Business vertical (reverse_mortgage, solar, hvac)
+        use_draft: Load draft version if True
+        lead_context: Optional lead data for variable substitution
         
     Returns:
-        Theme text content
+        Theme text content (with variables substituted if lead_context provided)
     """
     
     supabase = get_supabase_client()
@@ -295,18 +297,59 @@ def load_theme(vertical: str, use_draft: bool = False) -> str:
             .execute()
         
         if draft_response.data:
-            return draft_response.data[0]['content']
+            theme_content = draft_response.data[0]['content']
+    else:
+        response = supabase.table('theme_prompts') \
+            .select('content') \
+            .eq('vertical', vertical) \
+            .eq('is_active', True) \
+            .single() \
+            .execute()
+        
+        if not response.data:
+            logger.error(f"❌ No theme found for vertical: {vertical}")
+            raise ValueError(f"No theme found for vertical: {vertical}")
+        
+        theme_content = response.data['content']
     
-    response = supabase.table('theme_prompts') \
-        .select('content') \
-        .eq('vertical', vertical) \
-        .eq('is_active', True) \
-        .single() \
-        .execute()
+    # Substitute variables if lead_context provided (SignalWire best practice!)
+    if lead_context and theme_content:
+        try:
+            from string import Template
+            # Use same template_vars as contexts for consistency
+            template_vars = {
+                'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "the caller",
+                'first_name': lead_context.get('first_name', 'the caller'),
+                'last_name': lead_context.get('last_name', ''),
+                'lead_phone': lead_context.get('primary_phone', ''),
+                'lead_email': lead_context.get('primary_email', ''),
+                'lead_age': lead_context.get('age', ''),
+                'broker_name': lead_context.get('broker_name', 'your broker'),
+                'broker_company': lead_context.get('broker_company', ''),
+                'broker_phone': lead_context.get('broker_phone', ''),
+                'broker_email': lead_context.get('broker_email', ''),
+                'property_address': lead_context.get('property_address', ''),
+                'property_city': lead_context.get('property_city', ''),
+                'property_state': lead_context.get('property_state', ''),
+                'property_zip': lead_context.get('property_zip', ''),
+                'property_value': lead_context.get('property_value', ''),
+                'estimated_equity': lead_context.get('estimated_equity', ''),
+                'qualified': str(lead_context.get('qualified', False)).lower(),
+                'call_direction': lead_context.get('call_direction', 'inbound'),
+                'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
+                'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
+            }
+            
+            original_snippet = theme_content[:100]
+            theme_content = Template(theme_content).safe_substitute(template_vars)
+            substituted_snippet = theme_content[:100]
+            
+            logger.info(f"[THEME-SUBST] Before: {original_snippet}...")
+            logger.info(f"[THEME-SUBST] After: {substituted_snippet}...")
+        except Exception as e:
+            logger.warning(f"[WARN] Failed to substitute variables in theme: {e}")
+            # Keep original theme if substitution fails
     
-    if not response.data:
-        logger.error(f"❌ No theme found for vertical: {vertical}")
-        raise ValueError(f"No theme found for vertical: {vertical}")
-    
-    return response.data['content']
+    return theme_content
+
 

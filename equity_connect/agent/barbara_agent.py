@@ -321,9 +321,9 @@ class BarbaraAgent(AgentBase):
 			logger.error(f"[ERROR] Failed to build contexts: {e}")
 			raise
 		
-		# 6. Load theme
+		# 6. Load theme (without lead_context - will use generic variables)
 		try:
-			theme_text = load_theme(active_vertical)
+			theme_text = load_theme(active_vertical, lead_context=None)
 		except Exception as e:
 			logger.error(f"[ERROR] Failed to load theme: {e}")
 			raise
@@ -347,9 +347,9 @@ class BarbaraAgent(AgentBase):
 		"""
 		logger.info(f"[TEST] Overriding prompt for test: {vertical}/{node_name}")
 		
-		# Load theme for the vertical
+		# Load theme for the vertical (without lead_context for test mode)
 		try:
-			theme_text = load_theme(vertical)
+			theme_text = load_theme(vertical, lead_context=None)
 		except Exception as e:
 			logger.warning(f"Could not load theme for {vertical}: {e}, using default")
 			theme_text = f"You are Barbara, a helpful AI assistant for {vertical}."
@@ -1944,7 +1944,7 @@ List specific actions needed based on conversation outcome.
 				
 				# ==================== STEP 9: LOAD THEME ====================
 				try:
-					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
+					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft, lead_context=lead_context)
 				except Exception as e:
 					logger.error(f"[ERROR] Failed to load theme: {e}")
 					raise
@@ -1982,7 +1982,7 @@ List specific actions needed based on conversation outcome.
 						lead_context=None,
 						use_draft=self._test_use_draft
 					)
-					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft)
+					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft, lead_context=None)
 					
 					logger.info(f"[OK] Returning fallback POM structure with {len(contexts_obj)} contexts")
 					
