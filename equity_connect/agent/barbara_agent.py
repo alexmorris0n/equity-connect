@@ -1231,7 +1231,7 @@ List specific actions needed based on conversation outcome.
 				logger.info("[TOGGLE] Disabling get_lead_context tool - data already provided")
 				result = SwaigFunctionResult(json.dumps(result_data))
 				result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
-		return result
+				return result
 			
 			# Fallback to DB lookup if global_data not available
 			logger.warning("[WARN] Global data not available, falling back to DB lookup")
@@ -1661,7 +1661,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Mark objection handled with robust error handling."""
 		try:
 			return conversation_flags.mark_objection_handled(args.get("phone"))
-			except Exception as e:
+		except Exception as e:
 			logger.error(f"[ERROR] mark_objection_handled failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
@@ -1673,7 +1673,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Mark questions answered with robust error handling."""
 		try:
 			return conversation_flags.mark_questions_answered(args.get("phone"))
-			except Exception as e:
+		except Exception as e:
 			logger.error(f"[ERROR] mark_questions_answered failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
@@ -1694,7 +1694,7 @@ List specific actions needed based on conversation outcome.
 			swaig_result = SwaigFunctionResult(result)
 			swaig_result.toggle_functions([{"name": "mark_qualification_result", "enabled": False}])
 			return swaig_result
-				except Exception as e:
+		except Exception as e:
 			logger.error(f"[ERROR] mark_qualification_result failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e)})
 			swaig_result = SwaigFunctionResult(error_result)
@@ -1718,7 +1718,7 @@ List specific actions needed based on conversation outcome.
 			swaig_result = SwaigFunctionResult(result)
 			swaig_result.toggle_functions([{"name": "mark_quote_presented", "enabled": False}])
 			return swaig_result
-					except Exception as e:
+		except Exception as e:
 			logger.error(f"[ERROR] mark_quote_presented failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e)})
 			swaig_result = SwaigFunctionResult(error_result)
@@ -1733,7 +1733,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Mark wrong person with robust error handling."""
 		try:
 			return conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
-				except Exception as e:
+		except Exception as e:
 			logger.error(f"[ERROR] mark_wrong_person failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
@@ -1745,7 +1745,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Clear conversation flags with robust error handling."""
 		try:
 			return conversation_flags.clear_conversation_flags(args.get("phone"))
-				except Exception as e:
+		except Exception as e:
 			logger.error(f"[ERROR] clear_conversation_flags_tool failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
