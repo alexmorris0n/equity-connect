@@ -1200,8 +1200,8 @@ List specific actions needed based on conversation outcome.
 		try:
 			logger.error("=== TOOL CALLED - get_lead_context ===")
 			
-			# Check global_data cache first (set in on_swml_request)
-			global_data = self.get_global_data()
+			# Check global_data cache first (passed via raw_data from SignalWire)
+			global_data = raw_data.get('global_data', {}) if raw_data else {}
 			if global_data and global_data.get('lead', {}).get('id'):
 				logger.info("[CACHE] Returning lead data from global_data (no DB lookup needed)")
 				lead = global_data.get('lead', {})

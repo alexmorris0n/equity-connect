@@ -11,3 +11,5 @@ COMMENT ON COLUMN theme_prompts.config IS 'JSONB object storing vertical-specifi
 CREATE INDEX IF NOT EXISTS idx_theme_prompts_config ON theme_prompts USING GIN (config);
 
 
+
+
