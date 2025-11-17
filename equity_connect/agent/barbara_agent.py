@@ -339,6 +339,7 @@ List specific actions needed based on conversation outcome.
 				"name": lead_data_sw.get('name', 'Unknown'),
 				"phone": lead_data_sw.get('phone') or phone,
 				"email": lead_data_sw.get('email', ''),
+				"status": lead_data_sw.get('status', ''),  # Include status for appointment_set handling
 				"property_city": property_data_sw.get('city', 'Unknown'),
 				"property_state": property_data_sw.get('state', ''),
 				"property_address": property_data_sw.get('address', ''),
@@ -423,7 +424,8 @@ List specific actions needed based on conversation outcome.
 				"name": lead_context.get("name", "Unknown"),
 				"phone": phone or "",
 				"email": lead_context.get("email", ""),
-				"age": lead_context.get("age", "")
+				"age": lead_context.get("age", ""),
+				"status": lead_context.get("status", "")  # Include status for appointment_set handling
 			},
 			"broker": {
 				"id": lead_context.get("broker_id", ""),
@@ -444,6 +446,7 @@ List specific actions needed based on conversation outcome.
 			},
 			"status": {
 				"qualified": lead_context.get("qualified", False),
+				"lead_status": lead_context.get("status", ""),  # Include lead status (appointment_set, etc.)
 				"call_direction": call_direction,
 				"quote_presented": False,  # Will be updated by tools
 				"verified": False  # Will be updated by tools
@@ -815,6 +818,7 @@ List specific actions needed based on conversation outcome.
 				"last_name": last_name,
 				"email": lead.get('primary_email', ''),
 				"lead_id": str(lead['id']),
+				"status": lead.get('status', ''),  # Include status for appointment_set handling
 				"property_city": lead.get('property_city', 'Unknown'),
 				"property_state": lead.get('property_state', ''),
 				"property_address": lead.get('property_address', ''),
