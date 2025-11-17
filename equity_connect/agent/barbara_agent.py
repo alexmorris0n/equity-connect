@@ -77,6 +77,11 @@ class BarbaraAgent(AgentBase):
 		This method MUST run to build the prompts with substituted variables.
 		"""
 		
+		# CRITICAL DEBUG: Log that we're here
+		logger.info("=" * 80)
+		logger.info("[CONFIGURE_PER_CALL] METHOD CALLED - STARTING PROMPT BUILD")
+		logger.info("=" * 80)
+		
 		# DEBUG: Log raw params to diagnose phone extraction issues
 		logger.info(f"[DEBUG] configure_per_call called with:")
 		logger.info(f"[DEBUG] query_params keys: {list(query_params.keys())}")
