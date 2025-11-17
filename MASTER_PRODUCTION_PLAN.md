@@ -94,10 +94,23 @@ equity-connect/ (Git Monorepo)
 ## 🆕 Nov 14 Evening Updates
 
 - **CLI Testing Service Stabilized:** Extracted the `test-cli` workflow into its own Fastify app (`cli-testing-service/`) with Fly.io deployment, dedicated Dockerfile, and CORS lockdown. Added structured logging so portal-triggered tests are visible immediately.
-- **Save → Test Automation:** CLI validation now fires as part of the save toast workflow (manual trigger under the hood today); wiring the Vertical editor’s save/publish action to fire automatically is the remaining step before activation can be blocked on failure.
-- **Context Guardrails (Hard Fail):** `contexts_builder.py` now validates every context has at least one active step and raises an error (blocking saves/tests) if anything is missing, preventing “Context must have at least one step” runtime errors.
+- **Save → Test Automation:** CLI validation now fires as part of the save toast workflow (manual trigger under the hood today); wiring the Vertical editor's save/publish action to fire automatically is the remaining step before activation can be blocked on failure.
+- **Context Guardrails (Hard Fail):** `contexts_builder.py` now validates every context has at least one active step and raises an error (blocking saves/tests) if anything is missing, preventing "Context must have at least one step" runtime errors.
 - **Barbara Runtime Hardening:** Replaced deprecated `set_meta_data` with `set_global_data`, added `_ensure_skill` to avoid duplicate skill loading (datetime), and made phone normalization + conversation-state lookups resilient to `None` values.
 - **Regression Test Run:** Successfully executed the CLI test suite for all 8 BarbGraph nodes plus the theme at version `14ab0a70-5ff4-4142-9313-f89a5ce51ce7`, confirming each context produces a valid SWAIG payload.
+
+### 🎙️ Nov 17 Voice UX Improvements
+
+- **`skip_user_turn` Implementation:** Added support for SignalWire's `skip_user_turn` step-level setting to eliminate awkward silences at call start.
+  - **GREET Context:** `skip_user_turn: true` + `step_criteria: "none"` → Barbara speaks IMMEDIATELY on call connect (zero delay)
+  - **QUOTE & EXIT Contexts:** `skip_user_turn: true` → Present quote/farewell without pause (smooth transitions)
+  - **All Other Contexts:** `skip_user_turn: false` → Wait for user input (questions require responses)
+  - **Implementation:** `contexts_builder.py` reads `skip_user_turn` from Supabase `prompt_versions.content` JSONB and applies to step objects
+- **3-Layer Voice UX Stack Complete:**
+  1. **Agent-Level:** `wait_for_user=False` (Barbara speaks when call connects)
+  2. **Prompt Structure:** Front-loaded greeting text (what to say first)
+  3. **Step-Level:** `skip_user_turn` per context (granular execution control)
+- **Production Ready:** All 8 contexts configured with appropriate `skip_user_turn` settings for optimal conversation flow
 
 ### 🔄 Nov 15 Prompt/Theme Reset
 
@@ -775,11 +788,9 @@ CREATE TABLE conversation_state (
 
 ### Key Features
 
-✅ **Native Contexts Routing** - SignalWire handles context transitions via `valid_contexts` arrays  
-✅ **Database-Driven Prompts** - Vue Portal edits → Supabase → Agent runtime (instant updates)  
-✅ **Multi-Vertical Support** - reverse_mortgage, solar, hvac (via vertical parameter)  
-✅ **Theme System** - Universal personality per vertical, no duplication  
-✅ **Variable Substitution** - `{lead.first_name}`, `{property.city}` automatically substituted by SignalWire  
+✅ **Context-Aware Tool Toggling** - Tools disable themselves after use to save tokens  
+✅ **Metadata Caching** - Lead data cached in `self.metadata` to eliminate redundant DB lookups  
+✅ **Variable Substitution** - `$lead.first_name`, `$property.city` automatically substituted by contexts_builder  
 ✅ **Step-Based Completion** - `step_criteria` determines when to advance to next step  
 ✅ **Dynamic Routing** - All 8 contexts always available, `valid_contexts` arrays control transitions  
 ✅ **Conversation History Preserved** - Full context maintained across all context transitions  
@@ -789,6 +800,7 @@ CREATE TABLE conversation_state (
 ✅ **Vertical-Level Versioning** - Single version number per vertical with snapshot rollback  
 ✅ **Context Guardrails** - `contexts_builder` enforces that every context has steps and blocks activation if any node is empty  
 ✅ **CLI Regression Suite** - Dedicated `cli-testing-service` runs `swaig-test` for every node save to catch prompt/tool regressions pre-activation  
+✅ **`skip_user_turn` Support** - Step-level execution control for immediate greetings (GREET, QUOTE, EXIT) vs. waiting for input (all others)  
 
 ### Files Modified
 

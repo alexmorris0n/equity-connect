@@ -1,7 +1,7 @@
 # BarbGraph: Event-Based Conversation Routing System
 
 **Version:** 1.0  
-**Last Updated:** November 13, 2025  
+**Last Updated:** November 17, 2025  
 **Status:** ⚠️ **DEPRECATED - Replaced by SignalWire Native Contexts System**
 
 > **⚠️ IMPORTANT:** BarbGraph was replaced by SignalWire's native contexts system on November 13, 2025. This document is preserved for historical reference. For current implementation details, see:
@@ -19,6 +19,15 @@
 > - `contexts_builder.py` now guards against zero-step contexts, logs every skip, and auto-applies default V1 prompts from `services/default_contexts.py`.
 > - `barbara_agent.py` uses `set_global_data`, `_ensure_skill`, and safer phone normalization to eliminate runtime regressions surfaced by CLI tests.
 > - The new `cli-testing-service/` runs `swaig-test` for every node save so invalid context payloads are caught before activation.
+>
+> **Nov 17, 2025 Voice UX Improvements:**
+> - **`skip_user_turn` Support:** Step-level execution control added to eliminate awkward silences
+> - **GREET Context:** `skip_user_turn: true` + `step_criteria: "none"` → Barbara speaks IMMEDIATELY on call connect
+> - **QUOTE & EXIT:** `skip_user_turn: true` → Smooth transitions without pauses
+> - **All Others:** `skip_user_turn: false` → Wait for user input (questions require responses)
+> - **3-Layer Stack Complete:** Agent-level (`wait_for_user=False`) + Prompt structure (front-loaded greeting) + Step-level (`skip_user_turn`)
+> - **Metadata Caching:** Lead data stored in `self.metadata` during `on_swml_request` to eliminate redundant DB lookups
+> - **Tool Auto-Toggle:** 7 tools (get_lead_context, verify_caller_identity, find_broker_by_territory, book_appointment, assign_tracking_number, mark_qualification_result, mark_quote_presented) disable themselves after execution using `SwaigFunctionResult` to save LLM tokens
 
 ---
 
