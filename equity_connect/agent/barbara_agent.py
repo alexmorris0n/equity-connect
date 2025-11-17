@@ -187,13 +187,20 @@ class BarbaraAgent(AgentBase):
 		
 		# 1. Extract call info
 		# Try multiple locations/casings for phone (SignalWire inconsistent between flows)
+		# CRITICAL: SignalWire uses different keys for initial call vs mid-call reconfiguration
 		phone = (
-			body_params.get('From') 
-			or body_params.get('from') 
-			or body_params.get('from_number')
+			body_params.get('From')           # Initial SWML call
+			or body_params.get('from')        # Lowercase variant
+			or body_params.get('from_number') # Alternate key
+			or body_params.get('caller_id_num')  # Mid-call tool callbacks/reconfiguration
 			or query_params.get('phone')
 			or query_params.get('From')
 		)
+		
+		# CRITICAL: Check if SignalWire is echoing back our global_data
+		# This happens during tool calls and mid-call reconfigurations
+		global_data_from_sw = body_params.get('global_data') or {}
+		
 		broker_id = query_params.get('broker_id')
 		call_direction = (
 			body_params.get('Direction')
@@ -232,11 +239,37 @@ class BarbaraAgent(AgentBase):
 		logger.info(f"[OK] Voice configured: {voice_string} ({voice_config['engine']})")
 		
 		# 3. Get lead context
-		try:
-			lead_context = self._query_lead_direct(phone, broker_id)
-		except Exception as e:
-			logger.error(f"[ERROR] Failed to get lead context: {e}")
-			raise
+		# CRITICAL: Check if SignalWire is echoing back our previously set global_data
+		# This happens during mid-call tool callbacks and prevents unnecessary DB lookups
+		if global_data_from_sw and global_data_from_sw.get('lead', {}).get('id'):
+			logger.info("[CACHE] Using global_data from SignalWire (mid-call reconfiguration)")
+			# Extract data from SignalWire's echoed global_data
+			lead_data_sw = global_data_from_sw.get('lead', {})
+			broker_data_sw = global_data_from_sw.get('broker', {}) if 'broker' in global_data_from_sw else global_data_from_sw.get('status', {})
+			property_data_sw = global_data_from_sw.get('property', {})
+			
+			lead_context = {
+				"lead_id": lead_data_sw.get('id'),
+				"first_name": lead_data_sw.get('first_name', 'there'),
+				"name": lead_data_sw.get('name', 'Unknown'),
+				"phone": lead_data_sw.get('phone') or phone,
+				"email": lead_data_sw.get('email', ''),
+				"property_city": property_data_sw.get('city', 'Unknown'),
+				"property_state": property_data_sw.get('state', ''),
+				"property_address": property_data_sw.get('address', ''),
+				"estimated_equity": property_data_sw.get('equity', 0),
+				"qualified": global_data_from_sw.get('status', {}).get('qualified', False),
+				"broker_name": broker_data_sw.get('broker_name') or broker_data_sw.get('full_name', ''),
+				"broker_company": broker_data_sw.get('broker_company') or broker_data_sw.get('company', ''),
+			}
+			logger.info(f"[OK] Restored lead context from global_data: {lead_context.get('name')}")
+		else:
+			# Fallback to DB lookup if global_data not available
+			try:
+				lead_context = self._query_lead_direct(phone, broker_id)
+			except Exception as e:
+				logger.error(f"[ERROR] Failed to get lead context: {e}")
+				raise
 		
 		# Use lead context phone as fallback when not provided (e.g., CLI tests)
 		if not phone:
