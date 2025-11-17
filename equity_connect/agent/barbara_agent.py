@@ -66,6 +66,77 @@ class BarbaraAgent(AgentBase):
 		self.set_dynamic_config_callback(self.configure_per_call)
 		logger.error(f"[DEBUG] Dynamic config callback registered: {self.configure_per_call}")
 		
+		# Static configuration (applied once at initialization)
+		# These don't change per-call, so set them here instead of configure_per_call
+		
+		# Global data defaults (company info)
+		self.set_global_data({
+			"company_name": "Barbara AI",
+			"service_type": "Reverse Mortgage Assistance",
+			"service_vertical": "Reverse Mortgage / HECM",
+			"business_hours": "9 AM - 5 PM Pacific Time",
+			"coverage_area": "California",
+			"conversation_system": "BarbGraph 8-node routing"
+		})
+		
+		# Speech recognition hints for domain-specific terms
+		self.add_hints([
+			"reverse mortgage",
+			"HECM",
+			"home equity conversion",
+			"FHA",
+			"equity",
+			"lien",
+			"borrower",
+			"non-borrowing spouse",
+			"Barbara",
+			"EquityConnect"
+		])
+		
+		# Pronunciation rules for acronyms
+		self.add_pronunciation("HECM", "H E C M", ignore_case=False)
+		self.add_pronunciation("FHA", "F H A", ignore_case=False)
+		self.add_pronunciation("API", "A P I", ignore_case=False)
+		self.add_pronunciation("AI", "A I", ignore_case=False)
+		
+		# Pattern hints
+		self.add_pattern_hint(
+			hint="AI Agent",
+			pattern="AI\\s+Agent",
+			replace="A.I. Agent",
+			ignore_case=True
+		)
+		
+		# Set post-prompt for call summaries
+		self.set_post_prompt("""
+Analyze the complete conversation and provide a structured summary:
+
+**BARBGRAPH PATH:**
+- Nodes visited in order: [list all nodes traversed]
+- Where conversation ended: [final node]
+- Successful completion: [Yes/No]
+
+**OVERALL OUTCOME:**
+- Primary goal achieved: [Yes/No/Partial]
+- Next action required: [Specific action or "None"]
+- Caller sentiment: [Positive/Neutral/Negative]
+
+**KEY INFORMATION GATHERED:**
+- Main data points collected across all nodes
+- Questions asked by caller
+- Objections or concerns raised
+
+**CONVERSATION QUALITY:**
+- Rapport established: [Excellent/Good/Fair/Poor]
+- Flow smoothness: [Smooth/Some issues/Problematic]
+- All caller questions answered: [Yes/No/Partial]
+
+**FOLLOW-UP ACTIONS:**
+List specific actions needed based on conversation outcome.
+		""")
+		
+		logger.info("[OK] Static configuration applied (hints, pronunciations, post-prompt)")
+		
 		self._test_state_ctx = ContextVar("barbara_test_state")
 		self._reset_test_state()
 		
