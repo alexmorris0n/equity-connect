@@ -654,20 +654,20 @@ List specific actions needed based on conversation outcome.
 			if step_cfg.get("skip_user_turn") is not None:
 				step.skip_user_turn = step_cfg["skip_user_turn"]
 			functions = self._ensure_list(step_cfg.get("functions"))
-				if functions:
-					step.set_functions(functions)
-				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
-				if valid_steps:
-					step.set_valid_steps(valid_steps)
+			if functions:
+				step.set_functions(functions)
+			valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
+			if valid_steps:
+				step.set_valid_steps(valid_steps)
 
-				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
-				action = step_cfg.get("action")
-				if action and action.get("type") == "set_context":
-					target_ctx = action.get("context")
-					if target_ctx and target_ctx not in step_valid_contexts:
-						step_valid_contexts.append(target_ctx)
-				if step_valid_contexts:
-					step.set_valid_contexts(step_valid_contexts)
+			step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
+			action = step_cfg.get("action")
+			if action and action.get("type") == "set_context":
+				target_ctx = action.get("context")
+				if target_ctx and target_ctx not in step_valid_contexts:
+					step_valid_contexts.append(target_ctx)
+			if step_valid_contexts:
+				step.set_valid_contexts(step_valid_contexts)
 
 		# NO RETURN - SDK handles serialization automatically
 
