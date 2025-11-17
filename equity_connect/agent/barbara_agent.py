@@ -654,8 +654,10 @@ List specific actions needed based on conversation outcome.
 				step.set_text(step_cfg["text"])
 			if step_cfg.get("step_criteria"):
 				step.set_step_criteria(step_cfg["step_criteria"])
-			if step_cfg.get("skip_user_turn") is not None:
-				step.skip_user_turn = step_cfg["skip_user_turn"]
+			# CRITICAL: Default to False (wait for user) if not explicitly set
+			# This prevents tools from being called before greeting
+			skip_user_turn = step_cfg.get("skip_user_turn", False)
+			step.skip_user_turn = skip_user_turn
 			functions = self._ensure_list(step_cfg.get("functions"))
 			if functions:
 				step.set_functions(functions)
@@ -1693,10 +1695,14 @@ List specific actions needed based on conversation outcome.
 	def mark_wrong_person(self, args, raw_data):
 		"""Tool: Mark wrong person with robust error handling."""
 		try:
-			return conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
+			result = conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_wrong_person failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e)})
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Clear all conversation flags for a fresh start.",
