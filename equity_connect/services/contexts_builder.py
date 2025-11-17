@@ -327,17 +327,17 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
     
         theme_content = draft_response.data[0]['content']
     else:
-    response = supabase.table('theme_prompts') \
-        .select('content') \
-        .eq('vertical', vertical) \
-        .eq('is_active', True) \
-        .single() \
-        .execute()
-    
-    if not response.data:
-        logger.error(f"❌ No theme found for vertical: {vertical}")
-        raise ValueError(f"No theme found for vertical: {vertical}")
-    
+        response = supabase.table('theme_prompts') \
+            .select('content') \
+            .eq('vertical', vertical) \
+            .eq('is_active', True) \
+            .single() \
+            .execute()
+        
+        if not response.data:
+            logger.error(f"❌ No theme found for vertical: {vertical}")
+            raise ValueError(f"No theme found for vertical: {vertical}")
+        
         theme_content = response.data['content']
     
     # Substitute variables if lead_context provided
