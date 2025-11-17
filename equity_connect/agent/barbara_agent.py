@@ -761,23 +761,31 @@ List specific actions needed based on conversation outcome.
 					"first_name": "there",
 					"last_name": "",
 					"email": "",
+					"primary_email": "",
+					"phone": "",
+					"primary_phone": "",
 					"lead_id": "",
 					"property_city": "Unknown",
 					"property_state": "",
 					"property_address": "",
+					"property_zip": "",
+					"property_value": "",
 					"estimated_equity": 0,
+					"age": "",
 					"qualified": False,
 					"broker_name": "",
-					"broker_company": ""
+					"broker_company": "",
+					"broker_phone": "",
+					"broker_email": ""
 				}
 			
 			# Query lead with broker join
 			query = sb.table('leads').select('''
 				id, first_name, last_name, primary_email, primary_phone,
 				property_address, property_city, property_state, property_zip,
-				estimated_equity, status, qualified,
+				property_value, estimated_equity, status, qualified, age,
 				brokers:assigned_broker_id (
-					id, contact_name, company_name
+					id, contact_name, company_name, phone, email
 				)
 			''')
 			or_filter = ','.join(or_conditions)
@@ -790,14 +798,22 @@ List specific actions needed based on conversation outcome.
 					"first_name": "there",
 					"last_name": "",
 					"email": "",
+					"primary_email": "",
+					"phone": "",
+					"primary_phone": "",
 					"lead_id": "",
 					"property_city": "Unknown",
 					"property_state": "",
 					"property_address": "",
+					"property_zip": "",
+					"property_value": "",
 					"estimated_equity": 0,
+					"age": "",
 					"qualified": False,
 					"broker_name": "",
-					"broker_company": ""
+					"broker_company": "",
+					"broker_phone": "",
+					"broker_email": ""
 				}
 			
 			lead = response.data[0]
@@ -813,21 +829,29 @@ List specific actions needed based on conversation outcome.
 			
 			logger.info(f"[OK] Lead found: {full_name} ({lead.get('status')})")
 			
-			# Return structured dict
+			# Return structured dict with all fields needed for variable substitution
 			return {
 				"name": full_name,
 				"first_name": first_name,
 				"last_name": last_name,
 				"email": lead.get('primary_email', ''),
+				"primary_email": lead.get('primary_email', ''),  # Alias for contexts_builder
+				"phone": lead.get('primary_phone', ''),
+				"primary_phone": lead.get('primary_phone', ''),  # Alias for contexts_builder
 				"lead_id": str(lead['id']),
 				"status": lead.get('status', ''),  # Include status for appointment_set handling
 				"property_city": lead.get('property_city', 'Unknown'),
 				"property_state": lead.get('property_state', ''),
 				"property_address": lead.get('property_address', ''),
+				"property_zip": lead.get('property_zip', ''),
+				"property_value": lead.get('property_value', ''),
 				"estimated_equity": lead.get('estimated_equity', 0),
+				"age": lead.get('age', ''),
 				"qualified": is_qualified,
 				"broker_name": broker.get('contact_name', '') if broker else '',
-				"broker_company": broker.get('company_name', '') if broker else ''
+				"broker_company": broker.get('company_name', '') if broker else '',
+				"broker_phone": broker.get('phone', '') if broker else '',
+				"broker_email": broker.get('email', '') if broker else ''
 			}
 			
 		except Exception as e:
@@ -837,14 +861,22 @@ List specific actions needed based on conversation outcome.
 				"first_name": "there",
 				"last_name": "",
 				"email": "",
+				"primary_email": "",
+				"phone": "",
+				"primary_phone": "",
 				"lead_id": "",
 				"property_city": "Unknown",
 				"property_state": "",
 				"property_address": "",
+				"property_zip": "",
+				"property_value": "",
 				"estimated_equity": 0,
+				"age": "",
 				"qualified": False,
 				"broker_name": "",
-				"broker_company": ""
+				"broker_company": "",
+				"broker_phone": "",
+				"broker_email": ""
 			}
 	
 	def _get_initial_context(self, phone: str) -> str:

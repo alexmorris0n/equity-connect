@@ -333,18 +333,16 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
     
         theme_content = draft_response.data[0]['content']
     else:
-        # Use maybeSingle() to handle case where no theme exists (more resilient)
         response = supabase.table('theme_prompts') \
             .select('content') \
             .eq('vertical', vertical) \
             .eq('is_active', True) \
-            .maybeSingle() \
+            .single() \
             .execute()
         
         if not response.data:
-            logger.warning(f"⚠️ No active theme found for vertical: {vertical}, using fallback")
-            # Return a minimal fallback theme instead of raising error
-            return "# Barbara - Core Personality\n\nYou are Barbara, a warm and professional assistant helping homeowners explore reverse mortgage options."
+            logger.error(f"❌ No theme found for vertical: {vertical}")
+            raise ValueError(f"No theme found for vertical: {vertical}")
         
         theme_content = response.data['content']
     
