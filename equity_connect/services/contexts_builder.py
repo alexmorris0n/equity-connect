@@ -180,6 +180,14 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
                 substituted_text = prompt_text[:100]  # First 100 chars after substitution
                 logger.info(f"[SUBST] Before: {original_text}...")
                 logger.info(f"[SUBST] After: {substituted_text}...")
+                
+                # CRITICAL DEBUG: For GREET context, log the FULL substituted text to see what LLM gets
+                if prompt.get('node_name') == 'greet':
+                    logger.error(f"[DEBUG-GREET] FULL GREET CONTEXT AFTER SUBSTITUTION (first 500 chars):")
+                    logger.error(f"{prompt_text[:500]}")
+                    logger.error(f"[DEBUG-GREET] call_direction variable value: {template_vars.get('call_direction')}")
+                    logger.error(f"[DEBUG-GREET] first_name variable value: {template_vars.get('first_name')}")
+                    logger.error(f"[DEBUG-GREET] broker_name variable value: {template_vars.get('broker_name')}")
             except Exception as e:
                 logger.warning(f"[WARN] Failed to substitute variables in prompt: {e}")
                 # Keep original prompt text if substitution fails
