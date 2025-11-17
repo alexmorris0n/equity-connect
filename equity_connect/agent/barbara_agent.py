@@ -343,7 +343,40 @@ class BarbaraAgent(AgentBase):
 		lead_context['call_direction'] = call_direction
 		lead_context['initial_context'] = 'greet'  # TODO: Make dynamic based on conversation state
 		agent.set_global_data({
-			# Lead fields - match %{first_name}, %{last_name}, etc.
+			# NESTED structure for tool compatibility (get_lead_context expects this)
+			"lead": {
+				"id": lead_context.get("lead_id", ""),
+				"first_name": lead_context.get("first_name", "there"),
+				"last_name": lead_context.get("last_name", ""),
+				"name": lead_context.get("name", "Unknown"),
+				"phone": phone or "",
+				"email": lead_context.get("email", ""),
+				"age": lead_context.get("age", "")
+			},
+			"broker": {
+				"id": lead_context.get("broker_id", ""),
+				"full_name": lead_context.get("broker_name", "your mortgage advisor"),
+				"company": lead_context.get("broker_company", "our team"),
+				"phone": lead_context.get("broker_phone", ""),
+				"email": lead_context.get("broker_email", ""),
+				"nylas_grant_id": lead_context.get("broker_nylas_grant_id", ""),
+				"timezone": lead_context.get("broker_timezone", "")
+			},
+			"property": {
+				"address": lead_context.get("property_address", "your property"),
+				"city": lead_context.get("property_city", "your area"),
+				"state": lead_context.get("property_state", ""),
+				"zip": lead_context.get("property_zip", ""),
+				"value": lead_context.get("property_value", ""),
+				"equity": lead_context.get("estimated_equity", "")
+			},
+			"status": {
+				"qualified": lead_context.get("qualified", False),
+				"call_direction": call_direction,
+				"quote_presented": False,  # Will be updated by tools
+				"verified": False  # Will be updated by tools
+			},
+			# ALSO keep flat keys for prompt variable substitution (SignalWire needs both)
 			"first_name": lead_context.get("first_name", "there"),
 			"last_name": lead_context.get("last_name", ""),
 			"full_name": lead_context.get("name", "Unknown"),
@@ -351,26 +384,23 @@ class BarbaraAgent(AgentBase):
 			"lead_email": lead_context.get("email", ""),
 			"lead_age": lead_context.get("age", ""),
 			"lead_id": lead_context.get("lead_id", ""),
-			# Broker fields - match %{broker_name}, %{broker_company}, etc.
 			"broker_name": lead_context.get("broker_name", "your mortgage advisor"),
 			"broker_company": lead_context.get("broker_company", "our team"),
 			"broker_phone": lead_context.get("broker_phone", ""),
 			"broker_email": lead_context.get("broker_email", ""),
-			# Property fields - match %{property_address}, %{property_city}, etc.
 			"property_address": lead_context.get("property_address", "your property"),
 			"property_city": lead_context.get("property_city", "your area"),
 			"property_state": lead_context.get("property_state", ""),
 			"property_zip": lead_context.get("property_zip", ""),
 			"property_value": lead_context.get("property_value", ""),
 			"estimated_equity": lead_context.get("estimated_equity", ""),
-			# Status/flags - match %{qualified}, %{call_direction}, etc.
-			"qualified": str(lead_context.get("qualified", False)).lower(),  # "true" or "false"
+			"qualified": str(lead_context.get("qualified", False)).lower(),
 			"call_direction": call_direction,
-			"quote_presented": "false",  # Will be updated by tools
-			"verified": "false"  # Will be updated by tools
+			"quote_presented": "false",
+			"verified": "false"
 		})
 		
-		logger.info(f"[OK] Global data set with flat keys for {lead_context.get('name', 'Unknown')}")
+		logger.info(f"[OK] Global data set with nested+flat structure for {lead_context.get('name', 'Unknown')}")
 		
 		# 4. Determine initial context
 		if phone:
