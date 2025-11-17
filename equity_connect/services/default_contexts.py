@@ -45,10 +45,10 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 		"steps": [
 			_step(
 				"confirm_identity",
-				"Confirm the caller's name, pull their record with get_lead_context, and "
-				"acknowledge details you find. If unknown, create a new lead.",
+				"Confirm the caller's name and acknowledge details from pre-loaded lead data. "
+				"If unknown, create a new lead.",
 				"Lead context loaded or newly created.",
-				["get_lead_context", "verify_caller_identity", "mark_wrong_person"]
+				["verify_caller_identity", "mark_wrong_person"]
 			)
 		],
 		"valid_contexts": ["qualify", "quote", "answer", "exit"]

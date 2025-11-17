@@ -415,7 +415,7 @@ List specific actions needed based on conversation outcome.
 		# Note: global_data is for tools/functions, NOT for prompt variable substitution
 		lead_context['call_direction'] = call_direction
 		agent.set_global_data({
-			# NESTED structure for tool compatibility (get_lead_context expects this)
+			# NESTED structure for tool compatibility
 			"lead": {
 				"id": lead_context.get("lead_id", ""),
 				"first_name": lead_context.get("first_name", "there"),
@@ -528,11 +528,7 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"[PAYLOAD] Total context instructions: {total_context_size:,} bytes ({total_context_size/1024:.2f} KB)")
 		
 		# Build contexts using builder API
-		# Filter out get_lead_context if data is already loaded
-		has_lead_data = bool(lead_context and lead_context.get("lead_id"))
-		if has_lead_data:
-			logger.info("[TOOLS] Lead data already loaded - excluding get_lead_context from all contexts")
-		self._apply_contexts_via_builder(agent, contexts_obj, exclude_get_lead_context=has_lead_data)
+		self._apply_contexts_via_builder(agent, contexts_obj)
 		
 		# Estimate total payload size
 		estimated_total = global_data_size + theme_size + total_context_size
@@ -600,8 +596,7 @@ List specific actions needed based on conversation outcome.
 		agent.prompt_add_section("Personality", body=theme_text)
 		
 		# Build contexts using builder API
-		# For test mode, don't exclude get_lead_context (test might need it)
-		self._apply_contexts_via_builder(agent, contexts_obj, exclude_get_lead_context=False)
+		self._apply_contexts_via_builder(agent, contexts_obj)
 		
 		logger.info(f"[OK] Prompt override complete for test: {node_name} via builder API")
 		
@@ -609,7 +604,7 @@ List specific actions needed based on conversation outcome.
 		# If you see a return dict here, you're doing it wrong
 
 
-	def _apply_contexts_via_builder(self, agent_instance, contexts_data: Dict[str, Any], exclude_get_lead_context: bool = False) -> None:
+	def _apply_contexts_via_builder(self, agent_instance, contexts_data: Dict[str, Any]) -> None:
 		"""Apply contexts using proper ContextBuilder API
 		
 		Args:
@@ -621,7 +616,6 @@ List specific actions needed based on conversation outcome.
 						"valid_contexts": [...]
 					}
 				}
-			exclude_get_lead_context: If True, remove get_lead_context from all function lists
 		
 		CRITICAL: Uses builder API exclusively - no custom dict returns
 		CRITICAL: DO NOT return anything - SDK handles serialization automatically
@@ -658,11 +652,6 @@ List specific actions needed based on conversation outcome.
 				if step_cfg.get("step_criteria"):
 					step.set_step_criteria(step_cfg["step_criteria"])
 				functions = self._ensure_list(step_cfg.get("functions"))
-				# Filter out get_lead_context if data is already loaded
-				if exclude_get_lead_context and functions:
-					functions = [f for f in functions if f != "get_lead_context"]
-					if "get_lead_context" in step_cfg.get("functions", []):
-						logger.info(f"[TOOLS] Removed get_lead_context from {ctx_name}/{step_name} - data already loaded")
 				if functions:
 					step.set_functions(functions)
 				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
@@ -725,7 +714,7 @@ List specific actions needed based on conversation outcome.
 		"""Query Supabase directly for lead information
 		
 		Cannot call tools from configure_per_call (sync vs async mismatch).
-		Duplicates query logic from lead_service.get_lead_context_core.
+		Uses lead_service.get_lead_context_core for lead data lookup.
 		
 		Args:
 			phone: Caller phone number
@@ -1204,118 +1193,6 @@ List specific actions needed based on conversation outcome.
 		voice_string = formats.get(engine.lower(), f"{engine}.{voice_name}")
 		logger.debug(f"Built voice string: {voice_string} (engine: {engine}, voice: {voice_name})")
 		return voice_string
-	
-	# Lead Management (5)
-	@AgentBase.tool(
-		name="get_lead_context",
-		description="Get lead information by phone number; returns lead, broker, property context.",
-		parameters={
-			"type": "object",
-			"properties": {
-				"phone": {
-					"type": "string",
-					"description": "Phone number of the lead (any format)",
-				}
-			},
-			"required": ["phone"],
-		},
-	)
-	def get_lead_context(self, args, raw_data):
-		"""Tool: Get lead information by phone number via lead_service.
-		
-		Uses cached data from set_global_data (set in configure_per_call) to avoid duplicate DB lookups.
-		After returning data, toggles itself OFF so AI won't call it again (saves tokens).
-		
-		Pure data-fetching tool - no routing logic.
-		"""
-		try:
-			logger.error("=== TOOL CALLED - get_lead_context ===")
-			logger.error(f"[DEBUG] get_lead_context called with args: {args}")
-			logger.error(f"[DEBUG] raw_data keys: {list(raw_data.keys()) if raw_data else 'None'}")
-			
-			# Check global_data cache first (passed via raw_data from SignalWire)
-			global_data = raw_data.get('global_data', {}) if raw_data else {}
-			if global_data and global_data.get('lead', {}).get('id'):
-				logger.info("[CACHE] Returning lead data from global_data (no DB lookup needed)")
-				lead = global_data.get('lead', {})
-				broker = global_data.get('broker', {})
-				prop = global_data.get('property', {})
-				
-				result_data = {
-					"found": True,
-					"lead": {
-						"id": lead.get('id'),
-						"first_name": lead.get('first_name') or "",
-						"last_name": lead.get('last_name') or "",
-						"name": lead.get('name') or "",
-						"primary_phone": lead.get('phone') or "",
-						"primary_email": lead.get('email') or "",
-						"age": lead.get('age'),
-						"qualified": bool(global_data.get('status', {}).get('qualified', False))
-					},
-					"broker": {
-						"id": broker.get('id'),
-						"name": broker.get('full_name') or "",
-						"company": broker.get('company') or "",
-						"email": broker.get('email') or "",
-						"phone": broker.get('phone') or "",
-						"nylas_grant_id": broker.get('nylas_grant_id') or "",
-						"timezone": broker.get('timezone') or ""
-					},
-					"property": {
-						"address": prop.get('address') or "",
-						"city": prop.get('city') or "",
-						"state": prop.get('state') or "",
-						"zip": prop.get('zip') or "",
-						"value": prop.get('value') or 0,
-						"estimated_equity": prop.get('equity') or 0
-					},
-					"conversation_data": global_data.get('conversation_data', {}) or {}
-				}
-				
-				# Validate JSON serialization before creating SwaigFunctionResult
-				try:
-					json_str = json.dumps(result_data, default=str)
-					json_size = len(json_str.encode('utf-8'))
-					logger.info(f"[PAYLOAD] get_lead_context response: {json_size:,} bytes ({json_size/1024:.2f} KB)")
-					if json_size > 10 * 1024:
-						logger.warning(f"[PAYLOAD] WARNING: get_lead_context response exceeds 10 KB - may cause issues!")
-				except (TypeError, ValueError) as json_err:
-					logger.error(f"[ERROR] JSON serialization failed in get_lead_context: {json_err}")
-					logger.error(f"[ERROR] Problematic data: {result_data}")
-					# Fallback to minimal response
-					json_str = json.dumps({"found": True, "error": "Data serialization error"})
-				
-				# Toggle this tool OFF for the rest of the call (saves LLM tokens)
-				logger.info("[TOGGLE] Disabling get_lead_context tool - data already provided")
-				result = SwaigFunctionResult(json_str)
-				result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
-				return result
-			
-			# Fallback to DB lookup if global_data not available
-			logger.warning("[WARN] Global data not available, falling back to DB lookup")
-			phone = args.get("phone") if args else None
-			if not phone:
-				logger.warning(f"[WARN] get_lead_context called with no phone: args={args}")
-			result = lead_service.get_lead_context_core(phone or "")
-			logger.error(f"=== TOOL COMPLETE - get_lead_context returned {len(str(result))} chars ===")
-			
-			# Also toggle off after DB lookup
-			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
-			return swaig_result
-		except RecursionError as e:
-			logger.error(f"[FATAL] RecursionError in get_lead_context: {e}")
-			error_result = json.dumps({"found": False, "error": "System error - recursion detected"})
-			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] get_lead_context failed: {e}", exc_info=True)
-			error_result = json.dumps({"found": False, "error": str(e), "message": "Unable to retrieve lead information."})
-			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
-			return swaig_result
 	
 	@AgentBase.tool(
 		name="route_to_context",
