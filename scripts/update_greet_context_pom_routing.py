@@ -61,24 +61,24 @@ routing_section = """
 
 After greeting, check these flags in order:
 
-1. **If `global_data.status.appointment_booked` is true:**
-   - Say: "Hi $first_name! You're all set with your appointment. Is there anything else I can help with?"
+1. **If `{global_data.appointment_booked}` is true:**
+   - Say: "Hi {first_name}! You're all set with your appointment. Is there anything else I can help with?"
    - Route to EXIT
 
-2. **If `global_data.status.ready_to_book` is true:**
-   - Say: "Hi $first_name! Great to hear from you again. Let's get that appointment scheduled with $broker_name."
+2. **If `{global_data.ready_to_book}` is true:**
+   - Say: "Hi {first_name}! Great to hear from you again. Let's get that appointment scheduled with {broker_name}."
    - Route to BOOK
 
-3. **If `global_data.status.quote_presented` is true:**
-   - Say: "Hi $first_name! Good to hear from you. Do you have any questions about the numbers we discussed?"
+3. **If `{global_data.quote_presented}` is true:**
+   - Say: "Hi {first_name}! Good to hear from you. Do you have any questions about the numbers we discussed?"
    - Route to ANSWER
 
-4. **If `global_data.status.qualified` is true:**
-   - Say: "Hi $first_name! Thanks for calling back. What questions can I answer for you?"
+4. **If `{global_data.qualified}` is true:**
+   - Say: "Hi {first_name}! Thanks for calling back. What questions can I answer for you?"
    - Route to ANSWER
 
-5. **If `global_data.status.verified` is true:**
-   - Say: "Hi $first_name! Let me ask a few quick questions to see if this is a good fit for you."
+5. **If `{global_data.verified}` is true:**
+   - Say: "Hi {first_name}! Let me ask a few quick questions to see if this is a good fit for you."
    - Route to QUALIFY
 
 6. **Otherwise (new caller):**
