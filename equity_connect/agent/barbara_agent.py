@@ -77,21 +77,15 @@ class BarbaraAgent(AgentBase):
 		This method MUST run to build the prompts with substituted variables.
 		"""
 		
-		try:
-			# CRITICAL DEBUG: Log that we're here with ERROR level so it's impossible to miss
-			logger.error("=" * 80)
-			logger.error("[CONFIGURE_PER_CALL] ENTRY - METHOD WAS CALLED!")
-			logger.error("=" * 80)
-			
-			# CRITICAL DEBUG: Log that we're here
-			logger.info("=" * 80)
-			logger.info("[CONFIGURE_PER_CALL] METHOD CALLED - STARTING PROMPT BUILD")
-			logger.info("=" * 80)
-			
-			# DEBUG: Log raw params to diagnose phone extraction issues
-			logger.info(f"[DEBUG] configure_per_call called with:")
-			logger.info(f"[DEBUG] query_params keys: {list(query_params.keys())}")
-			logger.info(f"[DEBUG] body_params keys: {list(body_params.keys())}")
+		# CRITICAL DEBUG: Log that we're here with ERROR level so it's impossible to miss
+		logger.error("=" * 80)
+		logger.error("[CONFIGURE_PER_CALL] ENTRY - METHOD WAS CALLED!")
+		logger.error("=" * 80)
+		
+		# DEBUG: Log raw params to diagnose phone extraction issues
+		logger.info(f"[DEBUG] configure_per_call called with:")
+		logger.info(f"[DEBUG] query_params keys: {list(query_params.keys())}")
+		logger.info(f"[DEBUG] body_params keys: {list(body_params.keys())}")
 		if body_params:
 			# Log phone-related keys
 			phone_keys = {k: v for k, v in body_params.items() if 'from' in k.lower() or 'phone' in k.lower() or 'to' in k.lower()}
@@ -413,10 +407,6 @@ class BarbaraAgent(AgentBase):
 		
 		# CRITICAL: configure_per_call requires NO return value
 		# If you see a return dict here, you're doing it wrong
-		
-		except Exception as e:
-			logger.error(f"[FATAL] configure_per_call crashed: {e}", exc_info=True)
-			raise
 	
 	def _override_prompt_for_test(self, agent, vertical: str, node_name: str, content: dict):
 		"""
