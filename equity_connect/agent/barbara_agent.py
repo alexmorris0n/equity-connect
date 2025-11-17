@@ -128,24 +128,10 @@ class BarbaraAgent(AgentBase):
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts
 		
-		CRITICAL: This method is called AFTER on_swml_request during the same call.
-		If on_swml_request already configured everything perfectly, we should NOT reconfigure
-		unless this is a mid-call tool callback that needs updated context.
+		CRITICAL: This is where prompts are ACTUALLY built using agent.prompt_add_section()
+		and define_contexts(). The POM dict from on_swml_request is just metadata.
+		This method MUST run to build the prompts with substituted variables.
 		"""
-		
-		# CRITICAL: Check if this is a mid-call reconfiguration or initial call
-		# If on_swml_request already ran for this call, skip full reconfiguration
-		# to prevent overwriting perfect lead/broker data with fallbacks
-		call_id = body_params.get('call_id') or body_params.get('call', {}).get('call_id')
-		if call_id and hasattr(self, '_configured_calls') and call_id in self._configured_calls:
-			logger.info(f"[SKIP] configure_per_call called for already-configured call {call_id} - skipping to preserve on_swml_request data")
-			return
-		
-		# Track this call as configured
-		if not hasattr(self, '_configured_calls'):
-			self._configured_calls = set()
-		if call_id:
-			self._configured_calls.add(call_id)
 		
 		# DEBUG: Log raw params to diagnose phone extraction issues
 		logger.info(f"[DEBUG] configure_per_call called with:")
@@ -458,9 +444,9 @@ class BarbaraAgent(AgentBase):
 			logger.error(f"[ERROR] Failed to build contexts: {e}")
 			raise
 		
-		# 6. Load theme (without lead_context - will use generic variables)
+		# 6. Load theme WITH lead_context for variable substitution
 		try:
-			theme_text = load_theme(active_vertical, lead_context=None)
+			theme_text = load_theme(active_vertical, lead_context=lead_context)
 		except Exception as e:
 			logger.error(f"[ERROR] Failed to load theme: {e}")
 			raise
