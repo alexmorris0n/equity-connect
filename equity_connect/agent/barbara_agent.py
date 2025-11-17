@@ -1792,24 +1792,24 @@ List specific actions needed based on conversation outcome.
 							"primary_email": lead_data.get('primary_email'),
 							"age": lead_data.get('age'),
 							"conversation_data": state_row.get("conversation_data", {}) if state_row else {},
-							"call_direction": call_direction  # Add for conditional greeting
-						}
-							
-							# Add broker info if assigned
-							if broker_data:
-								lead_context["broker_id"] = broker_data.get('id')
-								lead_context["broker_name"] = broker_data.get('contact_name')
-								lead_context["broker_company"] = broker_data.get('company_name')
-								lead_context["broker_email"] = broker_data.get('email')
-								lead_context["broker_phone"] = broker_data.get('phone')  # Add for variable substitution
-								lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
-								lead_context["broker_timezone"] = broker_data.get('timezone')
-								logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
-								
-							# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
-							# This avoids DB queries in calendar tools (same pattern as v3)
-							if lead_context.get('broker_nylas_grant_id'):
-								self.update_global_data({
+						"call_direction": call_direction  # Add for conditional greeting
+					}
+					
+					# Add broker info if assigned
+					if broker_data:
+						lead_context["broker_id"] = broker_data.get('id')
+						lead_context["broker_name"] = broker_data.get('contact_name')
+						lead_context["broker_company"] = broker_data.get('company_name')
+						lead_context["broker_email"] = broker_data.get('email')
+						lead_context["broker_phone"] = broker_data.get('phone')  # Add for variable substitution
+						lead_context["broker_nylas_grant_id"] = broker_data.get('nylas_grant_id')
+						lead_context["broker_timezone"] = broker_data.get('timezone')
+						logger.info(f"[PERSON] Loaded full lead data: {lead_context['name']}, Broker: {lead_context.get('broker_name')}, Nylas: {lead_context.get('broker_nylas_grant_id')[:20] if lead_context.get('broker_nylas_grant_id') else 'None'}...")
+						
+					# Inject broker Nylas grant ID into global_data so calendar tools can use it directly
+					# This avoids DB queries in calendar tools (same pattern as v3)
+					if lead_context.get('broker_nylas_grant_id'):
+						self.update_global_data({
 									# Broker info (for calendar tools)
 									"broker_id": lead_context["broker_id"],
 									"broker_name": lead_context["broker_name"],
