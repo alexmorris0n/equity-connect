@@ -69,62 +69,6 @@ class BarbaraAgent(AgentBase):
 		
 		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
-	def _build_prompts_with_data(self, agent, lead_context: dict, vertical: str = "reverse_mortgage"):
-		"""Build prompts dynamically using agent.prompt_add_section()
-		
-		This follows the official SignalWire pattern where prompts are built fresh
-		for each request using actual data, not variable placeholders.
-		
-		Reference: SignalWire AI Agents SDK Dynamic Configuration docs
-		"""
-		from string import Template
-		from equity_connect.services.contexts_builder import load_theme
-		from equity_connect.services.supabase import get_supabase_client
-		
-		# Prepare template variables with safe fallbacks
-		template_vars = {
-			'first_name': lead_context.get('first_name') or "there",
-			'last_name': lead_context.get('last_name') or "",
-			'full_name': lead_context.get('name') or "Unknown",
-			'lead_phone': lead_context.get('primary_phone') or lead_context.get('phone') or "",
-			'lead_email': lead_context.get('primary_email') or lead_context.get('email') or "",
-			'lead_age': lead_context.get('age') or "",
-			'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
-			'broker_company': lead_context.get('broker_company') or "our team",
-			'broker_phone': lead_context.get('broker_phone') or "",
-			'broker_email': lead_context.get('broker_email') or "",
-			'property_address': lead_context.get('property_address') or "your property",
-			'property_city': lead_context.get('property_city') or "your area",
-			'property_state': lead_context.get('property_state') or "",
-			'property_zip': lead_context.get('property_zip') or "",
-			'property_value': lead_context.get('property_value') or "",
-			'estimated_equity': lead_context.get('estimated_equity') or "",
-			'qualified': str(lead_context.get('qualified', False)).lower(),
-			'call_direction': lead_context.get('call_direction') or "inbound",
-			'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
-			'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
-		}
-		
-		# 1. Load and add theme
-		theme_template = load_theme(vertical, use_draft=self._test_use_draft, lead_context=None)
-		theme_text = Template(theme_template).safe_substitute(template_vars)
-		agent.prompt_add_section("Personality", theme_text)
-		
-		# 2. Load and add initial context prompt
-		initial_context = lead_context.get('initial_context', 'greet')
-		sb = get_supabase_client()
-		response = sb.table('prompts').select('*, prompt_versions!inner(*)').eq('vertical', vertical).eq('node_name', initial_context).eq('is_active', True).single().execute()
-		
-		if response.data:
-			prompt_data = response.data
-			version = next((v for v in prompt_data['prompt_versions'] if v.get('is_active')), None)
-			if version:
-				instructions_template = version['content'].get('instructions', '')
-				instructions_text = Template(instructions_template).safe_substitute(template_vars)
-				agent.prompt_add_section(f"{initial_context.title()} Instructions", instructions_text)
-		
-		logger.info(f"[OK] Built prompts dynamically with data for {template_vars['first_name']}")
-	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts
 		
@@ -2080,43 +2024,17 @@ List specific actions needed based on conversation outcome.
 					f"initial_context={initial_context}, phone={phone}"
 				)
 				
-				return {
-					"prompt": {
-						"pom": {
-							"sections": {
-								"main": theme_text
-							},
-							"contexts": contexts_obj
-						}
-					}
-				}
+				# CRITICAL: When using ContextBuilder in configure_per_call,
+				# DO NOT return a manual POM structure from on_swml_request!
+				# The SDK will use the prompts built in configure_per_call.
+				# Returning None here is correct - we've done the data loading,
+				# and configure_per_call will handle prompt building.
+				logger.info("[OK] Data loaded successfully - configure_per_call will build prompts")
+				return None
 			else:
 				logger.warning("[WARN] No phone number found in request - using default configuration")
-				# Return fallback POM structure
-				try:
-					contexts_obj = build_contexts_object(
-						vertical=active_vertical,
-						initial_context="greet",
-						lead_context=None,
-						use_draft=self._test_use_draft
-					)
-					theme_text = load_theme(active_vertical, use_draft=self._test_use_draft, lead_context=None)
-					
-					logger.info(f"[OK] Returning fallback POM structure with {len(contexts_obj)} contexts")
-					
-					return {
-						"prompt": {
-							"pom": {
-								"sections": {
-									"main": theme_text
-								},
-								"contexts": contexts_obj
-							}
-						}
-					}
-				except Exception as e:
-					logger.error(f"Failed to build fallback contexts: {e}")
-					raise
+				# Still return None - configure_per_call will handle fallback
+				return None
 			
 		except Exception as e:
 			logger.error(f"[ERROR] Error in on_swml_request: {e}", exc_info=True)
