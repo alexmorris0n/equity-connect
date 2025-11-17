@@ -213,9 +213,9 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
             "functions": content.get('tools', [])  # ← READ "tools" FROM DB, OUTPUT AS "functions"
         }
         
-        # Add skip_user_turn if present (for immediate execution without waiting)
-        if content.get('skip_user_turn') is not None:
-            step['skip_user_turn'] = content['skip_user_turn']
+        # CRITICAL: Default to False (wait for user) if not explicitly set
+        # This prevents tools from being called before greeting
+        step['skip_user_turn'] = content.get('skip_user_turn', False)
         
         # Add valid_steps if present
         if content.get('valid_steps'):

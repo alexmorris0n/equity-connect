@@ -867,30 +867,11 @@ List specific actions needed based on conversation outcome.
 		cd = state.get("conversation_data", {})
 		qualified = state.get("qualified", False)
 		
-		# Check in priority order (most complete first)
-		# NOTE: appointment_booked removed - booked callbacks should start at GREET
-		# so Barbara can determine intent (questions, reschedule, or just confirm)
-		# EXIT context is only for ending conversations, not handling callbacks
-		
-		if cd.get("ready_to_book"):
-			logger.info("[CALENDAR] Ready to book - starting at book")
-			return "book"
-		
-		if cd.get("quote_presented") and cd.get("quote_reaction") in ["positive", "skeptical"]:
-			logger.info("[MONEY] Quote presented - starting at answer")
-			return "answer"
-		
-		if qualified and not cd.get("quote_presented"):
-			logger.info("[OK] Qualified, no quote - starting at quote")
-			return "quote"
-		
-		if cd.get("verified") and not qualified:
-			logger.info("[LOOKUP] Verified, not qualified - starting at qualify")
-			return "qualify"
-		
-		# Always start at greet for a new call (even if greeted before)
-		# The greet context handles returning callers appropriately
-		logger.info("[SCENE] Starting from greet")
+		# CRITICAL: ALWAYS start at GREET context first
+		# This ensures Barbara greets the caller and waits for their response
+		# before calling any tools or routing to other contexts
+		# The GREET context will handle routing based on conversation state
+		logger.info("[SCENE] Always starting from greet - will route based on user response")
 		return "greet"
 	
 	def _get_voice_config(self, vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
