@@ -64,7 +64,7 @@ class BarbaraAgent(AgentBase):
 		# CRITICAL: This replaces static config and enables per-call customization
 		# The SDK will call configure_per_call() for each incoming call
 		self.set_dynamic_config_callback(self.configure_per_call)
-		logger.error(f"[DEBUG] Dynamic config callback registered: {self.configure_per_call}")
+		logger.info("Dynamic config callback registered")
 		
 		# Static configuration (applied once at initialization)
 		# These don't change per-call, so set them here instead of configure_per_call
@@ -150,20 +150,8 @@ List specific actions needed based on conversation outcome.
 		This method MUST run to build the prompts with substituted variables.
 		"""
 		
-		# CRITICAL DEBUG: Log that we're here with ERROR level so it's impossible to miss
-		logger.error("=" * 80)
-		logger.error("[CONFIGURE_PER_CALL] ENTRY - METHOD WAS CALLED!")
-		logger.error("=" * 80)
-		
-		# DEBUG: Log raw params to diagnose phone extraction issues
-		logger.info(f"[DEBUG] configure_per_call called with:")
-		logger.info(f"[DEBUG] query_params keys: {list(query_params.keys())}")
-		logger.info(f"[DEBUG] body_params keys: {list(body_params.keys())}")
-		if body_params:
-			# Log phone-related keys
-			phone_keys = {k: v for k, v in body_params.items() if 'from' in k.lower() or 'phone' in k.lower() or 'to' in k.lower()}
-			if phone_keys:
-				logger.info(f"[DEBUG] Phone-related body_params: {phone_keys}")
+		# Log entry for debugging (keep at INFO level for production)
+		logger.info("[CONFIGURE_PER_CALL] Method invoked")
 		
 		# Check if this is a CLI test (from user_vars)
 		# According to SignalWire Agent SDK, --user-vars from swaig-test appear as top-level keys in query_params
@@ -364,9 +352,9 @@ List specific actions needed based on conversation outcome.
 			# Fallback to DB lookup if global_data not available
 			try:
 				lead_context = self._query_lead_direct(phone, broker_id)
-			except Exception as e:
+		except Exception as e:
 				logger.error(f"[ERROR] Failed to get lead context: {e}")
-				raise
+			raise
 		
 		# Use lead context phone as fallback when not provided (e.g., CLI tests)
 		if not phone:
@@ -426,7 +414,6 @@ List specific actions needed based on conversation outcome.
 		# 4. Set global_data for tool execution context
 		# Note: global_data is for tools/functions, NOT for prompt variable substitution
 		lead_context['call_direction'] = call_direction
-		lead_context['initial_context'] = 'greet'  # TODO: Make dynamic based on conversation state
 		agent.set_global_data({
 			# NESTED structure for tool compatibility (get_lead_context expects this)
 			"lead": {
@@ -1244,7 +1231,7 @@ List specific actions needed based on conversation outcome.
 				logger.info("[TOGGLE] Disabling get_lead_context tool - data already provided")
 				result = SwaigFunctionResult(json.dumps(result_data))
 				result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
-				return result
+		return result
 			
 			# Fallback to DB lookup if global_data not available
 			logger.warning("[WARN] Global data not available, falling back to DB lookup")
@@ -1380,12 +1367,12 @@ List specific actions needed based on conversation outcome.
 		logger.error("=== TOOL CALLED - update_lead_info ===")
 		try:
 			return lead_service.update_lead_info_core(
-				args.get("lead_id"), args.get("first_name"), args.get("last_name"),
-				args.get("email"), args.get("phone"), args.get("property_address"),
-				args.get("property_city"), args.get("property_state"), args.get("property_zip"),
-				args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
-				args.get("timeline"), args.get("conversation_data")
-			)
+			args.get("lead_id"), args.get("first_name"), args.get("last_name"),
+			args.get("email"), args.get("phone"), args.get("property_address"),
+			args.get("property_city"), args.get("property_state"), args.get("property_zip"),
+			args.get("age"), args.get("money_purpose"), args.get("amount_needed"),
+			args.get("timeline"), args.get("conversation_data")
+		)
 		except Exception as e:
 			logger.error(f"[ERROR] update_lead_info failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e), "message": "Unable to update lead information."})
@@ -1674,7 +1661,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Mark objection handled with robust error handling."""
 		try:
 			return conversation_flags.mark_objection_handled(args.get("phone"))
-		except Exception as e:
+			except Exception as e:
 			logger.error(f"[ERROR] mark_objection_handled failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
@@ -1686,7 +1673,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Mark questions answered with robust error handling."""
 		try:
 			return conversation_flags.mark_questions_answered(args.get("phone"))
-		except Exception as e:
+			except Exception as e:
 			logger.error(f"[ERROR] mark_questions_answered failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
@@ -1707,7 +1694,7 @@ List specific actions needed based on conversation outcome.
 			swaig_result = SwaigFunctionResult(result)
 			swaig_result.toggle_functions([{"name": "mark_qualification_result", "enabled": False}])
 			return swaig_result
-		except Exception as e:
+				except Exception as e:
 			logger.error(f"[ERROR] mark_qualification_result failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e)})
 			swaig_result = SwaigFunctionResult(error_result)
@@ -1731,7 +1718,7 @@ List specific actions needed based on conversation outcome.
 			swaig_result = SwaigFunctionResult(result)
 			swaig_result.toggle_functions([{"name": "mark_quote_presented", "enabled": False}])
 			return swaig_result
-		except Exception as e:
+					except Exception as e:
 			logger.error(f"[ERROR] mark_quote_presented failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e)})
 			swaig_result = SwaigFunctionResult(error_result)
@@ -1746,7 +1733,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Mark wrong person with robust error handling."""
 		try:
 			return conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
-		except Exception as e:
+				except Exception as e:
 			logger.error(f"[ERROR] mark_wrong_person failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	
@@ -1758,7 +1745,7 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Clear conversation flags with robust error handling."""
 		try:
 			return conversation_flags.clear_conversation_flags(args.get("phone"))
-		except Exception as e:
+				except Exception as e:
 			logger.error(f"[ERROR] clear_conversation_flags_tool failed: {e}", exc_info=True)
 			return json.dumps({"success": False, "error": str(e)})
 	

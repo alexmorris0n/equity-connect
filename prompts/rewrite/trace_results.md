@@ -2,6 +2,8 @@
 
 After updating GREET (enhanced returning-caller handling) and QUALIFY (interrupted gate tracking via `update_lead_info(phone, conversation_data=...)`), all 13 scenarios from `trace_test.md` were re-traced. Results below highlight node flow, key behaviors, and any remaining issues.
 
+**CRITICAL FIX APPLIED (2025-01-17):** The `flow_flags` field (a LiveKit legacy pattern) has been merged into the `tools` array for all contexts. This ensures all state management tools (e.g., `mark_ready_to_book`, `mark_questions_answered`) are available to the LLM, which was previously causing calls to hang when tools were referenced but not available. The database trigger `trg_enforce_flow_flags_separated` was removed as part of this migration.
+
 ---
 
 ## Scenario 1 – Perfect Qualified Lead
