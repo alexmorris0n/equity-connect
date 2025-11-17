@@ -848,30 +848,18 @@ List specific actions needed based on conversation outcome.
 			}
 	
 	def _get_initial_context(self, phone: str) -> str:
-		"""Determine which context to start in based on conversation state
+		"""Always start at GREET context - POM handles routing based on global_data flags
 		
-		Multi-call persistence: resume where caller left off.
+		POM routing: The GREET context checks global_data flags (ready_to_book, quote_presented, etc.)
+		and routes to appropriate context via valid_contexts and step_criteria.
 		
 		Args:
-			phone: Caller's phone number
+			phone: Caller's phone number (unused - always returns "greet")
 			
 		Returns:
-			Context name to start in (default: "greet")
+			Always "greet" - POM handles all routing
 		"""
-		state = get_conversation_state(phone)
-		
-		if not state:
-			logger.info("[NEW] New caller - starting at greet")
-			return "greet"
-		
-		cd = state.get("conversation_data", {})
-		qualified = state.get("qualified", False)
-		
-		# CRITICAL: ALWAYS start at GREET context first
-		# This ensures Barbara greets the caller and waits for their response
-		# before calling any tools or routing to other contexts
-		# The GREET context will handle routing based on conversation state
-		logger.info("[SCENE] Always starting from greet - will route based on user response")
+		logger.info("[SCENE] Starting at greet - POM will route based on global_data flags")
 		return "greet"
 	
 	def _get_voice_config(self, vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
