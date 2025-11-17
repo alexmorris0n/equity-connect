@@ -150,17 +150,26 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
                     'first_name': lead_context.get('first_name', 'the caller'),
                     'last_name': lead_context.get('last_name', ''),
                     'lead_phone': lead_context.get('primary_phone', ''),
+                    'lead_email': lead_context.get('primary_email', ''),
+                    'lead_age': lead_context.get('age', ''),
                     # Broker fields are flat in lead_context (not nested)
                     'broker_name': lead_context.get('broker_name', 'your broker'),
                     'broker_company': lead_context.get('broker_company', ''),
                     'broker_phone': lead_context.get('broker_phone', ''),
+                    'broker_email': lead_context.get('broker_email', ''),
+                    # Property fields
                     'property_address': lead_context.get('property_address', ''),
                     'property_city': lead_context.get('property_city', ''),
                     'property_state': lead_context.get('property_state', ''),
                     'property_zip': lead_context.get('property_zip', ''),
                     'property_value': lead_context.get('property_value', ''),
                     'estimated_equity': lead_context.get('estimated_equity', ''),
-                    'call_direction': lead_context.get('call_direction', 'inbound'),  # For conditional greeting
+                    # Status/flags (CRITICAL for conditional logic)
+                    'qualified': str(lead_context.get('qualified', False)).lower(),  # "true" or "false" for conditionals
+                    'call_direction': lead_context.get('call_direction', 'inbound'),
+                    # Conversation flags (for checking if actions already completed)
+                    'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
+                    'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
                 }
                 # Use safe_substitute to avoid KeyError if template has variables we don't provide
                 from string import Template
