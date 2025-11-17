@@ -1887,41 +1887,41 @@ List specific actions needed based on conversation outcome.
 							"broker_name": lead_context.get("broker_name", ""),
 							"broker_company": lead_context.get("broker_company", "")
 						}
-				})
-				logger.info(f"[OK] Variables set for {lead_context.get('name', 'Unknown')}")
-				
-				# Lead data already stored in set_global_data above for variable substitution
-				# The get_lead_context tool will return this cached data from global_data
-				logger.info(f"[CACHE] Lead data available in global_data for {lead_context.get('name')}")
-			else:
-				# Unknown caller - minimal global data
-				self.set_global_data({
-					"lead": {
-						"first_name": "there",
-						"name": "Unknown",
-						"phone": phone or "Unknown",
-						"email": "",
-						"id": ""
-					},
-					"property": {
-						"city": "Unknown",
-						"state": "",
-						"address": "",
-						"equity": 0,
-						"equity_formatted": "$0"
-					},
-					"broker": {
-						"first_name": "",
-						"full_name": "",
-						"company": ""
-					},
-					"status": {
-						"qualified": False,
-						"call_type": call_direction,
-						"broker_name": "",
-						"broker_company": ""
-					}
-				})
+					})
+					logger.info(f"[OK] Variables set for {lead_context.get('name', 'Unknown')}")
+					
+					# Lead data already stored in set_global_data above for variable substitution
+					# The get_lead_context tool will return this cached data from global_data
+					logger.info(f"[CACHE] Lead data available in global_data for {lead_context.get('name')}")
+				else:
+					# Unknown caller - minimal global data
+					self.set_global_data({
+						"lead": {
+							"first_name": "there",
+							"name": "Unknown",
+							"phone": phone or "Unknown",
+							"email": "",
+							"id": ""
+						},
+						"property": {
+							"city": "Unknown",
+							"state": "",
+							"address": "",
+							"equity": 0,
+							"equity_formatted": "$0"
+						},
+						"broker": {
+							"first_name": "",
+							"full_name": "",
+							"company": ""
+						},
+						"status": {
+							"qualified": False,
+							"call_type": call_direction,
+							"broker_name": "",
+							"broker_company": ""
+						}
+					})
 				
 				# ==================== STEP 7: DETERMINE INITIAL CONTEXT ====================
 				if self._test_mode and self._test_start_node:
