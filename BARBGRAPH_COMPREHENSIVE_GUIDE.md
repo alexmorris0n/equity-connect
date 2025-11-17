@@ -1,7 +1,7 @@
 # BarbGraph: Event-Based Conversation Routing System
 
 **Version:** 1.0  
-**Last Updated:** November 17, 2025  
+**Last Updated:** November 18, 2025  
 **Status:** ⚠️ **DEPRECATED - Replaced by SignalWire Native Contexts System**
 
 > **⚠️ IMPORTANT:** BarbGraph was replaced by SignalWire's native contexts system on November 13, 2025. This document is preserved for historical reference. For current implementation details, see:
@@ -15,6 +15,22 @@
 > - Manual routing code (~500 lines) → Framework-native routing
 > - Same 8-node structure, but implemented via SignalWire's POM mode
 >
+> **Nov 16-18, 2025 Critical POM Conversion & Tool Fixes:**
+> 
+> **🏗️ SignalWire POM Architecture:**
+> - **Removed `on_swml_request` Override:** Overriding prevented SDK from calling `configure_per_call`. Deleted entire method (498 lines) to enable SDK's default implementation.
+> - **Python-Side Variable Substitution:** Prompts stored with `$variable` syntax (Python `string.Template`), substituted in `contexts_builder.py` before calling `agent.prompt_add_section()`.
+> - **Official Pattern:** Matches SignalWire SDK examples - substitution happens in YOUR code, not at LLM runtime.
+> - **ContextBuilder API:** Uses `agent.prompt_add_section("Section Title", substituted_text)` for dynamic prompt building.
+> 
+> **🔧 Critical Bug Fixes (Nov 17-18):**
+> - **Phone Extraction:** Fixed nested `body_params['call']['from']` extraction on initial request, added fallback to `caller_id_num` for mid-call reconfigs.
+> - **Static Configuration:** Restored hints, pronunciations, post-prompt to `__init__` (lost when deleting `on_swml_request`).
+> - **Global Data Structure:** Dual structure - nested (for tools) + flat (for prompt substitution).
+> - **Cache Restoration:** Added `last_name` to prevent full-name greetings.
+> - **Tool Availability:** Merged `flow_flags` into `tools` arrays, removed `trg_enforce_flow_flags_separated` trigger (was preventing updates).
+> - **Tool Execution:** Fixed `get_lead_context` to access `global_data` via `raw_data` parameter, added error handling to all 21 tools.
+>
 > **Nov 14, 2025 Validation Enhancements:**
 > - `contexts_builder.py` now guards against zero-step contexts, logs every skip, and auto-applies default V1 prompts from `services/default_contexts.py`.
 > - `barbara_agent.py` uses `set_global_data`, `_ensure_skill`, and safer phone normalization to eliminate runtime regressions surfaced by CLI tests.
@@ -26,7 +42,6 @@
 > - **QUOTE & EXIT:** `skip_user_turn: true` → Smooth transitions without pauses
 > - **All Others:** `skip_user_turn: false` → Wait for user input (questions require responses)
 > - **3-Layer Stack Complete:** Agent-level (`wait_for_user=False`) + Prompt structure (front-loaded greeting) + Step-level (`skip_user_turn`)
-> - **Metadata Caching:** Lead data stored in `self.metadata` during `on_swml_request` to eliminate redundant DB lookups
 > - **Tool Auto-Toggle:** 7 tools (get_lead_context, verify_caller_identity, find_broker_by_territory, book_appointment, assign_tracking_number, mark_qualification_result, mark_quote_presented) disable themselves after execution using `SwaigFunctionResult` to save LLM tokens
 
 ---

@@ -91,6 +91,109 @@ equity-connect/ (Git Monorepo)
 
 ---
 
+## 🆕 Nov 17-18 Critical Fixes: POM Conversion + Tool Availability
+
+### 🏗️ SignalWire POM (Prompt Object Model) Architecture Conversion
+
+**Date:** November 16-17, 2025  
+**Status:** ✅ **COMPLETE - Production Ready**
+
+**Root Problem:**
+- Initial implementation attempted to use SignalWire's `%{variable}` syntax for runtime variable substitution
+- Signals showed correct substitution but LLM wasn't receiving personalized prompts
+- `configure_per_call` callback was never being invoked due to `on_swml_request` override conflict
+
+**The Solution: SignalWire's Official Pattern**
+
+**Key Discovery from SignalWire AI Agents SDK API Reference:**
+> SignalWire expects prompts to be **built dynamically in Python code** with actual data substituted **before** calling `agent.prompt_add_section()`. Variable substitution happens in YOUR code, not at LLM runtime.
+
+**Architectural Changes:**
+
+1. **Removed `on_swml_request` Override (Critical Fix)**
+   - **Problem:** Overriding `on_swml_request` prevented SDK from calling `configure_per_call`
+   - **Fix:** Deleted entire `on_swml_request` method (498 lines)
+   - **Result:** SDK's default implementation now properly invokes `configure_per_call` for every call/tool/reconfig
+
+2. **Python-Side Variable Substitution**
+   - **Database:** Prompts stored with `$variable` syntax (Python `string.Template`)
+   - **Code:** `contexts_builder.py` performs `Template().safe_substitute()` with lead/broker data
+   - **Agent:** `configure_per_call` calls `agent.prompt_add_section()` with **already-substituted text**
+   - **Pattern:** Matches official SignalWire SDK examples exactly
+
+3. **ContextBuilder API Integration**
+   - **Implementation:** `_apply_contexts_via_builder()` builds contexts using SignalWire's ContextBuilder
+   - **Method:** `agent.prompt_add_section("Section Title", substituted_text)`
+   - **Result:** Dynamic prompt building with real data for every call phase
+
+**Variable Substitution Flow:**
+```
+1. Load prompt template from DB: "Hi $first_name! I work with $broker_name..."
+2. Load lead_context from DB/cache: {first_name: "Testy", broker_name: "Walter Richards"}
+3. Python substitution: Template(template).safe_substitute(lead_context)
+   → "Hi Testy! I work with Walter Richards..."
+4. Build POM: agent.prompt_add_section("Greeting", substituted_text)
+5. SignalWire receives fully-realized prompt (no variable placeholders)
+```
+
+**Critical Fixes Applied:**
+- ✅ Phone extraction from nested `body_params['call']['from']` on initial request
+- ✅ Phone fallback to `body_params['caller_id_num']` for mid-call reconfigurations
+- ✅ Restored static configuration to `__init__` (hints, pronunciations, post-prompt)
+- ✅ Dual global_data structure: nested (for tools) + flat (for prompt substitution)
+- ✅ Cache restoration includes `last_name` field to prevent full-name greetings
+
+### 🔧 Nov 18: Critical Tool Availability Bug Fix
+
+**Date:** November 18, 2025  
+**Status:** ✅ **FIXED - Tools Now Available**
+
+**Root Cause:**
+- All contexts had **empty `tools` arrays** in the database
+- `flow_flags` field (LiveKit legacy) contained state management tools
+- Python code (`contexts_builder.py`) only read `content->tools`, ignored `content->flow_flags`
+- **Result:** LLM instructed to use tools that weren't available → calls hung up
+
+**The Fix: Database Migration**
+- **Merged `flow_flags` into `tools` arrays** for all 8 contexts
+- **Removed `trg_enforce_flow_flags_separated` trigger** (was preventing updates)
+- **Deleted `flow_flags` field entirely** (no longer needed)
+- **Result:** All tools now available in every context (9-11 tools per context)
+
+**Before:**
+```json
+{
+  "tools": ["verify_caller_identity"],
+  "flow_flags": ["mark_ready_to_book", "mark_has_objection", ...]
+}
+```
+**After:**
+```json
+{
+  "tools": ["verify_caller_identity", "mark_ready_to_book", "mark_has_objection", ...]
+}
+```
+
+**Impact:**
+- ✅ `get_lead_context` tool can now access cached global_data correctly
+- ✅ `search_knowledge` available in ANSWER context (was causing hang-ups)
+- ✅ All state management tools available when needed
+- ✅ No more "tool not available" errors
+
+### 🛠️ Tool Execution Fixes
+
+**`get_lead_context` Tool Critical Fixes:**
+1. **Global Data Access:** Changed from `self.get_global_data()` (doesn't exist) to `raw_data.get('global_data', {})`
+2. **Error Handling:** Wrapped all tool logic in try/except, returns `SwaigFunctionResult` even on error
+3. **Auto-Toggle:** Tool toggles itself off after first execution (success OR error) to save tokens
+4. **Cache Restoration:** Properly restores nested structure for tool compatibility
+
+**All 21 Tools:**
+- ✅ Error handling added to all tools (prevents call hangups)
+- ✅ Consistent `SwaigFunctionResult` usage for tool toggling
+- ✅ 7 one-time-use tools auto-disable after execution
+- ✅ Comprehensive tool testing suite (`scripts/test_all_tools.py`)
+
 ## 🆕 Nov 14 Evening Updates
 
 - **CLI Testing Service Stabilized:** Extracted the `test-cli` workflow into its own Fastify app (`cli-testing-service/`) with Fly.io deployment, dedicated Dockerfile, and CORS lockdown. Added structured logging so portal-triggered tests are visible immediately.
