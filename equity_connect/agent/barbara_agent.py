@@ -66,7 +66,6 @@ class BarbaraAgent(AgentBase):
 		
 		self._test_state_ctx = ContextVar("barbara_test_state")
 		self._reset_test_state()
-		self._current_call_phone = None
 		
 		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
