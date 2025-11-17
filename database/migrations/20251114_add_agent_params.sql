@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS agent_params (
     -- Interruption handling
     acknowledge_interruptions INTEGER DEFAULT 3,
     interrupt_prompt TEXT DEFAULT 'The caller interrupted you, which likely means they have an important question or concern. Acknowledge their interruption warmly (''Oh, absolutely—''), directly address what they said, then naturally return to your point if needed. Never sound annoyed or frustrated.',
-    transparent_barge BOOLEAN DEFAULT TRUE,
+    transparent_barge BOOLEAN DEFAULT FALSE,
     enable_barge TEXT DEFAULT 'complete,partial',
 
     -- Voice & audio

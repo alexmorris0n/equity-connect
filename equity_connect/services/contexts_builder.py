@@ -221,7 +221,12 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         
         # CRITICAL: Default to False (wait for user) if not explicitly set
         # This prevents tools from being called before greeting
-        step['skip_user_turn'] = content.get('skip_user_turn', False)
+        # Convert string "false"/"true" to boolean (JSONB stores as strings)
+        skip_user_turn_raw = content.get('skip_user_turn', False)
+        if isinstance(skip_user_turn_raw, str):
+            step['skip_user_turn'] = skip_user_turn_raw.lower() in ('true', '1', 'yes')
+        else:
+            step['skip_user_turn'] = bool(skip_user_turn_raw)
         
         # Add valid_steps if present
         if content.get('valid_steps'):

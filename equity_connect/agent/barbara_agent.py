@@ -3,8 +3,9 @@ import os
 import logging
 import json
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from contextvars import ContextVar
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from signalwire_agents import AgentBase, ContextBuilder  # type: ignore
 from signalwire_agents.core.function_result import SwaigFunctionResult  # type: ignore
 from equity_connect.services.agent_config import get_agent_params
@@ -141,6 +142,29 @@ List specific actions needed based on conversation outcome.
 		self._reset_test_state()
 		
 		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 22 tools")
+	
+	def _execute_with_timeout(self, func: Callable, timeout_seconds: float, *args, **kwargs):
+		"""Execute a blocking function with timeout protection to prevent call hangups.
+		
+		Args:
+			func: The function to execute
+			timeout_seconds: Maximum time to wait (e.g., 8.0 for 8 seconds)
+			*args, **kwargs: Arguments to pass to func
+			
+		Returns:
+			Result from func if completed within timeout
+			
+		Raises:
+			FutureTimeoutError: If function doesn't complete within timeout
+			Exception: Any exception raised by func
+		"""
+		with ThreadPoolExecutor(max_workers=1) as executor:
+			future = executor.submit(func, *args, **kwargs)
+			try:
+				return future.result(timeout=timeout_seconds)
+			except FutureTimeoutError:
+				logger.error(f"[TIMEOUT] Function {func.__name__} exceeded {timeout_seconds}s timeout")
+				raise
 	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts
@@ -352,10 +376,29 @@ List specific actions needed based on conversation outcome.
 		else:
 			# Fallback to DB lookup if global_data not available
 			try:
-				lead_context = self._query_lead_direct(phone, broker_id)
+				# CRITICAL: Add timeout protection to prevent configure_per_call from hanging
+				lead_context = self._execute_with_timeout(
+					self._query_lead_direct,
+					5.0,  # 5 second timeout for lead lookup
+					phone,
+					broker_id
+				)
+			except FutureTimeoutError:
+				logger.error(f"[TIMEOUT] Lead context lookup timed out after 5s for phone: {phone}")
+				# Return minimal context to allow call to proceed
+				lead_context = {
+					"phone": phone,
+					"first_name": "there",
+					"qualified": False,
+				}
 			except Exception as e:
 				logger.error(f"[ERROR] Failed to get lead context: {e}")
-				raise
+				# Return minimal context to allow call to proceed
+				lead_context = {
+					"phone": phone,
+					"first_name": "there",
+					"qualified": False,
+				}
 		
 		# Use lead context phone as fallback when not provided (e.g., CLI tests)
 		if not phone:
@@ -495,14 +538,26 @@ List specific actions needed based on conversation outcome.
 		
 		# 5. Build contexts from DB
 		try:
-			contexts_obj = build_contexts_object(
-				vertical=active_vertical,
-				initial_context=initial_context,
-				lead_context=lead_context
+			# CRITICAL: Add timeout protection to prevent configure_per_call from hanging
+			contexts_obj = self._execute_with_timeout(
+				build_contexts_object,
+				10.0,  # 10 second timeout for context building (can be large payload)
+				active_vertical,
+				initial_context,
+				lead_context
 			)
+		except FutureTimeoutError:
+			logger.error(f"[TIMEOUT] Context building timed out after 10s for vertical: {active_vertical}")
+			# Use default contexts as fallback
+			from equity_connect.services.default_contexts import DEFAULT_CONTEXTS
+			contexts_obj = DEFAULT_CONTEXTS
+			logger.warning("[FALLBACK] Using default contexts due to timeout")
 		except Exception as e:
 			logger.error(f"[ERROR] Failed to build contexts: {e}")
-			raise
+			# Use default contexts as fallback
+			from equity_connect.services.default_contexts import DEFAULT_CONTEXTS
+			contexts_obj = DEFAULT_CONTEXTS
+			logger.warning("[FALLBACK] Using default contexts due to error")
 		
 		# 6. Load theme WITH lead_context for variable substitution
 		try:
@@ -656,7 +711,12 @@ List specific actions needed based on conversation outcome.
 				step.set_step_criteria(step_cfg["step_criteria"])
 			# CRITICAL: Default to False (wait for user) if not explicitly set
 			# This prevents tools from being called before greeting
-			skip_user_turn = step_cfg.get("skip_user_turn", False)
+			# Convert string "false"/"true" to boolean (JSONB stores as strings)
+			skip_user_turn_raw = step_cfg.get("skip_user_turn", False)
+			if isinstance(skip_user_turn_raw, str):
+				skip_user_turn = skip_user_turn_raw.lower() in ('true', '1', 'yes')
+			else:
+				skip_user_turn = bool(skip_user_turn_raw)
 			step.skip_user_turn = skip_user_turn
 			functions = self._ensure_list(step_cfg.get("functions"))
 			if functions:
@@ -1216,7 +1276,10 @@ List specific actions needed based on conversation outcome.
 		"""
 		logger.error("=== TOOL CALLED - verify_caller_identity ===")
 		try:
-			result_json = lead_service.verify_caller_identity_core(
+			# Add timeout protection for Supabase calls
+			result_json = self._execute_with_timeout(
+				lead_service.verify_caller_identity_core,
+				5.0,  # 5 second timeout for identity verification
 				args.get("first_name"), args.get("phone")
 			)
 			result_data = json.loads(result_json)
@@ -1225,6 +1288,12 @@ List specific actions needed based on conversation outcome.
 			swaig_result.data = result_data
 			if result_data.get("message"):
 				swaig_result.response = result_data["message"]
+			return swaig_result
+		except FutureTimeoutError:
+			logger.error(f"[TIMEOUT] Caller identity verification timed out after 5s")
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = {"error": "timeout", "message": "Unable to verify caller identity at this time."}
+			swaig_result.response = "Unable to verify caller identity at this time."
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] verify_caller_identity failed: {e}", exc_info=True)
@@ -1393,7 +1462,10 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Check broker availability with robust error handling."""
 		logger.error("=== TOOL CALLED - check_broker_availability ===")
 		try:
-			result_json = calendar_service.check_broker_availability_core(
+			# Add timeout protection for Nylas API calls
+			result_json = self._execute_with_timeout(
+				calendar_service.check_broker_availability_core,
+				6.0,  # 6 second timeout for calendar API
 				args.get("broker_id"),
 				args.get("preferred_day"),
 				args.get("preferred_time"),
@@ -1405,6 +1477,13 @@ List specific actions needed based on conversation outcome.
 			swaig_result.data = result_data
 			if result_data.get("message"):
 				swaig_result.response = result_data["message"]
+			return swaig_result
+		except FutureTimeoutError:
+			logger.error(f"[TIMEOUT] Broker availability check timed out after 6s")
+			error_data = {"error": "timeout", "message": "I'm having trouble checking availability right now. Let me connect you with a specialist."}
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = error_data
+			swaig_result.response = error_data["message"]
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] check_broker_availability failed: {e}", exc_info=True)
@@ -1435,7 +1514,10 @@ List specific actions needed based on conversation outcome.
 		"""
 		logger.error("=== TOOL CALLED - book_appointment ===")
 		try:
-			result_json = calendar_service.book_appointment_core(
+			# Add timeout protection for Nylas API calls
+			result_json = self._execute_with_timeout(
+				calendar_service.book_appointment_core,
+				8.0,  # 8 second timeout for booking (can be slower)
 				args.get("lead_id"),
 				args.get("broker_id"),
 				args.get("scheduled_for"),
@@ -1448,6 +1530,13 @@ List specific actions needed based on conversation outcome.
 			swaig_result.data = result_data
 			if result_data.get("message"):
 				swaig_result.response = result_data["message"]
+			return swaig_result
+		except FutureTimeoutError:
+			logger.error(f"[TIMEOUT] Appointment booking timed out after 8s")
+			error_data = {"success": False, "error": "timeout", "message": "I'm having trouble booking that appointment right now. Let me connect you with a specialist who can help."}
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = error_data
+			swaig_result.response = error_data["message"]
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] book_appointment failed: {e}", exc_info=True)
@@ -1545,8 +1634,13 @@ List specific actions needed based on conversation outcome.
 			return result
 		
 		try:
-			# Call the knowledge service with timeout protection
-			knowledge_json = knowledge_service.search_knowledge_core(question, raw_data)
+			# Call the knowledge service with timeout protection (8 second hard cutoff)
+			knowledge_json = self._execute_with_timeout(
+				knowledge_service.search_knowledge_core,
+				8.0,  # 8 second timeout
+				question,
+				raw_data
+			)
 			knowledge_data = json.loads(knowledge_json)
 			logger.info(f"[OK] Knowledge search completed for: {question[:50]}...")
 			
@@ -1558,6 +1652,12 @@ List specific actions needed based on conversation outcome.
 			
 			result = SwaigFunctionResult()
 			result.response = response_text
+			return result
+		except FutureTimeoutError:
+			# Timeout occurred - return fallback response immediately
+			logger.error(f"[TIMEOUT] Knowledge search timed out after 8s for: {question[:50]}...")
+			result = SwaigFunctionResult()
+			result.response = "I'm having trouble accessing that information right now. Let me connect you with one of our specialists who can help answer your question."
 			return result
 		except Exception as e:
 			# CRITICAL: Always return a valid SwaigFunctionResult to prevent call hangup

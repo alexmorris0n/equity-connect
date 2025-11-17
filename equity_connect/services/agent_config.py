@@ -76,7 +76,7 @@ def _get_default_params() -> Dict[str, Any]:
 			"Acknowledge their interruption warmly ('Oh, absolutely—'), directly address what they said, "
 			"then naturally return to your point if needed. Never sound annoyed or frustrated."
 		),
-		"transparent_barge": True,
+		"transparent_barge": False,
 		"enable_barge": "complete,partial",
 		"ai_volume": 0,
 		"background_file": None,
