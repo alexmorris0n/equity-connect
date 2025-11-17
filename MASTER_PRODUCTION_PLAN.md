@@ -270,6 +270,67 @@ POST /api/validate-routing
 - ✅ Integrated into save flow (blocks invalid saves)
 - ✅ Catches issues that `swaig-test` and trace tests miss
 
+### 🔍 Jan 19, 2025: Comprehensive Trace Analysis + All 13 Fixes Applied
+
+**Date:** January 19, 2025  
+**Status:** ✅ **COMPLETE - All Fixes Applied and Verified**
+
+**Problem:**
+- Manual trace tests (`prompts/rewrite/trace_test.md`) identified 13 scenarios with routing mismatches and instruction gaps
+- Database configuration didn't match scenario expectations
+- Missing explicit instructions for edge cases and flag-setting
+- Routing logic gaps causing call disconnections
+
+**The Solution: Comprehensive Trace-Driven Fixes**
+
+**Analysis Process:**
+1. Analyzed all 13 scenarios in `trace_test.md` against actual database configurations
+2. Identified explicit mismatches (no inferences, only documented gaps)
+3. Created actionable fix list with SQL migrations and instruction updates
+4. Applied fixes in priority order (CRITICAL → HIGH → MEDIUM → LOW)
+5. Verified all fixes via comprehensive Python tests
+
+**13 Fixes Applied:**
+
+**CRITICAL (2 fixes):**
+- ✅ FIX #1: GREET valid_contexts missing "qualify" → Added routing capability
+- ✅ FIX #2: OBJECTIONS cannot return to QUALIFY → Added bidirectional routing
+
+**HIGH PRIORITY (4 fixes):**
+- ✅ FIX #3: Missing explicit flag-setting instructions → Added to GREET and VERIFY
+- ✅ FIX #4: QUALIFY missing "all 4 gates at once" handling → Added edge case instructions
+- ✅ FIX #5: QUOTE missing math skill reference → Added explicit calculation instructions
+- ✅ FIX #6: BOOK missing error handling for check_broker_availability → Added timeout/error handling
+
+**MEDIUM PRIORITY (5 fixes):**
+- ✅ FIX #7: EXIT missing "Send FAQ and Follow Up" scenario → Added FAQ follow-up instructions
+- ✅ FIX #8: QUALIFY missing "Interrupted at Gate Question" tracking → Added interruption state tracking
+- ✅ FIX #9: QUALIFY missing "Pending Birthday" flag → Added pending_birthday flag instructions
+- ✅ FIX #10: QUOTE missing late disqualification handling → Added disqualification detection
+- ✅ FIX #11: EXIT missing reschedule intent detection → Added keyword detection logic
+
+**LOW PRIORITY (2 fixes):**
+- ✅ FIX #12: BOOK missing duration parameter instructions → Added duration handling (notes code limitation)
+- ✅ FIX #13: Multiple contexts missing explicit question handling → Added universal question handling to 6 nodes
+
+**Verification:**
+- ✅ Created comprehensive Python test suite (`scripts/test_all_fixes_comprehensive.py`)
+- ✅ All 13 fixes verified via database queries and code path checks
+- ✅ All routing fixes verified via `build_contexts_object()` tests
+- ✅ All instruction updates verified via database content checks
+
+**Documentation:**
+- ✅ `TRACE_ANALYSIS_RAW_DATA.md` - Raw analysis of all 13 scenarios
+- ✅ `TRACE_ANALYSIS_ACTIONABLE_FIXES.md` - Prioritized fix list with SQL/instructions
+- ✅ All fixes marked as ✅ APPLIED in documentation
+
+**Impact:**
+- ✅ All routing mismatches resolved (GREET → QUALIFY, OBJECTIONS → QUALIFY)
+- ✅ All instruction gaps filled (flag-setting, error handling, edge cases)
+- ✅ All edge cases handled (interruptions, pending birthdays, late disqualifications)
+- ✅ Universal question handling added to all relevant nodes
+- ✅ Production-ready for real-world call scenarios
+
 ## 🆕 Nov 14 Evening Updates
 
 - **CLI Testing Service Stabilized:** Extracted the `test-cli` workflow into its own Fastify app (`cli-testing-service/`) with Fly.io deployment, dedicated Dockerfile, and CORS lockdown. Added structured logging so portal-triggered tests are visible immediately.

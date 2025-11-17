@@ -140,7 +140,7 @@ List specific actions needed based on conversation outcome.
 		self._test_state_ctx = ContextVar("barbara_test_state")
 		self._reset_test_state()
 		
-		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 21 tools")
+		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 22 tools")
 	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts
@@ -1181,8 +1181,10 @@ List specific actions needed based on conversation outcome.
 	def get_lead_context(self, args, raw_data):
 		"""Tool: Get lead information by phone number via lead_service.
 		
-		Uses cached data from set_global_data (set in on_swml_request) to avoid duplicate DB lookups.
+		Uses cached data from set_global_data (set in configure_per_call) to avoid duplicate DB lookups.
 		After returning data, toggles itself OFF so AI won't call it again (saves tokens).
+		
+		Pure data-fetching tool - no routing logic.
 		"""
 		try:
 			logger.error("=== TOOL CALLED - get_lead_context ===")
@@ -1257,6 +1259,105 @@ List specific actions needed based on conversation outcome.
 			swaig_result = SwaigFunctionResult(error_result)
 			swaig_result.toggle_functions([{"name": "get_lead_context", "enabled": False}])
 			return swaig_result
+	
+	@AgentBase.tool(
+		name="route_to_context",
+		description="Programmatically route conversation to a different context when automatic routing via valid_contexts is insufficient. Use when user intent requires immediate context switch (e.g., questions → answer, objections → objections, ready to book → book).",
+		parameters={
+			"type": "object",
+			"properties": {
+				"target_context": {
+					"type": "string",
+					"description": "Target context name (answer, objections, book, exit, greet, qualify, quote, verify)",
+					"enum": ["answer", "objections", "book", "exit", "greet", "qualify", "quote", "verify"]
+				},
+				"reason": {
+					"type": "string",
+					"description": "Reason for routing (e.g., 'user_asked_question', 'objection_raised', 'ready_to_book')",
+					"nullable": True
+				}
+			},
+			"required": ["target_context"],
+		},
+	)
+	def route_to_context(self, args, raw_data):
+		"""Tool: Programmatic context routing for special cases.
+		
+		Handles programmatic context switching when automatic routing via valid_contexts
+		doesn't catch the user intent. Always available (does not toggle off).
+		"""
+		try:
+			logger.info("=== TOOL CALLED - route_to_context ===")
+			target_context = args.get("target_context") if args else None
+			reason = args.get("reason") if args else None
+			
+			if not target_context:
+				logger.warning("[WARN] route_to_context called with no target_context")
+				return json.dumps({"success": False, "error": "No target_context provided"})
+			
+			# Get lead context for variable substitution in prompts
+			global_data = raw_data.get('global_data', {}) if raw_data else {}
+			lead = global_data.get('lead', {})
+			broker = global_data.get('broker', {})
+			prop = global_data.get('property', {})
+			
+			lead_context = {
+				"first_name": lead.get('first_name', 'there'),
+				"last_name": lead.get('last_name', ''),
+				"name": lead.get('name', 'Unknown'),
+				"phone": lead.get('phone', ''),
+				"email": lead.get('email', ''),
+				"broker_name": broker.get('full_name', 'your mortgage advisor'),
+				"broker_company": broker.get('company', 'our team'),
+				"property_city": prop.get('city', 'your area'),
+				"property_state": prop.get('state', ''),
+				"qualified": global_data.get('status', {}).get('qualified', False)
+			}
+			
+			# Load theme
+			from equity_connect.services.contexts_builder import load_theme
+			from equity_connect.services.supabase import get_supabase_client
+			
+			theme_text = load_theme("reverse_mortgage", use_draft=False, lead_context=lead_context)
+			
+			# Load target context instructions directly from DB
+			supabase = get_supabase_client()
+			context_prompt = supabase.table('prompts') \
+				.select('prompt_versions!inner(content)') \
+				.eq('vertical', 'reverse_mortgage') \
+				.eq('node_name', target_context) \
+				.eq('prompt_versions.is_active', True) \
+				.single() \
+				.execute()
+			
+			context_instructions = ""
+			if context_prompt.data and context_prompt.data.get('prompt_versions'):
+				content = context_prompt.data['prompt_versions'][0].get('content', {})
+				context_instructions = content.get('instructions', '')
+			
+			# Build appropriate user prompt based on reason
+			user_prompt = "Continuing conversation in new context."
+			if reason == "user_asked_question":
+				user_prompt = "The user has asked a question. Use the search_knowledge tool to find the answer."
+			elif reason == "objection_raised":
+				user_prompt = "The user has raised an objection. Address their concern using the objection handling protocols."
+			elif reason == "ready_to_book":
+				user_prompt = "The user is ready to book an appointment. Proceed with the booking flow."
+			
+			# Switch to target context programmatically
+			result = SwaigFunctionResult(json.dumps({"success": True, "routed_to": target_context, "reason": reason}))
+			result.switchcontext(
+				target_context,
+				systemprompt=f"{theme_text}\n\n{context_instructions}",
+				userprompt=user_prompt,
+				consolidate=True
+			)
+			logger.info(f"[ROUTING] Successfully switched to {target_context} context (reason: {reason})")
+			return result
+			
+		except Exception as e:
+			logger.error(f"[ERROR] route_to_context failed: {e}", exc_info=True)
+			return json.dumps({"success": False, "error": str(e), "message": "Unable to route to context."})
 	
 	@AgentBase.tool(
 		description="Verify caller identity by name and phone. Creates lead if new.",
