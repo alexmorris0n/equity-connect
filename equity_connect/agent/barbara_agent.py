@@ -271,11 +271,20 @@ List specific actions needed based on conversation outcome.
 		# 1. Extract call info
 		# Try multiple locations/casings for phone (SignalWire inconsistent between flows)
 		# CRITICAL: SignalWire uses different keys for initial call vs mid-call reconfiguration
+		
+		# First, check if phone is in nested 'call' object (initial SWML request)
+		call_obj = body_params.get('call', {})
 		phone = (
-			body_params.get('From')           # Initial SWML call
-			or body_params.get('from')        # Lowercase variant
-			or body_params.get('from_number') # Alternate key
-			or body_params.get('caller_id_num')  # Mid-call tool callbacks/reconfiguration
+			# Initial SWML request (nested in 'call' object)
+			call_obj.get('from')
+			or call_obj.get('from_number')
+			# Flat body_params (alternative formats)
+			or body_params.get('From')
+			or body_params.get('from')
+			or body_params.get('from_number')
+			# Mid-call tool callbacks/reconfiguration
+			or body_params.get('caller_id_num')
+			# Query params (rare)
 			or query_params.get('phone')
 			or query_params.get('From')
 		)
@@ -286,10 +295,14 @@ List specific actions needed based on conversation outcome.
 		
 		broker_id = query_params.get('broker_id')
 		call_direction = (
-			body_params.get('Direction')
+			# Nested in 'call' object (initial request)
+			call_obj.get('direction')
+			# Flat body_params
+			or body_params.get('Direction')
 			or body_params.get('direction')
+			# Query params
 			or query_params.get('direction')
-			or "inbound"
+			or "inbound"  # Default
 		)
 		if isinstance(call_direction, str):
 			call_direction = call_direction.lower()
