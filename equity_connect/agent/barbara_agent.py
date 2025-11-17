@@ -1213,16 +1213,12 @@ List specific actions needed based on conversation outcome.
 				args.get("first_name"), args.get("phone")
 			)
 			
-			# Toggle off after verification (one-time use per call)
-			logger.info("[TOGGLE] Disabling verify_caller_identity - caller already verified")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "verify_caller_identity", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] verify_caller_identity failed: {e}", exc_info=True)
 			error_result = json.dumps({"error": str(e), "message": "Unable to verify caller identity."})
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "verify_caller_identity", "enabled": False}])
 			return swaig_result
 	
 	@AgentBase.tool(
@@ -1247,17 +1243,12 @@ List specific actions needed based on conversation outcome.
 			})
 			# Still toggle off even on error (one-time use)
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "check_consent_dnc", "enabled": False}])
 			return swaig_result
 		
 		try:
 			result = lead_service.check_consent_dnc_core(phone)
 			logger.info(f"[OK] Consent check completed for: {phone}")
-			
-			# Toggle off after checking (one-time use per call)
-			logger.info("[TOGGLE] Disabling check_consent_dnc - consent already checked")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "check_consent_dnc", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			# CRITICAL: Always return a valid response to prevent call hangup
@@ -1269,9 +1260,7 @@ List specific actions needed based on conversation outcome.
 				"error": str(e),
 				"message": "Unable to verify calling permissions."
 			})
-			# Still toggle off even on error (one-time use)
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "check_consent_dnc", "enabled": False}])
 			return swaig_result
 	
 	@AgentBase.tool(
@@ -1340,16 +1329,12 @@ List specific actions needed based on conversation outcome.
 				args.get("zip_code"), args.get("city"), args.get("state")
 			)
 			
-			# Toggle off after finding broker (one-time use per call)
-			logger.info("[TOGGLE] Disabling find_broker_by_territory - broker already assigned")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "find_broker_by_territory", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] find_broker_by_territory failed: {e}", exc_info=True)
 			error_result = json.dumps({"error": str(e), "message": "Unable to find broker for this territory."})
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "find_broker_by_territory", "enabled": False}])
 			return swaig_result
 	
 	# Calendar (4)
@@ -1409,16 +1394,12 @@ List specific actions needed based on conversation outcome.
 				raw_data,
 			)
 			
-			# Toggle off after booking (one-time use per call)
-			logger.info("[TOGGLE] Disabling book_appointment - appointment already booked")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "book_appointment", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] book_appointment failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to book appointment. Please try again or contact us directly."})
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "book_appointment", "enabled": False}])
 			return swaig_result
 	
 	@AgentBase.tool(
@@ -1518,16 +1499,12 @@ List specific actions needed based on conversation outcome.
 				args.get("lead_id"), args.get("broker_id")
 			)
 			
-			# Toggle off after assigning (one-time use per call)
-			logger.info("[TOGGLE] Disabling assign_tracking_number - number already assigned")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "assign_tracking_number", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] assign_tracking_number failed: {e}", exc_info=True)
 			error_result = json.dumps({"error": str(e), "message": "Unable to assign tracking number."})
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "assign_tracking_number", "enabled": False}])
 			return swaig_result
 	
 	@AgentBase.tool(
@@ -1629,16 +1606,12 @@ List specific actions needed based on conversation outcome.
 		try:
 			result = conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
 			
-			# Toggle off after setting qualification (one-time use per call)
-			logger.info("[TOGGLE] Disabling mark_qualification_result - qualification already set")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "mark_qualification_result", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_qualification_result failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e)})
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "mark_qualification_result", "enabled": False}])
 			return swaig_result
 	
 	@AgentBase.tool(
@@ -1653,16 +1626,12 @@ List specific actions needed based on conversation outcome.
 		try:
 			result = conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
 			
-			# Toggle off after marking quote (one-time use per call)
-			logger.info("[TOGGLE] Disabling mark_quote_presented - quote already marked")
 			swaig_result = SwaigFunctionResult(result)
-			swaig_result.toggle_functions([{"name": "mark_quote_presented", "enabled": False}])
 			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_quote_presented failed: {e}", exc_info=True)
 			error_result = json.dumps({"success": False, "error": str(e)})
 			swaig_result = SwaigFunctionResult(error_result)
-			swaig_result.toggle_functions([{"name": "mark_quote_presented", "enabled": False}])
 			return swaig_result
 	
 	@AgentBase.tool(
