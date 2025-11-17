@@ -331,14 +331,10 @@ class BarbaraAgent(AgentBase):
 			f"attention_timeout={params_payload['attention_timeout']}ms"
 		)
 		
-		# 4. Build prompts dynamically using agent.prompt_add_section()
-		# This is the official SignalWire pattern - build prompts fresh with actual data
+		# 4. Set global_data for tool execution context
+		# Note: global_data is for tools/functions, NOT for prompt variable substitution
 		lead_context['call_direction'] = call_direction
 		lead_context['initial_context'] = 'greet'  # TODO: Make dynamic based on conversation state
-		self._build_prompts_with_data(agent, lead_context, active_vertical)
-		
-		# 5. Set global_data for tool execution context
-		# Note: global_data is for tools/functions, NOT for prompt variable substitution
 		agent.set_global_data({
 			# Lead fields - match %{first_name}, %{last_name}, etc.
 			"first_name": lead_context.get("first_name", "there"),
@@ -2011,15 +2007,16 @@ List specific actions needed based on conversation outcome.
 					logger.error(f"[ERROR] Failed to load theme: {e}")
 					raise
 				
-				# ==================== STEP 10: RETURN POM STRUCTURE ====================
-				# With use_pom=True, we RETURN the structure for POM to apply
-				# DO NOT manually call builder API methods (causes double registration)
+				# ==================== STEP 10: DATA LOADING COMPLETE ====================
+				# on_swml_request loads data and sets global_data
+				# configure_per_call will build prompts using ContextBuilder API
+				# We return None to let the SDK handle prompt serialization
 				
 				if self._test_mode:
 					self._handle_test_context_change(initial_context)
 				
 				logger.info(
-					f"[OK] Returning POM structure with {len(contexts_obj)} contexts: "
+					f"[OK] Data loaded: {len(contexts_obj)} contexts prepared, "
 					f"voice={voice_string}, model={params_payload.get('ai_model')}, "
 					f"initial_context={initial_context}, phone={phone}"
 				)
