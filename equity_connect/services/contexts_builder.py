@@ -140,17 +140,48 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         
         content = version_to_use['content']
         
-        # NO SUBSTITUTION: Pass raw prompt text with %{variable} syntax to SignalWire
-        # SignalWire POM will substitute variables at runtime using global_data
-        # Reference: https://developer.signalwire.com/swml/methods/ai/prompt/
-        prompt_text = content.get('instructions', '')
+        # Get the raw prompt template
+        prompt_template = content.get('instructions', '')
         
-        logger.info(f"[RAW] Prompt for {context_name} with %{{variables}} (first 150 chars): {prompt_text[:150] if prompt_text else 'empty'}...")
+        # Substitute variables if lead_context provided
+        if lead_context:
+            from string import Template
+            
+            # Prepare template variables with safe fallbacks
+            template_vars = {
+                'first_name': lead_context.get('first_name') or "there",
+                'last_name': lead_context.get('last_name') or "",
+                'full_name': lead_context.get('name') or "Unknown",
+                'lead_phone': lead_context.get('primary_phone') or lead_context.get('phone') or "",
+                'lead_email': lead_context.get('primary_email') or lead_context.get('email') or "",
+                'lead_age': lead_context.get('age') or "",
+                'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
+                'broker_company': lead_context.get('broker_company') or "our team",
+                'broker_phone': lead_context.get('broker_phone') or "",
+                'broker_email': lead_context.get('broker_email') or "",
+                'property_address': lead_context.get('property_address') or "your property",
+                'property_city': lead_context.get('property_city') or "your area",
+                'property_state': lead_context.get('property_state') or "",
+                'property_zip': lead_context.get('property_zip') or "",
+                'property_value': lead_context.get('property_value') or "",
+                'estimated_equity': lead_context.get('estimated_equity') or "",
+                'qualified': str(lead_context.get('qualified', False)).lower(),
+                'call_direction': lead_context.get('call_direction') or "inbound",
+                'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
+                'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
+            }
+            
+            prompt_text = Template(prompt_template).safe_substitute(template_vars)
+            logger.info(f"[SUBSTITUTED] Prompt for {context_name} (first 150 chars): {prompt_text[:150]}...")
+        else:
+            # No lead context - use template as-is
+            prompt_text = prompt_template
+            logger.info(f"[RAW] Prompt for {context_name} with $variables (first 150 chars): {prompt_text[:150] if prompt_text else 'empty'}...")
         
         # Build step object - CRITICAL: Map 'tools' field to 'functions' array
         step = {
             "name": prompt.get('step_name', 'main'),  # Default step name
-            "text": prompt_text,  # ← Raw text with %{variables} for SignalWire to substitute
+            "text": prompt_text,  # ← Substituted text with actual values
             "step_criteria": content.get('step_criteria', 'User has responded appropriately.'),
             "functions": content.get('tools', [])  # ← READ "tools" FROM DB, OUTPUT AS "functions"
         }
@@ -277,11 +308,40 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
         
         theme_content = response.data['content']
     
-    # NO SUBSTITUTION: Pass raw theme text with %{variable} syntax to SignalWire
-    # SignalWire POM will substitute variables at runtime using global_data
-    # Reference: https://developer.signalwire.com/swml/methods/ai/prompt/
-    logger.info(f"[OK] Loaded theme for {vertical} with %{{variables}} intact")
-    
-    return theme_content
+    # Substitute variables if lead_context provided
+    if lead_context:
+        from string import Template
+        
+        # Prepare template variables with safe fallbacks
+        template_vars = {
+            'first_name': lead_context.get('first_name') or "there",
+            'last_name': lead_context.get('last_name') or "",
+            'full_name': lead_context.get('name') or "Unknown",
+            'lead_phone': lead_context.get('primary_phone') or lead_context.get('phone') or "",
+            'lead_email': lead_context.get('primary_email') or lead_context.get('email') or "",
+            'lead_age': lead_context.get('age') or "",
+            'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
+            'broker_company': lead_context.get('broker_company') or "our team",
+            'broker_phone': lead_context.get('broker_phone') or "",
+            'broker_email': lead_context.get('broker_email') or "",
+            'property_address': lead_context.get('property_address') or "your property",
+            'property_city': lead_context.get('property_city') or "your area",
+            'property_state': lead_context.get('property_state') or "",
+            'property_zip': lead_context.get('property_zip') or "",
+            'property_value': lead_context.get('property_value') or "",
+            'estimated_equity': lead_context.get('estimated_equity') or "",
+            'qualified': str(lead_context.get('qualified', False)).lower(),
+            'call_direction': lead_context.get('call_direction') or "inbound",
+            'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
+            'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
+        }
+        
+        theme_text = Template(theme_content).safe_substitute(template_vars)
+        logger.info(f"[OK] Loaded theme for {vertical} and substituted variables")
+        return theme_text
+    else:
+        # No lead context - return template as-is
+        logger.info(f"[OK] Loaded theme for {vertical} with $variables intact")
+        return theme_content
 
 
