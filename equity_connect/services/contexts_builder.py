@@ -160,6 +160,7 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
                     'property_zip': lead_context.get('property_zip', ''),
                     'property_value': lead_context.get('property_value', ''),
                     'estimated_equity': lead_context.get('estimated_equity', ''),
+                    'call_direction': lead_context.get('call_direction', 'inbound'),  # For conditional greeting
                 }
                 # Use safe_substitute to avoid KeyError if template has variables we don't provide
                 from string import Template
