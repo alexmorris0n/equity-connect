@@ -2026,12 +2026,10 @@ List specific actions needed based on conversation outcome.
 					f"initial_context={initial_context}, phone={phone}"
 				)
 				
-				# CRITICAL: When using ContextBuilder in configure_per_call,
-				# DO NOT return a manual POM structure from on_swml_request!
-				# The SDK will use the prompts built in configure_per_call.
-				# Returning None here is correct - we've done the data loading,
-				# and configure_per_call will handle prompt building.
-				logger.info("[OK] Data loaded successfully - configure_per_call will build prompts")
+				# CRITICAL: Return None to signal SDK to call configure_per_call
+				# Returning {} or any dict tells SDK we're providing custom SWML and skips configure_per_call!
+				# We need configure_per_call to run to build prompts with ContextBuilder.
+				logger.info("[OK] Returning None - configure_per_call will build prompts")
 				return None
 			else:
 				logger.warning("[WARN] No phone number found in request - using default configuration")
