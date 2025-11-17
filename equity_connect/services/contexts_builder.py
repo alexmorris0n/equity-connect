@@ -140,62 +140,17 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         
         content = version_to_use['content']
         
-        # Substitute variables in prompt text if lead_context provided
+        # NO SUBSTITUTION: Pass raw prompt text with %{variable} syntax to SignalWire
+        # SignalWire POM will substitute variables at runtime using global_data
+        # Reference: https://developer.signalwire.com/swml/methods/ai/prompt/
         prompt_text = content.get('instructions', '')
-        if lead_context and prompt_text:
-            try:
-                # CRITICAL: Provide safe fallbacks for ALL variables to avoid "None" or blank substitutions
-                # SignalWire does NOT support inline fallback syntax like ${var:-default}
-                # We MUST provide defaults in code before substitution
-                template_vars = {
-                    'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "there",
-                    'first_name': lead_context.get('first_name') or "there",
-                    'last_name': lead_context.get('last_name') or "",
-                    'lead_phone': lead_context.get('primary_phone') or "the number you called from",
-                    'lead_email': lead_context.get('primary_email') or "your email address",
-                    'lead_age': lead_context.get('age') or "",
-                    # Broker fields are flat in lead_context (not nested)
-                    'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
-                    'broker_company': lead_context.get('broker_company') or "our team",
-                    'broker_phone': lead_context.get('broker_phone') or "our office",
-                    'broker_email': lead_context.get('broker_email') or "our email",
-                    # Property fields - provide meaningful fallbacks
-                    'property_address': lead_context.get('property_address') or "your property",
-                    'property_city': lead_context.get('property_city') or "your area",
-                    'property_state': lead_context.get('property_state') or "",
-                    'property_zip': lead_context.get('property_zip') or "your area",
-                    'property_value': lead_context.get('property_value') or "",
-                    'estimated_equity': lead_context.get('estimated_equity') or "",
-                    # Status/flags (CRITICAL for conditional logic)
-                    'qualified': str(lead_context.get('qualified', False)).lower(),  # "true" or "false" for conditionals
-                    'call_direction': lead_context.get('call_direction') or "inbound",
-                    # Conversation flags (for checking if actions already completed)
-                    'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
-                    'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
-                }
-                # Use safe_substitute to avoid KeyError if template has variables we don't provide
-                from string import Template
-                original_text = prompt_text[:100]  # First 100 chars for logging
-                prompt_text = Template(prompt_text).safe_substitute(template_vars)
-                substituted_text = prompt_text[:100]  # First 100 chars after substitution
-                logger.info(f"[SUBST] Before: {original_text}...")
-                logger.info(f"[SUBST] After: {substituted_text}...")
-                
-                # CRITICAL DEBUG: For GREET context, log the FULL substituted text to see what LLM gets
-                if prompt.get('node_name') == 'greet':
-                    logger.error(f"[DEBUG-GREET] FULL GREET CONTEXT AFTER SUBSTITUTION (first 500 chars):")
-                    logger.error(f"{prompt_text[:500]}")
-                    logger.error(f"[DEBUG-GREET] call_direction variable value: {template_vars.get('call_direction')}")
-                    logger.error(f"[DEBUG-GREET] first_name variable value: {template_vars.get('first_name')}")
-                    logger.error(f"[DEBUG-GREET] broker_name variable value: {template_vars.get('broker_name')}")
-            except Exception as e:
-                logger.warning(f"[WARN] Failed to substitute variables in prompt: {e}")
-                # Keep original prompt text if substitution fails
+        
+        logger.info(f"[RAW] Prompt for {context_name} with %{{variables}} (first 150 chars): {prompt_text[:150] if prompt_text else 'empty'}...")
         
         # Build step object - CRITICAL: Map 'tools' field to 'functions' array
         step = {
             "name": prompt.get('step_name', 'main'),  # Default step name
-            "text": prompt_text,  # ← Now with substituted variables
+            "text": prompt_text,  # ← Raw text with %{variables} for SignalWire to substitute
             "step_criteria": content.get('step_criteria', 'User has responded appropriately.'),
             "functions": content.get('tools', [])  # ← READ "tools" FROM DB, OUTPUT AS "functions"
         }
@@ -322,44 +277,10 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
         
         theme_content = response.data['content']
     
-    # Substitute variables if lead_context provided (SignalWire best practice!)
-    if lead_context and theme_content:
-        try:
-            from string import Template
-            # CRITICAL: Use same fallbacks as contexts to ensure consistency
-            # SignalWire does NOT support inline fallback syntax like ${var:-default}
-            template_vars = {
-                'lead_name': f"{lead_context.get('first_name', '')} {lead_context.get('last_name', '')}".strip() or "there",
-                'first_name': lead_context.get('first_name') or "there",
-                'last_name': lead_context.get('last_name') or "",
-                'lead_phone': lead_context.get('primary_phone') or "the number you called from",
-                'lead_email': lead_context.get('primary_email') or "your email address",
-                'lead_age': lead_context.get('age') or "",
-                'broker_name': lead_context.get('broker_name') or "your mortgage advisor",
-                'broker_company': lead_context.get('broker_company') or "our team",
-                'broker_phone': lead_context.get('broker_phone') or "our office",
-                'broker_email': lead_context.get('broker_email') or "our email",
-                'property_address': lead_context.get('property_address') or "your property",
-                'property_city': lead_context.get('property_city') or "your area",
-                'property_state': lead_context.get('property_state') or "",
-                'property_zip': lead_context.get('property_zip') or "your area",
-                'property_value': lead_context.get('property_value') or "",
-                'estimated_equity': lead_context.get('estimated_equity') or "",
-                'qualified': str(lead_context.get('qualified', False)).lower(),
-                'call_direction': lead_context.get('call_direction') or "inbound",
-                'quote_presented': str(lead_context.get('conversation_data', {}).get('quote_presented', False)).lower(),
-                'verified': str(lead_context.get('conversation_data', {}).get('verified', False)).lower(),
-            }
-            
-            original_snippet = theme_content[:100]
-            theme_content = Template(theme_content).safe_substitute(template_vars)
-            substituted_snippet = theme_content[:100]
-            
-            logger.info(f"[THEME-SUBST] Before: {original_snippet}...")
-            logger.info(f"[THEME-SUBST] After: {substituted_snippet}...")
-        except Exception as e:
-            logger.warning(f"[WARN] Failed to substitute variables in theme: {e}")
-            # Keep original theme if substitution fails
+    # NO SUBSTITUTION: Pass raw theme text with %{variable} syntax to SignalWire
+    # SignalWire POM will substitute variables at runtime using global_data
+    # Reference: https://developer.signalwire.com/swml/methods/ai/prompt/
+    logger.info(f"[OK] Loaded theme for {vertical} with %{{variables}} intact")
     
     return theme_content
 

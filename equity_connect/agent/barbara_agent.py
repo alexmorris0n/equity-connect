@@ -345,31 +345,38 @@ class BarbaraAgent(AgentBase):
 			f"attention_timeout={params_payload['attention_timeout']}ms"
 		)
 		
-		# 4. Set meta_data variables (SignalWire substitutes in prompts)
+		# 4. Set global_data variables (SignalWire substitutes %{variables} in prompts at runtime)
+		# CRITICAL: Use FLAT keys that match %{variable} names in prompts
+		# Reference: https://developer.signalwire.com/swml/methods/ai/prompt/
 		agent.set_global_data({
-			"lead": {
-				"first_name": lead_context.get("first_name", "there"),
-				"name": lead_context.get("name", "Unknown"),
-				"phone": phone,
-				"email": lead_context.get("email", ""),
-				"id": lead_context.get("lead_id", "")
-			},
-			"property": {
-				"city": lead_context.get("property_city", "Unknown"),
-				"state": lead_context.get("property_state", ""),
-				"address": lead_context.get("property_address", ""),
-				"equity": lead_context.get("estimated_equity", 0),
-				"equity_formatted": f"${lead_context.get('estimated_equity', 0):,}" if lead_context.get('estimated_equity') else "$0"
-			},
-			"status": {
-				"qualified": lead_context.get("qualified", False),
-				"call_type": call_direction,
-				"broker_name": lead_context.get("broker_name", ""),
-				"broker_company": lead_context.get("broker_company", "")
-			}
+			# Lead fields - match %{first_name}, %{last_name}, etc.
+			"first_name": lead_context.get("first_name", "there"),
+			"last_name": lead_context.get("last_name", ""),
+			"full_name": lead_context.get("name", "Unknown"),
+			"lead_phone": phone or "",
+			"lead_email": lead_context.get("email", ""),
+			"lead_age": lead_context.get("age", ""),
+			"lead_id": lead_context.get("lead_id", ""),
+			# Broker fields - match %{broker_name}, %{broker_company}, etc.
+			"broker_name": lead_context.get("broker_name", "your mortgage advisor"),
+			"broker_company": lead_context.get("broker_company", "our team"),
+			"broker_phone": lead_context.get("broker_phone", ""),
+			"broker_email": lead_context.get("broker_email", ""),
+			# Property fields - match %{property_address}, %{property_city}, etc.
+			"property_address": lead_context.get("property_address", "your property"),
+			"property_city": lead_context.get("property_city", "your area"),
+			"property_state": lead_context.get("property_state", ""),
+			"property_zip": lead_context.get("property_zip", ""),
+			"property_value": lead_context.get("property_value", ""),
+			"estimated_equity": lead_context.get("estimated_equity", ""),
+			# Status/flags - match %{qualified}, %{call_direction}, etc.
+			"qualified": str(lead_context.get("qualified", False)).lower(),  # "true" or "false"
+			"call_direction": call_direction,
+			"quote_presented": "false",  # Will be updated by tools
+			"verified": "false"  # Will be updated by tools
 		})
 		
-		logger.info(f"[OK] Variables set for {lead_context.get('name', 'Unknown')}")
+		logger.info(f"[OK] Global data set with flat keys for {lead_context.get('name', 'Unknown')}")
 		
 		# 4. Determine initial context
 		if phone:
@@ -1872,29 +1879,32 @@ List specific actions needed based on conversation outcome.
 								lead_context["broker_timezone"] = broker_data.get('timezone')
 
 							if lead_context.get('broker_nylas_grant_id'):
-								self.update_global_data({
-									"broker_id": lead_context["broker_id"],
-									"broker_name": lead_context["broker_name"],
-									"broker_company": lead_context.get("broker_company"),
-									"broker_email": lead_context.get("broker_email"),
-									"broker_phone": lead_context.get("broker_phone"),
-									"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
-									"broker_timezone": lead_context.get("broker_timezone"),
-									"lead_id": lead_context["lead_id"],
-									"lead_name": lead_context["name"],
-									"lead_first_name": lead_context["first_name"],
+								# Set global_data with FLAT keys matching %{variable} in prompts
+								self.set_global_data({
+									"first_name": lead_context["first_name"],
+									"last_name": lead_context.get("last_name", ""),
+									"full_name": lead_context["name"],
 									"lead_phone": phone,
-									"lead_email": lead_context.get("primary_email"),
-									"lead_age": lead_context.get("age"),
-									"property_address": lead_context.get("property_address"),
-									"property_city": lead_context.get("property_city"),
-									"property_state": lead_context.get("property_state"),
-									"property_value": lead_context.get("property_value"),
-									"estimated_equity": lead_context.get("estimated_equity"),
-									"qualified": lead_context.get("qualified"),
-									"lead_status": lead_data.get('status'),
-									"owner_occupied": lead_data.get('owner_occupied'),
-									"call_direction": call_direction
+									"lead_email": lead_context.get("primary_email", ""),
+									"lead_age": lead_context.get("age", ""),
+									"lead_id": lead_context["lead_id"],
+									"broker_name": lead_context["broker_name"],
+									"broker_company": lead_context.get("broker_company", ""),
+									"broker_phone": lead_context.get("broker_phone", ""),
+									"broker_email": lead_context.get("broker_email", ""),
+									"broker_id": lead_context["broker_id"],
+									"broker_nylas_grant_id": lead_context["broker_nylas_grant_id"],
+									"broker_timezone": lead_context.get("broker_timezone", ""),
+									"property_address": lead_context.get("property_address", ""),
+									"property_city": lead_context.get("property_city", ""),
+									"property_state": lead_context.get("property_state", ""),
+									"property_zip": lead_context.get("property_zip", ""),
+									"property_value": lead_context.get("property_value", ""),
+									"estimated_equity": lead_context.get("estimated_equity", ""),
+									"qualified": str(lead_context.get("qualified", False)).lower(),
+									"call_direction": call_direction,
+									"lead_status": lead_data.get('status', ""),
+									"owner_occupied": str(lead_data.get('owner_occupied', False)).lower()
 								})
 								logger.info("[OK] Injected lead & broker data into global_data")
 
