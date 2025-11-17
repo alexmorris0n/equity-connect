@@ -1767,10 +1767,10 @@ List specific actions needed based on conversation outcome.
 							)
 						''').eq('id', lead_id).single().execute()
 						
-						if lead_result.data:
-							lead_data = lead_result.data
-							broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
-							
+					if lead_result.data:
+						lead_data = lead_result.data
+						broker_data = lead_data.get('brokers') if isinstance(lead_data.get('brokers'), dict) else None
+						
 						# Build name - handle None/empty last_name gracefully (Pythonic pattern)
 						full_name = " ".join([s for s in [lead_data.get('first_name'), lead_data.get('last_name')] if s])
 						first_name = lead_data.get('first_name') or ''
