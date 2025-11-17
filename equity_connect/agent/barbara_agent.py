@@ -72,6 +72,16 @@ class BarbaraAgent(AgentBase):
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts"""
 		
+		# DEBUG: Log raw params to diagnose phone extraction issues
+		logger.info(f"[DEBUG] configure_per_call called with:")
+		logger.info(f"[DEBUG] query_params keys: {list(query_params.keys())}")
+		logger.info(f"[DEBUG] body_params keys: {list(body_params.keys())}")
+		if body_params:
+			# Log phone-related keys
+			phone_keys = {k: v for k, v in body_params.items() if 'from' in k.lower() or 'phone' in k.lower() or 'to' in k.lower()}
+			if phone_keys:
+				logger.info(f"[DEBUG] Phone-related body_params: {phone_keys}")
+		
 		# Check if this is a CLI test (from user_vars)
 		# According to SignalWire Agent SDK, --user-vars from swaig-test appear as top-level keys in query_params
 		# Also check body_params for backwards compatibility and alternative formats
@@ -176,7 +186,14 @@ class BarbaraAgent(AgentBase):
 			logger.info("[CALL] Production call - using active prompts")
 		
 		# 1. Extract call info
-		phone = body_params.get('From') or query_params.get('phone')
+		# Try multiple locations/casings for phone (SignalWire inconsistent between flows)
+		phone = (
+			body_params.get('From') 
+			or body_params.get('from') 
+			or body_params.get('from_number')
+			or query_params.get('phone')
+			or query_params.get('From')
+		)
 		broker_id = query_params.get('broker_id')
 		call_direction = (
 			body_params.get('Direction')
