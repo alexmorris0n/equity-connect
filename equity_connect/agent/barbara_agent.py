@@ -1432,14 +1432,18 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Reschedule appointment with robust error handling."""
 		logger.error("=== TOOL CALLED - reschedule_appointment ===")
 		try:
-			return calendar_service.reschedule_appointment_core(
+			result = calendar_service.reschedule_appointment_core(
 				args.get("interaction_id"),
 				args.get("new_scheduled_for"),
 				args.get("reason"),
 			)
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] reschedule_appointment failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e), "message": "Unable to reschedule appointment."})
+			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to reschedule appointment."})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Cancel an existing appointment.",
@@ -1456,13 +1460,17 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Cancel appointment with robust error handling."""
 		logger.error("=== TOOL CALLED - cancel_appointment ===")
 		try:
-			return calendar_service.cancel_appointment_core(
+			result = calendar_service.cancel_appointment_core(
 				args.get("interaction_id"),
 				args.get("reason"),
 			)
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] cancel_appointment failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e), "message": "Unable to cancel appointment."})
+			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to cancel appointment."})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	# Knowledge (1)
 	@AgentBase.tool(
@@ -1535,12 +1543,16 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Send appointment confirmation with robust error handling."""
 		logger.error("=== TOOL CALLED - send_appointment_confirmation ===")
 		try:
-			return interaction_service.send_appointment_confirmation_core(
+			result = interaction_service.send_appointment_confirmation_core(
 				args.get("phone"), args.get("appointment_datetime")
 			)
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] send_appointment_confirmation failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e), "message": "Unable to send confirmation."})
+			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to send confirmation."})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Verify appointment confirmation code from SMS.",
@@ -1550,12 +1562,16 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Verify appointment confirmation with robust error handling."""
 		logger.error("=== TOOL CALLED - verify_appointment_confirmation ===")
 		try:
-			return interaction_service.verify_appointment_confirmation_core(
+			result = interaction_service.verify_appointment_confirmation_core(
 				args.get("phone"), args.get("code")
 			)
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] verify_appointment_confirmation failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e), "message": "Unable to verify confirmation code."})
+			error_result = json.dumps({"success": False, "error": str(e), "message": "Unable to verify confirmation code."})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	# Conversation Flags (7)
 	@AgentBase.tool(
@@ -1565,10 +1581,14 @@ List specific actions needed based on conversation outcome.
 	def mark_ready_to_book(self, args, raw_data):
 		"""Tool: Mark ready to book with robust error handling."""
 		try:
-			return conversation_flags.mark_ready_to_book(args.get("phone"))
+			result = conversation_flags.mark_ready_to_book(args.get("phone"))
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_ready_to_book failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e)})
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Mark that the caller raised an objection.",
@@ -1585,10 +1605,14 @@ List specific actions needed based on conversation outcome.
 	def mark_has_objection(self, args, raw_data):
 		"""Tool: Mark has objection with robust error handling."""
 		try:
-			return conversation_flags.mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+			result = conversation_flags.mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_has_objection failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e)})
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Mark that an objection has been resolved.",
@@ -1597,10 +1621,14 @@ List specific actions needed based on conversation outcome.
 	def mark_objection_handled(self, args, raw_data):
 		"""Tool: Mark objection handled with robust error handling."""
 		try:
-			return conversation_flags.mark_objection_handled(args.get("phone"))
+			result = conversation_flags.mark_objection_handled(args.get("phone"))
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_objection_handled failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e)})
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Mark that caller's questions have been answered.",
@@ -1609,10 +1637,14 @@ List specific actions needed based on conversation outcome.
 	def mark_questions_answered(self, args, raw_data):
 		"""Tool: Mark questions answered with robust error handling."""
 		try:
-			return conversation_flags.mark_questions_answered(args.get("phone"))
+			result = conversation_flags.mark_questions_answered(args.get("phone"))
+			swaig_result = SwaigFunctionResult(result)
+			return swaig_result
 		except Exception as e:
 			logger.error(f"[ERROR] mark_questions_answered failed: {e}", exc_info=True)
-			return json.dumps({"success": False, "error": str(e)})
+			error_result = json.dumps({"success": False, "error": str(e)})
+			swaig_result = SwaigFunctionResult(error_result)
+			return swaig_result
 	
 	@AgentBase.tool(
 		description="Persist qualification outcome.",
