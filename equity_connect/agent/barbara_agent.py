@@ -61,8 +61,10 @@ class BarbaraAgent(AgentBase):
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
 		# Set up dynamic configuration (per-request)
-		# This replaces static config and enables multi-tenant, per-broker customization
+		# CRITICAL: This replaces static config and enables per-call customization
+		# The SDK will call configure_per_call() for each incoming call
 		self.set_dynamic_config_callback(self.configure_per_call)
+		logger.error(f"[DEBUG] Dynamic config callback registered: {self.configure_per_call}")
 		
 		self._test_state_ctx = ContextVar("barbara_test_state")
 		self._reset_test_state()
@@ -2029,8 +2031,10 @@ List specific actions needed based on conversation outcome.
 				# CRITICAL: Return None to signal SDK to call configure_per_call
 				# Returning {} or any dict tells SDK we're providing custom SWML and skips configure_per_call!
 				# We need configure_per_call to run to build prompts with ContextBuilder.
+				return_value = None
+				logger.error(f"[DEBUG] on_swml_request returning: {return_value} (type: {type(return_value)})")
 				logger.info("[OK] Returning None - configure_per_call will build prompts")
-				return None
+				return return_value
 			else:
 				logger.warning("[WARN] No phone number found in request - using default configuration")
 				# Still return None - configure_per_call will handle fallback
