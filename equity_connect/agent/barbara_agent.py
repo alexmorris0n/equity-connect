@@ -1848,13 +1848,13 @@ List specific actions needed based on conversation outcome.
 								"qualified": state_row.get("qualified") if state_row else False,
 								"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
 							}
-				except Exception as e:
-					logger.error(f"Failed to load lead data: {e}")
-					lead_context = {
-						"lead_id": lead_id,
-						"qualified": state_row.get("qualified") if state_row else False,
-						"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
-					}
+					except Exception as e:
+						logger.error(f"Failed to load lead data: {e}")
+						lead_context = {
+							"lead_id": lead_id,
+							"qualified": state_row.get("qualified") if state_row else False,
+							"conversation_data": state_row.get("conversation_data", {}) if state_row else {}
+						}
 				
 				# ==================== STEP 6: SET GLOBAL DATA VARIABLES & METADATA ====================
 				# Set variables for SignalWire to substitute in context prompts
