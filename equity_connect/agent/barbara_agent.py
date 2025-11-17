@@ -647,13 +647,14 @@ List specific actions needed based on conversation outcome.
 				context_step_names.add(step_name)
 				step = context.add_step(step_name)
 				
-				if step_cfg.get("text"):
-					step.set_text(step_cfg["text"])
-				if step_cfg.get("step_criteria"):
-					step.set_step_criteria(step_cfg["step_criteria"])
-				if step_cfg.get("skip_user_turn") is not None:
-					step.set_skip_user_turn(step_cfg["skip_user_turn"])
-				functions = self._ensure_list(step_cfg.get("functions"))
+			if step_cfg.get("text"):
+				step.set_text(step_cfg["text"])
+			if step_cfg.get("step_criteria"):
+				step.set_step_criteria(step_cfg["step_criteria"])
+			# Note: skip_user_turn is already in step_cfg dict from contexts_builder
+			# The builder API doesn't have a set_skip_user_turn() method
+			# SignalWire should read it from the step configuration automatically
+			functions = self._ensure_list(step_cfg.get("functions"))
 				if functions:
 					step.set_functions(functions)
 				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
