@@ -283,6 +283,8 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
     """
     
     supabase = get_supabase_client()
+    
+    # Load theme content (draft or active)
     if use_draft:
         draft_response = supabase.table('theme_prompts') \
             .select('content') \
@@ -292,8 +294,11 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
             .limit(1) \
             .execute()
         
-        if draft_response.data:
-            theme_content = draft_response.data[0]['content']
+        if not draft_response.data:
+            logger.error(f"❌ No draft theme found for vertical: {vertical}")
+            raise ValueError(f"No draft theme found for vertical: {vertical}")
+        
+        theme_content = draft_response.data[0]['content']
     else:
         response = supabase.table('theme_prompts') \
             .select('content') \
