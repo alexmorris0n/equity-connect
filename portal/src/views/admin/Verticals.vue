@@ -1779,6 +1779,12 @@ async function saveNode(nodeName) {
     }
 
     await validateNodeWithCli(nodeName, contentObj)
+    
+    // Validate entire vertical's routing configuration BEFORE save
+    // This ensures we don't save changes that would break routing
+    saveStatus.value = 'validating'
+    await validateVerticalRouting()
+    
     saveStatus.value = 'saving'
     
     // Get current vertical version from theme_prompts
@@ -1882,6 +1888,7 @@ async function validateNodeWithCli(nodeName, contentObj) {
     throw new Error('No vertical selected for validation')
   }
 
+  const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080'
   const versionId = currentVersion.value?.id || 'inline'
   const response = await fetch(`${CLI_TESTING_URL}/api/test-cli`, {
     method: 'POST',
@@ -1937,6 +1944,185 @@ function formatCliValidationError(payload = {}, response = null) {
     return `HTTP ${response.status}: ${response.statusText}`
   }
   return 'CLI validation failed'
+}
+
+// Validate entire vertical's routing configuration
+// BLOCKS save if validation fails - prevents saving changes that break routing
+async function validateVerticalRouting() {
+  if (!selectedVertical.value) {
+    return // No vertical selected, skip validation
+  }
+
+  const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080'
+  
+  try {
+    const response = await fetch(`${CLI_TESTING_URL}/api/validate-routing`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vertical: selectedVertical.value
+      })
+    })
+
+    let data = {}
+    try {
+      data = await response.json()
+    } catch (err) {
+      console.error('[Verticals] Failed parsing routing validation response', err)
+      // Don't block on parse errors - might be service issue
+      return
+    }
+
+    if (!response.ok || !data.success) {
+      // Format errors for user-friendly display with fixes
+      const { errorMessages, hasAutoFixes } = formatRoutingValidationErrors(data.errors || {}, data.fixes || {})
+      
+      if (errorMessages.length > 0) {
+        let errorText = `⚠️ Routing configuration issues found:\n\n${errorMessages.join('\n\n')}\n\n`
+        
+        if (hasAutoFixes) {
+          errorText += `🔧 These issues can be auto-fixed. Click "Auto-Fix" to automatically add missing tools and valid_contexts.\n\n`
+        }
+        
+        errorText += `These issues may cause calls to hang or disconnect.`
+        
+        // Store fixes for auto-fix button
+        window.__routingValidationFixes = data.fixes || {}
+        window.__routingValidationErrors = data.errors || {}
+        
+        // BLOCK save - throw error to prevent saving
+        const validationError = new Error(errorText)
+        validationError.canAutoFix = hasAutoFixes
+        throw validationError
+      }
+    } else {
+      console.log('[Verticals] Routing validation passed - all contexts configured correctly')
+      // Clear any stored fixes
+      window.__routingValidationFixes = null
+      window.__routingValidationErrors = null
+    }
+  } catch (error) {
+    // If it's already our formatted error, re-throw it
+    if (error.message && error.message.includes('Routing configuration issues')) {
+      throw error
+    }
+    
+    // If validation service is down, warn but don't block (might be temporary)
+    console.warn('[Verticals] Routing validation service error (non-blocking):', error.message)
+    window.$message?.warning({
+      message: 'Routing validation unavailable',
+      description: 'Could not validate routing configuration. Save will proceed, but please verify manually.',
+      duration: 5000
+    })
+    // Don't throw - allow save to proceed if service is down
+  }
+}
+
+function formatRoutingValidationErrors(errors, fixes = {}) {
+  if (!errors || Object.keys(errors).length === 0) {
+    return { errorMessages: [], hasAutoFixes: false }
+  }
+  
+  const messages = []
+  let hasAutoFixes = false
+  
+  for (const [context, contextErrors] of Object.entries(errors)) {
+    if (Array.isArray(contextErrors) && contextErrors.length > 0) {
+      const contextFixes = fixes[context] || {}
+      let contextMsg = `${context.toUpperCase()}:\n`
+      
+      // Add error messages
+      contextMsg += contextErrors.map(e => `  • ${e}`).join('\n')
+      
+      // Add fixes information
+      const fixActions = []
+      if (contextFixes.missing_tools && contextFixes.missing_tools.length > 0) {
+        fixActions.push(`    → ADD TOOLS: ${contextFixes.missing_tools.join(', ')}`)
+        hasAutoFixes = true
+      }
+      if (contextFixes.missing_valid_contexts && contextFixes.missing_valid_contexts.length > 0) {
+        fixActions.push(`    → ADD VALID_CONTEXTS: ${contextFixes.missing_valid_contexts.join(', ')}`)
+        hasAutoFixes = true
+      }
+      if (contextFixes.invalid_tools && contextFixes.invalid_tools.length > 0) {
+        fixActions.push(`    → REMOVE INVALID TOOLS: ${contextFixes.invalid_tools.join(', ')}`)
+        hasAutoFixes = true
+      }
+      if (contextFixes.invalid_targets && contextFixes.invalid_targets.length > 0) {
+        fixActions.push(`    → REMOVE INVALID TARGETS: ${contextFixes.invalid_targets.join(', ')}`)
+        hasAutoFixes = true
+      }
+      
+      if (fixActions.length > 0) {
+        contextMsg += '\n' + fixActions.join('\n')
+      }
+      
+      messages.push(contextMsg)
+    } else if (typeof contextErrors === 'string') {
+      messages.push(`${context.toUpperCase()}: ${contextErrors}`)
+    }
+  }
+  
+  return { errorMessages: messages, hasAutoFixes }
+}
+
+// Auto-fix routing validation issues
+async function autoFixRoutingIssues() {
+  if (!selectedVertical.value) {
+    return
+  }
+  
+  const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'http://localhost:8080'
+  
+  try {
+    saveStatus.value = 'fixing'
+    
+    const response = await fetch(`${CLI_TESTING_URL}/api/validate-routing`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        vertical: selectedVertical.value,
+        autoFix: true
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.autoFixed) {
+      const fixedCount = Object.values(data.autoFixed).filter(success => success).length
+      const totalCount = Object.keys(data.autoFixed).length
+      
+      window.$message?.success({
+        message: `Auto-fix completed`,
+        description: `Fixed ${fixedCount} out of ${totalCount} contexts. ${data.success ? 'All validation issues resolved!' : 'Some issues remain - check the errors.'}`,
+        duration: 5000
+      })
+      
+      // Re-validate to show remaining issues
+      if (!data.success) {
+        await validateVerticalRouting()
+      }
+    } else {
+      window.$message?.warning({
+        message: 'Auto-fix unavailable',
+        description: 'No fixes could be automatically applied.',
+        duration: 3000
+      })
+    }
+  } catch (error) {
+    console.error('[Verticals] Auto-fix error:', error)
+    window.$message?.error({
+      message: 'Auto-fix failed',
+      description: error.message || 'Could not auto-fix routing issues',
+      duration: 5000
+    })
+  } finally {
+    saveStatus.value = 'idle'
+  }
 }
 
 

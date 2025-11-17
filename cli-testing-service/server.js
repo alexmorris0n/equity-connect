@@ -8,6 +8,7 @@
 require('dotenv').config();
 const Fastify = require('fastify');
 const { executeCliTest } = require('./test-cli');
+const { executeRoutingValidator } = require('./validate-routing');
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -107,6 +108,48 @@ app.post('/api/test-cli', async (request, reply) => {
     
   } catch (err) {
     app.log.error({ err }, '[test-cli] Error executing test');
+    return reply.code(500).send({
+      success: false,
+      error: err.message,
+      stderr: err.stderr || ''
+    });
+  }
+});
+
+/**
+ * Database Routing Validator API
+ * Validates that all contexts have proper routing configuration
+ * POST /api/validate-routing
+ * 
+ * Body: { vertical, autoFix?: boolean }
+ * Returns: { success, errors, fixes, autoFixed? }
+ */
+app.post('/api/validate-routing', async (request, reply) => {
+  try {
+    const { vertical, autoFix } = request.body || {};
+    
+    if (!vertical) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Missing required field: vertical'
+      });
+    }
+    
+    app.log.info({ vertical, autoFix }, '[validate-routing] Received validation request');
+    
+    // Execute validator (with auto-fix if requested)
+    const result = await executeRoutingValidator({ vertical, autoFix });
+    
+    app.log.info({ 
+      success: result.success,
+      errorCount: result.errors ? Object.keys(result.errors).length : 0,
+      autoFixed: result.autoFixed ? Object.keys(result.autoFixed).length : 0
+    }, '[validate-routing] Validation completed');
+    
+    return reply.code(result.success ? 200 : 422).send(result);
+    
+  } catch (err) {
+    app.log.error({ err }, '[validate-routing] Error executing validator');
     return reply.code(500).send({
       success: false,
       error: err.message,

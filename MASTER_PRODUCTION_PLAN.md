@@ -194,6 +194,82 @@ equity-connect/ (Git Monorepo)
 - ✅ 7 one-time-use tools auto-disable after execution
 - ✅ Comprehensive tool testing suite (`scripts/test_all_tools.py`)
 
+### 🔍 Nov 18-19: Database Routing Validator + Auto-Fix
+
+**Date:** November 18-19, 2025  
+**Status:** ✅ **COMPLETE - Production Ready**
+
+**Problem:**
+- Manual trace tests (`prompts/rewrite/trace_test.md`) are design-level only and don't validate actual database state
+- CLI testing service (`swaig-test`) validates SWML structure but not database configuration
+- Missing `valid_contexts` arrays or empty `tools` arrays cause calls to hang/disconnect
+- Tools mentioned in instructions but not in `tools` array cause "tool not available" errors
+
+**The Solution: Database Routing Configuration Validator**
+
+**New Validator Script:** `scripts/validate_database_routing.py`
+- Queries actual database state (not just code)
+- Validates `valid_contexts` arrays are set (not null/empty)
+- Validates `tools` arrays are populated with all tools mentioned in instructions
+- Validates routing targets exist (no invalid context names)
+- Validates tools exist and are registered in agent
+- Returns structured JSON with errors and actionable fixes
+
+**Auto-Fix Capability:**
+- `auto_fix_context()` function can automatically add missing tools to database
+- `auto_fix_all()` function fixes all contexts for a vertical
+- Supports `--auto-fix` flag to automatically apply fixes
+- Re-validates after fixing to confirm issues resolved
+
+**CLI Testing Service Integration:**
+- New `/api/validate-routing` endpoint in `cli-testing-service/server.js`
+- Accepts `vertical` parameter and optional `autoFix: true`
+- Returns structured response with `errors`, `fixes`, and `autoFixed` fields
+- Executor (`cli-testing-service/validate-routing.js`) spawns Python validator with JSON output
+
+**Portal Integration (Verticals.vue):**
+- Validates routing BEFORE save (blocks invalid saves)
+- Clear error messages showing exactly what needs to be added:
+  ```
+  VERIFY:
+    • Instructions mention tools not in tools array: get_lead_context - ADD THESE TOOLS
+      → ADD TOOLS: get_lead_context
+      → ADD VALID_CONTEXTS: answer, exit
+  ```
+- Stores fixes for auto-fix button (future enhancement)
+- `autoFixRoutingIssues()` function ready for manual trigger
+
+**Usage:**
+```bash
+# Manual validation
+python scripts/validate_database_routing.py reverse_mortgage
+
+# With auto-fix
+python scripts/validate_database_routing.py reverse_mortgage --auto-fix --json
+
+# Via API
+POST /api/validate-routing
+{
+  "vertical": "reverse_mortgage",
+  "autoFix": true
+}
+```
+
+**What It Catches (That Other Tests Miss):**
+- ❌ `valid_contexts` is `null` → Causes call disconnections
+- ❌ `valid_contexts` is empty → Can't route anywhere
+- ❌ `tools` array is empty → LLM has no tools available
+- ❌ Instructions mention `search_knowledge` but tool not in array → Tool not available
+- ❌ `valid_contexts` contains `invalid_node` → Routing failure
+- ❌ Tools array contains `invalid_tool` → Tool execution failure
+
+**Impact:**
+- ✅ Prevents configuration bugs from reaching production
+- ✅ Clear error messages show exactly what to add/remove
+- ✅ Auto-fix capability reduces manual work
+- ✅ Integrated into save flow (blocks invalid saves)
+- ✅ Catches issues that `swaig-test` and trace tests miss
+
 ## 🆕 Nov 14 Evening Updates
 
 - **CLI Testing Service Stabilized:** Extracted the `test-cli` workflow into its own Fastify app (`cli-testing-service/`) with Fly.io deployment, dedicated Dockerfile, and CORS lockdown. Added structured logging so portal-triggered tests are visible immediately.
