@@ -70,7 +70,26 @@ class BarbaraAgent(AgentBase):
 		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 21 tools")
 	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
-		"""Configure agent for incoming call using SignalWire contexts"""
+		"""Configure agent for incoming call using SignalWire contexts
+		
+		CRITICAL: This method is called AFTER on_swml_request during the same call.
+		If on_swml_request already configured everything perfectly, we should NOT reconfigure
+		unless this is a mid-call tool callback that needs updated context.
+		"""
+		
+		# CRITICAL: Check if this is a mid-call reconfiguration or initial call
+		# If on_swml_request already ran for this call, skip full reconfiguration
+		# to prevent overwriting perfect lead/broker data with fallbacks
+		call_id = body_params.get('call_id') or body_params.get('call', {}).get('call_id')
+		if call_id and hasattr(self, '_configured_calls') and call_id in self._configured_calls:
+			logger.info(f"[SKIP] configure_per_call called for already-configured call {call_id} - skipping to preserve on_swml_request data")
+			return
+		
+		# Track this call as configured
+		if not hasattr(self, '_configured_calls'):
+			self._configured_calls = set()
+		if call_id:
+			self._configured_calls.add(call_id)
 		
 		# DEBUG: Log raw params to diagnose phone extraction issues
 		logger.info(f"[DEBUG] configure_per_call called with:")

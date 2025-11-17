@@ -224,29 +224,29 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
 
 
 def _build_default_context(initial_context: str) -> Dict:
-    """Build the required 'default' context that routes to initial context
-    
-    SignalWire requires a "default" context as the entry point.
-    We use it to route immediately to the actual initial context.
-    
-    Args:
-        initial_context: Context name to route to (e.g., "greet", "answer")
-        
-    Returns:
-        Context object with single routing step
-    """
-    
-    return {
-        "steps": [
-            {
-                "name": "route_to_initial",
-                "text": f"Route immediately to the {initial_context} context.",
-                "step_criteria": "Routing complete.",
-                "valid_contexts": [initial_context],
-                "skip_user_turn": True  # Don't wait for user, just route
-            }
-        ]
-    }
+	"""Build the required 'default' context that routes to initial context
+	
+	SignalWire requires a "default" context as the entry point.
+	We use it to route immediately to the actual initial context.
+	
+	Args:
+		initial_context: Context name to route to (e.g., "greet", "answer")
+		
+	Returns:
+		Context object with single routing step
+	"""
+	
+	return {
+		"steps": [
+			{
+				"name": "route_to_initial",
+				"text": "You are Barbara, a professional assistant. Follow the context instructions carefully.",
+				"step_criteria": "none",  # Route immediately without evaluating completion
+				"valid_contexts": [initial_context],
+				"skip_user_turn": True  # Don't wait for user, just route
+			}
+		]
+	}
 
 
 def _build_context(context_name: str, context_config: Dict) -> Dict:
