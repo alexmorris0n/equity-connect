@@ -15,12 +15,15 @@ import os
 import sys
 import json
 from typing import Dict, List, Set, Optional
-from dotenv import load_dotenv
 
 # Load environment variables from .env file (if exists)
 try:
+    from dotenv import load_dotenv  # type: ignore[reportMissingImports]
     load_dotenv()
-except Exception as e:
+except ImportError:
+    # python-dotenv not installed, but environment variables might be set already
+    pass
+except Exception:
     # .env file may have issues, but environment variables might be set already
     pass
 
@@ -84,7 +87,9 @@ def validate_context(context_name: str, content: Dict) -> Dict:
             'missing_tools': [...],
             'missing_valid_contexts': [...],
             'invalid_tools': [...],
-            'invalid_targets': [...]
+            'invalid_targets': [...],
+            'missing_step_criteria': bool,
+            'skip_user_turn_issue': bool
         }
     }
     """
@@ -93,7 +98,9 @@ def validate_context(context_name: str, content: Dict) -> Dict:
         'missing_tools': [],
         'missing_valid_contexts': [],
         'invalid_tools': [],
-        'invalid_targets': []
+        'invalid_targets': [],
+        'missing_step_criteria': False,
+        'skip_user_turn_issue': False
     }
     
     # Check valid_contexts
@@ -155,6 +162,45 @@ def validate_context(context_name: str, content: Dict) -> Dict:
         if missing_tools:
             fixes['missing_tools'] = list(missing_tools)
             errors.append(f"Instructions mention tools not in tools array: {missing_tools} - ADD THESE TOOLS")
+        
+        # Check if instructions mention answering questions but answer not in valid_contexts
+        # Skip this check for 'answer' context itself (doesn't need to route to itself)
+        if context_name != 'answer':
+            instructions_lower = instructions.lower()
+            mentions_questions = any(phrase in instructions_lower for phrase in [
+                'ask a question', 'asks a question', 'if they ask', 'when asked',
+                'route to answer', 'route to the answer', 'answer context',
+                'questions handling', 'handle questions', 'answering questions'
+            ])
+            if mentions_questions:
+                valid_contexts_list = content.get('valid_contexts', [])
+                if 'answer' not in valid_contexts_list:
+                    fixes['missing_valid_contexts'] = list(set(fixes['missing_valid_contexts'] + ['answer']))
+                    errors.append("Instructions mention answering questions but 'answer' not in valid_contexts - ADD 'answer' to valid_contexts")
+    
+    # Check step_criteria (CRITICAL: prevents call hangups after tool execution)
+    # Skip check for 'default' context (it's just a routing context with 'none' criteria)
+    if context_name != 'default':
+        step_criteria = content.get('step_criteria')
+        if step_criteria is None:
+            fixes['missing_step_criteria'] = True
+            errors.append("step_criteria is NULL (will default to generic 'User has responded appropriately' - may cause hangups after tools)")
+            errors.append("ACTION REQUIRED: Set step_criteria to explicit continuation instruction")
+        elif isinstance(step_criteria, str) and step_criteria.lower() == 'none':
+            # 'none' is valid for routing contexts, but warn if it seems wrong
+            print(f"[WARN] {context_name}: step_criteria is 'none' (valid for routing contexts only)")
+        elif not isinstance(step_criteria, str) or len(step_criteria.strip()) < 20:
+            fixes['missing_step_criteria'] = True
+            errors.append(f"step_criteria is too short/generic: '{step_criteria}' - Set explicit continuation instructions")
+    
+    # Check skip_user_turn (CRITICAL: if true, context won't wait for user input)
+    skip_user_turn = content.get('skip_user_turn')
+    # Contexts that need user input should have skip_user_turn: false
+    contexts_needing_user_input = ['exit', 'answer', 'greet', 'qualify', 'quote']
+    if context_name in contexts_needing_user_input:
+        if skip_user_turn is True:
+            fixes['skip_user_turn_issue'] = True
+            errors.append(f"skip_user_turn is TRUE but {context_name} needs user input - Set skip_user_turn to FALSE")
     
     return {
         'errors': errors,
@@ -272,6 +318,18 @@ def auto_fix_context(vertical: str, context_name: str, fixes: Dict) -> bool:
         content['valid_contexts'] = new_contexts
         updated = True
     
+    # Auto-fix step_criteria if missing
+    if fixes.get('missing_step_criteria'):
+        # Set a default continuation instruction
+        default_step_criteria = "After completing any scenario or tool, always provide a clear follow-up: acknowledge the action, ask if there is anything else, or route to answer context if they ask a question. Never end the call abruptly - always provide a next action."
+        content['step_criteria'] = default_step_criteria
+        updated = True
+    
+    # Auto-fix skip_user_turn if issue detected
+    if fixes.get('skip_user_turn_issue'):
+        content['skip_user_turn'] = False
+        updated = True
+    
     # Update database if changes were made
     if updated:
         supabase.table('prompt_versions')\
@@ -344,13 +402,18 @@ def main():
             print(f"   -> AUTO-FIX: Remove invalid tools: {context_fixes['invalid_tools']}")
         if context_fixes.get('invalid_targets'):
             print(f"   -> AUTO-FIX: Remove invalid targets: {context_fixes['invalid_targets']}")
+        if context_fixes.get('missing_step_criteria'):
+            print(f"   -> AUTO-FIX: Set step_criteria to explicit continuation instruction")
+        if context_fixes.get('skip_user_turn_issue'):
+            print(f"   -> AUTO-FIX: Set skip_user_turn to FALSE (needs user input)")
         print()
     
     print("=" * 80)
     print("\n[IMPACT] These errors will cause:")
-    print("   - Calls to hang/disconnect (if valid_contexts is null)")
+    print("   - Calls to hang/disconnect (if valid_contexts is null or step_criteria missing)")
     print("   - Tools not available when LLM tries to use them")
     print("   - Routing failures (if targets don't exist)")
+    print("   - Call hangups after tool execution (if step_criteria not set or skip_user_turn: true)")
     print("\n[FIX] Fix these in the database before deploying!\n")
     
     # Handle auto-fix if --auto-fix flag is provided
