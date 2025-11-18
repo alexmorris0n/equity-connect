@@ -542,27 +542,173 @@ List specific actions needed based on conversation outcome.
 		result.response = "Understood. Let me help you with that."
 		return result
 
-	# Placeholder tools for validator compliance (implementation can be added as needed)
-	@AgentBase.tool(description="Find broker", parameters={"type": "object", "properties": {"zip_code": {"type": "string"}}, "required": []})
-	def find_broker_by_territory(self, args, raw_data): return SwaigFunctionResult("Broker found.")
+	@AgentBase.tool(
+		description="Find a broker by ZIP/city/state.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"zip_code": {"type": "string", "description": "ZIP code", "nullable": True},
+				"city": {"type": "string", "description": "City", "nullable": True},
+				"state": {"type": "string", "description": "State abbreviation", "nullable": True},
+			},
+			"required": [],
+		}
+	)
+	def find_broker_by_territory(self, args, raw_data):
+		"""Tool: Find a broker by territory"""
+		logger.info("=== TOOL CALLED - find_broker_by_territory ===")
+		try:
+			result_json = lead_service.find_broker_by_territory_core(
+				args.get("zip_code"), args.get("city"), args.get("state")
+			)
+			result_data = json.loads(result_json)
+			
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = result_data
+			if result_data.get("message"):
+				swaig_result.response = result_data["message"]
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] find_broker_by_territory failed: {e}", exc_info=True)
+			return SwaigFunctionResult("Unable to find broker for this territory.")
 	
-	@AgentBase.tool(description="Reschedule appt", parameters={"type": "object", "properties": {"interaction_id": {"type": "string"}}, "required": ["interaction_id"]})
-	def reschedule_appointment(self, args, raw_data): return SwaigFunctionResult("Rescheduled.")
+	@AgentBase.tool(
+		description="Reschedule an existing appointment.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"interaction_id": {"type": "string", "description": "Appointment interaction ID"},
+				"new_scheduled_for": {"type": "string", "description": "New ISO 8601 datetime"},
+				"reason": {"type": "string", "description": "Reason", "nullable": True},
+			},
+			"required": ["interaction_id", "new_scheduled_for"],
+		}
+	)
+	def reschedule_appointment(self, args, raw_data):
+		"""Tool: Reschedule appointment"""
+		logger.info("=== TOOL CALLED - reschedule_appointment ===")
+		try:
+			result_json = calendar_service.reschedule_appointment_core(
+				args.get("interaction_id"),
+				args.get("new_scheduled_for"),
+				args.get("reason"),
+			)
+			result_data = json.loads(result_json)
+			
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = result_data
+			if result_data.get("message"):
+				swaig_result.response = result_data["message"]
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] reschedule_appointment failed: {e}", exc_info=True)
+			return SwaigFunctionResult("Unable to reschedule appointment.")
 	
-	@AgentBase.tool(description="Cancel appt", parameters={"type": "object", "properties": {"interaction_id": {"type": "string"}}, "required": ["interaction_id"]})
-	def cancel_appointment(self, args, raw_data): return SwaigFunctionResult("Cancelled.")
+	@AgentBase.tool(
+		description="Cancel an existing appointment.",
+		parameters={
+			"type": "object",
+			"properties": {
+				"interaction_id": {"type": "string", "description": "Appointment interaction ID"},
+				"reason": {"type": "string", "description": "Reason", "nullable": True},
+			},
+			"required": ["interaction_id"],
+		}
+	)
+	def cancel_appointment(self, args, raw_data):
+		"""Tool: Cancel appointment"""
+		logger.info("=== TOOL CALLED - cancel_appointment ===")
+		try:
+			result_json = calendar_service.cancel_appointment_core(
+				args.get("interaction_id"),
+				args.get("reason"),
+			)
+			result_data = json.loads(result_json)
+			
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = result_data
+			if result_data.get("message"):
+				swaig_result.response = result_data["message"]
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] cancel_appointment failed: {e}", exc_info=True)
+			return SwaigFunctionResult("Unable to cancel appointment.")
 	
-	@AgentBase.tool(description="Assign tracking", parameters={"type": "object", "properties": {"lead_id": {"type": "string"}}, "required": ["lead_id"]})
-	def assign_tracking_number(self, args, raw_data): return SwaigFunctionResult("Assigned.")
+	@AgentBase.tool(
+		description="Assign a SignalWire tracking number to a lead for attribution.",
+		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
+	)
+	def assign_tracking_number(self, args, raw_data):
+		"""Tool: Assign tracking number"""
+		logger.info("=== TOOL CALLED - assign_tracking_number ===")
+		try:
+			result_json = interaction_service.assign_tracking_number_core(
+				args.get("lead_id"), args.get("broker_id")
+			)
+			result_data = json.loads(result_json)
+			
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = result_data
+			if result_data.get("message"):
+				swaig_result.response = result_data["message"]
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] assign_tracking_number failed: {e}", exc_info=True)
+			return SwaigFunctionResult("Unable to assign tracking number.")
 	
-	@AgentBase.tool(description="Send confirmation", parameters={"type": "object", "properties": {"phone": {"type": "string"}}, "required": ["phone"]})
-	def send_appointment_confirmation(self, args, raw_data): return SwaigFunctionResult("Sent.")
+	@AgentBase.tool(
+		description="Send appointment confirmation via SMS.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "appointment_datetime": {"type": "string", "description": "ISO 8601 datetime"}}, "required": ["phone", "appointment_datetime"]}
+	)
+	def send_appointment_confirmation(self, args, raw_data):
+		"""Tool: Send appointment confirmation"""
+		logger.info("=== TOOL CALLED - send_appointment_confirmation ===")
+		try:
+			result_json = interaction_service.send_appointment_confirmation_core(
+				args.get("phone"), args.get("appointment_datetime")
+			)
+			result_data = json.loads(result_json)
+			
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = result_data
+			if result_data.get("message"):
+				swaig_result.response = result_data["message"]
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] send_appointment_confirmation failed: {e}", exc_info=True)
+			return SwaigFunctionResult("Unable to send confirmation.")
 	
-	@AgentBase.tool(description="Verify confirmation", parameters={"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]})
-	def verify_appointment_confirmation(self, args, raw_data): return SwaigFunctionResult("Verified.")
+	@AgentBase.tool(
+		description="Verify appointment confirmation code from SMS.",
+		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Phone number"}, "code": {"type": "string", "description": "Code to verify"}}, "required": ["phone", "code"]}
+	)
+	def verify_appointment_confirmation(self, args, raw_data):
+		"""Tool: Verify appointment confirmation"""
+		logger.info("=== TOOL CALLED - verify_appointment_confirmation ===")
+		try:
+			result_json = interaction_service.verify_appointment_confirmation_core(
+				args.get("phone"), args.get("code")
+			)
+			result_data = json.loads(result_json)
+			
+			swaig_result = SwaigFunctionResult()
+			swaig_result.data = result_data
+			if result_data.get("message"):
+				swaig_result.response = result_data["message"]
+			return swaig_result
+		except Exception as e:
+			logger.error(f"[ERROR] verify_appointment_confirmation failed: {e}", exc_info=True)
+			return SwaigFunctionResult("Unable to verify confirmation code.")
 	
 	@AgentBase.tool(description="Mark wrong person", parameters={"type": "object", "properties": {}, "required": []})
-	def mark_wrong_person(self, args, raw_data): return SwaigFunctionResult("Marked.")
+	def mark_wrong_person(self, args, raw_data):
+		"""Tool: Mark wrong person and end call"""
+		logger.info("=== TOOL CALLED - mark_wrong_person ===")
+		# Logic to update lead status could go here
+		result = SwaigFunctionResult()
+		result.response = "I apologize for the mistake. I'll update our records. Goodbye."
+		result.swml_change_step("end")
+		return result
 
 	# ==================== END TOOLS ====================
 
