@@ -752,7 +752,8 @@ import AgentSettings from '@/components/AgentSettings.vue'
 import TestCallModal from '@/components/TestCallModal.vue'
 
 // Constants
-const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'exit']
+const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'goodbye']
+// Note: 'end' is a hidden system node and not shown in the UI
 
 // All available tools for multi-select
 // Dropdown state
@@ -2851,7 +2852,7 @@ function getNodeTooltip(node) {
     schedule: 'Book appointment - Connect with licensed broker for detailed consultation',
     confirm: 'Appointment details - Verify scheduled time and send confirmation',
     followup: 'Post-call actions - Handle callbacks, answer follow-up questions',
-    exit: 'End conversation - Polite goodbye, next steps, or opt-out handling'
+    goodbye: 'Natural farewell - Polite goodbye, allows last-minute questions before ending'
   }
   return tooltips[node] || 'Configure this conversation node'
 }
