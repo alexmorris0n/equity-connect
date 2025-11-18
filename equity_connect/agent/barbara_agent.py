@@ -2174,11 +2174,11 @@ List specific actions needed based on conversation outcome.
 		try:
 			# Extract phone number from request
 			phone = None
-			if 'call' in body_params and 'from' in body_params['call']:
+			if body_params and 'call' in body_params and 'from' in body_params['call']:
 				phone = body_params['call']['from']
-			elif 'From' in body_params:
+			elif body_params and 'From' in body_params:
 				phone = body_params['From']
-			elif 'caller_id_num' in body_params:
+			elif body_params and 'caller_id_num' in body_params:
 				phone = body_params['caller_id_num']
 			
 			if not phone:
