@@ -60,10 +60,10 @@ class BarbaraAgent(AgentBase):
 		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
-		# DYNAMIC CONFIG: Load fresh contexts from DB on each call
-		# This allows instant prompt updates without redeploying
-		self.set_dynamic_config_callback(self.configure_per_call)
-		logger.info("✅ Dynamic config callback ENABLED - will load contexts from DB per call")
+		# DYNAMIC CONFIG: TEMPORARILY DISABLED
+		# Re-enable this once simplified testing is complete
+		# self.set_dynamic_config_callback(self.configure_per_call)
+		logger.info("⚠️ Dynamic config callback DISABLED - using hardcoded contexts for testing")
 		
 		# Static configuration (applied once at initialization)
 		# These don't change per-call, so set them here instead of configure_per_call
