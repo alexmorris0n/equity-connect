@@ -99,6 +99,50 @@ class BarbaraAgent(AgentBase):
 		self.add_pronunciation("API", "A P I", ignore_case=False)
 		self.add_pronunciation("AI", "A I", ignore_case=False)
 		
+		# ==================================================================
+		# HARDCODED CONTEXTS - Testing simplified flow (Holy Guacamole pattern)
+		# ==================================================================
+		contexts = self.define_contexts()
+		default_context = contexts.add_context("default")
+		
+		# GREET - Entry point
+		default_context.add_step("greet") \
+			.add_section("Instructions", 
+				"You are Barbara. Your ONLY job:\n"
+				"1. Greet: 'Hi! This is Barbara with Equity Connect. How can I help you today?'\n"
+				"2. If they ask ANY question, IMMEDIATELY call route_to_answer_for_question(user_question='their question')\n"
+				"That's it. Nothing else."
+			) \
+			.set_step_criteria("Greeted caller") \
+			.set_functions(["route_to_answer_for_question", "mark_wrong_person"]) \
+			.set_valid_steps(["answer", "verify", "qualify"])
+		
+		# ANSWER - Question handling
+		default_context.add_step("answer") \
+			.add_section("Instructions",
+				"You are in ANSWER context. Your job:\n"
+				"1. Call search_knowledge(query='user's question') to get the answer\n"
+				"2. Give them the answer\n"
+				"3. Ask: 'Any other questions?'\n"
+				"4. If they say NO: call complete_questions(next_context='exit')\n"
+				"5. If they say YES: wait for their next question and repeat from step 1"
+			) \
+			.set_step_criteria("User confirmed no more questions") \
+			.set_functions(["search_knowledge", "complete_questions"]) \
+			.set_valid_steps(["exit", "book"])
+		
+		# EXIT - End conversation
+		default_context.add_step("exit") \
+			.add_section("Instructions",
+				"Say: 'Thanks for your time! Walter Richards will reach out soon. Have a great day!'\n"
+				"Then hang up."
+			) \
+			.set_step_criteria("Said goodbye") \
+			.set_functions([]) \
+			.set_valid_steps([])
+		
+		logger.info("✅ HARDCODED CONTEXTS loaded - bypassing database for testing")
+		
 		# Pattern hints
 		self.add_pattern_hint(
 			hint="AI Agent",
@@ -585,7 +629,9 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"[PAYLOAD] Total context instructions: {total_context_size:,} bytes ({total_context_size/1024:.2f} KB)")
 		
 		# Build contexts using builder API
-		self._apply_contexts_via_builder(agent, contexts_obj)
+		# DISABLED FOR TESTING - Using hardcoded contexts in __init__ instead
+		# self._apply_contexts_via_builder(agent, contexts_obj)
+		logger.info("[TESTING] Skipping database contexts - using hardcoded contexts from __init__")
 		
 		# Estimate total payload size
 		estimated_total = global_data_size + theme_size + total_context_size
