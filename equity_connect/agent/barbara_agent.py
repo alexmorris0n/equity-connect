@@ -1724,18 +1724,24 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def complete_questions(self, args, raw_data):
-		"""Tool: Mark questions complete and route explicitly (Holy Guacamole pattern)"""
+		"""Tool: Mark questions complete and route explicitly (SWML pattern with global_data flag)"""
 		logger.info(f"=== TOOL CALLED - complete_questions → {args.get('next_context')} ===")
 		
 		result = SwaigFunctionResult()
 		next_ctx = args.get("next_context", "exit")
 		
-		# Use Holy Guacamole pattern: Set result.context directly
+		# SWML pattern: Set global_data flag that step_criteria checks
+		# This makes step_criteria evaluate to TRUE, allowing context transition
+		result.data = {
+			"questions_complete": True,
+			"next_context": next_ctx
+		}
+		
+		# Also set the context for routing
 		result.context = next_ctx
-		result.data = {"action": "context_change", "target": next_ctx}
 		result.response = f"Understood. Let me help you with that."
 		
-		logger.info(f"[ROUTING] Explicitly routing from ANSWER → {next_ctx}")
+		logger.info(f"[ROUTING] Set questions_complete flag, routing ANSWER → {next_ctx}")
 		
 		return result
 	
