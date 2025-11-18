@@ -2,7 +2,7 @@ app = "barbara-agent"
 primary_region = "lax"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "./Dockerfile"
 
 [env]
   PORT = "8080"

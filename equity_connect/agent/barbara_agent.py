@@ -1706,6 +1706,44 @@ List specific actions needed based on conversation outcome.
 			return result
 	
 	@AgentBase.tool(
+		description=(
+			"CRITICAL: Call this ONLY when user explicitly confirms NO MORE questions. "
+			"Do NOT call this until: (1) You asked 'Any other questions?' AND (2) User said 'no', 'nope', 'that's all', 'I'm good'. "
+			"This will route the conversation to the next appropriate context."
+		),
+		parameters={
+			"type": "object",
+			"properties": {
+				"next_context": {
+					"type": "string",
+					"description": "Where to route: 'book' (if ready to schedule), 'exit' (if needs time to think)",
+					"enum": ["book", "exit"]
+				}
+			},
+			"required": ["next_context"]
+		}
+	)
+	def complete_questions(self, args, raw_data):
+		"""Tool: Mark questions complete and route explicitly"""
+		logger.info(f"=== TOOL CALLED - complete_questions → {args.get('next_context')} ===")
+		
+		result = SwaigFunctionResult()
+		next_ctx = args.get("next_context", "exit")
+		
+		# Use SWML action to explicitly change context
+		result.data = {"action": "context_change", "target": next_ctx}
+		result.response = f"Understood. Let me help you with that."
+		
+		# CRITICAL: Tell SignalWire to switch context
+		result.action = [{
+			"change_context": {
+				"context": next_ctx
+			}
+		}]
+		
+		return result
+	
+	@AgentBase.tool(
 		description="Assign a SignalWire tracking number to a lead for attribution.",
 		parameters={"type": "object", "properties": {"lead_id": {"type": "string", "description": "Lead UUID"}, "broker_id": {"type": "string", "description": "Broker UUID"}}, "required": ["lead_id", "broker_id"]}
 	)

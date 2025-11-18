@@ -778,3 +778,53 @@ Instead of relying on `step_criteria` to automatically route, we should have our
 - Database: `prompt_versions.content->'steps'` - Step configurations
 - **Holy Guacamole Repository:** https://github.com/signalwire/sigmond-holyguacamole - Production example to study
 
+---
+
+## Fix #18: ANSWER Context `step_criteria` Too Vague (2025-11-18 03:55 UTC)
+
+**Issue:** Barbara was routing to EXIT immediately after answering questions, without waiting for user response to "Any other questions?"
+
+**Root Cause:** 
+- The `step_criteria` was: "User said no more questions or explicitly ready to book"
+- SignalWire evaluates this **constantly**, including right after Barbara speaks
+- LLM saw: "User hasn't said they have more questions" → criteria met → route
+
+**Evidence from logs:**
+```
+Barbara: "does that make sense?"
+Barbara: "Testy I understand that your time is..." [HANGUP]
+```
+User didn't get a chance to respond.
+
+**Fix Applied:**
+Changed ANSWER `step_criteria` from:
+```
+"User said no more questions or explicitly ready to book"
+```
+
+To:
+```
+"Asked if more questions AND user said no or ready to book"
+```
+
+**Why This Works:**
+- Requires TWO conditions: (1) Barbara asked, (2) User responded
+- Prevents premature routing when Barbara hasn't asked yet
+- Still short (57 chars) for fast LLM evaluation
+- Uses AND to enforce sequence
+
+**SQL:**
+```sql
+UPDATE prompt_versions pv
+SET content = jsonb_set(
+  content,
+  '{step_criteria}',
+  '"Asked if more questions AND user said no or ready to book"'
+)
+FROM prompts p
+WHERE pv.prompt_id = p.id
+  AND p.vertical = 'reverse_mortgage'
+  AND p.name = 'Answer'
+  AND pv.is_active = true;
+```
+
