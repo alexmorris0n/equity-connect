@@ -42,3 +42,6 @@ supabase.table('prompt_versions').update({'content': content}).eq('id', version[
 
 print('SUCCESS: Updated book context step_criteria to be more explicit about immediate acknowledgment after booking tools complete')
 
+
+
+

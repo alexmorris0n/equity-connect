@@ -13,3 +13,4 @@ CREATE INDEX IF NOT EXISTS idx_theme_prompts_config ON theme_prompts USING GIN (
 
 
 
+

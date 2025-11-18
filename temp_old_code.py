@@ -60,9 +60,10 @@ class BarbaraAgent(AgentBase):
 		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
-		# DYNAMIC CONFIG: Load contexts from database per-call
-		self.set_dynamic_config_callback(self.configure_per_call)
-		logger.info("✅ Dynamic config callback ENABLED - loading contexts from database")
+		# DYNAMIC CONFIG: TEMPORARILY DISABLED
+		# Re-enable this once simplified testing is complete
+		# self.set_dynamic_config_callback(self.configure_per_call)
+		logger.info("⚠️ Dynamic config callback DISABLED - using hardcoded contexts for testing")
 		
 		# Static configuration (applied once at initialization)
 		# These don't change per-call, so set them here instead of configure_per_call
@@ -99,16 +100,17 @@ class BarbaraAgent(AgentBase):
 		
 		# ==================================================================
 		# FALLBACK CONTEXTS - Safety net if DB fails
-		# These are ONLY used if database loading fails in configure_per_call()
-		# Normal operation: configure_per_call() loads from database per-call
-		# Fallback operation: These hardcoded contexts are used if DB is unreachable
+		# These are minimal contexts used ONLY if database loading fails
+		# Normal operation loads contexts from DB in configure_per_call()
 		# ==================================================================
 		
-		# Add a simple personality prompt
+		# Base personality (will be enhanced with caller info in on_swml_request)
 		self.prompt_add_section(
 			"Personality",
-			"You are Barbara, a professional assistant for Equity Connect. "
-			"You help people with reverse mortgage questions."
+			"You are Barbara, a professional assistant for Equity Connect.\n"
+			"You help people with reverse mortgage questions.\n"
+			"Be warm, friendly, patient, and senior-friendly.\n\n"
+			"CALLER INFORMATION will be provided below when call starts."
 		)
 		
 		contexts = self.define_contexts()
@@ -117,23 +119,17 @@ class BarbaraAgent(AgentBase):
 		# GREET - Entry point
 		default_context.add_step("greet") \
 			.add_section("Instructions", 
-				"You are Barbara, a warm and friendly assistant. Build rapport naturally.\n\n"
-				"YOUR GREETING:\n"
-				"1. Check CALLER INFORMATION section above for their name\n"
-				"2. Greet warmly:\n"
-				"   - If you have their name: 'Hi [first name]! This is Barbara with Equity Connect. How are you doing today?'\n"
-				"   - If no name: 'Hi! This is Barbara with Equity Connect. How are you doing today?'\n"
-				"3. Let them respond naturally - be conversational, not robotic\n\n"
-				"HANDLING THEIR RESPONSE:\n"
-				"- Small talk ('Good', 'Fine', 'Can I ask a question?') → Respond warmly, then ask what they'd like to talk about\n"
-				"- Personal info questions ('What time is my appointment?', 'What's my property worth?') → Check CALLER INFORMATION and tell them\n"
-				"- Reverse mortgage questions ('How does it work?', 'Do I qualify?', 'What are the fees?') → Call route_to_answer_for_question(user_question='their question')\n"
-				"- Ready to book ('I want to schedule', 'Let's book') → Say great, then route to book\n\n"
-				"Be human. Build trust. Don't rush them."
+				"You are Barbara. Your ONLY job:\n"
+				"1. Greet the caller:\n"
+				"   - Check CALLER INFORMATION section above\n"
+				"   - If Name is shown: 'Hi [use their first name]! This is Barbara with Equity Connect. How can I help you today?'\n"
+				"   - If Name is Unknown or missing: 'Hi! This is Barbara with Equity Connect. How can I help you today?'\n"
+				"2. If they ask ANY question, IMMEDIATELY call route_to_answer_for_question(user_question='their question')\n"
+				"That's it. Nothing else."
 			) \
-			.set_step_criteria("Built rapport and understood what they need") \
+			.set_step_criteria("Greeted caller") \
 			.set_functions(["route_to_answer_for_question", "mark_wrong_person"]) \
-			.set_valid_steps(["answer", "book"])
+			.set_valid_steps(["answer"])
 		
 		# ANSWER - Question handling
 		default_context.add_step("answer") \
@@ -2090,7 +2086,7 @@ List specific actions needed based on conversation outcome.
 	)
 	def complete_questions(self, args, raw_data):
 		"""Tool: Mark questions complete and route explicitly (Holy Guacamole pattern)"""
-		next_ctx = args.get("next_context", "goodbye")
+		next_ctx = args.get("next_context", "exit")
 		logger.info(f"=== TOOL CALLED - complete_questions → {next_ctx} ===")
 		
 		result = SwaigFunctionResult()
@@ -2195,153 +2191,160 @@ List specific actions needed based on conversation outcome.
 		We use it to load caller info and inject it into the personality prompt.
 		"""
 		try:
+			# DEBUG: Log request structure to find phone number
+			logger.info(f"[SWML DEBUG] query_params keys: {list(query_params.keys()) if query_params else 'None'}")
+			logger.info(f"[SWML DEBUG] body_params keys: {list(body_params.keys()) if body_params else 'None'}")
+			if body_params and 'call' in body_params:
+				logger.info(f"[SWML DEBUG] body_params['call'] keys: {list(body_params['call'].keys())}")
+			
 			# Extract phone number from request
 			phone = None
-			
-			# Try query_params first (this is where SignalWire actually sends it)
-			if query_params and 'call' in query_params:
-				call_data = query_params['call']
-				# Handle if call is a JSON string
-				if isinstance(call_data, str):
-					call_data = json.loads(call_data)
-				phone = call_data.get('from')
-			
-			# Fallback to body_params
-			if not phone and body_params:
-				if 'call' in body_params and 'from' in body_params['call']:
-					phone = body_params['call']['from']
-				elif 'From' in body_params:
-					phone = body_params['From']
-				elif 'caller_id_num' in body_params:
-					phone = body_params['caller_id_num']
+			if body_params and 'call' in body_params and 'from' in body_params['call']:
+				phone = body_params['call']['from']
+				logger.info(f"[SWML DEBUG] Found phone in body_params['call']['from']: {phone}")
+			elif body_params and 'From' in body_params:
+				phone = body_params['From']
+				logger.info(f"[SWML DEBUG] Found phone in body_params['From']: {phone}")
+			elif body_params and 'caller_id_num' in body_params:
+				phone = body_params['caller_id_num']
+				logger.info(f"[SWML DEBUG] Found phone in body_params['caller_id_num']: {phone}")
+			elif query_params and 'from' in query_params:
+				phone = query_params['from']
+				logger.info(f"[SWML DEBUG] Found phone in query_params['from']: {phone}")
 			
 			if not phone:
 				logger.warning("[SWML] No phone number found in request, using generic greeting")
+				logger.warning(f"[SWML DEBUG] Full body_params: {json.dumps(body_params, default=str, indent=2) if body_params else 'None'}")
 				return super().on_swml_request(query_params, body_params, headers)
 			
-			# Normalize phone number to match database format (remove +1 prefix)
-			normalized_phone = phone.lstrip('+1') if phone.startswith('+1') else phone.lstrip('+')
-			logger.info(f"[SWML] Original phone: {phone}, Normalized: {normalized_phone}")
+			logger.info(f"[SWML] Loading caller info for: {phone}")
 			
-			# Query lead by normalized phone (uses primary_phone column internally)
-			lead_context_json = lead_service.get_lead_context_core(normalized_phone)
-			lead_context = json.loads(lead_context_json)
-			
-			# Check if lead was found
-			if not lead_context.get('found'):
-				logger.info(f"[SWML] No lead found for {normalized_phone}: {lead_context.get('message')}")
-				# Set minimal global_data for new caller
-				self.set_global_data({
-					"company_name": "Barbara AI",
-					"service_type": "Reverse Mortgage Assistance",
-					"lead_phone": phone,
-					"is_new_caller": True
-				})
-				return super().on_swml_request(query_params, body_params, headers)
-			
-			# Extract lead data from response
-			lead_data = lead_context.get('lead', {})
-			broker_data = lead_context.get('broker', {})
+			# Query lead by phone
+			lead_data = lead_service.query_lead_direct(phone)
 			
 			# Also get conversation state for call history
-			conv_state = get_conversation_state(normalized_phone)
+			conv_state = get_conversation_state(phone)
 			conversation_data = conv_state.get('conversation_data', {}) if conv_state else {}
 			
-			logger.info(f"[SWML] Found lead: {lead_data.get('first_name')} {lead_data.get('last_name')}")
-			
-			# Build caller context string
-			caller_info = f"""
-			
+			if lead_data:
+				logger.info(f"[SWML] Found lead: {lead_data.get('first_name')} {lead_data.get('last_name')}")
+				
+				# Build caller context string
+				caller_info = f"""
+				
 === CALLER INFORMATION ===
 Name: {lead_data.get('first_name', 'Unknown')} {lead_data.get('last_name', '')}
 Phone: {phone}
 """
-			
-			# Property information
-			if lead_data.get('property_address'):
-				caller_info += f"Property: {lead_data.get('property_address')}\n"
-			elif lead_data.get('property_city') and lead_data.get('property_state'):
-				caller_info += f"Property: {lead_data.get('property_city')}, {lead_data.get('property_state')}\n"
-			
-			# Financial information
-			if lead_data.get('property_value'):
-				caller_info += f"Property Value: ${lead_data.get('property_value'):,}\n"
-			
-			if lead_data.get('estimated_equity'):
-				caller_info += f"Estimated Equity: ${lead_data.get('estimated_equity'):,}\n"
-			
-			# Demographics
-			if lead_data.get('age'):
-				caller_info += f"Age: {lead_data.get('age')}\n"
-			
-			# Qualification status
-			qualified = lead_data.get('qualified')
-			if qualified is True:
-				caller_info += f"Status: ✅ QUALIFIED for reverse mortgage\n"
-			elif qualified is False:
-				caller_info += f"Status: ❌ Does NOT qualify\n"
-			
-			# Call history
-			if conversation_data.get('quote_presented'):
-				quote_reaction = conversation_data.get('quote_reaction', 'unknown')
-				caller_info += f"Previous Quote: Presented (reaction: {quote_reaction})\n"
-			
-			if conversation_data.get('appointment_booked'):
-				appt_id = conversation_data.get('appointment_id', 'N/A')
-				caller_info += f"Appointment: ✅ BOOKED (ID: {appt_id})\n"
-			elif conversation_data.get('ready_to_book'):
-				caller_info += f"Intent: Ready to book appointment\n"
-			
-			if conversation_data.get('questions_answered'):
-				caller_info += f"Questions: All answered\n"
-			
-			if conversation_data.get('has_objections') and not conversation_data.get('objection_handled'):
-				objection_type = conversation_data.get('last_objection_type', 'unknown')
-				caller_info += f"Objection: ⚠️ Unresolved ({objection_type})\n"
-			
-			# Add broker info if assigned
-			broker_name = broker_data.get('name', '')
-			if broker_name and broker_name != 'Not assigned':
-				caller_info += f"Assigned Broker: {broker_name}\n"
-				if broker_data.get('company'):
-					caller_info += f"Broker Company: {broker_data.get('company')}\n"
-			
-			caller_info += "========================\n"
-			
-			# Inject into personality prompt (update the section)
-			self.prompt_add_section(
-				"Caller Info",
-				caller_info
-			)
-			
-			# Also set global_data so tools can access it
-			self.set_global_data({
-				"company_name": "Barbara AI",
-				"service_type": "Reverse Mortgage Assistance",
-				"lead_id": lead_context.get('lead_id'),
-				"lead_phone": phone,
-				"first_name": lead_data.get('first_name'),
-				"last_name": lead_data.get('last_name'),
-				"property_address": lead_data.get('property_address'),
-				"property_city": lead_data.get('property_city'),
-				"property_state": lead_data.get('property_state'),
-				"property_value": lead_data.get('property_value'),
-				"estimated_equity": lead_data.get('estimated_equity'),
-				"age": lead_data.get('age'),
-				"qualified": qualified,
-				"quote_presented": conversation_data.get('quote_presented', False),
-				"quote_reaction": conversation_data.get('quote_reaction'),
-				"appointment_booked": conversation_data.get('appointment_booked', False),
-				"appointment_id": conversation_data.get('appointment_id'),
-				"ready_to_book": conversation_data.get('ready_to_book', False),
-				"questions_answered": conversation_data.get('questions_answered', False),
-				"has_objections": conversation_data.get('has_objections', False),
-				"objection_handled": conversation_data.get('objection_handled', False),
-				"broker_id": lead_context.get('broker_id'),
-				"broker_name": broker_data.get('name', 'Not assigned')
-			})
-			
-			logger.info(f"[SWML] ✅ Caller info injected into prompt and global_data")
+				
+				# Property information
+				if lead_data.get('property_address'):
+					caller_info += f"Property: {lead_data.get('property_address')}\n"
+				elif lead_data.get('property_city') and lead_data.get('property_state'):
+					caller_info += f"Property: {lead_data.get('property_city')}, {lead_data.get('property_state')}\n"
+				
+				# Financial information
+				if lead_data.get('property_value'):
+					caller_info += f"Property Value: ${lead_data.get('property_value'):,}\n"
+				
+				if lead_data.get('estimated_equity'):
+					caller_info += f"Estimated Equity: ${lead_data.get('estimated_equity'):,}\n"
+				
+				if lead_data.get('mortgage_balance'):
+					caller_info += f"Mortgage Balance: ${lead_data.get('mortgage_balance'):,}\n"
+				
+				# Demographics
+				if lead_data.get('age'):
+					caller_info += f"Age: {lead_data.get('age')}\n"
+				
+				# Qualification status
+				qualified = conv_state.get('qualified') if conv_state else None
+				if qualified is True:
+					caller_info += f"Status: ✅ QUALIFIED for reverse mortgage\n"
+				elif qualified is False:
+					caller_info += f"Status: ❌ Does NOT qualify\n"
+				
+				# Call history
+				if conversation_data.get('quote_presented'):
+					quote_reaction = conversation_data.get('quote_reaction', 'unknown')
+					caller_info += f"Previous Quote: Presented (reaction: {quote_reaction})\n"
+				
+				if conversation_data.get('appointment_booked'):
+					appt_id = conversation_data.get('appointment_id', 'N/A')
+					caller_info += f"Appointment: ✅ BOOKED (ID: {appt_id})\n"
+				elif conversation_data.get('ready_to_book'):
+					caller_info += f"Intent: Ready to book appointment\n"
+				
+				if conversation_data.get('questions_answered'):
+					caller_info += f"Questions: All answered\n"
+				
+				if conversation_data.get('has_objections') and not conversation_data.get('objection_handled'):
+					objection_type = conversation_data.get('last_objection_type', 'unknown')
+					caller_info += f"Objection: ⚠️ Unresolved ({objection_type})\n"
+				
+				# Add broker info if assigned
+				broker_id = lead_data.get('broker_id')
+				if broker_id:
+					broker_name = lead_data.get('broker_name', 'Walter Richards')
+					caller_info += f"Assigned Broker: {broker_name}\n"
+				
+				caller_info += "========================\n"
+				
+				# Merge personality + caller info into ONE section
+				combined_personality = (
+					"You are Barbara, a professional assistant for Equity Connect.\n"
+					"You help people with reverse mortgage questions.\n"
+					"Be warm, friendly, patient, and senior-friendly.\n"
+					f"{caller_info}"
+				)
+				
+				# Replace the Personality section with combined version
+				self.prompt_add_section(
+					"Personality",
+					combined_personality
+				)
+				
+				# Also set global_data so tools can access it
+				global_data_dict = {
+					"company_name": "Barbara AI",
+					"service_type": "Reverse Mortgage Assistance",
+					"lead_id": lead_data.get('id'),
+					"lead_phone": phone,
+					"first_name": lead_data.get('first_name'),
+					"last_name": lead_data.get('last_name'),
+					"property_address": lead_data.get('property_address'),
+					"property_city": lead_data.get('property_city'),
+					"property_state": lead_data.get('property_state'),
+					"property_value": lead_data.get('property_value'),
+					"estimated_equity": lead_data.get('estimated_equity'),
+					"mortgage_balance": lead_data.get('mortgage_balance'),
+					"age": lead_data.get('age'),
+					"qualified": qualified,
+					"quote_presented": conversation_data.get('quote_presented', False),
+					"quote_reaction": conversation_data.get('quote_reaction'),
+					"appointment_booked": conversation_data.get('appointment_booked', False),
+					"appointment_id": conversation_data.get('appointment_id'),
+					"ready_to_book": conversation_data.get('ready_to_book', False),
+					"questions_answered": conversation_data.get('questions_answered', False),
+					"has_objections": conversation_data.get('has_objections', False),
+					"objection_handled": conversation_data.get('objection_handled', False),
+					"broker_id": broker_id,
+					"broker_name": lead_data.get('broker_name', 'Walter Richards')
+				}
+				
+				self.set_global_data(global_data_dict)
+				
+				logger.info(f"[SWML] ✅ Caller info injected into Personality section + global_data")
+				logger.info(f"[SWML] global_data keys: {list(global_data_dict.keys())}")
+				logger.info(f"[SWML] Sample data: name={global_data_dict.get('first_name')}, broker={global_data_dict.get('broker_name')}, qualified={global_data_dict.get('qualified')}")
+			else:
+				logger.info(f"[SWML] No lead found for {phone}, using generic greeting")
+				# Set minimal global_data
+				self.set_global_data({
+					"company_name": "Barbara AI",
+					"service_type": "Reverse Mortgage Assistance",
+					"lead_phone": phone
+				})
 		
 		except Exception as e:
 			logger.error(f"[SWML] Error loading caller info: {e}")

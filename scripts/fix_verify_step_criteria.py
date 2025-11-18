@@ -42,3 +42,6 @@ supabase.table('prompt_versions').update({'content': content}).eq('id', version[
 
 print('SUCCESS: Updated verify context step_criteria to include acknowledgment after tool completion')
 
+
+
+

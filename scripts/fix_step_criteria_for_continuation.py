@@ -63,3 +63,6 @@ for context_name, update in context_updates.items():
 print('\n=== SUMMARY ===')
 print('Fixed step_criteria for tool-using contexts to allow continuation instead of ending after tool completion.')
 
+
+
+

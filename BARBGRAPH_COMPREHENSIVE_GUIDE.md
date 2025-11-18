@@ -9,6 +9,34 @@
 > - **SignalWire Contexts System** - Uses `valid_contexts` arrays in database instead of custom Python routing
 > - **`equity_connect/services/contexts_builder.py`** - Current implementation
 > 
+> **🎯 Nov 18, 2025 - HOW THE SYSTEM ACTUALLY WORKS:**
+>
+> **Database-Driven Per-Call Loading (NOT Hybrid):**
+> 
+> Every call triggers TWO database loading phases:
+> 
+> 1. **`configure_per_call()`** - Loads context structure from database
+>    - Queries `prompt_versions` table for instructions, tools, routing
+>    - Queries `agent_voice_config` table for voice settings
+>    - Queries `theme_prompts` table for personality
+>    - Builds contexts dynamically from database
+>    - If DB fails → Falls back to hardcoded contexts in `__init__`
+>
+> 2. **`on_swml_request()`** - Loads caller personalization from database
+>    - Queries `leads` table for name, property, age, etc.
+>    - Queries `conversation_state` table for call history
+>    - Queries `brokers` table for assigned broker
+>    - Injects as text section into prompt
+>    - Sets global_data for tools
+>
+> **Portal Changes Flow:**
+> - Edit in Vue Portal (Verticals.vue) → Saves to database → Next call loads from database → Changes are live
+>
+> **Hardcoded Contexts = FALLBACK ONLY (lines 107-188 in barbara_agent.py)**
+> - Only used if database query fails
+> - Not the primary system
+> - Safety net for high availability
+>
 > **Key Changes:**
 > - Custom Python routing (`routers.py`, `node_completion.py`) → SignalWire native contexts
 > - Event-based state machine → Database-driven `valid_contexts` arrays

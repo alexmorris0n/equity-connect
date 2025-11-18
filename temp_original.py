@@ -44,7 +44,7 @@ class BarbaraAgent(AgentBase):
 			route="/agent",
 			host="0.0.0.0",  # Listen on all interfaces for Docker/Fly.io
 			port=8080,
-			# use_pom=True,  # DISABLED for testing - using simple contexts
+			use_pom=True,  # Enable POM for contexts
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
@@ -60,9 +60,11 @@ class BarbaraAgent(AgentBase):
 		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
-		# DYNAMIC CONFIG: Load contexts from database per-call
+		# Set up dynamic configuration (per-request)
+		# CRITICAL: This replaces static config and enables per-call customization
+		# The SDK will call configure_per_call() for each incoming call
 		self.set_dynamic_config_callback(self.configure_per_call)
-		logger.info("✅ Dynamic config callback ENABLED - loading contexts from database")
+		logger.info("Dynamic config callback registered")
 		
 		# Static configuration (applied once at initialization)
 		# These don't change per-call, so set them here instead of configure_per_call
@@ -96,112 +98,6 @@ class BarbaraAgent(AgentBase):
 		self.add_pronunciation("FHA", "F H A", ignore_case=False)
 		self.add_pronunciation("API", "A P I", ignore_case=False)
 		self.add_pronunciation("AI", "A I", ignore_case=False)
-		
-		# ==================================================================
-		# FALLBACK CONTEXTS - Safety net if DB fails
-		# These are ONLY used if database loading fails in configure_per_call()
-		# Normal operation: configure_per_call() loads from database per-call
-		# Fallback operation: These hardcoded contexts are used if DB is unreachable
-		# ==================================================================
-		
-		# Add a simple personality prompt
-		self.prompt_add_section(
-			"Personality",
-			"You are Barbara, a professional assistant for Equity Connect. "
-			"You help people with reverse mortgage questions."
-		)
-		
-		contexts = self.define_contexts()
-		default_context = contexts.add_context("default")
-		
-		# GREET - Entry point
-		default_context.add_step("greet") \
-			.add_section("Instructions", 
-				"You are Barbara, a warm and friendly assistant. Build rapport naturally.\n\n"
-				"YOUR GREETING:\n"
-				"1. Check CALLER INFORMATION section above for their name\n"
-				"2. Greet warmly:\n"
-				"   - If you have their name: 'Hi [first name]! This is Barbara with Equity Connect. How are you doing today?'\n"
-				"   - If no name: 'Hi! This is Barbara with Equity Connect. How are you doing today?'\n"
-				"3. Let them respond naturally - be conversational, not robotic\n\n"
-				"HANDLING THEIR RESPONSE:\n"
-				"- Small talk ('Good', 'Fine', 'Can I ask a question?') → Respond warmly, then ask what they'd like to talk about\n"
-				"- Personal info questions ('What time is my appointment?', 'What's my property worth?') → Check CALLER INFORMATION and tell them\n"
-				"- Reverse mortgage questions ('How does it work?', 'Do I qualify?', 'What are the fees?') → Call route_to_answer_for_question(user_question='their question')\n"
-				"- Ready to book ('I want to schedule', 'Let's book') → Say great, then route to book\n\n"
-				"Be human. Build trust. Don't rush them."
-			) \
-			.set_step_criteria("Built rapport and understood what they need") \
-			.set_functions(["route_to_answer_for_question", "mark_wrong_person"]) \
-			.set_valid_steps(["answer", "book"])
-		
-		# ANSWER - Question handling
-		default_context.add_step("answer") \
-			.add_section("Instructions",
-				"You are in ANSWER context. Your job:\n"
-				"1. Call search_knowledge(query='user's question') to get the answer\n"
-				"2. Give them the answer\n"
-				"3. Ask: 'Any other questions?'\n"
-				"4. If they say 'I'm ready to book' or 'let's schedule': call complete_questions(next_context='book')\n"
-				"5. If they say NO (no more questions): call complete_questions(next_context='goodbye')\n"
-				"6. If they say YES (have more questions): wait for their next question and repeat from step 1"
-			) \
-			.set_step_criteria("User confirmed no more questions OR ready to book") \
-			.set_functions(["search_knowledge", "complete_questions"]) \
-			.set_valid_steps(["goodbye", "book"])
-		
-		# BOOK - Appointment scheduling
-		default_context.add_step("book") \
-			.add_section("Instructions",
-				"You are in BOOK context. Your job:\n"
-				"1. Say: 'Great! Let me check Walter Richards' calendar.'\n"
-				"2. Call check_broker_availability(broker_id, preferred_day, preferred_time)\n"
-				"3. Present 2-3 available time slots\n"
-				"4. When they pick one, call book_appointment(lead_id, broker_id, scheduled_for, notes)\n"
-				"5. Confirm: 'Perfect! You're all set for [day] at [time]'\n"
-				"6. Route to GOODBYE"
-			) \
-			.set_step_criteria("Appointment booked or declined") \
-			.set_functions(["check_broker_availability", "book_appointment"]) \
-			.set_valid_steps(["goodbye"])
-		
-		# GOODBYE - Natural farewell (user-facing)
-		default_context.add_step("goodbye") \
-			.add_section("Instructions",
-				"You are in GOODBYE context. Your job:\n"
-				"1. Say goodbye using the broker name from CALLER INFORMATION:\n"
-				"   - Check 'Assigned Broker:' in CALLER INFORMATION section above\n"
-				"   - If broker name is shown: 'Thanks for your time! [use that broker name] will reach out soon. Have a great day!'\n"
-				"   - If no broker shown: 'Thanks for your time! Your assigned broker will reach out soon. Have a great day!'\n"
-				"2. Wait for their response\n"
-				"3. If they ask ANY question, call route_to_answer_for_question(user_question='their question')\n"
-				"4. If they say 'thank you', 'bye', 'goodbye', or stay silent: do nothing (call will end automatically)\n"
-				"Don't explicitly say goodbye again, just let the call end naturally."
-			) \
-			.set_step_criteria("Said farewell and caller responded or stayed silent") \
-			.set_functions(["route_to_answer_for_question"]) \
-			.set_valid_steps(["answer", "end"])
-		
-		# END - Hidden system node (actual hangup)
-		default_context.add_step("end") \
-			.add_section("Instructions",
-				"Call is ending. No action needed."
-			) \
-			.set_step_criteria("Call complete") \
-			.set_functions([]) \
-			.set_valid_steps([])
-		
-		logger.info("✅ HARDCODED CONTEXTS loaded - bypassing database for testing")
-		
-		# Voice configuration (hardcoded for testing)
-		# Default: ElevenLabs Rachel (female voice)
-		self.add_language(
-			name="English",
-			code="en-US",
-			voice="elevenlabs.rachel",  # Female voice
-			engine="elevenlabs"
-		)
-		logger.info("✅ Voice set to ElevenLabs Rachel (female)")
 		
 		# Pattern hints
 		self.add_pattern_hint(
@@ -269,245 +165,16 @@ List specific actions needed based on conversation outcome.
 				logger.error(f"[TIMEOUT] Function {func.__name__} exceeded {timeout_seconds}s timeout")
 				raise
 	
-	def _load_context_configs_from_db(self) -> Optional[Dict[str, Any]]:
-		"""Load context configurations from database
-		
-		Returns dict with context_name -> config mapping, or None if failed
-		"""
-		try:
-			# Use timeout protection for DB query
-			def query_db():
-				response = self.supabase.table('prompt_versions') \
-					.select('context_name, content') \
-					.eq('version', 'active') \
-					.execute()
-				return response.data
-			
-			# 3 second timeout for DB query
-			data = self._execute_with_timeout(query_db, timeout_seconds=3)
-			
-			if not data:
-				logger.warning("No active prompt versions found in database")
-				return None
-			
-			configs = {}
-			for row in data:
-				configs[row['context_name']] = row['content']
-			
-			logger.info(f"✅ Loaded {len(configs)} contexts from database: {list(configs.keys())}")
-			return configs
-			
-		except Exception as e:
-			logger.error(f"❌ Failed to load contexts from DB: {e}")
-			return None
-	
-	def _load_theme_config_from_db(self) -> Optional[Dict[str, Any]]:
-		"""Load theme configuration from database (LLM, STT, VAD, recording settings)
-		
-		Returns config dict from theme_prompts.config, or None if failed
-		"""
-		try:
-			# Use timeout protection for DB query
-			def query_db():
-				response = self.supabase.table('theme_prompts') \
-					.select('config') \
-					.eq('vertical', 'reverse_mortgage') \
-					.eq('is_active', True) \
-					.maybeSingle() \
-					.execute()
-				return response.data
-			
-			# 3 second timeout for DB query
-			data = self._execute_with_timeout(query_db, timeout_seconds=3)
-			
-			if not data or not data.get('config'):
-				logger.warning("No theme configuration found in database, using defaults")
-				return None
-			
-			config = data['config']
-			logger.info(f"✅ Loaded theme config from database")
-			return config
-			
-		except Exception as e:
-			logger.error(f"❌ Failed to load theme config from DB: {e}")
-			return None
-	
-	def _apply_theme_config(self, agent, theme_config: Dict[str, Any]):
-		"""Apply theme configuration settings to the agent
-		
-		Applies LLM, STT, VAD, and recording settings from theme_prompts.config
-		"""
-		try:
-			# Apply LLM model settings
-			if 'models' in theme_config and 'llm' in theme_config['models']:
-				llm_config = theme_config['models']['llm']
-				provider = llm_config.get('provider', 'openai')
-				model = llm_config.get('model', 'gpt-4o-mini')
-				
-				# SignalWire SDK uses set_model() for LLM configuration
-				# Format: "provider:model" or just "model" for OpenAI
-				if provider == 'openai':
-					agent.set_model(model)
-					logger.info(f"✅ Set LLM model: {model}")
-				else:
-					agent.set_model(f"{provider}:{model}")
-					logger.info(f"✅ Set LLM model: {provider}:{model}")
-			
-			# Apply STT (Speech-to-Text) settings
-			if 'models' in theme_config and 'stt' in theme_config['models']:
-				stt_config = theme_config['models']['stt']
-				stt_provider = stt_config.get('provider', 'deepgram')
-				stt_model = stt_config.get('model', 'nova-3')
-				
-				# SignalWire SDK STT configuration
-				agent.set_stt_provider(stt_provider)
-				agent.set_stt_model(stt_model)
-				logger.info(f"✅ Set STT: {stt_provider}/{stt_model}")
-			
-			# Apply VAD (Voice Activity Detection) settings from theme config
-			# Note: agent_params also has VAD settings, but theme config takes precedence for these
-			if 'vad' in theme_config:
-				vad_config = theme_config['vad']
-				
-				if 'enabled' in vad_config:
-					vad_enabled = vad_config['enabled']
-					# SignalWire SDK VAD configuration
-					if vad_enabled:
-						agent.enable_vad()
-					else:
-						agent.disable_vad()
-					logger.info(f"✅ Set VAD enabled: {vad_enabled}")
-				
-				if 'silence_ms' in vad_config:
-					silence_ms = vad_config['silence_ms']
-					agent.set_vad_silence_timeout(silence_ms)
-					logger.info(f"✅ Set VAD silence timeout: {silence_ms}ms")
-			
-			# Apply EOS (End of Speech) timeout from theme config
-			if 'eos_timeout_ms' in theme_config:
-				eos_timeout = theme_config['eos_timeout_ms']
-				agent.set_end_of_speech_timeout(eos_timeout)
-				logger.info(f"✅ Set EOS timeout: {eos_timeout}ms (from theme config)")
-			
-			# Apply call recording settings
-			if 'record_call' in theme_config:
-				record_call = theme_config['record_call']
-				if record_call:
-					agent.enable_recording()
-					logger.info(f"✅ Call recording enabled")
-				else:
-					agent.disable_recording()
-					logger.info(f"✅ Call recording disabled")
-			
-			logger.info("✅ All theme configuration settings applied")
-			
-		except Exception as e:
-			logger.error(f"❌ Failed to apply theme config: {e}")
-			# Don't fail the call if theme config fails - just log and continue
-	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
-		"""Configure agent for incoming call - Load fresh contexts from DB
+		"""Configure agent for incoming call using SignalWire contexts
 		
-		This runs on every call and loads the latest prompts from the database,
-		allowing instant updates without redeploying the agent.
+		CRITICAL: This is where prompts are ACTUALLY built using agent.prompt_add_section()
+		and define_contexts(). The POM dict from on_swml_request is just metadata.
+		This method MUST run to build the prompts with substituted variables.
 		"""
-		logger.info("🔄 Loading fresh contexts from database for this call...")
 		
-		# Load configs from DB
-		db_configs = self._load_context_configs_from_db()
-		
-		if not db_configs:
-			logger.warning("⚠️ Using hardcoded fallback contexts from __init__")
-			return  # Use the hardcoded ones from __init__ as fallback
-		
-		# Load theme configuration (LLM, STT, VAD, recording settings)
-		theme_config = self._load_theme_config_from_db()
-		
-		# Load agent parameters (VAD, timeouts, etc.)
-		agent_params = get_agent_params(vertical="reverse_mortgage", language="en-US")
-		logger.info(f"✅ Loaded agent params: attention_timeout={agent_params.get('attention_timeout')}ms, transparent_barge={agent_params.get('transparent_barge')}")
-		
-		# Load voice configuration
-		voice_config = self._get_voice_config(vertical="reverse_mortgage", language_code="en-US")
-		voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
-		logger.info(f"✅ Loaded voice config: {voice_string} ({voice_config['engine']})")
-		
-		# Apply agent parameters to the agent
-		agent.set_attention_timeout(agent_params.get("attention_timeout", 8000))
-		if agent_params.get("attention_timeout_prompt"):
-			agent.set_attention_timeout_prompt(agent_params["attention_timeout_prompt"])
-		
-		agent.set_end_of_speech_timeout(agent_params.get("end_of_speech_timeout", 800))
-		
-		if agent_params.get("hard_stop_time"):
-			agent.set_hard_stop(agent_params["hard_stop_time"])
-		if agent_params.get("hard_stop_prompt"):
-			agent.set_hard_stop_prompt(agent_params["hard_stop_prompt"])
-		
-		agent.set_first_word_timeout(agent_params.get("first_word_timeout", 1000))
-		
-		if agent_params.get("acknowledge_interruptions"):
-			agent.set_acknowledge_interruptions(agent_params["acknowledge_interruptions"])
-		if agent_params.get("interrupt_prompt"):
-			agent.set_interrupt_prompt(agent_params["interrupt_prompt"])
-		
-		agent.set_transparent_barge(agent_params.get("transparent_barge", False))
-		
-		if agent_params.get("enable_barge"):
-			agent.set_barge_confidence(agent_params["enable_barge"])
-		
-		# Apply voice configuration
-		language_params = {
-			"name": voice_config.get("language_name", "English"),
-			"code": voice_config.get("language_code", "en-US"),
-			"voice": voice_string,
-			"engine": voice_config["engine"]
-		}
-		
-		if voice_config.get("model"):
-			language_params["model"] = voice_config["model"]
-		
-		# Set the language with voice config
-		agent.set_language(language_params)
-		
-		logger.info(f"✅ Applied voice & VAD settings for this call")
-		
-		# Apply theme configuration settings (LLM, STT, VAD, recording)
-		if theme_config:
-			self._apply_theme_config(agent, theme_config)
-		
-		# Build contexts using DB data (DYNAMIC - loads whatever contexts exist in DB)
-		contexts = self.define_contexts()
-		default_context = contexts.add_context("default")
-		
-		# Build each context from DB config (dynamic - not hardcoded list)
-		for context_name, config in db_configs.items():
-			# Extract config values with defaults
-			instructions = config.get("instructions", f"Handle {context_name} context")
-			step_criteria = config.get("step_criteria", f"{context_name} complete")
-			tools = config.get("tools", [])
-			valid_contexts = config.get("valid_contexts", [])
-			
-			# Build the step
-			step = default_context.add_step(context_name) \
-				.add_section("Instructions", instructions) \
-				.set_step_criteria(step_criteria) \
-				.set_functions(tools) \
-				.set_valid_steps(valid_contexts)
-			
-			# Add step change callback for logging
-			step.on_step_change(self._log_context_change)
-			
-			logger.info(f"✅ Built context '{context_name}' with {len(tools)} tools → can route to {valid_contexts}")
-		
-		logger.info(f"✅ All {len(db_configs)} contexts loaded from database for this call")
-	
-	def _log_context_change(self, step_name: str, previous_step: str = None):
-		"""Callback to log when context/step changes"""
-		if previous_step:
-			logger.info(f"🔀 CONTEXT CHANGE: {previous_step} → {step_name}")
-		else:
-			logger.info(f"▶️ STARTING CONTEXT: {step_name}")
+		# Log entry for debugging (keep at INFO level for production)
+		logger.info("[CONFIGURE_PER_CALL] Method invoked")
 		
 		# Check if this is a CLI test (from user_vars)
 		# According to SignalWire Agent SDK, --user-vars from swaig-test appear as top-level keys in query_params
@@ -918,9 +585,7 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"[PAYLOAD] Total context instructions: {total_context_size:,} bytes ({total_context_size/1024:.2f} KB)")
 		
 		# Build contexts using builder API
-		# DISABLED FOR TESTING - Using hardcoded contexts in __init__ instead
-		# self._apply_contexts_via_builder(agent, contexts_obj)
-		logger.info("[TESTING] Skipping database contexts - using hardcoded contexts from __init__")
+		self._apply_contexts_via_builder(agent, contexts_obj)
 		
 		# Estimate total payload size
 		estimated_total = global_data_size + theme_size + total_context_size
@@ -1620,13 +1285,12 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"=== TOOL CALLED - route_to_answer_for_question: {args.get('user_question')} ===")
 		
 		result = SwaigFunctionResult()
-		result.response = "Great question! Let me help you with that."
-		result.data = {"routed_to": "answer", "question": args.get("user_question")}
-		
-		# Use Holy Guacamole pattern: swml_change_step() to force transition
+		# Use Agents SDK method: swml_change_step()
 		result.swml_change_step("answer")
+		result.data = {"routed_to": "answer", "question": args.get("user_question")}
+		result.response = "Great question! Let me help you with that."
 		
-		logger.info(f"🔀 TOOL ROUTING: greet → answer (explicit swml_change_step)")
+		logger.info(f"[ROUTING] Called swml_change_step(answer) from GREET")
 		return result
 	
 	@AgentBase.tool(
@@ -2089,19 +1753,20 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def complete_questions(self, args, raw_data):
-		"""Tool: Mark questions complete and route explicitly (Holy Guacamole pattern)"""
-		next_ctx = args.get("next_context", "goodbye")
-		logger.info(f"=== TOOL CALLED - complete_questions → {next_ctx} ===")
+		"""Tool: Mark questions complete and route explicitly (Agents SDK pattern)"""
+		logger.info(f"=== TOOL CALLED - complete_questions → {args.get('next_context')} ===")
 		
 		result = SwaigFunctionResult()
+		next_ctx = args.get("next_context", "exit")
 		
-		# Use Holy Guacamole pattern: swml_change_step()
+		# Use Agents SDK method: swml_change_step() (from Holy Guacamole pattern)
+		# This is the correct way to change contexts in SignalWire Agents SDK
 		result.swml_change_step(next_ctx)
 		
 		result.data = {"questions_complete": True, "next_context": next_ctx}
 		result.response = f"Understood. Let me help you with that."
 		
-		logger.info(f"🔀 TOOL ROUTING: answer → {next_ctx} (explicit swml_change_step)")
+		logger.info(f"[ROUTING] Called swml_change_step({next_ctx})")
 		
 		return result
 	
@@ -2188,167 +1853,9 @@ List specific actions needed based on conversation outcome.
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
-	def on_swml_request(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any]):
-		"""Override to inject caller info into prompts BEFORE call starts
-		
-		This runs once per call BEFORE the agent starts speaking.
-		We use it to load caller info and inject it into the personality prompt.
-		"""
-		try:
-			# Extract phone number from request
-			phone = None
-			
-			# Try query_params first (this is where SignalWire actually sends it)
-			if query_params and 'call' in query_params:
-				call_data = query_params['call']
-				# Handle if call is a JSON string
-				if isinstance(call_data, str):
-					call_data = json.loads(call_data)
-				phone = call_data.get('from')
-			
-			# Fallback to body_params
-			if not phone and body_params:
-				if 'call' in body_params and 'from' in body_params['call']:
-					phone = body_params['call']['from']
-				elif 'From' in body_params:
-					phone = body_params['From']
-				elif 'caller_id_num' in body_params:
-					phone = body_params['caller_id_num']
-			
-			if not phone:
-				logger.warning("[SWML] No phone number found in request, using generic greeting")
-				return super().on_swml_request(query_params, body_params, headers)
-			
-			# Normalize phone number to match database format (remove +1 prefix)
-			normalized_phone = phone.lstrip('+1') if phone.startswith('+1') else phone.lstrip('+')
-			logger.info(f"[SWML] Original phone: {phone}, Normalized: {normalized_phone}")
-			
-			# Query lead by normalized phone (uses primary_phone column internally)
-			lead_context_json = lead_service.get_lead_context_core(normalized_phone)
-			lead_context = json.loads(lead_context_json)
-			
-			# Check if lead was found
-			if not lead_context.get('found'):
-				logger.info(f"[SWML] No lead found for {normalized_phone}: {lead_context.get('message')}")
-				# Set minimal global_data for new caller
-				self.set_global_data({
-					"company_name": "Barbara AI",
-					"service_type": "Reverse Mortgage Assistance",
-					"lead_phone": phone,
-					"is_new_caller": True
-				})
-				return super().on_swml_request(query_params, body_params, headers)
-			
-			# Extract lead data from response
-			lead_data = lead_context.get('lead', {})
-			broker_data = lead_context.get('broker', {})
-			
-			# Also get conversation state for call history
-			conv_state = get_conversation_state(normalized_phone)
-			conversation_data = conv_state.get('conversation_data', {}) if conv_state else {}
-			
-			logger.info(f"[SWML] Found lead: {lead_data.get('first_name')} {lead_data.get('last_name')}")
-			
-			# Build caller context string
-			caller_info = f"""
-			
-=== CALLER INFORMATION ===
-Name: {lead_data.get('first_name', 'Unknown')} {lead_data.get('last_name', '')}
-Phone: {phone}
-"""
-			
-			# Property information
-			if lead_data.get('property_address'):
-				caller_info += f"Property: {lead_data.get('property_address')}\n"
-			elif lead_data.get('property_city') and lead_data.get('property_state'):
-				caller_info += f"Property: {lead_data.get('property_city')}, {lead_data.get('property_state')}\n"
-			
-			# Financial information
-			if lead_data.get('property_value'):
-				caller_info += f"Property Value: ${lead_data.get('property_value'):,}\n"
-			
-			if lead_data.get('estimated_equity'):
-				caller_info += f"Estimated Equity: ${lead_data.get('estimated_equity'):,}\n"
-			
-			# Demographics
-			if lead_data.get('age'):
-				caller_info += f"Age: {lead_data.get('age')}\n"
-			
-			# Qualification status
-			qualified = lead_data.get('qualified')
-			if qualified is True:
-				caller_info += f"Status: ✅ QUALIFIED for reverse mortgage\n"
-			elif qualified is False:
-				caller_info += f"Status: ❌ Does NOT qualify\n"
-			
-			# Call history
-			if conversation_data.get('quote_presented'):
-				quote_reaction = conversation_data.get('quote_reaction', 'unknown')
-				caller_info += f"Previous Quote: Presented (reaction: {quote_reaction})\n"
-			
-			if conversation_data.get('appointment_booked'):
-				appt_id = conversation_data.get('appointment_id', 'N/A')
-				caller_info += f"Appointment: ✅ BOOKED (ID: {appt_id})\n"
-			elif conversation_data.get('ready_to_book'):
-				caller_info += f"Intent: Ready to book appointment\n"
-			
-			if conversation_data.get('questions_answered'):
-				caller_info += f"Questions: All answered\n"
-			
-			if conversation_data.get('has_objections') and not conversation_data.get('objection_handled'):
-				objection_type = conversation_data.get('last_objection_type', 'unknown')
-				caller_info += f"Objection: ⚠️ Unresolved ({objection_type})\n"
-			
-			# Add broker info if assigned
-			broker_name = broker_data.get('name', '')
-			if broker_name and broker_name != 'Not assigned':
-				caller_info += f"Assigned Broker: {broker_name}\n"
-				if broker_data.get('company'):
-					caller_info += f"Broker Company: {broker_data.get('company')}\n"
-			
-			caller_info += "========================\n"
-			
-			# Inject into personality prompt (update the section)
-			self.prompt_add_section(
-				"Caller Info",
-				caller_info
-			)
-			
-			# Also set global_data so tools can access it
-			self.set_global_data({
-				"company_name": "Barbara AI",
-				"service_type": "Reverse Mortgage Assistance",
-				"lead_id": lead_context.get('lead_id'),
-				"lead_phone": phone,
-				"first_name": lead_data.get('first_name'),
-				"last_name": lead_data.get('last_name'),
-				"property_address": lead_data.get('property_address'),
-				"property_city": lead_data.get('property_city'),
-				"property_state": lead_data.get('property_state'),
-				"property_value": lead_data.get('property_value'),
-				"estimated_equity": lead_data.get('estimated_equity'),
-				"age": lead_data.get('age'),
-				"qualified": qualified,
-				"quote_presented": conversation_data.get('quote_presented', False),
-				"quote_reaction": conversation_data.get('quote_reaction'),
-				"appointment_booked": conversation_data.get('appointment_booked', False),
-				"appointment_id": conversation_data.get('appointment_id'),
-				"ready_to_book": conversation_data.get('ready_to_book', False),
-				"questions_answered": conversation_data.get('questions_answered', False),
-				"has_objections": conversation_data.get('has_objections', False),
-				"objection_handled": conversation_data.get('objection_handled', False),
-				"broker_id": lead_context.get('broker_id'),
-				"broker_name": broker_data.get('name', 'Not assigned')
-			})
-			
-			logger.info(f"[SWML] ✅ Caller info injected into prompt and global_data")
-		
-		except Exception as e:
-			logger.error(f"[SWML] Error loading caller info: {e}")
-			# Don't fail the call, just continue without caller info
-		
-		# Call parent implementation to continue normal flow
-		return super().on_swml_request(query_params, body_params, headers)
+	# NOTE: on_swml_request is NOT overridden
+	# The SDK will call configure_per_call() automatically for each call
+	# All prompt building happens in configure_per_call via ContextBuilder API
 	
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
 		"""Handle conversation summary after call ends

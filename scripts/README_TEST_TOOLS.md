@@ -141,3 +141,4 @@ Total Tools: 21
 - The important thing is that tools handle errors gracefully and return valid responses
 - Tools that toggle off should use `SwaigFunctionResult` with `toggle_functions()`
 
+

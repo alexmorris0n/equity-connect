@@ -91,7 +91,60 @@ equity-connect/ (Git Monorepo)
 
 ---
 
-## 🆕 Nov 17-18 Critical Fixes: POM Conversion + Tool Availability + Nov 18 8-Node Revenue System
+## 🆕 Nov 17-18 Critical Architecture: Database-Driven Contexts
+
+### How The System Actually Works
+
+**EVERY CALL:**
+
+```
+1. SignalWire connects to agent
+2. Agent __init__ runs (one-time setup)
+   - Defines FALLBACK contexts (hardcoded in Python - only used if DB fails)
+   - Sets voice config, hints, pronunciations
+   - Registers 21 tools
+
+3. configure_per_call() fires (per-call dynamic loading)
+   - Queries database for contexts (prompt_versions table)
+   - Loads voice config from agent_voice_config table
+   - Loads theme from theme_prompts table
+   - Loads agent parameters (VAD, timeouts)
+   - Builds contexts from database
+   - If DB query fails → Falls back to hardcoded contexts from __init__
+
+4. on_swml_request() fires (per-call personalization)
+   - Extracts phone number from SignalWire
+   - Queries database for lead data (leads table)
+   - Queries database for conversation history (conversation_state table)
+   - Queries database for broker assignment (brokers table)
+   - Injects caller info as text section
+   - Sets global_data for tools
+
+5. Conversation flows through database-loaded contexts
+   - LLM sees context instructions from database
+   - LLM sees caller info from database
+   - Routes through nodes using database-defined valid_contexts arrays
+   - Tools update database state
+```
+
+**What IS Database-Driven:**
+- ✅ Context structure (instructions, tools, routing) - Loaded from `prompt_versions` table
+- ✅ Voice configuration - Loaded from `agent_voice_config` table
+- ✅ Theme personality - Loaded from `theme_prompts` table
+- ✅ Agent parameters (VAD, timeouts) - Loaded from `signalwire_available_llm_models` table
+- ✅ Caller personalization - Loaded from `leads`, `conversation_state`, `brokers` tables
+
+**What is Hardcoded (Fallback Only):**
+- ⚠️ Minimal contexts in `__init__` (lines 107-188) - ONLY used if database fails
+- These are a safety net, not the primary system
+
+**How Portal Edits Work:**
+1. Edit in Vue Portal (Verticals.vue)
+2. Saves to Supabase database
+3. Next call → `configure_per_call()` loads new config from database
+4. Changes are live (no code deploy needed)
+
+**CRITICAL: This is a per-call dynamic loading system, not a hybrid system.**
 
 ### 🏗️ SignalWire POM (Prompt Object Model) Architecture Conversion
 

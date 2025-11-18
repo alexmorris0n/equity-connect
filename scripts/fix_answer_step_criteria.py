@@ -43,3 +43,6 @@ supabase.table('prompt_versions').update({'content': content}).eq('id', version[
 
 print('SUCCESS: Updated answer context step_criteria to be more explicit about immediate acknowledgment after search_knowledge completes')
 
+
+
+

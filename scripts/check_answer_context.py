@@ -63,3 +63,6 @@ else:
     print('\n=== NO post-tool instructions found ===')
     print('The answer context does not tell Barbara what to do after search_knowledge completes!')
 
+
+
+
