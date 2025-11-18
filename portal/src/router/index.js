@@ -77,6 +77,11 @@ const router = createRouter({
           path: 'verticals',
           name: 'Verticals',
           component: () => import('@/views/admin/Verticals.vue')
+        },
+        {
+          path: 'testy-control',
+          name: 'TestyControl',
+          component: () => import('@/views/admin/TestyControl.vue')
         }
       ]
     },
