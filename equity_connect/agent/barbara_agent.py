@@ -1266,6 +1266,35 @@ List specific actions needed based on conversation outcome.
 	
 	@AgentBase.tool(
 		description=(
+			"Call this when the caller asks a question in GREET context. "
+			"This routes the conversation to ANSWER context where questions can be handled properly with knowledge base access."
+		),
+		parameters={
+			"type": "object",
+			"properties": {
+				"user_question": {
+					"type": "string",
+					"description": "The question the user asked"
+				}
+			},
+			"required": ["user_question"]
+		}
+	)
+	def route_to_answer_for_question(self, args, raw_data):
+		"""Tool: Route from GREET to ANSWER when user asks a question"""
+		logger.info(f"=== TOOL CALLED - route_to_answer_for_question: {args.get('user_question')} ===")
+		
+		result = SwaigFunctionResult()
+		# Use Agents SDK method: swml_change_step()
+		result.swml_change_step("answer")
+		result.data = {"routed_to": "answer", "question": args.get("user_question")}
+		result.response = "Great question! Let me help you with that."
+		
+		logger.info(f"[ROUTING] Called swml_change_step(answer) from GREET")
+		return result
+	
+	@AgentBase.tool(
+		description=(
 			"Call this AFTER the caller has responded to your greeting. "
 			"Ask them to confirm their name, then call this tool with first_name, last_name, and phone. "
 			"This creates or updates the lead record. "
