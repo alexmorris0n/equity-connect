@@ -1575,6 +1575,14 @@ async function saveTheme() {
 // Publish draft version - make it active
 async function publishDraft() {
   if (!selectedVertical.value) return
+
+  // Validate routing before publishing
+  try {
+    await validateVerticalRouting()
+  } catch (error) {
+    window.$message?.error('Cannot publish: Routing validation failed. Please fix errors first.')
+    return
+  }
   
   if (!hasDraft.value) {
     window.$message?.warning('No draft version to publish')
@@ -2289,10 +2297,9 @@ async function saveNode(nodeName) {
     try {
       await validateVerticalRouting()
     } catch (routingError) {
-      // If routing validation fails, warn but continue (or you can throw to block save)
+      // If routing validation fails, block save
       console.warn('Routing validation failed:', routingError)
-      // Uncomment the next line if you want to block save on routing errors:
-      // throw routingError
+      throw routingError
     }
     
     saveStatus.value = 'saving'
