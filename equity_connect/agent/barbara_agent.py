@@ -60,11 +60,9 @@ class BarbaraAgent(AgentBase):
 		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
-		# Set up dynamic configuration (per-request)
-		# CRITICAL: This replaces static config and enables per-call customization
-		# The SDK will call configure_per_call() for each incoming call
-		self.set_dynamic_config_callback(self.configure_per_call)
-		logger.info("Dynamic config callback registered")
+		# TESTING: Disable dynamic config to use static contexts only
+		# self.set_dynamic_config_callback(self.configure_per_call)
+		logger.info("Dynamic config callback DISABLED for testing")
 		
 		# Static configuration (applied once at initialization)
 		# These don't change per-call, so set them here instead of configure_per_call
