@@ -2188,6 +2188,10 @@ List specific actions needed based on conversation outcome.
 			# Query lead by phone
 			lead_data = lead_service.query_lead_direct(phone)
 			
+			# Also get conversation state for call history
+			conv_state = get_conversation_state(phone)
+			conversation_data = conv_state.get('conversation_data', {}) if conv_state else {}
+			
 			if lead_data:
 				logger.info(f"[SWML] Found lead: {lead_data.get('first_name')} {lead_data.get('last_name')}")
 				
@@ -2199,16 +2203,50 @@ Name: {lead_data.get('first_name', 'Unknown')} {lead_data.get('last_name', '')}
 Phone: {phone}
 """
 				
+				# Property information
 				if lead_data.get('property_address'):
 					caller_info += f"Property: {lead_data.get('property_address')}\n"
 				elif lead_data.get('property_city') and lead_data.get('property_state'):
 					caller_info += f"Property: {lead_data.get('property_city')}, {lead_data.get('property_state')}\n"
 				
+				# Financial information
+				if lead_data.get('property_value'):
+					caller_info += f"Property Value: ${lead_data.get('property_value'):,}\n"
+				
 				if lead_data.get('estimated_equity'):
 					caller_info += f"Estimated Equity: ${lead_data.get('estimated_equity'):,}\n"
 				
+				if lead_data.get('mortgage_balance'):
+					caller_info += f"Mortgage Balance: ${lead_data.get('mortgage_balance'):,}\n"
+				
+				# Demographics
 				if lead_data.get('age'):
 					caller_info += f"Age: {lead_data.get('age')}\n"
+				
+				# Qualification status
+				qualified = conv_state.get('qualified') if conv_state else None
+				if qualified is True:
+					caller_info += f"Status: ✅ QUALIFIED for reverse mortgage\n"
+				elif qualified is False:
+					caller_info += f"Status: ❌ Does NOT qualify\n"
+				
+				# Call history
+				if conversation_data.get('quote_presented'):
+					quote_reaction = conversation_data.get('quote_reaction', 'unknown')
+					caller_info += f"Previous Quote: Presented (reaction: {quote_reaction})\n"
+				
+				if conversation_data.get('appointment_booked'):
+					appt_id = conversation_data.get('appointment_id', 'N/A')
+					caller_info += f"Appointment: ✅ BOOKED (ID: {appt_id})\n"
+				elif conversation_data.get('ready_to_book'):
+					caller_info += f"Intent: Ready to book appointment\n"
+				
+				if conversation_data.get('questions_answered'):
+					caller_info += f"Questions: All answered\n"
+				
+				if conversation_data.get('has_objections') and not conversation_data.get('objection_handled'):
+					objection_type = conversation_data.get('last_objection_type', 'unknown')
+					caller_info += f"Objection: ⚠️ Unresolved ({objection_type})\n"
 				
 				# Add broker info if assigned
 				broker_id = lead_data.get('broker_id')
@@ -2235,8 +2273,19 @@ Phone: {phone}
 					"property_address": lead_data.get('property_address'),
 					"property_city": lead_data.get('property_city'),
 					"property_state": lead_data.get('property_state'),
+					"property_value": lead_data.get('property_value'),
 					"estimated_equity": lead_data.get('estimated_equity'),
+					"mortgage_balance": lead_data.get('mortgage_balance'),
 					"age": lead_data.get('age'),
+					"qualified": qualified,
+					"quote_presented": conversation_data.get('quote_presented', False),
+					"quote_reaction": conversation_data.get('quote_reaction'),
+					"appointment_booked": conversation_data.get('appointment_booked', False),
+					"appointment_id": conversation_data.get('appointment_id'),
+					"ready_to_book": conversation_data.get('ready_to_book', False),
+					"questions_answered": conversation_data.get('questions_answered', False),
+					"has_objections": conversation_data.get('has_objections', False),
+					"objection_handled": conversation_data.get('objection_handled', False),
 					"broker_id": broker_id,
 					"broker_name": lead_data.get('broker_name', 'Walter Richards')
 				})
