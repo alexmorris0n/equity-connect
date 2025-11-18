@@ -705,34 +705,34 @@ List specific actions needed based on conversation outcome.
 				context_step_names.add(step_name)
 				step = context.add_step(step_name)
 				
-			if step_cfg.get("text"):
-				step.set_text(step_cfg["text"])
-			if step_cfg.get("step_criteria"):
-				step.set_step_criteria(step_cfg["step_criteria"])
-			# CRITICAL: Default to False (wait for user) if not explicitly set
-			# This prevents tools from being called before greeting
-			# Convert string "false"/"true" to boolean (JSONB stores as strings)
-			skip_user_turn_raw = step_cfg.get("skip_user_turn", False)
-			if isinstance(skip_user_turn_raw, str):
-				skip_user_turn = skip_user_turn_raw.lower() in ('true', '1', 'yes')
-			else:
-				skip_user_turn = bool(skip_user_turn_raw)
-			step.skip_user_turn = skip_user_turn
-			functions = self._ensure_list(step_cfg.get("functions"))
-			if functions:
-				step.set_functions(functions)
-			valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
-			if valid_steps:
-				step.set_valid_steps(valid_steps)
+				if step_cfg.get("text"):
+					step.set_text(step_cfg["text"])
+				if step_cfg.get("step_criteria"):
+					step.set_step_criteria(step_cfg["step_criteria"])
+				# CRITICAL: Default to False (wait for user) if not explicitly set
+				# This prevents tools from being called before greeting
+				# Convert string "false"/"true" to boolean (JSONB stores as strings)
+				skip_user_turn_raw = step_cfg.get("skip_user_turn", False)
+				if isinstance(skip_user_turn_raw, str):
+					skip_user_turn = skip_user_turn_raw.lower() in ('true', '1', 'yes')
+				else:
+					skip_user_turn = bool(skip_user_turn_raw)
+				step.skip_user_turn = skip_user_turn
+				functions = self._ensure_list(step_cfg.get("functions"))
+				if functions:
+					step.set_functions(functions)
+				valid_steps = self._ensure_list(step_cfg.get("valid_steps"))
+				if valid_steps:
+					step.set_valid_steps(valid_steps)
 
-			step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
-			action = step_cfg.get("action")
-			if action and action.get("type") == "set_context":
-				target_ctx = action.get("context")
-				if target_ctx and target_ctx not in step_valid_contexts:
-					step_valid_contexts.append(target_ctx)
-			if step_valid_contexts:
-				step.set_valid_contexts(step_valid_contexts)
+				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
+				action = step_cfg.get("action")
+				if action and action.get("type") == "set_context":
+					target_ctx = action.get("context")
+					if target_ctx and target_ctx not in step_valid_contexts:
+						step_valid_contexts.append(target_ctx)
+				if step_valid_contexts:
+					step.set_valid_contexts(step_valid_contexts)
 
 		# NO RETURN - SDK handles serialization automatically
 
@@ -1007,7 +1007,7 @@ List specific actions needed based on conversation outcome.
 			if hasattr(agent_obj, "has_skill") and agent_obj.has_skill(skill_name):
 				logger.debug(f"[REPEAT] Skill '{skill_name}' already loaded, skipping")
 				return
-				agent_obj.add_skill(skill_name)
+			agent_obj.add_skill(skill_name)
 			logger.info(f"[OK] Added skill '{skill_name}'")
 		except Exception as exc:
 			logger.warning(f"[WARN] Could not add skill '{skill_name}': {exc}")
