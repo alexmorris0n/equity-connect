@@ -60,9 +60,10 @@ class BarbaraAgent(AgentBase):
 		self.set_web_hook_url("https://barbara-agent.fly.dev/swaig")
 		self.set_post_prompt_url("https://barbara-agent.fly.dev/post_prompt")
 		
-		# TESTING: Disable dynamic config to use static contexts only
-		# self.set_dynamic_config_callback(self.configure_per_call)
-		logger.info("Dynamic config callback DISABLED for testing")
+		# DYNAMIC CONFIG: Load fresh contexts from DB on each call
+		# This allows instant prompt updates without redeploying
+		self.set_dynamic_config_callback(self.configure_per_call)
+		logger.info("✅ Dynamic config callback ENABLED - will load contexts from DB per call")
 		
 		# Static configuration (applied once at initialization)
 		# These don't change per-call, so set them here instead of configure_per_call
@@ -98,7 +99,9 @@ class BarbaraAgent(AgentBase):
 		self.add_pronunciation("AI", "A I", ignore_case=False)
 		
 		# ==================================================================
-		# HARDCODED CONTEXTS - Testing simplified flow (Holy Guacamole pattern)
+		# FALLBACK CONTEXTS - Safety net if DB fails
+		# These are minimal contexts used ONLY if database loading fails
+		# Normal operation loads contexts from DB in configure_per_call()
 		# ==================================================================
 		
 		# Add a simple personality prompt
@@ -215,13 +218,81 @@ List specific actions needed based on conversation outcome.
 				logger.error(f"[TIMEOUT] Function {func.__name__} exceeded {timeout_seconds}s timeout")
 				raise
 	
-	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
-		"""Configure agent for incoming call using SignalWire contexts
+	def _load_context_configs_from_db(self) -> Optional[Dict[str, Any]]:
+		"""Load context configurations from database
 		
-		DISABLED FOR TESTING - Using hardcoded contexts from __init__ instead
+		Returns dict with context_name -> config mapping, or None if failed
 		"""
-		logger.info("[TESTING] configure_per_call DISABLED - using hardcoded contexts only")
-		return  # Skip all database configuration
+		try:
+			# Use timeout protection for DB query
+			def query_db():
+				response = self.supabase.table('prompt_versions') \
+					.select('context_name, content') \
+					.eq('version', 'active') \
+					.execute()
+				return response.data
+			
+			# 3 second timeout for DB query
+			data = self._execute_with_timeout(query_db, timeout_seconds=3)
+			
+			if not data:
+				logger.warning("No active prompt versions found in database")
+				return None
+			
+			configs = {}
+			for row in data:
+				configs[row['context_name']] = row['content']
+			
+			logger.info(f"✅ Loaded {len(configs)} contexts from database: {list(configs.keys())}")
+			return configs
+			
+		except Exception as e:
+			logger.error(f"❌ Failed to load contexts from DB: {e}")
+			return None
+	
+	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
+		"""Configure agent for incoming call - Load fresh contexts from DB
+		
+		This runs on every call and loads the latest prompts from the database,
+		allowing instant updates without redeploying the agent.
+		"""
+		logger.info("🔄 Loading fresh contexts from database for this call...")
+		
+		# Load configs from DB
+		db_configs = self._load_context_configs_from_db()
+		
+		if not db_configs:
+			logger.warning("⚠️ Using hardcoded fallback contexts from __init__")
+			return  # Use the hardcoded ones from __init__ as fallback
+		
+		# Build contexts using DB data
+		contexts = self.define_contexts()
+		default_context = contexts.add_context("default")
+		
+		# Build each context from DB config
+		for context_name in ["greet", "verify", "qualify", "answer", "quote", "objections", "book", "exit"]:
+			config = db_configs.get(context_name)
+			
+			if not config:
+				logger.warning(f"⚠️ No config found for context '{context_name}', skipping")
+				continue
+			
+			# Extract config values with defaults
+			instructions = config.get("instructions", f"Handle {context_name} context")
+			step_criteria = config.get("step_criteria", f"{context_name} complete")
+			tools = config.get("tools", [])
+			valid_contexts = config.get("valid_contexts", [])
+			
+			# Build the step
+			default_context.add_step(context_name) \
+				.add_section("Instructions", instructions) \
+				.set_step_criteria(step_criteria) \
+				.set_functions(tools) \
+				.set_valid_steps(valid_contexts)
+			
+			logger.info(f"✅ Built context '{context_name}' with {len(tools)} tools")
+		
+		logger.info("✅ All contexts loaded from database for this call")
 		
 		# Check if this is a CLI test (from user_vars)
 		# According to SignalWire Agent SDK, --user-vars from swaig-test appear as top-level keys in query_params
