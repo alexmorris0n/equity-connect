@@ -33,10 +33,39 @@ def search_knowledge_core(
 
 
 def _keyword_search(sb, question: str, error: Optional[str] = None) -> str:
-	tokens = [tok for tok in re.split(r"[^A-Za-z0-9]+", question or "") if tok]
-	pattern = tokens[0] if tokens else (question or "")[:32]
+	# Extract meaningful keywords (skip common words)
+	tokens = [tok.lower() for tok in re.split(r"[^A-Za-z0-9]+", question or "") if tok]
+	
+	# Remove stop words
+	stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been", "being", 
+	              "have", "has", "had", "do", "does", "did", "will", "would", "should", 
+	              "could", "may", "might", "can", "about", "if", "in", "on", "at", "to",
+	              "for", "of", "with", "by", "from", "up", "out", "as", "but", "or", "and",
+	              "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her"}
+	
+	keywords = [tok for tok in tokens if tok not in stop_words and len(tok) > 2]
+	
+	# Use the most specific keyword (prefer longer, domain-specific terms)
+	# Priority: reverse mortgage terms > general real estate terms > verbs
+	priority_terms = ["spouse", "mortgage", "equity", "hecm", "borrower", "lien", 
+	                  "property", "house", "home", "die", "dies", "death", "airbnb", 
+	                  "rent", "rental", "income", "foreclosure", "payoff"]
+	
+	pattern = None
+	for term in priority_terms:
+		if term in keywords:
+			pattern = term
+			break
+	
+	# If no priority term, use longest keyword
+	if not pattern and keywords:
+		pattern = max(keywords, key=len)
+	
+	# Fallback to first token or default
 	if not pattern:
-		pattern = "reverse mortgage"
+		pattern = tokens[0] if tokens else "reverse mortgage"
+	
+	logger.info(f"KB search using keyword: '{pattern}' (from question: '{question[:50]}...')")
 	
 	try:
 		response = (

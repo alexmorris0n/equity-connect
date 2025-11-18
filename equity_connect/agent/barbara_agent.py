@@ -133,11 +133,27 @@ class BarbaraAgent(AgentBase):
 				"1. Call search_knowledge(query='user's question') to get the answer\n"
 				"2. Give them the answer\n"
 				"3. Ask: 'Any other questions?'\n"
-				"4. If they say NO: call complete_questions(next_context='exit')\n"
-				"5. If they say YES: wait for their next question and repeat from step 1"
+				"4. If they say 'I'm ready to book' or 'let's schedule': call complete_questions(next_context='book')\n"
+				"5. If they say NO (no more questions): call complete_questions(next_context='exit')\n"
+				"6. If they say YES (have more questions): wait for their next question and repeat from step 1"
 			) \
-			.set_step_criteria("User confirmed no more questions") \
+			.set_step_criteria("User confirmed no more questions OR ready to book") \
 			.set_functions(["search_knowledge", "complete_questions"]) \
+			.set_valid_steps(["exit", "book"])
+		
+		# BOOK - Appointment scheduling
+		default_context.add_step("book") \
+			.add_section("Instructions",
+				"You are in BOOK context. Your job:\n"
+				"1. Say: 'Great! Let me check Walter Richards' calendar.'\n"
+				"2. Call check_broker_availability(broker_id, preferred_day, preferred_time)\n"
+				"3. Present 2-3 available time slots\n"
+				"4. When they pick one, call book_appointment(lead_id, broker_id, scheduled_for, notes)\n"
+				"5. Confirm: 'Perfect! You're all set for [day] at [time]'\n"
+				"6. Route to EXIT"
+			) \
+			.set_step_criteria("Appointment booked or declined") \
+			.set_functions(["check_broker_availability", "book_appointment"]) \
 			.set_valid_steps(["exit"])
 		
 		# EXIT - End conversation
@@ -151,6 +167,16 @@ class BarbaraAgent(AgentBase):
 			.set_valid_steps([])
 		
 		logger.info("✅ HARDCODED CONTEXTS loaded - bypassing database for testing")
+		
+		# Voice configuration (hardcoded for testing)
+		# Default: ElevenLabs Rachel (female voice)
+		self.add_language(
+			name="English",
+			code="en-US",
+			voice="elevenlabs.rachel",  # Female voice
+			engine="elevenlabs"
+		)
+		logger.info("✅ Voice set to ElevenLabs Rachel (female)")
 		
 		# Pattern hints
 		self.add_pattern_hint(
