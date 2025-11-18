@@ -118,7 +118,9 @@ class BarbaraAgent(AgentBase):
 		default_context.add_step("greet") \
 			.add_section("Instructions", 
 				"You are Barbara. Your ONLY job:\n"
-				"1. Greet: 'Hi! This is Barbara with Equity Connect. How can I help you today?'\n"
+				"1. Greet the caller:\n"
+				"   - If you have their name in CALLER INFORMATION: 'Hi [First Name]! This is Barbara with Equity Connect. How can I help you today?'\n"
+				"   - If you DON'T have their name: 'Hi! This is Barbara with Equity Connect. How can I help you today?'\n"
 				"2. If they ask ANY question, IMMEDIATELY call route_to_answer_for_question(user_question='their question')\n"
 				"That's it. Nothing else."
 			) \
