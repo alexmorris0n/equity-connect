@@ -1285,12 +1285,13 @@ List specific actions needed based on conversation outcome.
 		logger.info(f"=== TOOL CALLED - route_to_answer_for_question: {args.get('user_question')} ===")
 		
 		result = SwaigFunctionResult()
-		# Use Agents SDK method: swml_change_step()
-		result.swml_change_step("answer")
-		result.data = {"routed_to": "answer", "question": args.get("user_question")}
 		result.response = "Great question! Let me help you with that."
+		result.data = {"routed_to": "answer", "question": args.get("user_question")}
 		
-		logger.info(f"[ROUTING] Called swml_change_step(answer) from GREET")
+		# Use Holy Guacamole pattern: swml_change_step() to force transition
+		result.swml_change_step("answer")
+		
+		logger.info(f"[ROUTING] swml_change_step('answer') - Holy Guacamole pattern")
 		return result
 	
 	@AgentBase.tool(
@@ -1753,20 +1754,19 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def complete_questions(self, args, raw_data):
-		"""Tool: Mark questions complete and route explicitly (Agents SDK pattern)"""
+		"""Tool: Mark questions complete and route explicitly (Holy Guacamole pattern)"""
 		logger.info(f"=== TOOL CALLED - complete_questions → {args.get('next_context')} ===")
 		
 		result = SwaigFunctionResult()
 		next_ctx = args.get("next_context", "exit")
 		
-		# Use Agents SDK method: swml_change_step() (from Holy Guacamole pattern)
-		# This is the correct way to change contexts in SignalWire Agents SDK
+		# Use Holy Guacamole pattern: swml_change_step()
 		result.swml_change_step(next_ctx)
 		
 		result.data = {"questions_complete": True, "next_context": next_ctx}
 		result.response = f"Understood. Let me help you with that."
 		
-		logger.info(f"[ROUTING] Called swml_change_step({next_ctx})")
+		logger.info(f"[ROUTING] swml_change_step({next_ctx}) - Holy Guacamole pattern")
 		
 		return result
 	
