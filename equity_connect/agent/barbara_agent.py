@@ -265,6 +265,55 @@ List specific actions needed based on conversation outcome.
 			logger.warning("⚠️ Using hardcoded fallback contexts from __init__")
 			return  # Use the hardcoded ones from __init__ as fallback
 		
+		# Load agent parameters (VAD, timeouts, etc.)
+		agent_params = get_agent_params(vertical="reverse_mortgage", language="en-US")
+		logger.info(f"✅ Loaded agent params: attention_timeout={agent_params.get('attention_timeout')}ms, transparent_barge={agent_params.get('transparent_barge')}")
+		
+		# Load voice configuration
+		voice_config = self._get_voice_config(vertical="reverse_mortgage", language_code="en-US")
+		voice_string = self._build_voice_string(voice_config["engine"], voice_config["voice_name"])
+		logger.info(f"✅ Loaded voice config: {voice_string} ({voice_config['engine']})")
+		
+		# Apply agent parameters to the agent
+		agent.set_attention_timeout(agent_params.get("attention_timeout", 8000))
+		if agent_params.get("attention_timeout_prompt"):
+			agent.set_attention_timeout_prompt(agent_params["attention_timeout_prompt"])
+		
+		agent.set_end_of_speech_timeout(agent_params.get("end_of_speech_timeout", 800))
+		
+		if agent_params.get("hard_stop_time"):
+			agent.set_hard_stop(agent_params["hard_stop_time"])
+		if agent_params.get("hard_stop_prompt"):
+			agent.set_hard_stop_prompt(agent_params["hard_stop_prompt"])
+		
+		agent.set_first_word_timeout(agent_params.get("first_word_timeout", 1000))
+		
+		if agent_params.get("acknowledge_interruptions"):
+			agent.set_acknowledge_interruptions(agent_params["acknowledge_interruptions"])
+		if agent_params.get("interrupt_prompt"):
+			agent.set_interrupt_prompt(agent_params["interrupt_prompt"])
+		
+		agent.set_transparent_barge(agent_params.get("transparent_barge", False))
+		
+		if agent_params.get("enable_barge"):
+			agent.set_barge_confidence(agent_params["enable_barge"])
+		
+		# Apply voice configuration
+		language_params = {
+			"name": voice_config.get("language_name", "English"),
+			"code": voice_config.get("language_code", "en-US"),
+			"voice": voice_string,
+			"engine": voice_config["engine"]
+		}
+		
+		if voice_config.get("model"):
+			language_params["model"] = voice_config["model"]
+		
+		# Set the language with voice config
+		agent.set_language(language_params)
+		
+		logger.info(f"✅ Applied voice & VAD settings for this call")
+		
 		# Build contexts using DB data
 		contexts = self.define_contexts()
 		default_context = contexts.add_context("default")
