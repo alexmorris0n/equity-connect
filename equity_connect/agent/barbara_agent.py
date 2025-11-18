@@ -212,13 +212,10 @@ List specific actions needed based on conversation outcome.
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call using SignalWire contexts
 		
-		CRITICAL: This is where prompts are ACTUALLY built using agent.prompt_add_section()
-		and define_contexts(). The POM dict from on_swml_request is just metadata.
-		This method MUST run to build the prompts with substituted variables.
+		DISABLED FOR TESTING - Using hardcoded contexts from __init__ instead
 		"""
-		
-		# Log entry for debugging (keep at INFO level for production)
-		logger.info("[CONFIGURE_PER_CALL] Method invoked")
+		logger.info("[TESTING] configure_per_call DISABLED - using hardcoded contexts only")
+		return  # Skip all database configuration
 		
 		# Check if this is a CLI test (from user_vars)
 		# According to SignalWire Agent SDK, --user-vars from swaig-test appear as top-level keys in query_params
