@@ -136,12 +136,12 @@ class BarbaraAgent(AgentBase):
 				"2. Give them the answer\n"
 				"3. Ask: 'Any other questions?'\n"
 				"4. If they say 'I'm ready to book' or 'let's schedule': call complete_questions(next_context='book')\n"
-				"5. If they say NO (no more questions): call complete_questions(next_context='exit')\n"
+				"5. If they say NO (no more questions): call complete_questions(next_context='goodbye')\n"
 				"6. If they say YES (have more questions): wait for their next question and repeat from step 1"
 			) \
 			.set_step_criteria("User confirmed no more questions OR ready to book") \
 			.set_functions(["search_knowledge", "complete_questions"]) \
-			.set_valid_steps(["exit", "book"])
+			.set_valid_steps(["goodbye", "book"])
 		
 		# BOOK - Appointment scheduling
 		default_context.add_step("book") \
@@ -152,19 +152,32 @@ class BarbaraAgent(AgentBase):
 				"3. Present 2-3 available time slots\n"
 				"4. When they pick one, call book_appointment(lead_id, broker_id, scheduled_for, notes)\n"
 				"5. Confirm: 'Perfect! You're all set for [day] at [time]'\n"
-				"6. Route to EXIT"
+				"6. Route to GOODBYE"
 			) \
 			.set_step_criteria("Appointment booked or declined") \
 			.set_functions(["check_broker_availability", "book_appointment"]) \
-			.set_valid_steps(["exit"])
+			.set_valid_steps(["goodbye"])
 		
-		# EXIT - End conversation
-		default_context.add_step("exit") \
+		# GOODBYE - Natural farewell (user-facing)
+		default_context.add_step("goodbye") \
 			.add_section("Instructions",
-				"Say: 'Thanks for your time! Walter Richards will reach out soon. Have a great day!'\n"
-				"Then hang up."
+				"You are in GOODBYE context. Your job:\n"
+				"1. Say: 'Thanks for your time! Walter Richards will reach out soon. Have a great day!'\n"
+				"2. Wait for their response\n"
+				"3. If they ask ANY question, call route_to_answer_for_question(user_question='their question')\n"
+				"4. If they say 'thank you', 'bye', 'goodbye', or stay silent: do nothing (call will end automatically)\n"
+				"Don't explicitly say goodbye again, just let the call end naturally."
 			) \
-			.set_step_criteria("Said goodbye") \
+			.set_step_criteria("Said farewell and caller responded or stayed silent") \
+			.set_functions(["route_to_answer_for_question"]) \
+			.set_valid_steps(["answer", "end"])
+		
+		# END - Hidden system node (actual hangup)
+		default_context.add_step("end") \
+			.add_section("Instructions",
+				"Call is ending. No action needed."
+			) \
+			.set_step_criteria("Call complete") \
 			.set_functions([]) \
 			.set_valid_steps([])
 		
