@@ -250,6 +250,110 @@ List specific actions needed based on conversation outcome.
 			logger.error(f"❌ Failed to load contexts from DB: {e}")
 			return None
 	
+	def _load_theme_config_from_db(self) -> Optional[Dict[str, Any]]:
+		"""Load theme configuration from database (LLM, STT, VAD, recording settings)
+		
+		Returns config dict from theme_prompts.config, or None if failed
+		"""
+		try:
+			# Use timeout protection for DB query
+			def query_db():
+				response = self.supabase.table('theme_prompts') \
+					.select('config') \
+					.eq('vertical', 'reverse_mortgage') \
+					.eq('is_active', True) \
+					.maybeSingle() \
+					.execute()
+				return response.data
+			
+			# 3 second timeout for DB query
+			data = self._execute_with_timeout(query_db, timeout_seconds=3)
+			
+			if not data or not data.get('config'):
+				logger.warning("No theme configuration found in database, using defaults")
+				return None
+			
+			config = data['config']
+			logger.info(f"✅ Loaded theme config from database")
+			return config
+			
+		except Exception as e:
+			logger.error(f"❌ Failed to load theme config from DB: {e}")
+			return None
+	
+	def _apply_theme_config(self, agent, theme_config: Dict[str, Any]):
+		"""Apply theme configuration settings to the agent
+		
+		Applies LLM, STT, VAD, and recording settings from theme_prompts.config
+		"""
+		try:
+			# Apply LLM model settings
+			if 'models' in theme_config and 'llm' in theme_config['models']:
+				llm_config = theme_config['models']['llm']
+				provider = llm_config.get('provider', 'openai')
+				model = llm_config.get('model', 'gpt-4o-mini')
+				
+				# SignalWire SDK uses set_model() for LLM configuration
+				# Format: "provider:model" or just "model" for OpenAI
+				if provider == 'openai':
+					agent.set_model(model)
+					logger.info(f"✅ Set LLM model: {model}")
+				else:
+					agent.set_model(f"{provider}:{model}")
+					logger.info(f"✅ Set LLM model: {provider}:{model}")
+			
+			# Apply STT (Speech-to-Text) settings
+			if 'models' in theme_config and 'stt' in theme_config['models']:
+				stt_config = theme_config['models']['stt']
+				stt_provider = stt_config.get('provider', 'deepgram')
+				stt_model = stt_config.get('model', 'nova-3')
+				
+				# SignalWire SDK STT configuration
+				agent.set_stt_provider(stt_provider)
+				agent.set_stt_model(stt_model)
+				logger.info(f"✅ Set STT: {stt_provider}/{stt_model}")
+			
+			# Apply VAD (Voice Activity Detection) settings from theme config
+			# Note: agent_params also has VAD settings, but theme config takes precedence for these
+			if 'vad' in theme_config:
+				vad_config = theme_config['vad']
+				
+				if 'enabled' in vad_config:
+					vad_enabled = vad_config['enabled']
+					# SignalWire SDK VAD configuration
+					if vad_enabled:
+						agent.enable_vad()
+					else:
+						agent.disable_vad()
+					logger.info(f"✅ Set VAD enabled: {vad_enabled}")
+				
+				if 'silence_ms' in vad_config:
+					silence_ms = vad_config['silence_ms']
+					agent.set_vad_silence_timeout(silence_ms)
+					logger.info(f"✅ Set VAD silence timeout: {silence_ms}ms")
+			
+			# Apply EOS (End of Speech) timeout from theme config
+			if 'eos_timeout_ms' in theme_config:
+				eos_timeout = theme_config['eos_timeout_ms']
+				agent.set_end_of_speech_timeout(eos_timeout)
+				logger.info(f"✅ Set EOS timeout: {eos_timeout}ms (from theme config)")
+			
+			# Apply call recording settings
+			if 'record_call' in theme_config:
+				record_call = theme_config['record_call']
+				if record_call:
+					agent.enable_recording()
+					logger.info(f"✅ Call recording enabled")
+				else:
+					agent.disable_recording()
+					logger.info(f"✅ Call recording disabled")
+			
+			logger.info("✅ All theme configuration settings applied")
+			
+		except Exception as e:
+			logger.error(f"❌ Failed to apply theme config: {e}")
+			# Don't fail the call if theme config fails - just log and continue
+	
 	def configure_per_call(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any], agent):
 		"""Configure agent for incoming call - Load fresh contexts from DB
 		
@@ -264,6 +368,9 @@ List specific actions needed based on conversation outcome.
 		if not db_configs:
 			logger.warning("⚠️ Using hardcoded fallback contexts from __init__")
 			return  # Use the hardcoded ones from __init__ as fallback
+		
+		# Load theme configuration (LLM, STT, VAD, recording settings)
+		theme_config = self._load_theme_config_from_db()
 		
 		# Load agent parameters (VAD, timeouts, etc.)
 		agent_params = get_agent_params(vertical="reverse_mortgage", language="en-US")
@@ -314,18 +421,16 @@ List specific actions needed based on conversation outcome.
 		
 		logger.info(f"✅ Applied voice & VAD settings for this call")
 		
-		# Build contexts using DB data
+		# Apply theme configuration settings (LLM, STT, VAD, recording)
+		if theme_config:
+			self._apply_theme_config(agent, theme_config)
+		
+		# Build contexts using DB data (DYNAMIC - loads whatever contexts exist in DB)
 		contexts = self.define_contexts()
 		default_context = contexts.add_context("default")
 		
-		# Build each context from DB config
-		for context_name in ["greet", "verify", "qualify", "answer", "quote", "objections", "book", "exit"]:
-			config = db_configs.get(context_name)
-			
-			if not config:
-				logger.warning(f"⚠️ No config found for context '{context_name}', skipping")
-				continue
-			
+		# Build each context from DB config (dynamic - not hardcoded list)
+		for context_name, config in db_configs.items():
 			# Extract config values with defaults
 			instructions = config.get("instructions", f"Handle {context_name} context")
 			step_criteria = config.get("step_criteria", f"{context_name} complete")
@@ -344,7 +449,7 @@ List specific actions needed based on conversation outcome.
 			
 			logger.info(f"✅ Built context '{context_name}' with {len(tools)} tools → can route to {valid_contexts}")
 		
-		logger.info("✅ All contexts loaded from database for this call")
+		logger.info(f"✅ All {len(db_configs)} contexts loaded from database for this call")
 	
 	def _log_context_change(self, step_name: str, previous_step: str = None):
 		"""Callback to log when context/step changes"""
