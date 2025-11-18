@@ -1724,22 +1724,18 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def complete_questions(self, args, raw_data):
-		"""Tool: Mark questions complete and route explicitly"""
+		"""Tool: Mark questions complete and route explicitly (Holy Guacamole pattern)"""
 		logger.info(f"=== TOOL CALLED - complete_questions → {args.get('next_context')} ===")
 		
 		result = SwaigFunctionResult()
 		next_ctx = args.get("next_context", "exit")
 		
-		# Use SWML action to explicitly change context
+		# Use Holy Guacamole pattern: Set result.context directly
+		result.context = next_ctx
 		result.data = {"action": "context_change", "target": next_ctx}
 		result.response = f"Understood. Let me help you with that."
 		
-		# CRITICAL: Tell SignalWire to switch context
-		result.action = [{
-			"change_context": {
-				"context": next_ctx
-			}
-		}]
+		logger.info(f"[ROUTING] Explicitly routing from ANSWER → {next_ctx}")
 		
 		return result
 	
