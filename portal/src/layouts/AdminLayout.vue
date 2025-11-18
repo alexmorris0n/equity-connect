@@ -98,7 +98,9 @@ import {
   SparklesOutline,
   PulseOutline,
   BriefcaseOutline,
-  CalendarOutline
+  CalendarOutline,
+  LayersOutline,
+  FlaskOutline
 } from '@vicons/ionicons5'
 import barbaraLogoDark from '@/assets/barbara-logo-dark.svg'
 import barbaraLogoCompactDark from '@/assets/barbara-logo-compact-dark.svg'
@@ -165,6 +167,18 @@ const menuOptions = [
     label: 'System Metrics',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(PulseOutline) }),
     to: '/admin/analytics'
+  },
+  {
+    key: 'verticals',
+    label: 'Verticals',
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(LayersOutline) }),
+    to: '/admin/verticals'
+  },
+  {
+    key: 'testy-control',
+    label: 'Testy Control',
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(FlaskOutline) }),
+    to: '/admin/testy-control'
   }
 ]
 
@@ -176,7 +190,9 @@ const routeKeyMap = {
   LeadDetail: 'leads', // Lead Detail should highlight Leads
   AdminAppointments: 'appointments',
   SystemAnalytics: 'analytics',
-  UserProfile: 'profile'
+  UserProfile: 'profile',
+  Verticals: 'verticals',
+  TestyControl: 'testy-control'
 }
 
 const activeKey = computed(() => routeKeyMap[route.name] || 'dashboard')
@@ -189,7 +205,9 @@ const pageTitle = computed(() => {
     leads: 'Leads',
     appointments: 'Appointments',
     analytics: 'System Metrics',
-    profile: 'User Profile'
+    profile: 'User Profile',
+    verticals: 'Verticals',
+    'testy-control': 'Testy Control'
   }
   return titles[activeKey.value] ?? 'Workspace'
 })
