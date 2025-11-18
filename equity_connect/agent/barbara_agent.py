@@ -17,7 +17,6 @@ from equity_connect.services import (
 )
 from equity_connect.services.contexts_builder import build_contexts_object, load_theme
 from equity_connect.services.conversation_state import get_conversation_state
-from equity_connect.tools import conversation_flags
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +140,7 @@ List specific actions needed based on conversation outcome.
 		self._test_state_ctx = ContextVar("barbara_test_state")
 		self._reset_test_state()
 		
-		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 22 tools")
+		logger.info("[OK] BarbaraAgent initialized with dynamic configuration and 14 tools")
 	
 	def _execute_with_timeout(self, func: Callable, timeout_seconds: float, *args, **kwargs):
 		"""Execute a blocking function with timeout protection to prevent call hangups.
@@ -1266,7 +1265,12 @@ List specific actions needed based on conversation outcome.
 		return voice_string
 	
 	@AgentBase.tool(
-		description="Verify caller identity by name and phone. Creates lead if new.",
+		description=(
+			"Call this AFTER the caller has responded to your greeting. "
+			"Ask them to confirm their name, then call this tool with first_name, last_name, and phone. "
+			"This creates or updates the lead record. "
+			"IMPORTANT: Only call this ONCE per call after identity is confirmed by the caller."
+		),
 		parameters={"type": "object", "properties": {"first_name": {"type": "string", "description": "Caller first name"}, "phone": {"type": "string", "description": "Caller phone"}}, "required": ["first_name", "phone"]}
 	)
 	def verify_caller_identity(self, args, raw_data):
@@ -1486,11 +1490,22 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Check broker availability with robust error handling."""
 		logger.error("=== TOOL CALLED - check_broker_availability ===")
 		try:
+			# Get broker_id from args or global_data (LLM may pass broker name instead)
+			broker_id = args.get("broker_id") or raw_data.get("global_data", {}).get("broker", {}).get("id")
+			
+			if not broker_id:
+				logger.error("[ERROR] No broker_id available in args or global_data")
+				error_data = {"error": "no_broker", "message": "I don't have broker information available. Let me connect you with a specialist."}
+				swaig_result = SwaigFunctionResult()
+				swaig_result.data = error_data
+				swaig_result.response = error_data["message"]
+				return swaig_result
+			
 			# Add timeout protection for Nylas API calls
 			result_json = self._execute_with_timeout(
 				calendar_service.check_broker_availability_core,
 				6.0,  # 6 second timeout for calendar API
-				args.get("broker_id"),
+				broker_id,
 				args.get("preferred_day"),
 				args.get("preferred_time"),
 				raw_data,
@@ -1769,181 +1784,6 @@ List specific actions needed based on conversation outcome.
 			swaig_result = SwaigFunctionResult()
 			swaig_result.data = error_data
 			swaig_result.response = error_data["message"]
-			return swaig_result
-	
-	# Conversation Flags (7)
-	@AgentBase.tool(
-		description="Mark caller as ready to book an appointment.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	def mark_ready_to_book(self, args, raw_data):
-		"""Tool: Mark ready to book with robust error handling."""
-		try:
-			result_json = conversation_flags.mark_ready_to_book(args.get("phone"))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_ready_to_book failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Mark that the caller raised an objection.",
-		parameters={
-			"type": "object",
-			"properties": {
-				"phone": {"type": "string", "description": "Caller phone"},
-				"current_node": {"type": "string", "description": "Node where objection raised", "nullable": True},
-				"objection_type": {"type": "string", "description": "Type of objection", "nullable": True},
-			},
-			"required": ["phone"],
-		}
-	)
-	def mark_has_objection(self, args, raw_data):
-		"""Tool: Mark has objection with robust error handling."""
-		try:
-			result_json = conversation_flags.mark_has_objection(args.get("phone"), args.get("current_node"), args.get("objection_type"))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_has_objection failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Mark that an objection has been resolved.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	def mark_objection_handled(self, args, raw_data):
-		"""Tool: Mark objection handled with robust error handling."""
-		try:
-			result_json = conversation_flags.mark_objection_handled(args.get("phone"))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_objection_handled failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Mark that caller's questions have been answered.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	def mark_questions_answered(self, args, raw_data):
-		"""Tool: Mark questions answered with robust error handling."""
-		try:
-			result_json = conversation_flags.mark_questions_answered(args.get("phone"))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_questions_answered failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Persist qualification outcome.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "qualified": {"type": "boolean", "description": "Qualified?"}}, "required": ["phone", "qualified"]}
-	)
-	def mark_qualification_result(self, args, raw_data):
-		"""Tool: Mark qualification result (one-time use).
-		
-		After setting qualification, toggles itself OFF - qualification doesn't change mid-call.
-		"""
-		try:
-			result_json = conversation_flags.mark_qualification_result(args.get("phone"), bool(args.get("qualified")))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_qualification_result failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Mark that a quote has been presented with reaction.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "quote_reaction": {"type": "string", "description": "Reaction"}}, "required": ["phone", "quote_reaction"]}
-	)
-	def mark_quote_presented(self, args, raw_data):
-		"""Tool: Mark quote presented (one-time use).
-		
-		After marking quote, toggles itself OFF - quote already presented this call.
-		"""
-		try:
-			result_json = conversation_flags.mark_quote_presented(args.get("phone"), args.get("quote_reaction"))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_quote_presented failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Mark wrong person; optionally indicate if right person is available.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}, "right_person_available": {"type": "boolean", "description": "Right person available?"}}, "required": ["phone"]}
-	)
-	def mark_wrong_person(self, args, raw_data):
-		"""Tool: Mark wrong person with robust error handling."""
-		try:
-			result_json = conversation_flags.mark_wrong_person(args.get("phone"), bool(args.get("right_person_available")))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] mark_wrong_person failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
-			return swaig_result
-	
-	@AgentBase.tool(
-		description="Clear all conversation flags for a fresh start.",
-		parameters={"type": "object", "properties": {"phone": {"type": "string", "description": "Caller phone"}}, "required": ["phone"]}
-	)
-	def clear_conversation_flags_tool(self, args, raw_data):
-		"""Tool: Clear conversation flags with robust error handling."""
-		try:
-			result_json = conversation_flags.clear_conversation_flags(args.get("phone"))
-			result_data = json.loads(result_json)
-			
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = result_data
-			return swaig_result
-		except Exception as e:
-			logger.error(f"[ERROR] clear_conversation_flags_tool failed: {e}", exc_info=True)
-			error_data = {"success": False, "error": str(e)}
-			swaig_result = SwaigFunctionResult()
-			swaig_result.data = error_data
 			return swaig_result
 	
 	# ==================== END TOOL DEFINITIONS ====================
