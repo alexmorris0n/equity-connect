@@ -44,7 +44,7 @@ class BarbaraAgent(AgentBase):
 			route="/agent",
 			host="0.0.0.0",  # Listen on all interfaces for Docker/Fly.io
 			port=8080,
-			use_pom=True,  # Enable POM for contexts
+			# use_pom=True,  # DISABLED for testing - using simple contexts
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
@@ -100,6 +100,14 @@ class BarbaraAgent(AgentBase):
 		# ==================================================================
 		# HARDCODED CONTEXTS - Testing simplified flow (Holy Guacamole pattern)
 		# ==================================================================
+		
+		# Add a simple personality prompt
+		self.prompt_add_section(
+			"Personality",
+			"You are Barbara, a professional assistant for Equity Connect. "
+			"You help people with reverse mortgage questions."
+		)
+		
 		contexts = self.define_contexts()
 		default_context = contexts.add_context("default")
 		
@@ -113,7 +121,7 @@ class BarbaraAgent(AgentBase):
 			) \
 			.set_step_criteria("Greeted caller") \
 			.set_functions(["route_to_answer_for_question", "mark_wrong_person"]) \
-			.set_valid_steps(["answer", "verify", "qualify"])
+			.set_valid_steps(["answer"])
 		
 		# ANSWER - Question handling
 		default_context.add_step("answer") \
@@ -127,7 +135,7 @@ class BarbaraAgent(AgentBase):
 			) \
 			.set_step_criteria("User confirmed no more questions") \
 			.set_functions(["search_knowledge", "complete_questions"]) \
-			.set_valid_steps(["exit", "book"])
+			.set_valid_steps(["exit"])
 		
 		# EXIT - End conversation
 		default_context.add_step("exit") \
