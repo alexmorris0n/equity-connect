@@ -2084,7 +2084,7 @@ List specific actions needed based on conversation outcome.
 	)
 	def complete_questions(self, args, raw_data):
 		"""Tool: Mark questions complete and route explicitly (Holy Guacamole pattern)"""
-		next_ctx = args.get("next_context", "exit")
+		next_ctx = args.get("next_context", "goodbye")
 		logger.info(f"=== TOOL CALLED - complete_questions → {next_ctx} ===")
 		
 		result = SwaigFunctionResult()
