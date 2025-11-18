@@ -162,7 +162,9 @@ class BarbaraAgent(AgentBase):
 		default_context.add_step("goodbye") \
 			.add_section("Instructions",
 				"You are in GOODBYE context. Your job:\n"
-				"1. Say: 'Thanks for your time! Walter Richards will reach out soon. Have a great day!'\n"
+				"1. Say: 'Thanks for your time! $broker_name will reach out soon. Have a great day!'\n"
+				"   - Use the broker name from CALLER INFORMATION\n"
+				"   - If no broker name available, say 'Your assigned broker will reach out soon'\n"
 				"2. Wait for their response\n"
 				"3. If they ask ANY question, call route_to_answer_for_question(user_question='their question')\n"
 				"4. If they say 'thank you', 'bye', 'goodbye', or stay silent: do nothing (call will end automatically)\n"
