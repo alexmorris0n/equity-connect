@@ -1724,24 +1724,20 @@ List specific actions needed based on conversation outcome.
 		}
 	)
 	def complete_questions(self, args, raw_data):
-		"""Tool: Mark questions complete and route explicitly (SWML pattern with global_data flag)"""
+		"""Tool: Mark questions complete and route explicitly (Agents SDK pattern)"""
 		logger.info(f"=== TOOL CALLED - complete_questions → {args.get('next_context')} ===")
 		
 		result = SwaigFunctionResult()
 		next_ctx = args.get("next_context", "exit")
 		
-		# SWML pattern: Set global_data flag that step_criteria checks
-		# This makes step_criteria evaluate to TRUE, allowing context transition
-		result.data = {
-			"questions_complete": True,
-			"next_context": next_ctx
-		}
+		# Use Agents SDK method: swml_change_step() (from Holy Guacamole pattern)
+		# This is the correct way to change contexts in SignalWire Agents SDK
+		result.swml_change_step(next_ctx)
 		
-		# Also set the context for routing
-		result.context = next_ctx
+		result.data = {"questions_complete": True, "next_context": next_ctx}
 		result.response = f"Understood. Let me help you with that."
 		
-		logger.info(f"[ROUTING] Set questions_complete flag, routing ANSWER → {next_ctx}")
+		logger.info(f"[ROUTING] Called swml_change_step({next_ctx})")
 		
 		return result
 	
