@@ -2163,9 +2163,100 @@ List specific actions needed based on conversation outcome.
 	
 	# ==================== END TOOL DEFINITIONS ====================
 	
-	# NOTE: on_swml_request is NOT overridden
-	# The SDK will call configure_per_call() automatically for each call
-	# All prompt building happens in configure_per_call via ContextBuilder API
+	def on_swml_request(self, query_params: Dict[str, Any], body_params: Dict[str, Any], headers: Dict[str, Any]):
+		"""Override to inject caller info into prompts BEFORE call starts
+		
+		This runs once per call BEFORE the agent starts speaking.
+		We use it to load caller info and inject it into the personality prompt.
+		"""
+		try:
+			# Extract phone number from request
+			phone = None
+			if 'call' in body_params and 'from' in body_params['call']:
+				phone = body_params['call']['from']
+			elif 'From' in body_params:
+				phone = body_params['From']
+			elif 'caller_id_num' in body_params:
+				phone = body_params['caller_id_num']
+			
+			if not phone:
+				logger.warning("[SWML] No phone number found in request, using generic greeting")
+				return super().on_swml_request(query_params, body_params, headers)
+			
+			logger.info(f"[SWML] Loading caller info for: {phone}")
+			
+			# Query lead by phone
+			lead_data = lead_service.query_lead_direct(phone)
+			
+			if lead_data:
+				logger.info(f"[SWML] Found lead: {lead_data.get('first_name')} {lead_data.get('last_name')}")
+				
+				# Build caller context string
+				caller_info = f"""
+				
+=== CALLER INFORMATION ===
+Name: {lead_data.get('first_name', 'Unknown')} {lead_data.get('last_name', '')}
+Phone: {phone}
+"""
+				
+				if lead_data.get('property_address'):
+					caller_info += f"Property: {lead_data.get('property_address')}\n"
+				elif lead_data.get('property_city') and lead_data.get('property_state'):
+					caller_info += f"Property: {lead_data.get('property_city')}, {lead_data.get('property_state')}\n"
+				
+				if lead_data.get('estimated_equity'):
+					caller_info += f"Estimated Equity: ${lead_data.get('estimated_equity'):,}\n"
+				
+				if lead_data.get('age'):
+					caller_info += f"Age: {lead_data.get('age')}\n"
+				
+				# Add broker info if assigned
+				broker_id = lead_data.get('broker_id')
+				if broker_id:
+					broker_name = lead_data.get('broker_name', 'Walter Richards')
+					caller_info += f"Assigned Broker: {broker_name}\n"
+				
+				caller_info += "========================\n"
+				
+				# Inject into personality prompt (update the section)
+				self.prompt_add_section(
+					"Caller Info",
+					caller_info
+				)
+				
+				# Also set global_data so tools can access it
+				self.set_global_data({
+					"company_name": "Barbara AI",
+					"service_type": "Reverse Mortgage Assistance",
+					"lead_id": lead_data.get('id'),
+					"lead_phone": phone,
+					"first_name": lead_data.get('first_name'),
+					"last_name": lead_data.get('last_name'),
+					"property_address": lead_data.get('property_address'),
+					"property_city": lead_data.get('property_city'),
+					"property_state": lead_data.get('property_state'),
+					"estimated_equity": lead_data.get('estimated_equity'),
+					"age": lead_data.get('age'),
+					"broker_id": broker_id,
+					"broker_name": lead_data.get('broker_name', 'Walter Richards')
+				})
+				
+				logger.info(f"[SWML] ✅ Caller info injected into prompt and global_data")
+			else:
+				logger.info(f"[SWML] No lead found for {phone}, using generic greeting")
+				# Set minimal global_data
+				self.set_global_data({
+					"company_name": "Barbara AI",
+					"service_type": "Reverse Mortgage Assistance",
+					"lead_phone": phone
+				})
+		
+		except Exception as e:
+			logger.error(f"[SWML] Error loading caller info: {e}")
+			# Don't fail the call, just continue without caller info
+		
+		# Call parent implementation to continue normal flow
+		return super().on_swml_request(query_params, body_params, headers)
 	
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
 		"""Handle conversation summary after call ends
