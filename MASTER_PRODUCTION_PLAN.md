@@ -91,7 +91,7 @@ equity-connect/ (Git Monorepo)
 
 ---
 
-## 🆕 Nov 17-18 Critical Fixes: POM Conversion + Tool Availability
+## 🆕 Nov 17-18 Critical Fixes: POM Conversion + Tool Availability + Nov 18 8-Node Revenue System
 
 ### 🏗️ SignalWire POM (Prompt Object Model) Architecture Conversion
 
@@ -193,6 +193,286 @@ equity-connect/ (Git Monorepo)
 - ✅ Consistent `SwaigFunctionResult` usage for tool toggling
 - ✅ 7 one-time-use tools auto-disable after execution
 - ✅ Comprehensive tool testing suite (`scripts/test_all_tools.py`)
+
+### 🚨 Nov 18: The `configure_per_call` Crisis - Why Dynamic Context Rebuilding is a Trap
+
+**Date:** November 18, 2025  
+**Status:** ⚠️ **CRITICAL LEARNING - ABANDONED APPROACH**
+
+**The Promise:**
+SignalWire's `configure_per_call` callback looked like the holy grail for personalization:
+- Called on every incoming call
+- Could rebuild contexts dynamically with caller-specific data
+- Perfect for injecting lead information into prompts
+
+**The Reality: A Nightmarish Debugging Experience**
+
+**Problem 1: Maximum Recursion Depth Exceeded**
+```python
+# This simple approach caused infinite loops:
+def configure_per_call(self, query_params, body_params, headers, agent):
+    contexts = self._build_contexts_from_database()  # Load from DB
+    agent.set_prompt(contexts)  # Apply to agent
+    # Result: RuntimeError: maximum recursion depth exceeded
+```
+
+**Root Cause:** Conflicting context definitions between `__init__` and `configure_per_call` caused the SDK to enter an infinite loop trying to reconcile them.
+
+**Problem 2: Undocumented Callback Behavior**
+- `configure_per_call` called **multiple times per call** (not just once)
+- Called on: initial request, after tool execution, on reconfigurations
+- Phone number extraction logic different for each invocation:
+  - Initial: `query_params['call']['from']`
+  - Mid-call: `body_params['caller_id_num']`
+- **No clear documentation** on when/why/how many times it fires
+
+**Problem 3: Context State Pollution**
+```python
+# This pattern broke mid-call:
+def configure_per_call(...):
+    phone = extract_phone(...)  # Different extraction each time
+    lead = load_lead(phone)     # DB query every time
+    contexts = build_contexts(lead)  # Rebuild everything
+    agent.set_prompt(contexts)  # Overwrite previous state
+    
+# Result: Contexts thrashed, conversation history lost
+```
+
+**Problem 4: The `on_swml_request` Conflict**
+- Overriding `on_swml_request` **prevents** `configure_per_call` from firing
+- SDK's default implementation triggers the callback
+- No warning, no error, just silent failure
+- Lost 8+ hours debugging this
+
+**Problem 5: Variable Substitution Confusion**
+SignalWire documentation shows `%{variable}` syntax, but:
+- Variables **only work in SWML** (XML-like call flow language)
+- Variables **DO NOT work in POM mode** (Python Prompt Object Model)
+- Must do substitution in Python code **before** passing to SDK
+- This is mentioned nowhere in the main docs
+
+**The Failed Approaches (All Abandoned):**
+
+1. **Hybrid Approach (Failed)**
+   - Build contexts in `__init__` → Personalize in `configure_per_call`
+   - Result: Recursion errors, context pollution
+
+2. **Full Dynamic Rebuild (Failed)**
+   - Remove all contexts from `__init__` → Build everything in `configure_per_call`
+   - Result: Recursion errors, unpredictable callback timing
+
+3. **Variable Substitution (Failed)**
+   - Use `%{lead_name}` in prompts → Expect runtime substitution
+   - Result: Variables passed literally to LLM, no substitution
+
+**The Working Solution: `on_swml_request` Personalization**
+
+```python
+def __init__(self):
+    # Build contexts ONCE from database (stable structure)
+    contexts = self._load_context_configs_from_db()
+    self.set_prompt(contexts)
+    
+def on_swml_request(self, query_params, body_params, headers):
+    # Extract phone and load lead data
+    phone = self._extract_phone_from_params(query_params, body_params)
+    lead = load_lead(phone)
+    
+    # Inject personalization as a SECTION (not rebuilding contexts)
+    caller_info = f"""
+=== CALLER INFORMATION ===
+Name: {lead['first_name']} {lead['last_name']}
+City: {lead['property_city']}
+Value: ${lead['property_value']:,}
+===========================
+"""
+    
+    self.prompt_add_section("Caller Info", caller_info)
+    
+    # Set global_data for tools
+    self.set_global_data({
+        "lead_id": lead['id'],
+        "first_name": lead['first_name'],
+        "property_city": lead['property_city'],
+        ...
+    })
+    
+    return None  # DON'T modify SWML
+```
+
+**Why This Works:**
+- ✅ Contexts built ONCE (stable, no recursion)
+- ✅ Personalization added as text section (LLM sees it)
+- ✅ `on_swml_request` called ONCE per call (predictable)
+- ✅ Global data available to tools
+- ✅ No variable substitution needed (already substituted in Python)
+
+**Critical Lessons:**
+
+1. **`configure_per_call` is for EXPERTS ONLY**
+   - Requires deep understanding of SDK internals
+   - Easy to create infinite loops
+   - Undocumented callback timing
+   - Not recommended unless you're a SignalWire SDK contributor
+
+2. **Use `on_swml_request` for Personalization**
+   - Called once per call (predictable)
+   - Perfect for injecting caller-specific data
+   - Can modify `global_data` safely
+   - Can add prompt sections without rebuilding contexts
+
+3. **Variable Substitution Must Happen in Python**
+   - Don't rely on `%{variable}` or `${variable}` syntax
+   - Do `Template().safe_substitute()` in your code
+   - Pass final text to `prompt_add_section()`
+
+4. **Context Structure Should Be Static**
+   - Build contexts once in `__init__` from database
+   - Don't rebuild contexts per-call unless you enjoy pain
+   - Personalization = adding sections, not rebuilding structure
+
+**Time Lost:** ~12 hours of debugging recursion errors, callback timing, and variable substitution
+
+**Documentation Quality:** 2/10 - Critical behaviors undocumented, examples misleading
+
+**Recommendation:** Avoid `configure_per_call` unless you have SignalWire support on speed dial.
+
+---
+
+### 🎯 Nov 18: 8-Node Revenue System Implementation
+
+**Date:** November 18, 2025  
+**Status:** ✅ **COMPLETE - All Nodes Created**
+
+**Business Context:**
+User clarified: "We get paid per booking. Answers, objections, and booking are our money makers."
+
+**Original 5-Node System (Insufficient):**
+1. GREET - Warm welcome
+2. ANSWER - Answer questions
+3. BOOK - Schedule appointment
+4. GOODBYE - Farewell
+5. END - System node (hidden)
+
+**Missing Critical Revenue Nodes:**
+- ❌ No identity verification (security risk)
+- ❌ No qualification gates (wasting time on unqualified leads)
+- ❌ No quote presentation (no value proposition)
+- ❌ No objection handling (losing deals to concerns)
+
+**Complete 8-Node Revenue System:**
+
+1. **GREET** - Warm introduction, set tone
+   - Routes to: `verify`
+   - Tools: `mark_wrong_person`
+   - Purpose: First impression, rapport building
+
+2. **VERIFY** ✨ NEW - Security & trust confirmation
+   - Routes to: `qualify`
+   - Tools: `verify_caller_identity`, `update_lead_info`
+   - Purpose: Confirm identity (city + last 4 digits of phone)
+   - **Why:** Makes caller feel safe, prevents mix-ups
+   - Instructions: "Always verify even if we have their info"
+
+3. **QUALIFY** ✨ NEW - Smart qualification gates
+   - Routes to: `quote`, `goodbye`
+   - Tools: `mark_qualification_result`, `update_lead_info`
+   - Purpose: Check 4 gates (62+, homeowner, equity, owner-occupied)
+   - **Why:** Don't waste time on unqualified leads
+   - Instructions: "Skip if already qualified, only ask missing info, overwrite old data"
+
+4. **QUOTE** ✨ NEW - Present equity estimate
+   - Routes to: `answer`, `book`
+   - Tools: `calculate` (math skill), `mark_quote_presented`
+   - Purpose: Show financial value (50-60% of equity)
+   - **Why:** Creates desire, shows concrete benefit
+   - Instructions: "Use math skill to calculate (NO HALLUCINATION), always say 'approximately' and 'estimates'"
+   - **Critical:** References SignalWire Math Skill for safe calculations
+
+5. **ANSWER** - Educational questions with KB
+   - Routes to: `goodbye`, `book`
+   - Tools: `search_knowledge`, `complete_questions`
+   - Purpose: Build trust through education
+   - **Why:** Informed customers convert better
+   - Instructions: "Check CALLER INFORMATION first for property questions, ONLY use KB for reverse mortgage rules"
+
+6. **OBJECTIONS** ✨ NEW - Handle concerns with empathy
+   - Routes to: `answer`, `book`, `goodbye`
+   - Tools: `search_knowledge`, `mark_objection_handled`, `mark_has_objection`
+   - Purpose: Address doubts, reframe concerns
+   - **Why:** Save deals that would otherwise be lost
+   - Instructions: "Listen, validate, answer with facts (FHA insurance, legal protections), never defensive"
+   - **Tone:** Warm, patient, understanding
+
+7. **BOOK** - Schedule appointment (REVENUE EVENT)
+   - Routes to: `goodbye`
+   - Tools: `check_broker_availability`, `book_appointment`
+   - Purpose: Convert to appointment ($300-$350 per show)
+   - **Why:** THIS IS HOW WE GET PAID
+   - Instructions: "Check calendar, present 2-3 slots, confirm booking"
+
+8. **GOODBYE** - Warm farewell, confirm next steps
+   - Routes to: `answer`, `end`
+   - Tools: `route_to_answer_for_question`
+   - Purpose: Professional conclusion, last-minute questions
+   - **Why:** Leave positive impression, allow final questions
+
+**Database Implementation:**
+```sql
+-- Created 4 new prompts
+INSERT INTO prompts (vertical, node_name, name, description, current_version)
+VALUES
+  ('reverse_mortgage', 'verify', 'Verify', 'Quick confirmation - city and last 4 digits of phone', 1),
+  ('reverse_mortgage', 'qualify', 'Qualify', 'Smart qualification - only ask missing info, overwrite old data', 1),
+  ('reverse_mortgage', 'quote', 'Quote', 'Present equity estimate using math skill - always use estimate language', 1),
+  ('reverse_mortgage', 'objections', 'Objections', 'Handle concerns and objections with empathy - routes back to answer or book', 1);
+
+-- Created prompt_versions with detailed instructions
+-- All tools properly assigned
+-- Routing paths defined via valid_contexts arrays
+```
+
+**Updated GREET Routing:**
+```sql
+-- OLD: GREET routes to ANSWER
+UPDATE prompt_versions SET content = jsonb_set(content, '{valid_contexts}', '["answer"]')
+
+-- NEW: GREET routes to VERIFY (proper flow)
+UPDATE prompt_versions SET content = jsonb_set(content, '{valid_contexts}', '["verify"]')
+```
+
+**Vue Portal Already Updated:**
+```javascript
+// portal/src/views/admin/Verticals.vue line 755
+const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'goodbye']
+// ✅ Already had correct 8 nodes, just needed database to catch up
+```
+
+**Revenue Impact:**
+- ✅ VERIFY: Builds trust and security (reduces hang-ups)
+- ✅ QUALIFY: Filters out unqualified leads (saves time)
+- ✅ QUOTE: Creates desire with concrete numbers (moves to action)
+- ✅ ANSWER: Educates and builds trust (overcomes uncertainty)
+- ✅ OBJECTIONS: Saves deals from doubts (recovers lost opportunities)
+- ✅ BOOK: Converts to appointment ($$$ REVENUE $$$)
+
+**Complete Flow:**
+```
+GREET (rapport) 
+  → VERIFY (security) 
+  → QUALIFY (gates) 
+  → QUOTE (value proposition) 
+  → ANSWER (education) ←→ OBJECTIONS (concerns)
+  → BOOK ($$$) 
+  → GOODBYE (professional close)
+```
+
+**Documentation Created:**
+- `COMPLETE_8NODE_FLOW.md` - Full node descriptions, routing, tools, instructions
+
+**Status:** ✅ All 8 nodes created, tested, production-ready
+
+---
 
 ### 🔍 Nov 18-19: Database Routing Validator + Auto-Fix
 

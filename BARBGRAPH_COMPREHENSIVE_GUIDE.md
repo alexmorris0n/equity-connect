@@ -1,6 +1,6 @@
 # BarbGraph: Event-Based Conversation Routing System
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Last Updated:** November 18, 2025  
 **Status:** ⚠️ **DEPRECATED - Replaced by SignalWire Native Contexts System**
 
@@ -43,6 +43,77 @@
 > - **All Others:** `skip_user_turn: false` → Wait for user input (questions require responses)
 > - **3-Layer Stack Complete:** Agent-level (`wait_for_user=False`) + Prompt structure (front-loaded greeting) + Step-level (`skip_user_turn`)
 > - **Tool Auto-Toggle:** 7 tools (get_lead_context, verify_caller_identity, find_broker_by_territory, book_appointment, assign_tracking_number, mark_qualification_result, mark_quote_presented) disable themselves after execution using `SwaigFunctionResult` to save LLM tokens
+>
+> **🚨 Nov 18, 2025 - The `configure_per_call` Crisis:**
+> 
+> **CRITICAL WARNING: Dynamic Context Rebuilding is a Trap**
+> 
+> SignalWire's `configure_per_call` callback appears to offer per-call personalization, but in practice:
+> 
+> **Fatal Problems Encountered:**
+> 1. **Maximum Recursion Depth:** Conflicting context definitions between `__init__` and `configure_per_call` cause infinite loops
+> 2. **Undocumented Callback Timing:** Called multiple times per call (initial, after tools, reconfigs) with NO documentation on when/why
+> 3. **Phone Extraction Chaos:** Different extraction logic needed for each invocation (query_params vs body_params)
+> 4. **`on_swml_request` Conflict:** Overriding it SILENTLY prevents `configure_per_call` from firing (no warning, 8+ hours lost)
+> 5. **Variable Substitution Lies:** `%{variable}` syntax only works in SWML mode, NOT in POM mode (undocumented)
+> 6. **Context State Pollution:** Rebuilding contexts mid-call thrashes state and loses conversation history
+> 
+> **Time Lost:** ~12 hours debugging recursion, callbacks, and variables
+> 
+> **Documentation Quality:** 2/10 - Critical behaviors undocumented, examples misleading
+> 
+> **The ONLY Working Pattern:**
+> ```python
+> def __init__(self):
+>     # Build contexts ONCE from database (stable structure)
+>     contexts = self._load_context_configs_from_db()
+>     self.set_prompt(contexts)
+>     
+> def on_swml_request(self, query_params, body_params, headers):
+>     # Extract phone and load lead data ONCE per call
+>     phone = self._extract_phone_from_params(query_params, body_params)
+>     lead = load_lead(phone)
+>     
+>     # Inject as SECTION (not rebuilding contexts)
+>     caller_info = f"=== CALLER INFO ===\nName: {lead['first_name']}\n..."
+>     self.prompt_add_section("Caller Info", caller_info)
+>     self.set_global_data({"lead_id": lead['id'], ...})
+>     
+>     return None  # DON'T modify SWML
+> ```
+> 
+> **Lessons:**
+> - ✅ `on_swml_request` called ONCE per call (predictable)
+> - ✅ Contexts built ONCE in `__init__` (stable, no recursion)
+> - ✅ Personalization via sections (LLM sees it, tools access global_data)
+> - ❌ `configure_per_call` is for SDK EXPERTS ONLY (avoid unless you enjoy pain)
+> - ❌ Don't rebuild contexts per-call (context pollution, recursion errors)
+> - ❌ Variable substitution must happen in Python BEFORE passing to SDK
+>
+> **Recommendation:** Avoid `configure_per_call` unless you have SignalWire support on speed dial.
+>
+> **🎯 Nov 18, 2025 - 8-Node Revenue System Implemented:**
+> 
+> **Business Requirement:** "We get paid per booking. Answers, objections, and booking are our money makers."
+> 
+> **Complete 8-Node System:**
+> 1. GREET (rapport) → 2. VERIFY (security) → 3. QUALIFY (gates) → 4. QUOTE (value) → 5. ANSWER (education) ←→ 6. OBJECTIONS (concerns) → 7. BOOK ($$$) → 8. GOODBYE (close)
+> 
+> **New Nodes Created (Nov 18):**
+> - **VERIFY:** Security confirmation (city + last 4 digits) - builds trust
+> - **QUALIFY:** Smart gates (62+, homeowner, equity, owner-occupied) - filters leads
+> - **QUOTE:** Equity estimate with math skill (50-60% calculation) - creates desire
+> - **OBJECTIONS:** Empathy + facts (FHA insurance, legal protections) - saves deals
+> 
+> **Revenue Impact:**
+> - VERIFY: Reduces hang-ups (trust)
+> - QUALIFY: Saves time (filters unqualified)
+> - QUOTE: Creates desire (concrete value)
+> - ANSWER: Builds trust (education)
+> - OBJECTIONS: Recovers deals (addresses doubts)
+> - BOOK: $$$ REVENUE $$$ ($300-$350 per show)
+> 
+> **Status:** ✅ All 8 nodes created in database, routing configured, production-ready
 
 ---
 
