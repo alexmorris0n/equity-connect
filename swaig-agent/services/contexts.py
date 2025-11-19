@@ -90,6 +90,7 @@ async def build_contexts_structure(
         FUNCTION_NAME_MAP = {
             "calculate": "calculate_reverse_mortgage",  # Agent SDK legacy → SWAIG custom function
             "math": "calculate_reverse_mortgage",  # Agent SDK native → SWAIG custom function
+            "mark_qualification_result": "mark_qualification_result",  # Vue/database uses this name, bridge supports it
         }
         
         if functions:

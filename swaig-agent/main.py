@@ -208,6 +208,7 @@ async def barbara_agent(request: Request):
                                         "mark_greeted",
                                         "mark_verified",
                                         "mark_qualified",
+                                        "mark_qualification_result",  # Vue/database uses this name
                                         "mark_quote_presented",
                                         "mark_ready_to_book",
                                         "calculate_reverse_mortgage",
@@ -311,6 +312,16 @@ async def get_function_declarations(request: Request):
                     }
                 }
             },
+            "mark_qualification_result": {
+                "function": "mark_qualification_result",
+                "description": "Mark caller qualification status (age 62+, owner-occupied, equity). Same as mark_qualified - use this when database/Vue uses mark_qualification_result name.",
+                "parameters": {  # Changed from "argument"
+                    "type": "object",
+                    "properties": {
+                        "qualified": {"type": "boolean", "description": "Meets qualification criteria"}
+                    }
+                }
+            },
             "mark_quote_presented": {
                 "function": "mark_quote_presented",
                 "description": "Mark that financial quote has been presented",
@@ -334,7 +345,7 @@ async def get_function_declarations(request: Request):
             },
             "calculate_reverse_mortgage": {
                 "function": "calculate_reverse_mortgage",
-                "description": "Calculate available reverse mortgage funds (accurate math, no hallucination)",
+                "description": "ALWAYS call this when presenting a quote or answering 'how much can I get?' questions. Calculate available reverse mortgage funds using accurate HECM formulas - NEVER estimate or guess amounts. Use this function every time you need to provide financial estimates to avoid hallucination.",
                 "parameters": {  # Changed from "argument"
                     "type": "object",
                     "properties": {

@@ -837,6 +837,8 @@ const availableTools = [
   'reschedule_appointment',
   // Knowledge
   'search_knowledge',
+  // Calculations
+  'calculate_reverse_mortgage',
   // Interaction & Tracking
   'assign_tracking_number',
   'send_appointment_confirmation',

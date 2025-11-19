@@ -24,10 +24,12 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
         return {"response": "Error: Could not find conversation state"}
     
     # Map function names to flag names
+    # Support both mark_qualified (bridge name) and mark_qualification_result (Vue/database name)
     flag_map = {
         "mark_greeted": "greeted",
         "mark_verified": "verified",
         "mark_qualified": "qualified",
+        "mark_qualification_result": "qualified",  # Vue/database uses this name
         "mark_quote_presented": "quote_presented",
         "mark_ready_to_book": "ready_to_book",
         "mark_has_objection": "has_objection",
@@ -43,7 +45,7 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
     conversation_data_update = {}
     
     # Handle special cases
-    if function_name == "mark_qualified":
+    if function_name in ["mark_qualified", "mark_qualification_result"]:
         # Also update top-level qualified field
         qualified_value = args.get("qualified", False)
         await update_conversation_state(phone, {"qualified": qualified_value})
