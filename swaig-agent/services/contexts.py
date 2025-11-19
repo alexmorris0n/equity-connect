@@ -89,6 +89,9 @@ async def build_contexts_structure(
         # Add step_criteria if available in database
         if node_config and node_config.get('step_criteria'):
             step["step_criteria"] = node_config.get('step_criteria')
+            logger.info(f"[CONTEXTS] Added step_criteria for '{node_name}': {node_config.get('step_criteria')[:80]}...")
+        else:
+            logger.warning(f"[CONTEXTS] ⚠️  No step_criteria for '{node_name}' - AI may not know when to transition!")
         
         # Set as default if it's the starting node
         if node_name == starting_node:

@@ -201,7 +201,11 @@ async def get_node_config(node_name: str, vertical: str = "reverse_mortgage") ->
                 'functions': content.get('functions', []),
                 'step_criteria': content.get('step_criteria', '')
             }
-            logger.info(f"[DB] Loaded full config for node: {node_name} (valid_contexts: {len(config.get('valid_contexts', []))}, functions: {len(config.get('functions', []))})")
+            logger.info(f"[DB] Loaded full config for node: {node_name}")
+            logger.info(f"[DB]   - valid_contexts: {config.get('valid_contexts', [])}")
+            logger.info(f"[DB]   - functions: {config.get('functions', [])}")
+            logger.info(f"[DB]   - step_criteria: {config.get('step_criteria', '')[:100] if config.get('step_criteria') else 'MISSING'}...")
+            logger.info(f"[DB]   - instructions length: {len(config.get('instructions', ''))} chars")
             return config
         
         logger.warning(f"[DB] No active version found for prompt_id: {prompt_id}")
