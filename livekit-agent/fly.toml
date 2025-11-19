@@ -1,8 +1,8 @@
-app = "equity-agent"
+app = "barbara-livekit"
 primary_region = "lax"
 
 [build]
-  dockerfile = "../deploy/agent/Dockerfile"
+  dockerfile = "deploy/agent/Dockerfile"
   build_args = {}
 
 [env]
