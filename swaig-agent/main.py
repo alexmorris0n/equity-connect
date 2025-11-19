@@ -36,25 +36,55 @@ async def barbara_agent(request: Request):
         # Extract caller info from SignalWire request
         body = await request.json()
         
+        # DEBUG: Log full webhook structure (first 2000 chars to avoid huge logs)
+        body_str = str(body)[:2000]
+        logger.info(f"[AGENT] Webhook body structure (truncated): {body_str}")
+        
         # Extract phone number from SignalWire webhook structure
-        # Structure: params.device.params.from_number / to_number
+        # Based on actual webhook payloads, check multiple possible locations
         params = body.get('params', {})
-        device_params = params.get('device', {}).get('params', {})
         direction = params.get('direction', 'inbound').lower()
         
-        # For inbound: from_number is the caller
-        # For outbound: to_number is the lead we're calling
-        if direction == 'inbound':
-            caller_id = device_params.get('from_number', 'unknown')
-        else:
-            caller_id = device_params.get('to_number', 'unknown')
+        caller_id = None
         
-        # Fallback to old format if new structure not found
-        if caller_id == 'unknown':
-            caller_id = body.get('From', body.get('caller_id_number', 'unknown'))
+        # Structure 1: params.request_payload.SWMLCall.from_number (from error webhook example)
+        request_payload = params.get('request_payload', {})
+        swml_call = request_payload.get('SWMLCall', {})
+        if swml_call.get('from_number'):
+            caller_id = swml_call.get('from_number')
+            logger.info(f"[AGENT] Found phone in params.request_payload.SWMLCall.from_number: {caller_id}")
+        elif swml_call.get('to_number') and direction == 'outbound':
+            caller_id = swml_call.get('to_number')
+            logger.info(f"[AGENT] Found phone in params.request_payload.SWMLCall.to_number: {caller_id}")
+        
+        # Structure 2: params.request_payload.caller_id_number
+        if not caller_id and request_payload.get('caller_id_number'):
+            caller_id = request_payload.get('caller_id_number')
+            logger.info(f"[AGENT] Found phone in params.request_payload.caller_id_number: {caller_id}")
+        
+        # Structure 3: params.device.params.from_number (from initial webhook example)
+        if not caller_id:
+            device_params = params.get('device', {}).get('params', {})
+            if device_params.get('from_number'):
+                caller_id = device_params.get('from_number')
+                logger.info(f"[AGENT] Found phone in params.device.params.from_number: {caller_id}")
+            elif device_params.get('to_number') and direction == 'outbound':
+                caller_id = device_params.get('to_number')
+                logger.info(f"[AGENT] Found phone in params.device.params.to_number: {caller_id}")
+        
+        # Structure 4: Top-level fallbacks
+        if not caller_id:
+            caller_id = body.get('From') or body.get('caller_id_number') or body.get('caller_id_num')
+            if caller_id:
+                logger.info(f"[AGENT] Found phone in top-level: {caller_id}")
+        
+        # Final fallback
+        if not caller_id:
+            caller_id = 'unknown'
+            logger.error(f"[AGENT] Could not extract phone number. Body top-level keys: {list(body.keys())}, params keys: {list(params.keys()) if params else 'N/A'}")
         
         # Normalize phone number (remove +1 and +)
-        phone = caller_id.replace('+1', '').replace('+', '') if caller_id != 'unknown' else 'unknown'
+        phone = caller_id.replace('+1', '').replace('+', '').strip() if caller_id != 'unknown' else 'unknown'
         logger.info(f"[AGENT] Call from: {caller_id} (normalized: {phone}, direction: {direction})")
         
         # Load lead and conversation state from database
@@ -87,6 +117,13 @@ async def barbara_agent(request: Request):
         from services.database import get_voice_config
         voice_config = await get_voice_config(vertical="reverse_mortgage", language_code="en-US")
         voice_string = voice_config.get("voice_string", "elevenlabs.rachel")
+        
+        # Validate voice_string is not None/empty
+        if not voice_string or voice_string == "None":
+            logger.error(f"[AGENT] Invalid voice_string: {voice_string}, using fallback")
+            voice_string = "elevenlabs.rachel"
+        
+        logger.info(f"[AGENT] Voice loaded: {voice_string} (engine: {voice_config.get('engine')}, voice: {voice_config.get('voice_name')})")
         
         # Build SWML response (per SignalWire official docs)
         # CRITICAL: Vendor parameters (llm_vendor, stt_vendor, tts_vendor) DO NOT EXIST in ai.params!

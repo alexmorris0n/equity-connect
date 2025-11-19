@@ -203,10 +203,15 @@ async def get_voice_config(vertical: str = "reverse_mortgage", language_code: st
             voice_name = config.get('voice_name', 'rachel')
             model = config.get('model')
             
+            # Validate voice_name is not None/empty
+            if not voice_name:
+                logger.warning(f"[DB] Voice name is empty in DB, using fallback")
+                voice_name = 'rachel'
+            
             # Build voice string per SignalWire format
             voice_string = build_voice_string(engine, voice_name)
             
-            logger.info(f"[DB] Loaded voice config: {engine}.{voice_name} (language: {language_code})")
+            logger.info(f"[DB] Loaded voice config: {voice_string} (engine: {engine}, voice: {voice_name}, language: {language_code})")
             return {
                 "engine": engine,
                 "voice_name": voice_name,
@@ -214,12 +219,13 @@ async def get_voice_config(vertical: str = "reverse_mortgage", language_code: st
                 "voice_string": voice_string
             }
     except Exception as e:
-        logger.warning(f"[DB] Failed to load voice config from DB: {e}, using fallback")
+        logger.error(f"[DB] Failed to load voice config from DB: {e}, using fallback", exc_info=True)
     
     # Fallback to defaults
     engine = "elevenlabs"
     voice_name = "rachel"
     voice_string = build_voice_string(engine, voice_name)
+    logger.info(f"[DB] Using fallback voice: {voice_string}")
     
     return {
         "engine": engine,
