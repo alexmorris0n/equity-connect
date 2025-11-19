@@ -255,13 +255,7 @@ List specific actions needed based on conversation outcome.
 				if step_cfg.get("step_criteria"):
 					step.set_step_criteria(step_cfg["step_criteria"])
 				
-				# CRITICAL: Default to False (wait for user) if not explicitly set
-				skip_user_turn_raw = step_cfg.get("skip_user_turn", False)
-				if isinstance(skip_user_turn_raw, str):
-					skip_user_turn = skip_user_turn_raw.lower() in ('true', '1', 'yes')
-				else:
-					skip_user_turn = bool(skip_user_turn_raw)
-				step.skip_user_turn = skip_user_turn
+				# skip_user_turn is not supported on Step object in this SDK
 				
 				functions = self._ensure_list(step_cfg.get("functions"))
 				if functions:
@@ -270,17 +264,11 @@ List specific actions needed based on conversation outcome.
 				if valid_steps:
 					step.set_valid_steps(valid_steps)
 
-				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
-				action = step_cfg.get("action")
-				if action and action.get("type") == "set_context":
-					target_ctx = action.get("context")
-					if target_ctx and target_ctx not in step_valid_contexts:
-						step_valid_contexts.append(target_ctx)
-				if step_valid_contexts:
-					step.set_valid_contexts(step_valid_contexts)
+				# NOTE: 'valid_contexts' is set at the Context level, not Step level in this SDK version.
+				# We rely on context.set_valid_contexts() which was called above.
 				
-				# Add change callback
-				step.on_step_change(self._log_context_change)
+				# NOTE: 'skip_user_turn' and 'on_step_change' are not supported in the public Step API
+				# Removing them to prevent AttributeError.
 
 	def _get_voice_config(self, vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
 		"""Load voice configuration from database"""
