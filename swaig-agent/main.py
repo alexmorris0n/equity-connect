@@ -35,11 +35,27 @@ async def barbara_agent(request: Request):
     try:
         # Extract caller info from SignalWire request
         body = await request.json()
-        caller_id = body.get('From', body.get('caller_id_number', 'unknown'))
         
-        # Normalize phone number (remove +1)
-        phone = caller_id.replace('+1', '').replace('+', '')
-        logger.info(f"[AGENT] Call from: {caller_id} (normalized: {phone})")
+        # Extract phone number from SignalWire webhook structure
+        # Structure: params.device.params.from_number / to_number
+        params = body.get('params', {})
+        device_params = params.get('device', {}).get('params', {})
+        direction = params.get('direction', 'inbound').lower()
+        
+        # For inbound: from_number is the caller
+        # For outbound: to_number is the lead we're calling
+        if direction == 'inbound':
+            caller_id = device_params.get('from_number', 'unknown')
+        else:
+            caller_id = device_params.get('to_number', 'unknown')
+        
+        # Fallback to old format if new structure not found
+        if caller_id == 'unknown':
+            caller_id = body.get('From', body.get('caller_id_number', 'unknown'))
+        
+        # Normalize phone number (remove +1 and +)
+        phone = caller_id.replace('+1', '').replace('+', '') if caller_id != 'unknown' else 'unknown'
+        logger.info(f"[AGENT] Call from: {caller_id} (normalized: {phone}, direction: {direction})")
         
         # Load lead and conversation state from database
         lead = await get_lead_by_phone(phone)
@@ -66,6 +82,11 @@ async def barbara_agent(request: Request):
             phone_number=phone,
             vertical="reverse_mortgage"
         )
+        
+        # Load voice configuration from database
+        from services.database import get_voice_config
+        voice_config = await get_voice_config(vertical="reverse_mortgage", language_code="en-US")
+        voice_string = voice_config.get("voice_string", "elevenlabs.rachel")
         
         # Build SWML response (per SignalWire official docs)
         # CRITICAL: Vendor parameters (llm_vendor, stt_vendor, tts_vendor) DO NOT EXIST in ai.params!
@@ -109,8 +130,9 @@ async def barbara_agent(request: Request):
                             "languages": [{
                                 "name": "English",
                                 "code": "en-US",
-                                # TTS Configuration (ElevenLabs) - Format: engine.voice_id
-                                "voice": "elevenlabs.tiffany",
+                                # TTS Configuration - Loaded from agent_voice_config table
+                                # Format: engine.voice_id (e.g., elevenlabs.rachel, openai.alloy)
+                                "voice": voice_string,
                                 # Speech fillers to reduce dead air
                                 "speech_fillers": [
                                     "Let me think...",

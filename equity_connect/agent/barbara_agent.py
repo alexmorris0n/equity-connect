@@ -483,7 +483,11 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Check availability"""
 		logger.info("=== TOOL CALLED - check_broker_availability ===")
 		try:
-			broker_id = args.get("broker_id") or raw_data.get("global_data", {}).get("broker", {}).get("id")
+			# Logic to extract broker_id if missing in args
+			broker_id = args.get("broker_id")
+			if not broker_id and raw_data:
+				broker_id = raw_data.get("global_data", {}).get("broker", {}).get("id")
+			
 			if not broker_id:
 				return SwaigFunctionResult("No broker assigned.")
 				
