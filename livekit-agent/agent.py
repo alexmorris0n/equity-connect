@@ -163,24 +163,10 @@ class BarbaraAgent(Agent):
         
         # Store instructions in userdata for persistence across turns
         if self.session:
-            try:
-                # Try to access userdata - will raise ValueError if not set
-                userdata = self.session.userdata
-                if userdata is None:
-                    self.session.userdata = {}
-                    userdata = self.session.userdata
-            except ValueError:
-                # userdata not set, initialize it
-                self.session.userdata = {}
-                userdata = self.session.userdata
-            
-            # Store instructions
+            userdata = self.session.userdata
             if isinstance(userdata, dict):
                 userdata['current_instructions'] = full_prompt
                 userdata['current_node'] = node_name
-            else:
-                setattr(userdata, 'current_instructions', full_prompt)
-                setattr(userdata, 'current_node', node_name)
         
         # Store in instance variable as fallback
         self._instructions = full_prompt
@@ -192,14 +178,8 @@ class BarbaraAgent(Agent):
     
     async def _get_current_instructions(self) -> str:
         """Get current instructions, with fallback to instance variable."""
-        try:
-            if self.session and self.session.userdata:
-                if isinstance(self.session.userdata, dict):
-                    return self.session.userdata.get('current_instructions', self._instructions)
-                else:
-                    return getattr(self.session.userdata, 'current_instructions', self._instructions)
-        except (ValueError, AttributeError):
-            pass
+        if self.session and self.session.userdata and isinstance(self.session.userdata, dict):
+            return self.session.userdata.get('current_instructions', self._instructions)
         return self._instructions
     
     async def check_and_route(self):
@@ -820,6 +800,7 @@ async def entrypoint(ctx: JobContext):
         session = AgentSession(
             llm=llm_instance,  # RealtimeModel instance (has built-in turn detection)
             vad=ctx.proc.userdata["vad"],
+            userdata={},  # Initialize userdata as empty dict for per-turn instruction persistence
             # Interruption settings from template
             allow_interruptions=allow_interruptions,
             min_interruption_duration=min_interruption_duration,
@@ -835,6 +816,7 @@ async def entrypoint(ctx: JobContext):
             llm=llm_string,  # LiveKit Inference string format
             tts=tts_string,  # LiveKit Inference string format with voice ID
             vad=ctx.proc.userdata["vad"],
+            userdata={},  # Initialize userdata as empty dict for per-turn instruction persistence
             turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
             # Endpointing timing - faster response
             min_endpointing_delay=min_endpointing_delay,
