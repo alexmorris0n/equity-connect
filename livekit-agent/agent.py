@@ -65,6 +65,7 @@ class BarbaraAgent(Agent):
         self.call_type = call_type  # For context injection
         self.lead_context = lead_context or {}  # For context injection
         self.current_node = "greet"
+        self._instructions = instructions  # Store instructions (base class instructions is read-only)
         # Note: self.session is a property from Agent base class, set automatically
     
     async def on_enter(self):
@@ -121,7 +122,8 @@ class BarbaraAgent(Agent):
         # Update the agent's instructions WITHOUT clearing conversation history
         # The session maintains the full conversation context (user messages, agent responses, tool calls)
         # Only the system-level instructions change to guide the next phase
-        self.instructions = full_prompt  # CRITICAL: Persist instructions to Agent
+        # Note: self.instructions is read-only, so we store in _instructions and pass to generate_reply
+        self._instructions = full_prompt
         
         # If speak_now, generate immediate response with new instructions
         if speak_now and self.session:
@@ -275,7 +277,17 @@ async def entrypoint(ctx: JobContext):
     
     room = ctx.room
     room_name = room.name
+    
+    # Try to extract phone number from room name as early fallback
+    # LiveKit SIP rooms are named like: sip-_+16505300051_LWWx7vjKCBcD
     caller_phone: Optional[str] = None
+    if room_name.startswith("sip-") and "+" in room_name:
+        # Extract phone number from room name pattern: sip-_+16505300051_...
+        import re
+        phone_match = re.search(r'\+1?\d{10,}', room_name)
+        if phone_match:
+            caller_phone = phone_match.group(0)
+            logger.info(f"📞 Extracted phone from room name: {caller_phone}")
     
     # Parse metadata - check BOTH room metadata AND participant metadata AND participant attributes
     # NOTE: LiveKit SIP dispatch rule can pass data via:
@@ -396,10 +408,10 @@ async def entrypoint(ctx: JobContext):
             # Query Supabase for lead by phone number
             from services.supabase import get_supabase_client
             supabase = get_supabase_client()
-            response = supabase.table("leads").select(
+            # Supabase Python client: .or_() must come before .select()
+            or_conditions = f"primary_phone.ilike.%{caller_phone}%,primary_phone_e164.eq.{caller_phone}"
+            response = supabase.table("leads").or_(or_conditions).select(
                 "*, brokers!assigned_broker_id(*)"
-            ).or_(
-                f"primary_phone.ilike.%{caller_phone}%,primary_phone_e164.eq.{caller_phone}"
             ).limit(1).execute()
             
             if response.data and len(response.data) > 0:
