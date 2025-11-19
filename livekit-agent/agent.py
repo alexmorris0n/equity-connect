@@ -45,7 +45,7 @@ from services.prompt_loader import load_node_prompt
 from langgraph.graph import END
 
 
-class EquityConnectAgent(Agent):
+class BarbaraAgent(Agent):
     """Voice agent with event-based node routing"""
     
     def __init__(
@@ -434,12 +434,12 @@ async def entrypoint(ctx: JobContext):
         instructions = await load_prompt_instructions(call_type)
         if not instructions:
             logger.warning(f"⚠️ Prompt {call_type} not found, using fallback")
-            instructions = "You are Barbara, a warm voice assistant for Equity Connect. Be friendly and helpful."
+            instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
     else:
         # Regular call - use default template + prompt
         logger.info(f"📞 Regular call - using defaults")
         template = await load_default_template()
-        instructions = "You are Barbara, a warm voice assistant for Equity Connect. Be friendly and helpful."
+        instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
     
     # Get VAD settings FIRST (used by both STT and AgentSession)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
@@ -570,7 +570,7 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🏢 Vertical: {vertical}")
     
     # Create agent with phone number, vertical, call_type, and lead context for event-based routing
-    agent = EquityConnectAgent(
+    agent = BarbaraAgent(
         instructions=instructions,
         phone_number=caller_phone,
         vertical=vertical,
@@ -605,7 +605,7 @@ async def entrypoint(ctx: JobContext):
         """Agent finished speaking - check if we should route"""
         await agent.check_and_route()
     
-    # Start the session with custom EquityConnectAgent that auto-greets on entry
+    # Start the session with custom BarbaraAgent that auto-greets on entry
     exit_reason: Optional[str] = None
     try:
         await session.start(
@@ -726,7 +726,7 @@ def get_hardcoded_fallback() -> dict:
         "tts_voice_id": "21m00Tcm4TlvDq8ikWAM",
         "llm_provider": "openai",
         "llm_model": "gpt-4o",
-        "instructions": "You are Barbara, a friendly AI assistant for Equity Connect.",
+        "instructions": "You are Barbara, a friendly AI assistant.",
     }
 
 

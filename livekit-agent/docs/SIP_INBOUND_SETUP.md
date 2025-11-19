@@ -83,7 +83,7 @@ Replace `YOUR_LIVEKIT_SIP_DOMAIN` with your actual LiveKit SIP domain.
 2. Create a new dispatch rule:
 
 **Rule Configuration:**
-- **Name:** `equity-connect-agent`
+- **Name:** `barbara-livekit-agent`
 - **Pattern:** `sip-*` (matches all SIP rooms)
 - **Agent Type:** `python`
 - **Entrypoint:** `agent.py:entrypoint`

@@ -163,7 +163,7 @@ def build_variables(lead: Optional[Dict[str, Any]], broker: Optional[Dict[str, A
     variables = {
         'brokerFirstName': 'your specialist',
         'brokerFullName': 'your specialist',
-        'brokerCompany': 'Equity Connect',
+        'brokerCompany': 'Barbara',
         'leadFirstName': '',
         'leadLastName': '',
         'propertyCity': '',
@@ -202,7 +202,7 @@ def build_variables(lead: Optional[Dict[str, Any]], broker: Optional[Dict[str, A
             'brokerFirstName': broker_name_parts[0] if broker_name_parts else 'your specialist',
             'brokerLastName': broker_name_parts[1] if len(broker_name_parts) > 1 else '',
             'brokerFullName': broker_data.get('contact_name', 'your specialist'),
-            'brokerCompany': broker_data.get('company_name', 'Equity Connect'),
+            'brokerCompany': broker_data.get('company_name', 'Barbara'),
             'brokerPhone': broker_data.get('phone', ''),
             'brokerNMLS': broker_data.get('nmls_number', ''),
         })

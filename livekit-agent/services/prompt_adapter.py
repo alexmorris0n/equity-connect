@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Emergency fallback prompt if conversion fails catastrophically
 EMERGENCY_FALLBACK_PROMPT = """
-You are Barbara, a warm, professional voice assistant for Equity Connect.
+You are Barbara, a warm, professional voice assistant.
 You help seniors understand reverse mortgage options and schedule appointments with brokers.
 
 PERSONALITY:
@@ -112,7 +112,7 @@ def _convert_prompt_internal(prompt_content: Dict[str, Any], variables: Dict[str
         parts.append(prompt_content["role"].strip())
     else:
         parts.append(
-            "You are Barbara, a warm, professional voice assistant for Equity Connect. "
+            "You are Barbara, a warm, professional voice assistant. "
             "You help seniors understand reverse mortgage options, verify their information, "
             "answer questions accurately, and schedule time with their assigned broker."
         )

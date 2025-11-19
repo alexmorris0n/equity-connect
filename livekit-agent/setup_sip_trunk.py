@@ -7,7 +7,7 @@ import json
 from livekit import api
 
 # LiveKit credentials
-LIVEKIT_URL = "https://equity-livekit-core.fly.dev"
+LIVEKIT_URL = "wss://barbara-o9fmqv1o.livekit.cloud"
 LIVEKIT_API_KEY = "lk_prod_9f2b74d1c3a84e06b1f5c932a7c4f5dd"
 LIVEKIT_API_SECRET = "b8f3c1a7d2e94f0c8b6a3d5e7c2f9140a3b5c7d9e1f2a4b6c8d0e2f3a5b7c9d1"
 
@@ -46,7 +46,7 @@ async def main():
     print("\nDispatch rule configuration (after trunk is created):")
     print(json.dumps(dispatch_config, indent=2))
     print("\nSave these to files and use with livekit-cli:")
-    print("  livekit-cli create-sip-trunk --url https://equity-livekit-core.fly.dev \\")
+    print("  livekit-cli create-sip-trunk --url wss://barbara-o9fmqv1o.livekit.cloud \\")
     print("    --api-key lk_prod_9f2b74d1c3a84e06b1f5c932a7c4f5dd \\")
     print("    --api-secret b8f3c1a7d2e94f0c8b6a3d5e7c2f9140a3b5c7d9e1f2a4b6c8d0e2f3a5b7c9d1 \\")
     print("    --request trunk.json")
@@ -60,9 +60,9 @@ async def main():
     print(f"Dispatch Rule ID: {dispatch_rule_id}")
     print("\nNext steps:")
     print("1. Configure SignalWire phone numbers to point to:")
-    print("   https://equity-agent-api.fly.dev/api/swml-inbound?to={to}&from={from}")
+    print("   https://barbara-livekit-api.fly.dev/api/swml-inbound?to={to}&from={from}")
     print("\n2. For outbound calls via SWML, use:")
-    print("   https://equity-agent-api.fly.dev/api/swml-outbound?room={room_name}&lead_id={lead_id}")
+    print("   https://barbara-livekit-api.fly.dev/api/swml-outbound?room={room_name}&lead_id={lead_id}")
     print()
     
     return 0

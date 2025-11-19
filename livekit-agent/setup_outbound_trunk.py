@@ -5,7 +5,7 @@ import asyncio
 from livekit import api
 
 # LiveKit credentials
-LIVEKIT_URL = "wss://equity-livekit-core.fly.dev"
+LIVEKIT_URL = "wss://barbara-o9fmqv1o.livekit.cloud"
 LIVEKIT_API_KEY = "lk_prod_9f2b74d1c3a84e06b1f5c932a7c4f5dd"
 LIVEKIT_API_SECRET = "b8f3c1a7d2e94f0c8b6a3d5e7c2f9140a3b5c7d9e1f2a4b6c8d0e2f3a5b7c9d1"
 

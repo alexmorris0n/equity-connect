@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 # LiveKit credentials
-$LIVEKIT_URL = "wss://equity-livekit-core.fly.dev"
+$LIVEKIT_URL = "wss://barbara-o9fmqv1o.livekit.cloud"
 $LIVEKIT_API_KEY = "lk_prod_9f2b74d1c3a84e06b1f5c932a7c4f5dd"
 $LIVEKIT_API_SECRET = "b8f3c1a7d2e94f0c8b6a3d5e7c2f9140a3b5c7d9e1f2a4b6c8d0e2f3a5b7c9d1"
 
@@ -117,9 +117,9 @@ Write-Host "Dispatch Rule ID: $DISPATCH_RULE_ID" -ForegroundColor White
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "1. Configure SignalWire phone numbers to point to:" -ForegroundColor White
-Write-Host "   https://equity-agent-api.fly.dev/api/swml-inbound?to={to}&from={from}" -ForegroundColor Cyan
+Write-Host "   https://barbara-livekit-api.fly.dev/api/swml-inbound?to={to}&from={from}" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "2. For outbound calls via SWML, use:" -ForegroundColor White
-Write-Host "   https://equity-agent-api.fly.dev/api/swml-outbound?room={room_name}&lead_id={lead_id}" -ForegroundColor Cyan
+Write-Host "   https://barbara-livekit-api.fly.dev/api/swml-outbound?room={room_name}&lead_id={lead_id}" -ForegroundColor Cyan
 Write-Host ""
 
