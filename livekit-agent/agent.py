@@ -269,42 +269,22 @@ async def entrypoint(ctx: JobContext):
     except Exception as e:
         logger.warning(f"Failed to parse room metadata: {e}")
     
-    # If no room metadata, check participant metadata (from token) or attributes (from SIP)
+    # If no room metadata, check participant metadata (for custom data)
     if not metadata or not metadata.get("template_id"):
         try:
-            # Get the first participant's metadata (should be the SIP participant)
+            # Get the first participant's metadata (custom test data)
             participants = list(room.remote_participants.values())
             if participants:
                 participant = participants[0]
                 
-                # LiveKit SIP also stores phone in participant identity
-                # Format: "sip:+16505300051@domain" or just the phone number
-                participant_identity = participant.identity
-                logger.info(f"🔍 Participant identity: {participant_identity}")
-                
-                # Extract phone from SIP identity if present
-                if participant_identity and "sip:" in participant_identity:
-                    # Extract phone from "sip:+16505300051@domain" format
-                    phone_match = participant_identity.split("sip:")[1].split("@")[0]
-                    if not metadata.get("sip_from"):
-                        metadata["sip_from"] = phone_match
-                        logger.info(f"✅ Extracted sip_from from participant identity: {phone_match}")
-                
-                # Try participant.metadata first
+                # Try participant.metadata for custom test configurations
                 participant_metadata_str = participant.metadata or "{}"
                 logger.info(f"🔍 Raw participant.metadata: {participant_metadata_str}")
                 if participant_metadata_str and participant_metadata_str != "{}":
                     metadata = json.loads(participant_metadata_str) if isinstance(participant_metadata_str, str) else participant_metadata_str
                     logger.info(f"✅ Using participant metadata: {metadata}")
-                
-                # Also try participant.attributes (SIP-specific)
-                if hasattr(participant, 'attributes') and participant.attributes:
-                    logger.info(f"🔍 Raw participant.attributes: {participant.attributes}")
-                    # Merge attributes into metadata (attributes take precedence)
-                    metadata.update(participant.attributes)
-                    logger.info(f"✅ Merged participant attributes: {metadata}")
         except Exception as e:
-            logger.warning(f"Failed to parse participant metadata/attributes: {e}")
+            logger.warning(f"Failed to parse participant metadata: {e}")
             
     # Check if this is a test room with template + prompt
     is_test = metadata.get("is_test", False)
@@ -313,21 +293,41 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}, call_type={call_type}")
     
     # Extract phone metadata for conversation state
-    # LiveKit SIP puts phone numbers in specific fields:
-    # - sip_from: caller's phone number (e.g., "+16505300051")
-    # - sip_to: called number (e.g., "+14244851544")
-    caller_phone = (
-        metadata.get("sip_from") or  # LiveKit SIP standard field
-        metadata.get("phone_number") or  # Custom metadata
-        metadata.get("from") or  # Fallback
-        metadata.get("caller")  # Fallback
-    )
+    # OFFICIAL LIVEKIT SIP PATTERN: participant.attributes['sip.phoneNumber']
+    # This is the CORRECT field for inbound SIP caller ID
+    # See: https://docs.livekit.io/sip/sip-participant/
+    caller_phone = None
+    called_number = None
     
-    # Also extract the called number for context
-    called_number = metadata.get("sip_to") or metadata.get("to")
+    # First, try to get from SIP participant attributes (CORRECT METHOD)
+    try:
+        participants = list(room.remote_participants.values())
+        if participants:
+            participant = participants[0]
+            
+            # Check if this is a SIP participant
+            from livekit import rtc
+            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                # OFFICIAL LIVEKIT FIELD for caller phone
+                caller_phone = participant.attributes.get('sip.phoneNumber')
+                # Called number (trunk number dialed)
+                called_number = participant.attributes.get('sip.trunkPhoneNumber')
+                logger.info(f"✅ SIP Participant: FROM {caller_phone} → TO {called_number}")
+    except Exception as e:
+        logger.warning(f"Failed to extract SIP attributes: {e}")
     
-    # Log what we extracted
-    logger.info(f"📞 SIP Call: FROM {caller_phone} → TO {called_number}")
+    # Fallback to metadata (for custom/test calls)
+    if not caller_phone:
+        caller_phone = (
+            metadata.get("phone_number") or  # Custom metadata
+            metadata.get("sip_from") or  # Legacy fallback
+            metadata.get("from") or  # Legacy fallback
+            metadata.get("caller")  # Legacy fallback
+        )
+        logger.info(f"📞 Using metadata phone: {caller_phone}")
+    
+    if not called_number:
+        called_number = metadata.get("sip_to") or metadata.get("to")
     
     lead_id = metadata.get("lead_id")
     qualified = metadata.get("qualified", False)

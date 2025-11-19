@@ -69,3 +69,4 @@ supabase.table('prompt_versions').update({'content': content}).eq('id', version[
 print('\n[SUCCESS] Fixed greet context: removed mark_ready_to_book, added explicit "GREET FIRST" instruction')
 
 
+
