@@ -1,0 +1,25 @@
+app = "equity-agent"
+primary_region = "lax"
+
+[build]
+  dockerfile = "../deploy/agent/Dockerfile"
+  build_args = {}
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  HF_HOME = "/root/.cache/huggingface"
+
+# LiveKit agent runs as a worker (no HTTP service needed)
+# It connects to LiveKit Cloud and waits for dispatch jobs
+[processes]
+  app = "python agent.py start"
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+# Health check (if agent exposes health endpoint)
+# Note: LiveKit agents typically don't expose HTTP endpoints
+# This is optional - remove if not needed
+
