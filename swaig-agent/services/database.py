@@ -195,10 +195,13 @@ async def get_node_config(node_name: str, vertical: str = "reverse_mortgage") ->
         
         if version_response.data:
             content = version_response.data[0].get('content', {})
+            # Vue portal saves as 'tools', but SignalWire expects 'functions'
+            # Support both for backward compatibility
+            functions = content.get('functions', []) or content.get('tools', [])
             config = {
                 'instructions': content.get('instructions', ''),
                 'valid_contexts': content.get('valid_contexts', []),
-                'functions': content.get('functions', []),
+                'functions': functions,
                 'step_criteria': content.get('step_criteria', '')
             }
             logger.info(f"[DB] Loaded full config for node: {node_name}")
