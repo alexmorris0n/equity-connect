@@ -2573,6 +2573,12 @@ async function validateVerticalRouting() {
         const validationError = new Error(errorText)
         validationError.canAutoFix = hasAutoFixes
         throw validationError
+      } else {
+        // Fallback for unformatted errors (e.g. 500s or malformed responses)
+        // Ensure we block save even if specific error messages couldn't be formatted
+        const genericError = data.error || (response.statusText ? `${response.status} ${response.statusText}` : 'Unknown validation error')
+        console.warn('[Verticals] Validation failed with unformatted error:', genericError)
+        throw new Error(`⚠️ Routing validation failed: ${genericError}`)
       }
     } else {
       console.log('[Verticals] Routing validation passed - all contexts configured correctly')
