@@ -1,8 +1,8 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 14, 2025  
-**Status:** ✅ Production Ready - SignalWire Agent SDK + Fly.io + SignalWire Native Contexts  
-**Current Phase:** SignalWire Contexts Migration Complete + AI Helper System Active + Draft/Publish Workflow Active + CLI Test Automation
+**Last Updated:** November 19, 2025  
+**Status:** ✅ Production Ready - SWML Bridge (Fly.io) + LiveKit Agent (Fly.io) - Dual Platform  
+**Current Phase:** SignalWire Agent SDK Abandoned → SWML Bridge + LiveKit Agents Active + BarbGraph Routing Improvements Complete
 
 ---
 
@@ -17,26 +17,26 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 - **app.barbarapro.com** - Admin portal and broker interface
 - **Vercel Development:** https://equity-connect.vercel.app
 
-**Key Innovation:** SignalWire native contexts system provides structured, adaptive conversations with 8 conversation contexts and dynamic routing via `valid_contexts` arrays stored in database.
+**Key Innovation:** Dual-platform AI voice system with database-driven BarbGraph routing that works on both SignalWire SWML and LiveKit. Single source of truth for prompts, tools, and routing logic enables A/B testing between platforms.
 
 **Tech Stack:**
-- **AI Voice:** SignalWire Agent SDK + Fly.io Agent Worker
-- **Voice Infrastructure:** SignalWire SIP + SignalWire AI Gateway (SWAIG)
-- **AI Providers (Native SignalWire Integration):**
-  - **LLM:** OpenAI (GPT-4o, GPT-4o-mini) - SignalWire SDK supports OpenAI by default. Other providers require custom integration.
-  - **STT:** Deepgram (Nova-2/Nova-3), OpenAI (Whisper-1, GPT-4o Transcribe), AssemblyAI (Universal Streaming), Google Cloud (Latest Long/Short), Cartesia (Ink Whisper)
-  - **TTS:** ElevenLabs (Tiffany voice), OpenAI TTS, Amazon Polly, Rime, Google Cloud TTS, Microsoft Azure, Cartesia, Speechify
-  - **Multi-Provider Flexibility:** Mix-and-match with own API keys (no aggregator)
-  - **Database-Driven Model Selection:** STT and LLM models loaded dynamically from `signalwire_available_stt_models` and `signalwire_available_llm_models` tables
+- **AI Voice (Dual Platform):**
+  - **SignalWire:** SWML Bridge (Fly.io) + SWAIG functions + SignalWire native contexts
+  - **LiveKit:** Agent Worker (Fly.io) + LiveKit Inference + LiveKit AgentSession
+- **Voice Infrastructure:** SignalWire SIP trunk → routes to either platform
+- **AI Providers:**
+  - **SignalWire:** Native plugins (Deepgram, OpenAI, ElevenLabs, AssemblyAI, Google Cloud)
+  - **LiveKit:** LiveKit Inference (unified billing for STT+LLM+TTS, custom voices supported)
+- **Routing:** Database-driven BarbGraph (8 nodes) - platform-agnostic, stored in Supabase
 - **AI Orchestration:** Gemini 2.5 Flash via OpenRouter (n8n workflows)
 - **Telephony:** SignalWire SIP trunk + SignalWire Voice API
 - **Recording Storage:** Supabase Storage (via SignalWire webhook)
 - **Orchestration:** n8n (self-hosted on Northflank)
 - **Database:** Supabase (PostgreSQL + pgvector)
 - **Data Sources:** PropertyRadar API (property data + contact enrichment)
-- **Outreach:** Instantly.ai (email), SignalWire voice agents
-- **Integration:** MCP servers (Supabase, Instantly, Barbara, SwarmTrace)
-- **Deployment:** Fly.io (agent worker) + SignalWire Cloud (managed telephony)
+- **Outreach:** Instantly.ai (email), AI voice agents
+- **Integration:** MCP servers (Supabase, Instantly, Barbara, SwarmTrace, LiveKit Docs)
+- **Deployment:** Fly.io (SWML bridge + LiveKit agent) + SignalWire Cloud (managed telephony)
 
 ---
 
@@ -44,50 +44,246 @@ Equity Connect is an AI-powered lead generation and nurturing platform for rever
 
 ```
 equity-connect/ (Git Monorepo)
-├── equity_connect/               → Fly.io Agent Worker (PRODUCTION READY)
-│   ├── app.py                    → Main entrypoint (SignalWire SDK)
-│   ├── agent/
-│   │   └── barbara_agent.py     → SignalWire contexts integration (AgentBase)
+├── swaig-agent/                  → Fly.io SWML Bridge (PRODUCTION ACTIVE)
+│   ├── main.py                   → FastAPI SWAIG bridge
+│   ├── services/
+│   │   ├── database.py           → Supabase client + node configs
+│   │   ├── contexts.py           → SWML context builder from DB
+│   │   └── conversation_state.py → Multi-call persistence
+│   ├── tools/                    → SWAIG function handlers
+│   │   ├── flags.py              → State flag tools
+│   │   ├── lead.py               → Lead management
+│   │   ├── booking.py            → Calendar integration
+│   │   └── knowledge.py          → Vector search
 │   ├── Dockerfile                → Fly.io deployment
-│   ├── fly.toml                  → Fly.io configuration (LAX primary region)
-│   ├── services/                 → Business logic
-│   │   ├── supabase.py          → Database client + utilities
+│   └── fly.toml                  → Fly.io config (LAX region)
+├── livekit-agent/                → Fly.io LiveKit Agent (PRODUCTION ACTIVE)
+│   ├── agent.py                  → BarbaraAgent (LiveKit Agent class)
+│   ├── services/
+│   │   ├── database.py           → Supabase client + node configs
+│   │   ├── prompt_loader.py      → Load prompts from DB
 │   │   ├── conversation_state.py → Multi-call persistence
-│   │   └── contexts_builder.py  → SignalWire contexts builder from DB
-│   └── tools/                    → Agent function tools (21 tools)
-│       ├── lead.py              → Lead lookup, DNC checks, consent
-│       ├── knowledge.py         → Vector search
-│       ├── calendar.py          → Nylas integration
-│       ├── conversation_flags.py → State flag tools (7 tools)
-│       ├── interaction.py       → Interaction logging
-│       └── registry.py          → SignalWire SWAIG tool registration
-├── livekit-agent/                → DEPRECATED (Legacy LiveKit system)
-│   └── [files archived for reference]
-├── deploy/                       → Deployment configs (DEPRECATED)
+│   │   └── prompts.py            → Prompt variable injection
+│   ├── workflows/
+│   │   ├── routers.py            → BarbGraph routing logic
+│   │   └── node_completion.py    → Node completion checks
+│   ├── tools/                    → LiveKit function tools
+│   │   ├── flags.py              → State flag tools
+│   │   ├── lead.py               → Lead management
+│   │   ├── calendar.py           → Calendar integration
+│   │   └── knowledge.py          → Vector search
+│   ├── Dockerfile                → Fly.io deployment (deploy/agent/)
+│   └── fly.toml                  → Fly.io config (LAX region)
+├── portal/                       → Vue.js admin (Vercel)
+│   └── src/views/admin/
+│       └── Verticals.vue         → Dual platform config (SignalWire + LiveKit tabs)
 ├── barbara-mcp/                  → Northflank (MCP server for n8n)
 │   └── index.js                  → Outbound calls via SignalWire Voice API
-├── portal/                       → Vue.js admin (Vercel)
-│   └── src/views/admin/         → PromptManagement, LeadManagement, etc.
-├── cli-testing-service/          → Fly.io CLI testing API (runs swaig-test for Vertical drafts + autosave validation)
+├── cli-testing-service/          → Fly.io CLI testing API
 ├── propertyradar-mcp/            → Docker/Local (property lookups)
 ├── swarmtrace-mcp/               → Docker/Local (analytics)
 ├── database/                     → Shared Supabase schema
 ├── workflows/                    → N8N workflow definitions
 ├── config/                       → API configurations
-└── deprecated/                   → Archived services (bridge/, barbara-v3/, elevenlabs-webhook/)
+└── deprecated/                   → Archived (equity_connect/, bridge/, barbara-v3/)
 ```
 
-**Why Monorepo:**
-- ✅ Portal needs to reference agent tool definitions
-- ✅ MCPs share prompt templates and database schema
-- ✅ Single source of truth for all configurations
-- ✅ Simplified deployment (1 Northflank container)
+**Why Dual Platform:**
+- ✅ A/B testing - Compare SignalWire vs LiveKit performance with identical routing logic
+- ✅ Cost optimization - Test which platform offers better economics per call
+- ✅ Provider flexibility - SignalWire native plugins vs LiveKit Inference
+- ✅ Risk mitigation - One platform down, other continues serving calls
+- ✅ Single source of truth - Database-driven prompts, tools, and routing work on both
 
 **Deployment Triggers:**
-- `equity_connect/**` changes → Deploy agent worker to Fly.io via GitHub Actions
+- `swaig-agent/**` changes → Deploy SWML bridge to Fly.io via GitHub Actions
+- `livekit-agent/**` changes → Deploy LiveKit agent to Fly.io via GitHub Actions
 - `portal/**` changes → Deploy to Vercel
 - `workflows/**` changes → Update n8n workflows
 - `database/**` changes → Run Supabase migrations
+
+---
+
+## 🔥 Nov 18-19: SignalWire Agent SDK Abandoned → SWML Bridge + LiveKit Dual Platform
+
+**Date:** November 18-19, 2025  
+**Status:** ✅ **COMPLETE - Dual Platform Production Ready**
+
+### The Crisis: SignalWire Agent SDK Tool Availability Bug
+
+**Root Problem:**
+- SignalWire Agent SDK (`on_swml_request` + `prompt.contexts`) had a critical bug
+- Tools declared in context `functions` arrays were **not available to the LLM**
+- Calls would hang up or AI would say "I don't have access to that tool"
+- **12+ hours of debugging** revealed this was a SignalWire SDK bug, not our code
+
+**Attempted Fixes (All Failed):**
+1. Moved tool declarations to `__init__` → Still unavailable
+2. Moved tool declarations to `configure_per_call` → Still unavailable
+3. Tried `agent.define_tool()` registration → Still unavailable
+4. Tried SWAIG function includes in SWML → Contexts system ignored them
+5. Filed bug report with SignalWire → No timeline for fix
+
+**Decision:** Abandon SignalWire Agent SDK entirely, rebuild with SWML
+
+---
+
+### The Pivot: SWML Bridge + LiveKit Agents
+
+**SignalWire SWML Bridge** (`swaig-agent/`)
+- **What:** FastAPI bridge that generates SWML (SignalWire Markup Language) responses
+- **How:** SignalWire posts to `/agent/barbara`, bridge returns SWML JSON with contexts
+- **Tools:** Declared as SWAIG functions via `function_includes` (bypasses SDK entirely)
+- **Contexts:** Built from database, returned as `prompt.contexts` in SWML response
+- **Status:** ✅ **WORKING - Tools now available, contexts routing correctly**
+
+**LiveKit Agent** (`livekit-agent/`)
+- **What:** LiveKit Agents framework with `AgentSession` and function tools
+- **How:** SignalWire SIP → LiveKit SIP Bridge → LiveKit agent worker
+- **Tools:** Decorated with `@function_tool`, auto-registered with AgentSession
+- **Routing:** BarbGraph Python routers (`workflows/routers.py`, `workflows/node_completion.py`)
+- **Status:** ✅ **WORKING - Spun up as fallback, fully functional**
+
+---
+
+### Architecture: Dual Platform with Single Source of Truth
+
+**Database Schema (Shared):**
+- `prompts` / `prompt_versions` - Node instructions, tools, valid_contexts, step_criteria
+- `theme_prompts` - Core personality per vertical
+- `conversation_state` - Multi-call persistence, conversation_data JSONB flags
+- `leads` / `brokers` - Lead and broker data
+- `agent_voice_config` - SignalWire voice configuration
+- `ai_templates` - LiveKit AI configuration (STT, LLM, TTS, VAD, turn detection)
+
+**Tool Implementations (Mirrored):**
+- **SignalWire:** `swaig-agent/tools/` - Returns `{response: str, action: []}` for SWAIG
+- **LiveKit:** `livekit-agent/tools/` - Returns `str` or `None` for LiveKit function calling
+- **Same Business Logic:** Both call same Supabase queries, Nylas API, knowledge search
+
+**Routing Logic (Platform-Specific Implementation, Same Rules):**
+- **SignalWire:** Uses `valid_contexts` arrays from database, SignalWire handles transitions natively
+- **LiveKit:** Uses Python routers (`route_after_greet()`, `route_after_verify()`, etc.) that check same database flags and valid_contexts
+
+**Prompt Loading (Identical):**
+- Both load from `prompt_versions` table
+- Both inject theme from `theme_prompts`
+- Both use `Template().safe_substitute()` for variable injection
+- Both use same caller context structure
+
+---
+
+### Key Fixes Applied (Nov 18-19)
+
+**SWML Bridge:**
+1. ✅ Created FastAPI SWAIG bridge (`swaig-agent/main.py`)
+2. ✅ Moved contexts from SDK to SWML generation (`services/contexts.py`)
+3. ✅ Declared all tools as SWAIG functions with `function_includes`
+4. ✅ Added `FUNCTION_NAME_MAP` for legacy tool name translation (Agent SDK → SWAIG)
+5. ✅ Fixed function handler to update conversation_state correctly
+6. ✅ Deployed to Fly.io (`barbara-swaig-bridge.fly.dev`)
+
+**LiveKit Agent:**
+7. ✅ Re-enabled LiveKit agent (was archived as "DEPRECATED")
+8. ✅ Updated `agent.py` to use database-driven prompts (not hardcoded)
+9. ✅ Added `load_node_config()` to fetch full node config (tools, valid_contexts, step_criteria)
+10. ✅ Added `validate_transition()` to check valid_contexts before routing
+11. ✅ Fixed phone number extraction from room name (`sip-_+16505300051_...`)
+12. ✅ Fixed Supabase query ordering (`.select()` before `.or_()`)
+13. ✅ Added support for OpenAI Realtime and Gemini Live plugins (realtime models)
+14. ✅ Fixed TTS voice to use LiveKit Inference compatible voice (Sarah, not custom)
+15. ✅ Fixed `AgentSession.userdata` initialization (`userdata={}` in constructor)
+16. ✅ Fixed `load_node()` to call `generate_reply(speak_now=True)` on transitions
+17. ✅ Deployed to Fly.io (`barbara-livekit.fly.dev`)
+
+**Database:**
+18. ✅ Fixed missing tools in database (`calculate_reverse_mortgage` added to Quote node)
+19. ✅ Added missing functions to SWML bridge for LiveKit compatibility
+20. ✅ Updated VERIFY valid_contexts: `['qualify', 'answer', 'quote', 'objections']`
+21. ✅ Updated QUALIFY valid_contexts: `['goodbye', 'quote', 'objections']`
+22. ✅ Updated VERIFY step_criteria with explicit routing rules
+23. ✅ Updated QUALIFY step_criteria with explicit routing rules
+24. ✅ Updated VERIFY instructions: "collect missing, confirm existing"
+25. ✅ Updated ANSWER instructions with ⚠️ CRITICAL ROUTING RULE for calculations
+26. ✅ Removed "end" node from all valid_contexts
+27. ✅ Deactivated orphaned "end" node
+28. ✅ Added `appointment_datetime` flag to `book_appointment` tool
+29. ✅ Documented all conversation flags (`docs/conversation_flags.md`)
+
+**Vue Portal:**
+30. ✅ Split "Models & Voice Configuration" into two tabs: SignalWire and LiveKit
+31. ✅ SignalWire tab: `tts_engine`, `voice_name`, `model`, `language_code` (maps to `agent_voice_config`)
+32. ✅ LiveKit tab: Full STT/TTS/LLM/VAD/Audio config (maps to `ai_templates`)
+33. ✅ Added model type selector: STT-LLM-TTS Pipeline, OpenAI Realtime, Gemini Live
+34. ✅ Updated defaults for LiveKit: Deepgram nova-3, GPT-4.1-mini, ElevenLabs Sarah
+
+---
+
+### BarbGraph Routing Improvements (Database-Driven)
+
+**The Problem:**
+- Original 8-node system had overly restrictive `valid_contexts`
+- Some transitions were impossible (e.g., VERIFY couldn't route to QUOTE for direct calculation questions)
+- Step criteria were too generic (e.g., "User has responded appropriately")
+- Instructions didn't explicitly tell LLM when to call which tools
+
+**The Solution: "Quick Wins" + "Medium Wins" + "Hard Wins"**
+
+**Quick Wins (Completed Nov 19):**
+- ✅ VERIFY valid_contexts expanded: added `quote`, `objections`
+- ✅ QUALIFY valid_contexts expanded: added `objections`
+- ✅ Removed "end" from all valid_contexts (8 nodes)
+- ✅ Deactivated orphaned "end" node
+- ✅ Updated VERIFY step_criteria (explicit routing: amounts → QUOTE, questions → ANSWER, concerns → OBJECTIONS, else → QUALIFY)
+- ✅ Updated QUALIFY step_criteria (explicit routing: objections → OBJECTIONS, qualified=true → QUOTE, qualified=false → GOODBYE)
+
+**Medium Wins (Completed Nov 19):**
+- ✅ VERIFY instructions updated: "collect missing, confirm existing" pattern (not re-ask known data)
+- ✅ Added `appointment_datetime` flag to track exact booking time for returning callers
+- ✅ Documented all conversation flags in `docs/conversation_flags.md`
+
+**Hard Win #3 (Completed Nov 19):**
+- ✅ ANSWER instructions with ⚠️ CRITICAL ROUTING RULE at top (impossible to miss)
+- ✅ Explicit list of calculation triggers: "How much can I get?", "What's my loan amount?", "Can you calculate?"
+- ✅ Clear prohibition: "DO NOT try to answer with numbers from CALLER INFORMATION"
+- ✅ Step criteria updated: "IMMEDIATELY route to QUOTE" for calculation questions
+
+**Impact:**
+- ✅ All 13 trace test scenarios from `prompts/rewrite/trace_test.md` now have correct routing
+- ✅ LLM can't hallucinate calculations in ANSWER node (forced to QUOTE)
+- ✅ More flexible conversation flow (can handle objections mid-qualification)
+- ✅ Better returning caller experience (acknowledges appointments using `appointment_datetime`)
+
+---
+
+### What We Learned
+
+**SignalWire Agent SDK Limitations:**
+1. **Tool Availability Bug** - Contexts system doesn't pass tools to LLM correctly
+2. **`configure_per_call` Hell** - Causes infinite recursion loops, undocumented behavior
+3. **`on_swml_request` Conflict** - Overriding prevents `configure_per_call` from firing
+4. **Variable Substitution Confusion** - `%{variable}` only works in SWML, not POM mode
+5. **Limited Documentation** - Critical behaviors undocumented, examples misleading
+
+**Why SWML Bridge Works:**
+1. **Direct SWML Control** - We generate SWML JSON directly, no SDK abstraction
+2. **SWAIG Function Includes** - Tools declared in SWML, not via SDK contexts
+3. **Predictable Behavior** - FastAPI webhook pattern is simple and debuggable
+4. **Full Transparency** - We see exactly what SignalWire receives
+
+**Why LiveKit is the Backup:**
+1. **Battle-Tested** - We used LiveKit successfully for months before SignalWire
+2. **Mature SDK** - `@function_tool` decorator, AgentSession, ChatContext all work reliably
+3. **Rich Ecosystem** - TurnDetector, realtime models, streaming TTS, interruption handling
+4. **Good Documentation** - Clear examples, well-documented APIs
+5. **MCP Support** - LiveKit Docs MCP server for instant documentation lookup
+
+**Why Dual Platform is Smart:**
+1. **Risk Mitigation** - One platform down, other continues
+2. **Cost Optimization** - A/B test which is cheaper per call
+3. **Provider Flexibility** - SignalWire native plugins vs LiveKit Inference
+4. **Performance Comparison** - Real-world data on which performs better
+5. **Single Source of Truth** - Database-driven prompts/tools/routing work on both
 
 ---
 
@@ -734,9 +930,11 @@ POST /api/validate-routing
 
 ---
 
-## 🎙️ SignalWire Agent SDK Migration ⭐ **COMPLETE (NOV 13, 2025)**
+## 🎙️ SignalWire Agent SDK Migration ⚠️ **ABANDONED (NOV 18, 2025)**
 
-**Status:** ✅ **MIGRATION COMPLETE - SignalWire Native Contexts System Active**
+**Status:** ⚠️ **ABANDONED - Replaced by SWML Bridge (Nov 18, 2025)**
+
+**Why Abandoned:** Critical bug in SignalWire Agent SDK prevented tools from being available to the LLM. After 12+ hours of debugging and multiple failed workarounds, decision made to pivot to SWML bridge approach (see Nov 18-19 section above).
 
 ### Why SignalWire Over LiveKit
 
@@ -1096,78 +1294,128 @@ Call ends, metadata saved to interactions table
 
 ---
 
-## 🎯 SignalWire Native Contexts System ⭐ **PRODUCTION READY (NOV 13, 2025)**
+## 🎯 BarbGraph: Database-Driven Conversation Routing ⭐ **PRODUCTION READY (NOV 19, 2025)**
 
-**Status:** ✅ **MIGRATION COMPLETE - BarbGraph Replaced with SignalWire Native Contexts + AI Helper System Active**
+**Status:** ✅ **PRODUCTION READY - Works on Both SignalWire SWML and LiveKit Agents**
 
-**Previous System:** BarbGraph event-based state machine (deprecated November 13, 2025)
+**Key Innovation:** Platform-agnostic routing system stored in database, works identically on both platforms
 
 ### Overview
 
-SignalWire native contexts system provides structured, adaptive dialogue management with 8 conversation contexts and dynamic routing via `valid_contexts` arrays stored in the database. This replaces the previous BarbGraph custom routing system.
+BarbGraph is a database-driven conversation routing system with 8 nodes and dynamic routing. It works identically on both SignalWire SWML and LiveKit Agents platforms.
 
-**Why SignalWire Contexts?**
-- Framework-native routing (no custom code needed)
-- Automatic context transitions based on `valid_contexts` arrays
-- Step-based completion detection via `step_criteria`
-- Database-driven routing logic (easy to update without code changes)
-- Variable substitution via `set_meta_data()` (SignalWire handles it)
-- POM mode enabled for native context management
+**Why Database-Driven Routing?**
+- ✅ Platform-agnostic (same logic works on SignalWire and LiveKit)
+- ✅ A/B testing (compare platforms with identical routing)
+- ✅ Easy updates (change routing without code deploys)
+- ✅ Single source of truth (one set of prompts, tools, routing rules)
+- ✅ Competitive advantage (edit prompts in Vue Portal without engineer)
 
-### Architecture: 3-Layer System
+**How It Works on Each Platform:**
+
+**SignalWire SWML:**
+- Contexts built from database and returned in SWML response
+- `valid_contexts` arrays define allowed transitions
+- `step_criteria` guide completion detection
+- SignalWire handles transitions automatically based on LLM output
+
+**LiveKit Agents:**
+- Python routers (`route_after_greet()`, etc.) check database flags and valid_contexts
+- Completion checkers (`is_node_complete()`) evaluate flags and step_criteria
+- Manual transitions via `session.generate_reply()` with new instructions
+
+### Architecture: 3-Layer System (Platform-Agnostic)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     LAYER 1: FRONTEND                        │
 │  Vue Portal - Context-Based Prompt Editor (Verticals.vue)   │
 │  • Vertical selector (reverse_mortgage, solar, hvac)        │
-│  • 8-context node cards (greet, verify, qualify, quote,     │
-│    answer, objections, book, exit)                          │
+│  • 8-node cards (greet, verify, qualify, quote, answer,     │
+│    objections, book, goodbye)                               │
 │  • JSONB content editor (instructions, tools, valid_contexts)│
 │  • AI Helper (✨) for theme and node generation            │
 │  • Variable insertion (⚡) for {lead.first_name} syntax    │
 │  • Vertical-level versioning with snapshots                 │
+│  • Dual platform config tabs: SignalWire + LiveKit         │
 └─────────────────────────────────────────────────────────────┘
                               ▼ saves to
 ┌─────────────────────────────────────────────────────────────┐
 │                    LAYER 2: DATABASE                         │
-│  Supabase PostgreSQL                                         │
+│  Supabase PostgreSQL (Single Source of Truth)               │
 │  • theme_prompts table (universal personality per vertical) │
-│  • prompts table (vertical, node_name, step_name, step_order)│
+│  • prompts table (vertical, node_name)                      │
 │  • prompt_versions table (content JSONB with valid_contexts)│
-│  • contexts_config table (isolated, enter_fillers, exit_fillers)│
-│  • conversation_state table (conversation_data JSONB)        │
-│  • vertical_snapshots table (version metadata)               │
-│  • agent_voice_config table (TTS provider settings)        │
+│  • conversation_state table (conversation_data JSONB flags) │
+│  • agent_voice_config table (SignalWire TTS settings)       │
+│  • ai_templates table (LiveKit STT/LLM/TTS/VAD config)      │
 └─────────────────────────────────────────────────────────────┘
                               ▼ loads from
 ┌─────────────────────────────────────────────────────────────┐
-│                     LAYER 3: BACKEND                         │
-│  SignalWire Agent Worker (Fly.io)                            │
-│  • BarbaraAgent class (SignalWire AgentBase)                │
-│  • contexts_builder.py (builds contexts from DB)             │
-│  • set_meta_data() for variable substitution                │
-│  • set_prompt() with contexts object                        │
-│  • SignalWire handles routing via valid_contexts arrays     │
-│  • Step completion via step_criteria                        │
+│              LAYER 3: DUAL PLATFORM BACKEND                  │
+│                                                              │
+│  ┌──────────────────────────┐  ┌─────────────────────────┐ │
+│  │  SignalWire SWML Bridge  │  │  LiveKit Agent Worker   │ │
+│  │  (Fly.io)                │  │  (Fly.io)               │ │
+│  ├──────────────────────────┤  ├─────────────────────────┤ │
+│  │ • FastAPI SWAIG bridge   │  │ • BarbaraAgent class    │ │
+│  │ • contexts.py (DB → SWML)│  │ • routers.py (BarbGraph)│ │
+│  │ • SWAIG function handlers│  │ • @function_tool tools  │ │
+│  │ • valid_contexts routing │  │ • AgentSession          │ │
+│  └──────────────────────────┘  └─────────────────────────┘ │
+│                                                              │
+│  Both load same data from database:                         │
+│  • Prompts, tools, routing rules, caller context            │
+│  Both implement same business logic:                        │
+│  • Lead lookup, calendar booking, knowledge search          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 8-Node Conversation Flow
+### 8-Node Conversation Flow (Nov 19, 2025 - Post-Routing Improvements)
 
 ```
-greet → verify → qualify → QUOTE → answer → objections → book → exit
+greet → verify → qualify → quote → answer ←→ objections → book → goodbye
 ```
 
 **Node Descriptions:**
-1. **Greet** - Warm introduction, set tone, build rapport
-2. **Verify** - Confirm identity, gather basic info
-3. **Qualify** - Ask qualification questions naturally (age, home ownership, equity)
-4. **Quote** - Present personalized financial estimates (equity × 0.50 to 0.60)
-5. **Answer** - Respond to questions, address concerns, provide information
-6. **Objections** - Handle objections, reframe concerns, build trust
-7. **Book** - Secure appointment commitment, schedule with broker
-8. **Exit** - Graceful conclusion or handoff (can re-greet if spouse available)
+1. **greet** - Warm introduction, build rapport, detect wrong person
+   - valid_contexts: `['answer', 'verify', 'quote']`
+   - tools: `['mark_wrong_person']`
+   
+2. **verify** - Confirm identity, collect missing info, confirm existing
+   - valid_contexts: `['qualify', 'answer', 'quote', 'objections']` ✨ EXPANDED
+   - tools: `['verify_caller_identity', 'update_lead_info']`
+   - Pattern: "Collect missing, confirm existing" (don't re-ask known data)
+   
+3. **qualify** - Natural qualification (age 62+, homeowner, equity, owner-occupied)
+   - valid_contexts: `['goodbye', 'quote', 'objections']` ✨ EXPANDED
+   - tools: `['mark_qualification_result', 'update_lead_info']`
+   - Routes: objections → OBJECTIONS, qualified=true → QUOTE, qualified=false → GOODBYE
+   
+4. **quote** - Present personalized equity estimates (50-60% of equity)
+   - valid_contexts: `['answer', 'book', 'goodbye', 'objections']`
+   - tools: `['calculate_reverse_mortgage', 'mark_quote_presented']`
+   - Always use "approximately" and "estimates" language
+   
+5. **answer** - Answer questions, provide education
+   - valid_contexts: `['goodbye', 'book', 'objections', 'quote']`
+   - tools: `['search_knowledge', 'mark_ready_to_book']`
+   - ⚠️ CRITICAL ROUTING RULE: Calculation questions → IMMEDIATELY route to QUOTE ✨ NEW
+   
+6. **objections** - Handle concerns with empathy
+   - valid_contexts: `['answer', 'book', 'goodbye']`
+   - tools: `['search_knowledge', 'mark_objection_handled', 'mark_has_objection']`
+   - Warm, patient, understanding tone
+   
+7. **book** - Secure appointment commitment ($300-$350 per show)
+   - valid_contexts: `['goodbye']`
+   - tools: `['check_broker_availability', 'book_appointment']`
+   - Sets `appointment_datetime` flag for returning caller logic ✨ NEW
+   
+8. **goodbye** - Professional conclusion, handle last-minute questions
+   - valid_contexts: `['answer']`
+   - tools: `[]`
+   - Can route to ANSWER for final questions
 
 ### Theme Prompt System (Two-Layer Architecture)
 
@@ -1206,23 +1454,41 @@ CREATE TABLE theme_prompts (
 );
 ```
 
-### Dynamic Routing
+### Dynamic Routing (Platform-Specific Implementation)
 
-**Key Principle:** Routing is defined by `valid_contexts` arrays in the database. SignalWire automatically handles transitions based on these arrays and step criteria.
+**Key Principle:** Routing logic stored in database (`valid_contexts` arrays, `step_criteria`), implemented differently per platform but follows same rules.
 
-**Routing Logic (in Database):**
-- **GREET** → `["verify", "exit"]`
-- **VERIFY** → `["qualify", "exit"]`
-- **QUALIFY** → `["quote", "exit"]`
-- **QUOTE** → `["answer", "book", "exit"]`
-- **ANSWER** → `["objections", "book", "exit"]`
-- **OBJECTIONS** → `["answer", "book", "exit"]`
-- **BOOK** → `["exit"]`
-- **EXIT** → `["greet"]` (for wrong person re-greet)
+**SignalWire SWML Implementation:**
+- Contexts built from database and returned in SWML
+- `valid_contexts` arrays define allowed transitions
+- `step_criteria` guide LLM on completion
+- SignalWire handles transitions automatically based on LLM intent
 
-**Step Criteria:** Each step has `step_criteria` (default: "User has responded appropriately.") that determines when to advance.
+**LiveKit Implementation:**
+- Python routers (`route_after_greet()`, `route_after_verify()`, etc.)
+- Check conversation_data flags and step completion
+- Validate transitions against `valid_contexts` from database
+- Manual transitions via `load_node()` + `session.generate_reply()`
 
-**Variable Substitution:** Variables like `{lead.first_name}` are set via `set_meta_data()` and automatically substituted by SignalWire.
+**Routing Logic (in Database - Used by Both Platforms):**
+- **greet** → `["answer", "verify", "quote"]`
+- **verify** → `["qualify", "answer", "quote", "objections"]` ✨ EXPANDED
+- **qualify** → `["goodbye", "quote", "objections"]` ✨ EXPANDED
+- **quote** → `["answer", "book", "goodbye", "objections"]`
+- **answer** → `["goodbye", "book", "objections", "quote"]`
+- **objections** → `["answer", "book", "goodbye"]`
+- **book** → `["goodbye"]`
+- **goodbye** → `["answer"]`
+
+**Step Criteria Examples (Nov 19 Updates):**
+- **verify:** "Complete when info confirmed/updated. Route: amounts → QUOTE, questions → ANSWER, concerns → OBJECTIONS, else → QUALIFY"
+- **qualify:** "Complete after qualification. Route: objections → OBJECTIONS, qualified=true → QUOTE, qualified=false → GOODBYE"
+- **answer:** "CRITICAL: Calculation questions → IMMEDIATELY route to QUOTE. Other questions → answer using CALLER INFO or search_knowledge"
+
+**Variable Substitution (Both Platforms):**
+- Variables like `{lead.first_name}`, `{property.city}` in database
+- Python `Template().safe_substitute()` before sending to LLM
+- Both platforms inject same caller context
 
 ### State Management
 
@@ -1240,7 +1506,7 @@ CREATE TABLE conversation_state (
 );
 ```
 
-**conversation_data JSONB Fields:**
+### conversation_data JSONB Fields (Used by Both Platforms):
 ```json
 {
   "greeted": true,
@@ -1253,25 +1519,40 @@ CREATE TABLE conversation_state (
   "has_objections": false,
   "objection_handled": false,
   "appointment_booked": false,
+  "appointment_datetime": "2025-11-21T14:00:00",
   "appointment_id": null,
   "wrong_person": false,
   "right_person_available": false,
-  "node_before_objection": "answer"
+  "node_before_objection": "answer",
+  "borderline_equity": false,
+  "pending_birthday": false,
+  "manual_booking_required": false
 }
 ```
 
-### 21 Tools Verified
+**New Flags (Nov 19):**
+- `appointment_datetime` - Exact booking time for returning caller acknowledgment
+- `borderline_equity` - Low net proceeds (< $20k), needs special handling
+- `pending_birthday` - Close to 62nd birthday (< 3 months), pre-qualify
+- `manual_booking_required` - Booking tool failed, broker needs to follow up
+
+### 21 Tools Verified (Implemented on Both Platforms)
+
+**Implementation Notes:**
+- **SignalWire:** Returns `{response: str, action: []}` for SWAIG format
+- **LiveKit:** Returns `str` or `None` for function calling format
+- **Business Logic:** Identical on both platforms (same DB queries, same APIs)
 
 **Lead Management Tools (5):**
 - `get_lead_context` - Query lead by phone
 - `verify_caller_identity` - Verify identity, create lead if new
 - `check_consent_dnc` - Verify calling permissions
 - `update_lead_info` - Update lead data
-- `find_broker_by_territory` - Assign broker by ZIP/city
+- `find_broker_by_territory` - Assign broker by ZIP/city (DEPRECATED - now using `mark_wrong_person`)
 
 **Calendar Tools (4):**
 - `check_broker_availability` - Nylas calendar free/busy
-- `book_appointment` - Create Nylas event + billing
+- `book_appointment` - Create Nylas event + billing (sets `appointment_datetime` flag)
 - `reschedule_appointment` - Reschedule existing appointment
 - `cancel_appointment` - Cancel appointment
 
@@ -1288,10 +1569,11 @@ CREATE TABLE conversation_state (
 - `mark_ready_to_book` - Caller wants to book
 - `mark_has_objection` - Caller has concerns
 - `mark_objection_handled` - Objection resolved
-- `mark_questions_answered` - All questions answered
+- `mark_questions_answered` - All questions answered (DEPRECATED - not used)
 - `mark_quote_presented` - Quote presented with reaction
-- `mark_wrong_person` - Wrong person answered
-- `clear_conversation_flags` - Reset routing flags
+- `mark_qualification_result` - Set qualified status with reason
+- `mark_wrong_person` - Wrong person answered, track if right person available
+- `clear_conversation_flags` - Reset routing flags (DEPRECATED - not used)
 
 ### System Verification Results
 
@@ -1692,44 +1974,88 @@ CREATE TABLE conversation_state (
 
 ---
 
-## ✅ Production Readiness Checklist
+## ✅ Production Readiness Checklist (Nov 19, 2025)
 
 ### Infrastructure
-- [x] LiveKit Cloud SIP Bridge configured
-- [x] LiveKit Cloud dispatch rules configured
-- [x] Northflank agent worker deployed
-- [x] SignalWire SIP trunk connected
+- [x] SignalWire SIP trunk configured
+- [x] SignalWire SWML bridge deployed to Fly.io (barbara-swaig-bridge.fly.dev)
+- [x] LiveKit Cloud SIP Bridge configured (fallback)
+- [x] LiveKit agent deployed to Fly.io (barbara-livekit.fly.dev)
 - [x] Supabase database migrations applied
+- [x] GitHub Actions deployment workflows for both platforms
 
-### SignalWire Contexts System
-- [x] 8 contexts implemented (greet, verify, qualify, quote, answer, objections, book, exit)
-- [x] Theme prompt system active
-- [x] 21 tools verified and exported
-- [x] Native contexts routing (valid_contexts arrays in DB)
-- [x] Database schema complete (contexts_config, vertical_snapshots, agent_voice_config)
-- [x] Vue Portal UI complete (Verticals.vue with AI Helper)
+### BarbGraph Routing System
+- [x] 8 nodes implemented (greet, verify, qualify, quote, answer, objections, book, goodbye)
+- [x] Theme prompt system active (universal personality per vertical)
+- [x] 21 tools verified and working on both platforms
+- [x] Database-driven routing (`valid_contexts`, `step_criteria`)
+- [x] Platform-agnostic design (same DB schema for SignalWire + LiveKit)
+- [x] Vue Portal UI complete (Verticals.vue with dual platform tabs)
 - [x] Vertical-level versioning system active
 - [x] AI Helper system for prompt generation
-- [x] Context guardrails to block empty contexts (fail-fast enforcement)
-- [x] 13 critical bugs fixed
+
+### SignalWire SWML Bridge
+- [x] FastAPI SWAIG bridge functional
+- [x] Contexts built from database
+- [x] Tools declared as SWAIG functions
+- [x] Function name mapping for legacy tools
+- [x] Conversation state persistence
+- [x] Deployed to Fly.io with auto-deploy on push
+
+### LiveKit Agent
+- [x] AgentSession with database-driven prompts
+- [x] BarbGraph routers functional
+- [x] Phone extraction from room name working
+- [x] Supabase query fixes applied
+- [x] OpenAI Realtime and Gemini Live support added
+- [x] TTS voice compatibility fixed (Sarah voice)
+- [x] `userdata` initialization fixed
+- [x] Node transitions with immediate instruction execution
+- [x] Deployed to Fly.io with auto-deploy on push
+
+### Database (Single Source of Truth)
+- [x] `prompts` / `prompt_versions` - Instructions, tools, valid_contexts, step_criteria
+- [x] `theme_prompts` - Core personality
+- [x] `conversation_state` - Multi-call persistence, conversation_data flags
+- [x] `agent_voice_config` - SignalWire TTS configuration
+- [x] `ai_templates` - LiveKit STT/LLM/TTS/VAD configuration
+- [x] All conversation flags documented (`docs/conversation_flags.md`)
+
+### Routing Improvements (Nov 19)
+- [x] VERIFY valid_contexts expanded (quote, objections added)
+- [x] QUALIFY valid_contexts expanded (objections added)
+- [x] "end" node removed from all routing
+- [x] VERIFY step_criteria clarified (explicit routing rules)
+- [x] QUALIFY step_criteria clarified (explicit routing rules)
+- [x] VERIFY instructions updated ("collect missing, confirm existing")
+- [x] ANSWER instructions with ⚠️ CRITICAL ROUTING RULE for calculations
+- [x] `appointment_datetime` flag added for returning callers
+- [x] All 13 trace test scenarios validated
 
 ### AI Providers
-- [x] LiveKit Inference integration complete
-- [x] All providers supported (STT, TTS, LLM)
-- [x] Custom ElevenLabs voice (Tiffany) working
-- [x] Template system migrated to LiveKit Inference format
-- [x] Vue portal pricing updated
+- [x] SignalWire: Native plugins (Deepgram, OpenAI, ElevenLabs, etc.)
+- [x] LiveKit: LiveKit Inference (unified billing)
+- [x] Custom ElevenLabs voice supported (LiveKit)
+- [x] Realtime models supported (OpenAI Realtime, Gemini Live)
+- [x] Template system for both platforms
+- [x] Vue portal configuration for both platforms
 
-### Verification
+### Testing & Validation
 - [x] All 21 tools verified (no missing tools)
-- [x] Field names consistent (primary_phone used everywhere)
-- [x] SIP data flow verified (minimal dependencies)
-- [x] Function calling verified (LiveKit @function_tool working)
-- [x] Theme system verified (695 chars, active)
-- [x] QUOTE node verified (prompt created, routing implemented)
-- [x] CLI regression suite (8 nodes + theme) passes before activation
+- [x] Field names consistent (primary_phone, primary_phone_e164)
+- [x] SIP data flow verified for both platforms
+- [x] Conversation history preserved across node transitions
+- [x] Multi-call persistence working
+- [x] Database routing validator (`scripts/validate_database_routing.py`)
+- [x] Trace test scenarios documented (`prompts/rewrite/trace_test.md`)
 
-**Status:** ✅ **PRODUCTION READY - SignalWire Contexts System Active, AI Helper System Operational (November 13, 2025)**
+**Status:** ✅ **PRODUCTION READY - Dual Platform Active (November 19, 2025)**
+
+**Next Steps:**
+1. Live testing on both platforms (10-20 calls each)
+2. Performance comparison (cost, latency, quality)
+3. Choose primary platform based on real-world data
+4. Keep fallback platform active for redundancy
 
 ---
 
