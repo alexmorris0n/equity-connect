@@ -222,9 +222,13 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         step = {
             "name": prompt.get('step_name', 'main'),  # Default step name
             "text": prompt_text,  # ← Substituted text with actual values
-            "step_criteria": content.get('step_criteria', 'User has responded appropriately.'),
             "functions": content.get('tools', [])  # ← READ "tools" FROM DB, OUTPUT AS "functions"
         }
+        
+        # Only add step_criteria if it exists in the database (don't use default)
+        # This allows us to remove step_criteria to prevent automatic routing
+        if content.get('step_criteria'):
+            step['step_criteria'] = content['step_criteria']
         
         # CRITICAL: Default to False (wait for user) if not explicitly set
         # This prevents tools from being called before greeting
