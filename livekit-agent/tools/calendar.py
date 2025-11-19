@@ -260,6 +260,7 @@ async def book_appointment(
                 "conversation_data": {
                     "appointment_booked": True,
                     "appointment_id": nylas_event_id,
+                    "appointment_datetime": scheduled_for,  # ISO 8601 timestamp for returning caller logic
                 }
             })
         
