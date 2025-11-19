@@ -161,24 +161,28 @@ class BarbaraAgent(Agent):
         
         self.current_node = node_name
         
-        # IMPROVEMENT #1: Store instructions in session.userdata for persistence
-        # LiveKit docs confirm generate_reply(instructions=...) is per-turn only
-        # We store in userdata to ensure continuity across turns
+        # Store instructions in userdata for persistence across turns
         if self.session:
-            # Initialize userdata as dict if not set (LiveKit supports dict or custom object)
-            if not hasattr(self.session, 'userdata') or self.session.userdata is None:
+            try:
+                # Try to access userdata - will raise ValueError if not set
+                userdata = self.session.userdata
+                if userdata is None:
+                    self.session.userdata = {}
+                    userdata = self.session.userdata
+            except ValueError:
+                # userdata not set, initialize it
                 self.session.userdata = {}
+                userdata = self.session.userdata
             
-            # Update userdata with current instructions (works with dict or object)
-            if isinstance(self.session.userdata, dict):
-                self.session.userdata['current_instructions'] = full_prompt
-                self.session.userdata['current_node'] = node_name
+            # Store instructions
+            if isinstance(userdata, dict):
+                userdata['current_instructions'] = full_prompt
+                userdata['current_node'] = node_name
             else:
-                # If userdata is a custom object, set attributes
-                setattr(self.session.userdata, 'current_instructions', full_prompt)
-                setattr(self.session.userdata, 'current_node', node_name)
+                setattr(userdata, 'current_instructions', full_prompt)
+                setattr(userdata, 'current_node', node_name)
         
-        # Store in instance variable as well (for backward compatibility)
+        # Store in instance variable as fallback
         self._instructions = full_prompt
         
         # If speak_now, generate immediate response with new instructions
@@ -187,15 +191,15 @@ class BarbaraAgent(Agent):
             await self.session.generate_reply(instructions=full_prompt)
     
     async def _get_current_instructions(self) -> str:
-        """IMPROVEMENT #1: Get current instructions from session.userdata
-        Ensures instructions are always available for generate_reply calls.
-        Falls back to instance variable if userdata not available.
-        """
-        if self.session and hasattr(self.session, 'userdata') and self.session.userdata:
-            if isinstance(self.session.userdata, dict):
-                return self.session.userdata.get('current_instructions', self._instructions)
-            else:
-                return getattr(self.session.userdata, 'current_instructions', self._instructions)
+        """Get current instructions, with fallback to instance variable."""
+        try:
+            if self.session and self.session.userdata:
+                if isinstance(self.session.userdata, dict):
+                    return self.session.userdata.get('current_instructions', self._instructions)
+                else:
+                    return getattr(self.session.userdata, 'current_instructions', self._instructions)
+        except (ValueError, AttributeError):
+            pass
         return self._instructions
     
     async def check_and_route(self):

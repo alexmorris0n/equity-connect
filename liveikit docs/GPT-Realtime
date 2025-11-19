@@ -1,0 +1,1045 @@
+LiveKit docs › Models › Realtime models › Overview
+
+---
+
+# Realtime model plugins
+
+> Guides for adding realtime model integrations to your agents.
+
+## Overview
+
+Realtime models are capable of consuming and producing speech directly, bypassing the need for a voice pipeline with speech-to-text and text-to-speech components. They can be better at understanding the emotional context of input speech, as well as other verbal cues that may not translate well to text transcription. Additionally, the generated speech can include similar emotional aspects and other improvements over what a text-to-speech model can produce.
+
+You can also use supported realtime models in tandem with a [TTS](https://docs.livekit.io/agents/models/tts.md) instance of your choice, to gain the benefits of realtime speech comprehension while maintaining complete control over speech output
+
+The agents framework includes plugins for popular realtime models out of the box. This is a new area in voice AI and LiveKit aims to support new providers as they emerge.
+
+LiveKit is open source and welcomes [new plugin contributions](https://docs.livekit.io/agents/models.md#contribute).
+
+## How to use
+
+Realtime model plugins have a constructor method to create a `RealtimeModel` instance. This instance can be passed directly to an `AgentSession` or `Agent` in its constructor, in place of an [LLM instance](https://docs.livekit.io/agents/models/llm.md).
+
+** Filename: `agent.py`**
+
+```python
+from livekit.agents import AgentSession
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.realtime.RealtimeModel()
+)
+
+```
+
+** Filename: `agent.ts`**
+
+```typescript
+import voice from '@livekit/agents';
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+   llm: new openai.realtime.RealtimeModel()
+});
+
+```
+
+For additional information about installing and using plugins, see the [plugins overview](https://docs.livekit.io/agents/models.md#plugins).
+
+### Usage with separate TTS
+
+To use a realtime model with a different [TTS instance](https://docs.livekit.io/agents/models/tts.md), configure the realtime model to use a text-only response modality and include a TTS instance in your `AgentSession` configuration.
+
+** Filename: `agent.py`**
+
+```python
+session = AgentSession(
+    llm=openai.realtime.RealtimeModel(modalities=["text"]), # Or other realtime model plugin
+    tts="cartesia/sonic-3" # Or other TTS instance of your choice
+)
+
+```
+
+** Filename: `agent.ts`**
+
+```typescript
+const session = new voice.AgentSession({
+   llm: new openai.realtime.RealtimeModel(modalities=["text"]), // Or other realtime model plugin
+   tts: "cartesia/sonic-3" // Or other TTS instance of your choice
+});
+
+```
+
+This feature requires support for a text-only response modality. Visit the relevant provider page for details about supported features.
+
+## Available plugins
+
+The following table lists the available realtime model providers.
+
+| Provider | Python | Node.js |
+| -------- | ------ | ------- |
+| [Amazon Nova Sonic](https://docs.livekit.io/agents/models/realtime/plugins/nova-sonic.md) | ✓ | — |
+| [Azure OpenAI Realtime API](https://docs.livekit.io/agents/models/realtime/plugins/azure-openai.md) | ✓ | ✓ |
+| [Gemini Live API](https://docs.livekit.io/agents/models/realtime/plugins/gemini.md) | ✓ | ✓ |
+| [OpenAI Realtime API](https://docs.livekit.io/agents/models/realtime/plugins/openai.md) | ✓ | ✓ |
+| [Ultravox Realtime API](https://docs.livekit.io/agents/models/realtime/plugins/ultravox.md) | ✓ | — |
+
+## Considerations and limitations
+
+Realtime models bring great benefits due to their wider range of audio understanding and expressive output. However, they also have some limitations and considerations to keep in mind.
+
+### Turn detection and VAD
+
+In general, LiveKit recommends using the built-in turn detection capabilities of the realtime model whenever possible. Accurate turn detection relies on both VAD and context gained from realtime speech-to-text, which, as discussed in the following section, isn't available with realtime models. If you need to use the LiveKit [turn detector model](https://docs.livekit.io/agents/build/turns/turn-detector.md), you must also add a separate STT plugin to provide the necessary interim transcripts.
+
+### Delayed transcription
+
+Realtime models don't provide interim transcription results, and in general the user input transcriptions can be considerably delayed and often arrive after the agent's response. If you need realtime transcriptions, you should consider an STT-LLM-TTS pipeline or add a separate STT plugin for realtime transcription.
+
+### Scripted speech output
+
+Realtime models don't offer a method to directly generate speech from a text script, such as with the `say` method. You can produce a response with `generate_reply(instructions='...')` and include specific instructions but the output isn't guaranteed to precisely follow any provided script. If your application requires the use of specific scripts, consider using the model [with a separate TTS instance](#separate-tts) instead.
+
+### Loading conversation history
+
+Current models only support loading call history in text format. This limits their ability to interpret emotional context and other verbal cues that may not translate well to text transcription. Additionally, the OpenAI Realtime API becomes more likely to respond in text only after loading extensive history, even if configured to use speech. For OpenAI, it's recommended that you use a [separate TTS instance](#separate-tts) if you need to load conversation history.
+
+---
+
+This document was rendered at 2025-11-19T10:50:15.278Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/realtime.md](https://docs.livekit.io/agents/models/realtime.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Google › Gemini Live API Plugin
+
+---
+
+# Gemini Live API plugin
+
+> How to use the Gemini Live API with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+Google's [Gemini Live API](https://ai.google.dev/gemini-api/docs/live) enables low-latency, two-way interactions that use text, audio, and video input, with audio and text output. LiveKit's Google plugin includes a `RealtimeModel` class that allows you to use this API to create agents with natural, human-like voice conversations.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the Google plugin:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[google]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add "@livekit/agents-plugin-google@1.x"
+
+```
+
+### Authentication
+
+The Google plugin requires authentication based on your chosen service:
+
+- For Vertex AI, you must set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of the service account key file. For more information about mounting files as secrets when deploying to LiveKit Cloud, see [File-mounted secrets](https://docs.livekit.io/agents/ops/deployment/secrets.md#file-mounted-secrets) .
+- For the Google Gemini API, set the `GOOGLE_API_KEY` environment variable.
+
+### Usage
+
+Use the Gemini Live API within an `AgentSession`. For example, you can use it in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+**Python**:
+
+```python
+from livekit.plugins import google
+
+session = AgentSession(
+    llm=google.realtime.RealtimeModel(
+        model="gemini-2.0-flash-exp",
+        voice="Puck",
+        temperature=0.8,
+        instructions="You are a helpful assistant",
+    ),
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as google from '@livekit/agents-plugin-google';
+
+const session = new voice.AgentSession({
+   llm: new google.realtime.RealtimeModel({
+      model: "gemini-2.5-flash-native-audio-preview-09-2025",
+      voice: "Puck",
+      temperature: 0.8,
+      instructions: "You are a helpful assistant",
+   }),
+});
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`instructions`** _(string)_ (optional): System instructions to better control the model's output and specify tone and sentiment of responses. To learn more, see [System instructions](https://ai.google.dev/gemini-api/docs/live#system-instructions).
+
+- **`model`** _(LiveAPIModels | string)_ - Default: `gemini-2.0-flash-exp`: Live API model to use.
+
+- **`api_key`** _(string)_ - Environment: `GOOGLE_API_KEY`: Google Gemini API key.
+
+- **`voice`** _(Voice | string)_ - Default: `Puck`: Name of the Gemini Live API voice. For a full list, see [Voices](https://ai.google.dev/gemini-api/docs/live#change-voices).
+
+- **`modalities`** _(list[Modality])_ (optional) - Default: `["AUDIO"]`: List of response modalities to use. Set to `["TEXT"]` to use the model in text-only mode with a [separate TTS plugin](#separate-tts).
+
+- **`vertexai`** _(boolean)_ - Default: `false`: If set to true, use Vertex AI.
+
+- **`project`** _(string)_ (optional) - Environment: `GOOGLE_CLOUD_PROJECT`: Google Cloud project ID to use for the API (if `vertextai=True`). By default, it uses the project in the service account key file (set using the `GOOGLE_APPLICATION_CREDENTIALS` environment variable).
+
+- **`location`** _(string)_ (optional) - Environment: `GOOGLE_CLOUD_LOCATION`: Google Cloud location to use for the API (if `vertextai=True`). By default, it uses the location from the service account key file or `us-central1`.
+
+- **`thinking_config`** _(ThinkingConfig)_ (optional): Configuration for the model's thinking mode, if supported. For more information, see [Thinking](#thinking).
+
+- **`enable_affective_dialog`** _(boolean)_ (optional) - Default: `false`: Enable affective dialog on supported native audio models. For more information, see [Affective dialog](https://ai.google.dev/gemini-api/docs/live-guide#affective-dialog).
+
+- **`proactivity`** _(boolean)_ (optional) - Default: `false`: Enable proactive audio, where the model can decide not to respond to certain inputs. Requires a native audio model. For more information, see [Proactive audio](https://ai.google.dev/gemini-api/docs/live-guide#proactive-audio).
+
+- **`_gemini_tools`** _(list[GeminiTool])_ (optional): List of built-in Google tools, such as Google Search. For more information, see [Gemini tools](#gemini-tools).
+
+### Gemini tools
+
+> 🔥 **Experimental feature**
+> 
+> This integration is experimental and may change in a future SDK release.
+
+The `_gemini_tools` parameter allows you to use built-in Google tools with the Gemini model. For example, you can use this feature to implement [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/live-tools#google-search):
+
+**Python**:
+
+```python
+from google.genai import types
+
+session = AgentSession(
+    llm=google.realtime.RealtimeModel(
+        model="gemini-2.5-flash-native-audio-preview-09-2025",
+        _gemini_tools=[types.GoogleSearch()],
+    )
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+
+import * as google from '@livekit/agents-plugin-google';
+
+const session = new voice.AgentSession({
+   llm: new google.realtime.RealtimeModel({
+      model: "gemini-2.0-flash-exp",
+      geminiTools: [new google.types.GoogleSearch()],
+   }),
+});
+
+```
+
+## Turn detection
+
+The Gemini Live API includes built-in VAD-based turn detection, enabled by default. To use LiveKit's turn detection model instead, configure the model to disable automatic activity detection. A separate streaming STT model is required in order to use LiveKit's turn detection model.
+
+**Python**:
+
+```python
+from google.genai import types
+from livekit.agents import AgentSession
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
+session = AgentSession(
+   turn_detection=MultilingualModel(),
+   llm=google.realtime.RealtimeModel(
+      realtime_input_config=types.RealtimeInputConfig(
+      automatic_activity_detection=types.AutomaticActivityDetection(
+         disabled=True,
+      ),
+   ),
+   input_audio_transcription=None,
+   stt="assemblyai/universal-streaming",
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+
+import * as google from '@livekit/agents-plugin-google';
+import * as livekit from '@livekit/agents-plugin-livekit';
+
+const session = new voice.AgentSession({
+   turnDetection: new MultilingualModel(),
+   llm: new google.realtime.RealtimeModel({
+      model: "gemini-2.0-flash-exp",
+      realtimeInputConfig: {
+         automaticActivityDetection: {
+            disabled: true,
+         },
+      },
+   }),
+   stt: "assemblyai/universal-streaming",
+   turnDetection: new livekit.turnDetector.MultilingualModel(),
+});
+
+```
+
+## Thinking
+
+The latest model, `gemini-2.5-flash-native-audio-preview-09-2025`, supports thinking. You can configure its behavior with the `thinking_config` parameter.
+
+By default, the model's thoughts are forwarded like other transcripts. To disable this, set `include_thoughts=False`:
+
+```python
+from google.genai import types
+
+# ...
+
+session = AgentSession(
+    llm=google.realtime.RealtimeModel(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=False,
+        ),
+    ),
+)
+
+```
+
+For other available parameters, such as `thinking_budget`, see the [Gemini thinking docs](https://ai.google.dev/gemini-api/docs/thinking).
+
+## Usage with separate TTS
+
+To use the Gemini Live API with a different [TTS instance](https://docs.livekit.io/agents/models/tts.md), configure it with a text-only response modality and include a TTS instance in your `AgentSession` configuration. This configuration allows you to gain the benefits of realtime speech comprehension while maintaining complete control over the speech output.
+
+**Python**:
+
+```python
+from google.genai.types import Modality
+
+session = AgentSession(
+    llm=google.realtime.RealtimeModel(modalities=[Modality.TEXT]),
+    tts="cartesia/sonic-3",
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+
+import * as google from '@livekit/agents-plugin-google';
+
+const session = new voice.AgentSession({
+   llm: new google.realtime.RealtimeModel({
+      model: "gemini-2.0-flash-exp",
+      modalities: [google.types.Modality.TEXT],
+   }),
+   tts: "cartesia/sonic-3",
+});
+
+```
+
+## Additional resources
+
+The following resources provide more information about using Gemini with LiveKit Agents.
+
+- **[Gemini docs](https://ai.google.dev/gemini-api/docs/live)**: Gemini Live API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Gemini Live API.
+
+- **[Google AI ecosystem guide](https://docs.livekit.io/agents/integrations/google.md)**: Overview of the entire Google AI and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:50:26.312Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/realtime/plugins/gemini.md](https://docs.livekit.io/agents/models/realtime/plugins/gemini.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › AWS › Amazon Nova Sonic Plugin
+
+---
+
+# Amazon Nova Sonic integration guide
+
+> How to use the Amazon Nova Sonic model with LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+Amazon [Nova Sonic](https://aws.amazon.com/ai/generative-ai/nova/speech/) is a state of the art speech-to-speech model with a bidirectional audio streaming API. Nova Sonic processes and responds to realtime speech as it occurs, enabling natural, human-like conversational experiences. LiveKit's AWS plugin includes support for Nova Sonic on AWS Bedrock, allowing you to use this model to create true realtime conversational agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the AWS plugin from PyPI with the `realtime` extra:
+
+```shell
+uv add "livekit-plugins-aws[realtime]"
+
+```
+
+### Authentication
+
+The AWS plugin requires AWS credentials. Set the following environment variables in your `.env` file:
+
+```shell
+AWS_ACCESS_KEY_ID=<your-aws-access-key-id>
+AWS_SECRET_ACCESS_KEY=<your-aws-secret-access-key>
+
+```
+
+### Usage
+
+Use the Nova Sonic API within an `AgentSession`. For example, you can use it in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import aws
+
+session = AgentSession(
+    llm=aws.realtime.RealtimeModel(),
+)
+
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/aws/experimental/realtime/index.html.md).
+
+- **`voice`** _(string)_ (optional): Name of the Nova Sonic API voice. For a full list, see [Voices](https://docs.aws.amazon.com/nova/latest/userguide/available-voices.html).
+
+- **`region`** _(string)_ (optional): AWS region of the Bedrock runtime endpoint.
+
+## Turn detection
+
+The Nova Sonic API includes built-in VAD-based turn detection, which is currently the only supported turn detection method.
+
+## Additional resources
+
+The following resources provide more information about using Nova Sonic with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-aws/)**: The `livekit-plugins-aws` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/aws/experimental/realtime/index.html.md)**: Reference for the Nova Sonic integration.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-aws/livekit/plugins/aws/)**: View the source or contribute to the LiveKit AWS plugin.
+
+- **[Nova Sonic docs](https://docs.aws.amazon.com/nova/latest/userguide/speech.html)**: Nova Sonic API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Amazon Nova Sonic.
+
+- **[AWS AI ecosystem guide](https://docs.livekit.io/agents/integrations/aws.md)**: Overview of the entire AWS AI and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:50:34.508Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/realtime/plugins/nova-sonic.md](https://docs.livekit.io/agents/models/realtime/plugins/nova-sonic.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › OpenAI › Realtime API Plugin
+
+---
+
+# OpenAI Realtime API plugin guide
+
+> How to use the OpenAI Realtime API with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+- **[OpenAI Playground](https://playground.livekit.io/)**: Experiment with OpenAI's Realtime API in the playground with personalities like the **Snarky Teenager** or **Opera Singer**.
+
+## Overview
+
+OpenAI's Realtime API enables low-latency, multimodal interactions with realtime text, audio image, and video features. Use LiveKit's OpenAI plugin to create an agent that uses the Realtime API.
+
+> ℹ️ **Note**
+> 
+> Using Azure OpenAI? See our [Azure OpenAI Realtime API guide](https://docs.livekit.io/agents/models/realtime/plugins/azure-openai.md).
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the OpenAI plugin:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add "@livekit/agents-plugin-openai@1.x"
+
+```
+
+### Authentication
+
+The OpenAI plugin requires an [OpenAI API key](https://platform.openai.com/api-keys).
+
+Set `OPENAI_API_KEY` in your `.env` file.
+
+### Usage
+
+Use the OpenAI Realtime API within an `AgentSession`. For example, you can use it in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.realtime.RealtimeModel(voice="marin"),
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+   llm: new openai.realtime.RealtimeModel({ voice: "marin" }),
+});
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str)_ (optional) - Default: `'gpt-realtime'`: ID of the Realtime model to use. For a list of available models, see the [Models](https://platform.openai.com/docs/models).
+
+- **`voice`** _(str)_ (optional) - Default: `'alloy'`: Voice to use for speech generation. For a list of available voices, see [Voice options](https://platform.openai.com/docs/guides/realtime-conversations#voice-options).
+
+- **`temperature`** _(float)_ (optional) - Default: `0.8`: Valid values are between `0.6` and `1.2`. To learn more, see [temperature](https://platform.openai.com/docs/api-reference/realtime-sessions/create#realtime-sessions-create-temperature).
+
+- **`turn_detection`** _(TurnDetection | None)_ (optional): Configuration for turn detection, see the section on [Turn detection](#turn-detection) for more information.
+
+- **`modalities`** _(list[str])_ (optional) - Default: `['text', 'audio']`: List of response modalities to use for the session. Set to `['text']` to use the model in text-only mode with a [separate TTS plugin](https://docs.livekit.io/llms.txt#separate-tts).
+
+## Turn detection
+
+OpenAI's Realtime API includes [voice activity detection (VAD)](https://platform.openai.com/docs/guides/realtime-vad) to automatically detect when a user has started or stopped speaking. This feature is enabled by default.
+
+There are two modes for VAD:
+
+- **Server VAD** (default): Uses periods of silence to automatically chunk the audio.
+- **Semantic VAD**: Uses a semantic classifier to detect when the user has finished speaking based on their words.
+
+### Server VAD
+
+Server VAD is the default mode and can be configured with the following properties:
+
+**Python**:
+
+```python
+from livekit.plugins.openai import realtime
+from openai.types.beta.realtime.session import TurnDetection
+
+session = AgentSession(
+    llm=realtime.RealtimeModel(
+        turn_detection=TurnDetection(
+            type="server_vad",
+            threshold=0.5,
+            prefix_padding_ms=300,
+            silence_duration_ms=500,
+            create_response=True,
+            interrupt_response=True,
+        )
+    ),
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+   llm: new openai.realtime.RealtimeModel({
+      turnDetection: {
+         type: "server_vad",
+         threshold: 0.5,
+         prefix_padding_ms: 300,
+         silence_duration_ms: 500,
+         create_response: true,
+         interrupt_response: true,
+      },
+   }),
+});
+
+```
+
+- `threshold`: Higher values require louder audio to activate, better for noisy environments.
+- `prefix_padding_ms`: Amount of audio to include before detected speech.
+- `silence_duration_ms`: Duration of silence to detect speech stop (shorter = faster turn detection).
+
+### Semantic VAD
+
+Semantic VAD uses a classifier to determine when the user is done speaking based on their words. This mode is less likely to interrupt users mid-sentence or chunk transcripts prematurely.
+
+**Python**:
+
+```python
+from livekit.plugins.openai import realtime
+from openai.types.beta.realtime.session import TurnDetection
+
+session = AgentSession(
+    llm=realtime.RealtimeModel(
+        turn_detection=TurnDetection(
+            type="semantic_vad",
+            eagerness="auto",
+            create_response=True,
+            interrupt_response=True,
+        )
+    ),
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+   llm: new openai.realtime.RealtimeModel({
+      turnDetection: null,
+   })
+   turnDetection: new livekit.turnDetector.EnglishModel(),
+});
+
+```
+
+The `eagerness` property controls how quickly the model responds:
+
+- `auto` (default) - Equivalent to `medium`.
+- `low` - Lets users take their time speaking.
+- `high` - Chunks audio as soon as possible.
+- `medium` - Balanced approach.
+
+For more information about turn detection in general, see the [Turn detection guide](https://docs.livekit.io/agents/build/turns.md).
+
+## Usage with separate TTS
+
+To use the OpenAI Realtime API with a different [TTS instance](https://docs.livekit.io/agents/models/tts.md), configure it with a text-only response modality and include a TTS instance in your `AgentSession` configuration. This configuration allows you to gain the benefits of realtime speech comprehension while maintaining complete control over the speech output.
+
+**Python**:
+
+```python
+session = AgentSession(
+    llm=openai.realtime.RealtimeModel(modalities=["text"]),
+    tts="cartesia/sonic-3" # Or other TTS instance of your choice
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+   llm: new openai.realtime.RealtimeModel({ 
+      modalities: ["text"]
+   }),
+   tts: "cartesia/sonic-3", // Or other TTS instance of your choice
+});
+
+```
+
+## Loading conversation history
+
+If you load conversation history into the model, it might respond with text output even if configured for audio response. To work around this issue, use the model [with a separate TTS instance](#separate-tts) and text-only response modality. You can use the [Azure OpenAI TTS plugin](https://docs.livekit.io/agents/models/tts/plugins/azure-openai.md) to continue using the same voices supported by the Realtime API.
+
+For additional workaround options, see the OpenAI [thread](https://community.openai.com/t/trouble-loading-previous-messages-with-realtime-api) on this topic.
+
+## Additional resources
+
+The following resources provide more information about using OpenAI with LiveKit Agents.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Build a simple realtime model voice assistant using the OpenAI Realtime API in less than 10 minutes.
+
+- **[OpenAI docs](https://platform.openai.com/docs/guides/realtime)**: OpenAI Realtime API documentation.
+
+- **[OpenAI ecosystem overview](https://docs.livekit.io/agents/integrations/openai.md)**: Overview of the entire OpenAI and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:50:39.717Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/realtime/plugins/openai.md](https://docs.livekit.io/agents/models/realtime/plugins/openai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Azure › Azure OpenAI Realtime API Plugin
+
+---
+
+# Azure OpenAI Realtime API and LiveKit
+
+> How to use the Azure OpenAI Realtime API with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+[Azure OpenAI](https://learn.microsoft.com/en-us/azure/ai-services/openai/) provides an implementation of OpenAI's Realtime API that enables low-latency, multimodal interactions with realtime audio and text processing through Azure's managed service. Use LiveKit's Azure OpenAI plugin to create an agent that uses the Realtime API.
+
+> ℹ️ **Note**
+> 
+> Using the OpenAI platform instead of Azure? See our [OpenAI Realtime API guide](https://docs.livekit.io/agents/models/realtime/plugins/openai.md).
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the OpenAI plugin from PyPI:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+### Authentication
+
+The Azure OpenAI plugin requires an [Azure OpenAI API key](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource) and your Azure OpenAI endpoint.
+
+Set the following environment variables in your `.env` file:
+
+```shell
+AZURE_OPENAI_API_KEY=<your-azure-openai-api-key>
+AZURE_OPENAI_ENDPOINT=<your-azure-openai-endpoint>
+OPENAI_API_VERSION=2024-10-01-preview
+
+```
+
+### Usage
+
+Use the Azure OpenAI Realtime API within an `AgentSession`:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.realtime.RealtimeModel.with_azure(
+        azure_deployment="<model-deployment>",
+        azure_endpoint="wss://<endpoint>.openai.azure.com/",
+        api_key="<api-key>",
+        api_version="2024-10-01-preview",
+    ),
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.realtime.RealtimeModel.withAzure({
+        azureDeployment: "<model-deployment>",
+        azureEndpoint: "wss://<endpoint>.openai.azure.com/",
+        apiKey: "<api-key>",
+        apiVersion: "2024-10-01-preview",
+    }),
+});
+
+```
+
+For a more comprehensive agent example, see the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+### Parameters
+
+This section describes the Azure-specific parameters. For a complete list of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`azure_deployment`** _(string)_: Name of your model deployment.
+
+- **`entra_token`** _(string)_ (optional): Microsoft Entra ID authentication token. Required if not using API key authentication. To learn more see Azure's [Authentication](https://learn.microsoft.com/en-us/azure/ai-services/openai/realtime-audio-reference#authentication) documentation.
+
+- **`voice`** _(string)_ (optional) - Default: `alloy`: Voice to use for speech. To learn more, see [Voice options](https://platform.openai.com/docs/guides/text-to-speech#voice-options).
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+To learn more, see [chat completions](https://platform.openai.com/docs/api-reference/chat/create#chat-create-temperature).
+
+- **`instructions`** _(string)_ (optional) - Default: ``: Initial system instructions.
+
+- **`modalities`** _(list[api_proto.Modality])_ (optional) - Default: `["text", "audio"]`: Modalities to use, such as ["text", "audio"]. Set to `["text"]` to use the model in text-only mode with a [separate TTS plugin](#separate-tts).
+
+- **`turn_detection`** _(TurnDetection | None)_ (optional): Configuration for turn detection, see the section on [Turn detection](#turn-detection) for more information.
+
+## Turn detection
+
+The Azure OpenAI Realtime API includes [voice activity detection (VAD)](https://learn.microsoft.com/en-us/azure/ai-services/openai/realtime-audio-reference#realtimeturndetection) to automatically detect when a user has started or stopped speaking. This feature is enabled by default
+
+There is one supported mode for VAD:
+
+- **Server VAD** (default) - Uses periods of silence to automatically chunk the audio
+
+### Server VAD
+
+Server VAD is the default mode and can be configured with the following properties:
+
+**Python**:
+
+```python
+from livekit.plugins.openai import realtime
+from openai.types.beta.realtime.session import TurnDetection
+
+session = AgentSession(
+    llm=realtime.RealtimeModel(
+        turn_detection=TurnDetection(
+            type="server_vad",
+            threshold=0.5,
+            prefix_padding_ms=300,
+            silence_duration_ms=500,
+            create_response=True,
+            interrupt_response=True,
+        )
+    ),
+    # ... vad, tts, stt, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+import * as livekit from '@livekit/agents-plugin-livekit';
+
+const session = new voice.AgentSession({
+    llm: new openai.realtime.RealtimeModel(
+        turnDetection: null,
+    ),
+    turnDetection: new livekit.turnDetector.EnglishModel(),
+    // ... vad, tts, stt, etc.
+});
+
+```
+
+- `threshold`: Higher values require louder audio to activate, better for noisy environments.
+- `prefix_padding_ms`: Amount of audio to include before detected speech.
+- `silence_duration_ms`: Duration of silence to detect speech stop (shorter = faster turn detection).
+
+## Usage with separate TTS
+
+To use the Azure OpenAI Realtime API with a different [TTS instance](https://docs.livekit.io/agents/models/tts.md), configure it with a text-only response modality and include a TTS instance in your `AgentSession` configuration. This configuration allows you to gain the benefits of direct speech understanding while maintaining complete control over the speech output.
+
+**Python**:
+
+```python
+session = AgentSession(
+    llm=openai.realtime.RealtimeModel.with_azure(
+        # ... endpoint and auth params ...,
+        modalities=["text"]
+    ),
+    tts="cartesia/sonic-3" # Or other TTS instance of your choice
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.realtime.RealtimeModel.withAzure({
+        // ... endpoint and auth params ...,
+        modalities: ["text"]
+    }),
+    tts: "cartesia/sonic-3", // Or other TTS instance of your choice
+});
+
+```
+
+## Loading conversation history
+
+If you load conversation history into the model, it might respond with text output even if configured for audio response. To work around this issue, use the model [with a separate TTS instance](#separate-tts) and text-only response modality. You can use the [Azure OpenAI TTS plugin](https://docs.livekit.io/agents/models/tts/plugins/azure-openai.md) to continue using the same voices supported by the Realtime API.
+
+For additional workaround options, see the OpenAI [thread](https://community.openai.com/t/trouble-loading-previous-messages-with-realtime-api) on this topic.
+
+## Additional resources
+
+The following resources provide more information about using Azure OpenAI with LiveKit Agents.
+
+- **[Azure OpenAI docs](https://learn.microsoft.com/en-us/azure/ai-services/openai/)**: Azure OpenAI service documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Azure OpenAI.
+
+- **[Azure ecosystem overview](https://docs.livekit.io/agents/integrations/azure.md)**: Overview of the entire Azure AI ecosystem and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:50:44.691Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/realtime/plugins/azure-openai.md](https://docs.livekit.io/agents/models/realtime/plugins/azure-openai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Realtime models › Plugins › Ultravox Realtime API
+
+---
+
+# Ultravox plugin guide
+
+> How to use the Ultravox Realtime model with LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+The Ultravox Realtime API combines STT, LLM, and TTS into a single connection. Use LiveKit's Ultravox plugin with this plugin to create an agent quickly without needing to wire up multiple providers.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the Ultravox plugin:
+
+```shell
+uv add "livekit-agents[ultravox]"
+
+```
+
+### Authentication
+
+The Ultravox plugin requires an API key which can be accessed on the Ultravox console's [Settings](https://api.ultravox.ai/settings) page. Set `ULTRAVOX_API_KEY` as a variable in your `.env` file.
+
+### Usage
+
+Use the Ultravox Realtime API in an `AgentSession`. For example, you can use it in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import ultravox
+
+session = AgentSession(
+   llm=ultravox.realtime.RealtimeModel(),
+)
+
+```
+
+### Logging
+
+You can optionally enable debug logs (disabled by default):
+
+```shell
+LK_ULTRAVOX_DEBUG=true uv run src/agent.py dev
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/ultravox.md#livekit.plugins.ultravox).
+
+- **`voice`** _(str)_ - Default: `Mark`: Ultravox voice to use from the [available voices](https://app.ultravox.ai/voices).
+
+- **`time_exceeded_message`** _(str)_ (optional): Message to play when max duration is reached.
+
+## Additional resources
+
+The following resources provide more information about using Ultravox with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-ultravox/)**: The `livekit-plugins-ultravox` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/ultravox.md#livekit.plugins.ultravox)**: Reference for the Ultravox plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-ultravox)**: View the source or contribute to the LiveKit Ultravox plugin.
+
+- **[Ultravox Realtime docs](https://docs.ultravox.ai/overview)**: Ultravox documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Ultravox.
+
+---
+
+This document was rendered at 2025-11-19T10:50:49.482Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/realtime/plugins/ultravox.md](https://docs.livekit.io/agents/models/realtime/plugins/ultravox.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).

@@ -1,0 +1,2706 @@
+LiveKit docs › Models › Large language models (LLM) › Overview
+
+---
+
+# Large language models (LLM)
+
+> Conversational intelligence for your voice agents.
+
+## Overview
+
+The core reasoning, response, and orchestration of your voice agent is powered by an LLM. You can choose between a variety of models to balance performance, accuracy, and cost. In a voice agent, your LLM receives a transcript of the user's speech from an [STT](https://docs.livekit.io/agents/models/stt.md) model, and produces a text response which is turned into speech by a [TTS](https://docs.livekit.io/agents/models/tts.md) model.
+
+You can choose a model served through LiveKit Inference, which is included in LiveKit Cloud, or you can use a plugin to connect directly to a wider range of model providers with your own account.
+
+## LiveKit Inference
+
+The following models are available in [LiveKit Inference](https://docs.livekit.io/agents/models.md#inference). Refer to the guide for each model for more details on additional configuration options.
+
+| Model family | Model name | Provided by |
+| ------------- | ---------- | ----------- |
+| OpenAI | GPT-4o | Azure, OpenAI |
+|   | GPT-4o mini | Azure, OpenAI |
+|   | GPT-4.1 | Azure, OpenAI |
+|   | GPT-4.1 mini | Azure, OpenAI |
+|   | GPT-4.1 nano | Azure, OpenAI |
+|   | GPT-5 | Azure, OpenAI |
+|   | GPT-5 mini | Azure, OpenAI |
+|   | GPT-5 nano | Azure, OpenAI |
+|   | GPT OSS 120B | Baseten, Groq, Cerebras |
+| Gemini | Gemini 2.5 Pro | Google |
+|   | Gemini 2.5 Flash | Google |
+|   | Gemini 2.5 Flash Lite | Google |
+|   | Gemini 2.0 Flash | Google |
+|   | Gemini 2.0 Flash Lite | Google |
+| Qwen | Qwen3 235B A22B Instruct | Baseten |
+| Kimi | Kimi K2 Instruct | Baseten |
+| DeepSeek | DeepSeek V3 | Baseten |
+
+## Usage
+
+To set up an LLM in an `AgentSession`, provide the model id to the `llm` argument. LiveKit Inference manages the connection to the model automatically. Consult the [models list](#inference) for available models.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession
+
+session = AgentSession(
+    llm="openai/gpt-4.1-mini",
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: "openai/gpt-4.1-mini",
+});
+
+```
+
+### Additional parameters
+
+More configuration options, such as reasoning effort, are available for each model. To set additional parameters, use the `LLM` class from the `inference` module. Consult each model reference for examples and available parameters.
+
+## Plugins
+
+The LiveKit Agents framework also includes a variety of open source [plugins](https://docs.livekit.io/agents/models.md#plugins) for a wide range of LLM providers. Plugins are especially useful if you need custom or fine-tuned models. These plugins require authentication with the provider yourself, usually via an API key. You are responsible for setting up your own account and managing your own billing and credentials. The plugins are listed below, along with their availability for Python or Node.js.
+
+| Provider | Python | Node.js |
+| -------- | ------ | ------- |
+| [Amazon Bedrock](https://docs.livekit.io/agents/models/llm/plugins/aws.md) | ✓ | — |
+| [Anthropic](https://docs.livekit.io/agents/models/llm/plugins/anthropic.md) | ✓ | — |
+| [Baseten](https://docs.livekit.io/agents/models/llm/plugins/baseten.md) | ✓ | — |
+| [Google Gemini](https://docs.livekit.io/agents/models/llm/plugins/gemini.md) | ✓ | ✓ |
+| [Groq](https://docs.livekit.io/agents/models/llm/plugins/groq.md) | ✓ | ✓ |
+| [LangChain](https://docs.livekit.io/agents/models/llm/plugins/langchain.md) | ✓ | — |
+| [Mistral AI](https://docs.livekit.io/agents/models/llm/plugins/mistralai.md) | ✓ | — |
+| [OpenAI](https://docs.livekit.io/agents/models/llm/plugins/openai.md) | ✓ | ✓ |
+| [Azure OpenAI](https://docs.livekit.io/agents/models/llm/plugins/azure-openai.md) | ✓ | ✓ |
+| [Cerebras](https://docs.livekit.io/agents/models/llm/plugins/cerebras.md) | ✓ | ✓ |
+| [DeepSeek](https://docs.livekit.io/agents/models/llm/plugins/deepseek.md) | ✓ | ✓ |
+| [Fireworks](https://docs.livekit.io/agents/models/llm/plugins/fireworks.md) | ✓ | ✓ |
+| [Letta](https://docs.livekit.io/agents/models/llm/plugins/letta.md) | ✓ | — |
+| [Ollama](https://docs.livekit.io/agents/models/llm/plugins/ollama.md) | ✓ | ✓ |
+| [OpenRouter](https://docs.livekit.io/agents/models/llm/plugins/openrouter.md) | ✓ | — |
+| [Perplexity](https://docs.livekit.io/agents/models/llm/plugins/perplexity.md) | ✓ | ✓ |
+| [Telnyx](https://docs.livekit.io/agents/models/llm/plugins/telnyx.md) | ✓ | ✓ |
+| [Together AI](https://docs.livekit.io/agents/models/llm/plugins/together.md) | ✓ | ✓ |
+| [xAI](https://docs.livekit.io/agents/models/llm/plugins/xai.md) | ✓ | ✓ |
+
+Have another provider in mind? LiveKit is open source and welcomes [new plugin contributions](https://docs.livekit.io/agents/models.md#contribute).
+
+## Advanced features
+
+The following sections cover more advanced topics common to all LLM providers. For more detailed reference on individual provider configuration, consult the model reference or plugin documentation for that provider.
+
+### Custom LLM
+
+To create an entirely custom LLM, implement the [LLM node](https://docs.livekit.io/agents/build/nodes.md#llm_node) in your agent.
+
+### Standalone usage
+
+You can use an `LLM` instance as a standalone component with its streaming interface. It expects a `ChatContext` object, which contains the conversation history. The return value is a stream of `ChatChunk` objects. This interface is the same across all LLM providers, regardless of their underlying API design:
+
+```python
+from livekit.agents import ChatContext
+from livekit.plugins import openai
+
+llm = openai.LLM(model="gpt-4o-mini")
+    
+chat_ctx = ChatContext()
+chat_ctx.add_message(role="user", content="Hello, this is a test message!")
+    
+async with llm.chat(chat_ctx=chat_ctx) as stream:
+    async for chunk in stream:
+        print("Received chunk:", chunk.delta)
+
+```
+
+### Vision
+
+LiveKit Agents supports image input from URL or from [realtime video frames](https://docs.livekit.io/home/client/tracks.md). Consult your model provider for details on compatible image types, external URL support, and other constraints. For more information, see [Vision](https://docs.livekit.io/agents/build/vision.md).
+
+## Additional resources
+
+The following resources cover related topics that may be useful for your application.
+
+- **[Workflows](https://docs.livekit.io/agents/build/workflows.md)**: How to model repeatable, accurate tasks with multiple agents.
+
+- **[Tool definition and usage](https://docs.livekit.io/agents/build/tools.md)**: Let your agents call external tools and more.
+
+- **[Inference pricing](https://livekit.io/pricing/inference)**: The latest pricing information for all models in LiveKit Inference.
+
+- **[Realtime models](https://docs.livekit.io/agents/models/realtime.md)**: Realtime models like the OpenAI Realtime API, Gemini Live, and Amazon Nova Sonic.
+
+---
+
+This document was rendered at 2025-11-19T10:44:26.200Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm.md](https://docs.livekit.io/agents/models/llm.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Azure › Azure OpenAI in LiveKit Inference
+
+---
+
+# OpenAI LLM models
+
+> Reference for OpenAI models served via LiveKit Inference.
+
+## Overview
+
+LiveKit Inference includes support for the following OpenAI models. Pricing information for each model and provider is available on the [pricing page](https://livekit.io/pricing/inference#proprietary-llms).
+
+| Model name | Model ID | Providers |
+| ---------- | -------- | -------- |
+| GPT-4o | `openai/gpt-4o` | `azure`, `openai` |
+| GPT-4o mini | `openai/gpt-4o-mini` | `azure`, `openai` |
+| GPT-4.1 | `openai/gpt-4.1` | `azure`, `openai` |
+| GPT-4.1 mini | `openai/gpt-4.1-mini` | `azure`, `openai` |
+| GPT-4.1 nano | `openai/gpt-4.1-nano` | `azure`, `openai` |
+| GPT-5 | `openai/gpt-5` | `azure`, `openai` |
+| GPT-5 mini | `openai/gpt-5-mini` | `azure`, `openai` |
+| GPT-5 nano | `openai/gpt-5-nano` | `azure`, `openai` |
+| GPT OSS 120B | `openai/gpt-oss-120b` | `baseten`, `groq`, (cerebras coming soon) |
+
+## Usage
+
+To use OpenAI, pass the model id to the `llm` argument in your `AgentSession`. LiveKit Inference manages the connection to the model automatically and picks the best available provider.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession
+
+session = AgentSession(
+    llm="openai/gpt-4.1-mini",
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: "openai/gpt-4.1-mini",
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+## Parameters
+
+To customize additional parameters, or specify the exact provider to use, use the `LLM` class from the `inference` module.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession, inference
+
+session = AgentSession(
+    llm=inference.LLM(
+        model="openai/gpt-5-mini", 
+        provider="openai",
+        extra_kwargs={
+            "reasoning_effort": "low"
+        }
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession, inference } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: new inference.LLM({ 
+        model: "openai/gpt-5-mini", 
+        provider: "openai",
+        modelOptions: { 
+            reasoning_effort: "low" 
+        }
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+- **`model`** _(string)_: The model to use for the LLM. Must be a model from OpenAI.
+
+- **`provider`** _(string)_: The provider to use for the LLM. Must be `openai` to use OpenAI models and other parameters.
+
+- **`extra_kwargs`** _(dict)_ (optional): Additional parameters to pass to the provider's Chat Completions API, such as `reasoning_effort` or `max_completion_tokens`.
+
+In Node.js this parameter is called `modelOptions`.
+
+## Additional resources
+
+The following links provide more information about OpenAI in LiveKit Inference.
+
+- **[OpenAI Plugin](https://docs.livekit.io/agents/models/llm/plugins/openai.md)**: Plugin to use your own OpenAI account instead of LiveKit Inference.
+
+- **[Azure OpenAI Plugin](https://docs.livekit.io/agents/models/llm/plugins/azure-openai.md)**: Plugin to use your own Azure OpenAI account instead of LiveKit Inference.
+
+- **[OpenAI docs](https://platform.openai.com/docs)**: Official OpenAI platform documentation.
+
+- **[Azure OpenAI docs](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/overview)**: Azure OpenAI documentation, for OpenAI proprietary models.
+
+- **[Baseten docs](https://docs.baseten.co/development/model-apis/overview)**: Baseten's official Model API documentation, for GPT-OSS models.
+
+- **[Groq docs](https://console.groq.com/docs/overview)**: Groq's official API documentation, for GPT-OSS models.
+
+- **[OpenAI ecosystem overview](https://docs.livekit.io/agents/integrations/openai.md)**: Overview of the entire OpenAI ecosystem and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:44:32.850Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/inference/openai.md](https://docs.livekit.io/agents/models/llm/inference/openai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Google › Gemini in LiveKit Inference
+
+---
+
+# Google Gemini LLM
+
+> Reference for the Google Gemini models served via LiveKit Inference.
+
+## Overview
+
+LiveKit Inference offers Gemini models through Google Vertex AI. Pricing is available on the [pricing page](https://livekit.io/pricing/inference#llm).
+
+| Model name | Model ID | Providers |
+| ---------- | -------- | -------- |
+| Gemini 2.5 Pro | `google/gemini-2.5-pro` | `google` |
+| Gemini 2.5 Flash | `google/gemini-2.5-flash` | `google` |
+| Gemini 2.5 Flash Lite | `google/gemini-2.5-flash-lite` | `google` |
+| Gemini 2.0 Flash | `google/gemini-2.0-flash` | `google` |
+| Gemini 2.0 Flash Lite | `google/gemini-2.0-flash-lite` | `google` |
+
+## Usage
+
+To use Gemini, pass the model id to the `llm` argument in your `AgentSession`. LiveKit Inference manages the connection to the model automatically.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession
+
+session = AgentSession(
+    llm="google/gemini-2.5-flash-lite",
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: "google/gemini-2.5-flash-lite",
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+To customize additional parameters, use the `LLM` class from the `inference` module.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession, inference
+
+session = AgentSession(
+    llm=inference.LLM(
+        model="google/gemini-2.5-flash-lite",
+        extra_kwargs={
+            "max_completion_tokens": 1000
+        }
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession, inference } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: new inference.LLM({ 
+        model: "google/gemini-2.5-flash-lite", 
+        modelOptions: { 
+            max_completion_tokens: 1000 
+        }
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+- **`model`** _(string)_: The model ID from the [models list](#models).
+
+- **`provider`** _(string)_ (optional): Set a specific provider to use for the LLM. Refer to the [models list](#models) for available providers. If not set, LiveKit Inference uses the best available provider, and bills accordingly.
+
+- **`extra_kwargs`** _(dict)_ (optional): Additional parameters to pass to the Gemini Chat Completions API, such as `max_completion_tokens`.
+
+In Node.js this parameter is called `modelOptions`.
+
+## Additional resources
+
+The following links provide more information about Gemini in LiveKit Inference.
+
+- **[Gemini Plugin](https://docs.livekit.io/agents/models/llm/plugins/gemini.md)**: Plugin to use your own Gemini or Vertex AI account instead of LiveKit Inference.
+
+- **[Gemini docs](https://ai.google.dev/gemini-api/docs/models/gemini)**: Gemini's official API documentation.
+
+- **[Google ecosystem overview](https://docs.livekit.io/agents/integrations/google.md)**: Overview of the entire Google AI ecosystem and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:44:52.174Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/inference/gemini.md](https://docs.livekit.io/agents/models/llm/inference/gemini.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › LiveKit Inference › Qwen
+
+---
+
+# Qwen LLM
+
+> Reference for Qwen models served via LiveKit Inference.
+
+## Overview
+
+LiveKit Inference offers Qwen models through Baseten. Pricing is available on the [pricing page](https://livekit.io/pricing/inference#llm).
+
+| Model name | Model ID | Providers |
+| ---------- | -------- | -------- |
+| Qwen3 235B A22B Instruct | `qwen/qwen3-235b-a22b-instruct` | `baseten` |
+
+## Usage
+
+To use Qwen, pass the model id to the `llm` argument in your `AgentSession`. LiveKit Inference manages the connection to the best available provider automatically.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession
+
+session = AgentSession(
+    llm="qwen/qwen3-235b-a22b-instruct",
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: "qwen/qwen3-235b-a22b-instruct",
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+To customize additional parameters, including the specific provider to use, use the `LLM` class from the `inference` module.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession, inference
+
+session = AgentSession(
+    llm=inference.LLM(
+        model="qwen/qwen3-235b-a22b-instruct", 
+        provider="baseten",
+        extra_kwargs={
+            "max_completion_tokens": 1000
+        }
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession, inference } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: new inference.LLM({ 
+        model: "qwen/qwen3-235b-a22b-instruct", 
+        provider: "baseten",
+        modelOptions: { 
+            max_completion_tokens: 1000
+        }
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+- **`model`** _(string)_: The model ID from the [models list](#models).
+
+- **`provider`** _(string)_ (optional): Set a specific provider to use for the LLM. Refer to the [models list](#models) for available providers. If not set, LiveKit Inference uses the best available provider, and bills accordingly.
+
+- **`extra_kwargs`** _(dict)_ (optional): Additional parameters to pass to the provider's Chat Completions API, such as `max_completion_tokens`. See the provider's [documentation](#additional-resources) for more information.
+
+In Node.js this parameter is called `modelOptions`.
+
+## Additional resources
+
+The following links provide more information about Qwen in LiveKit Inference.
+
+- **[Baseten Plugin](https://docs.livekit.io/agents/models/llm/plugins/baseten.md)**: Plugin to use your own Baseten account instead of LiveKit Inference.
+
+- **[Baseten docs](https://docs.baseten.co/development/model-apis/overview)**: Baseten's official Model API documentation.
+
+---
+
+This document was rendered at 2025-11-19T10:44:57.461Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/inference/qwen.md](https://docs.livekit.io/agents/models/llm/inference/qwen.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › LiveKit Inference › Kimi
+
+---
+
+# Kimi LLM
+
+> Reference for Kimi models served via LiveKit Inference.
+
+## Overview
+
+LiveKit Inference offers Kimi models through Baseten. Pricing is available on the [pricing page](https://livekit.io/pricing/inference#llm).
+
+| Model name | Model ID | Providers |
+| ---------- | -------- | -------- |
+| Kimi K2 Instruct | `moonshotai/kimi-k2-instruct` | `baseten` |
+
+## Usage
+
+To use Kimi, pass the model id to the `llm` argument in your `AgentSession`. LiveKit Inference manages the connection to the best available provider automatically.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession
+
+session = AgentSession(
+    llm="moonshotai/kimi-k2-instruct",
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: "moonshotai/kimi-k2-instruct",
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+To customize additional parameters, including the specific provider to use, use the `LLM` class from the `inference` module.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession, inference
+
+session = AgentSession(
+    llm=inference.LLM(
+        model="moonshotai/kimi-k2-instruct", 
+        provider="baseten",
+        extra_kwargs={
+            "max_completion_tokens": 1000
+        }
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession, inference } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: new inference.LLM({ 
+        model: "moonshotai/kimi-k2-instruct", 
+        provider: "baseten",
+        modelOptions: { 
+            max_completion_tokens: 1000 
+        }
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+- **`model`** _(string)_: The model ID from the [models list](#models).
+
+- **`provider`** _(string)_ (optional): Set a specific provider to use for the LLM. Refer to the [models list](#models) for available providers. If not set, LiveKit Inference uses the best available provider, and bills accordingly.
+
+- **`extra_kwargs`** _(dict)_ (optional): Additional parameters to pass to the provider's Chat Completions API, such as `max_completion_tokens`. See the provider's [documentation](#additional-resources) for more information.
+
+In Node.js this parameter is called `modelOptions`.
+
+## Additional resources
+
+The following links provide more information about Kimi in LiveKit Inference.
+
+- **[Baseten Plugin](https://docs.livekit.io/agents/models/llm/plugins/baseten.md)**: Plugin to use your own Baseten account instead of LiveKit Inference.
+
+- **[Baseten docs](https://docs.baseten.co/development/model-apis/overview)**: Baseten's official Model API documentation.
+
+---
+
+This document was rendered at 2025-11-19T10:45:02.396Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/inference/kimi.md](https://docs.livekit.io/agents/models/llm/inference/kimi.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › LiveKit Inference › DeepSeek
+
+---
+
+# DeepSeek LLM
+
+> Reference for DeepSeek models served via LiveKit Inference.
+
+## Overview
+
+LiveKit Inference offers DeepSeek models through Baseten. Pricing is available on the [pricing page](https://livekit.io/pricing/inference#llm).
+
+| Model name | Model ID | Providers |
+| ---------- | -------- | -------- |
+| DeepSeek V3 | `deepseek-ai/deepseek-v3` | `baseten` |
+
+## Usage
+
+To use DeepSeek, pass the model id to the `llm` argument in your `AgentSession`. LiveKit Inference manages the connection to the best available provider automatically.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession
+
+session = AgentSession(
+    llm="deepseek-ai/deepseek-v3",
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: "deepseek-ai/deepseek-v3",
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+To customize additional parameters, including the specific provider to use, use the `LLM` class from the `inference` module.
+
+**Python**:
+
+```python
+from livekit.agents import AgentSession, inference
+
+session = AgentSession(
+    llm=inference.LLM(
+        model="deepseek-ai/deepseek-v3", 
+        provider="baseten",
+        extra_kwargs={
+            "max_completion_tokens": 1000
+        }
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import { AgentSession, inference } from '@livekit/agents';
+
+session = new AgentSession({
+    llm: new inference.LLM({ 
+        model: "deepseek-ai/deepseek-v3", 
+        provider: "baseten",
+        modelOptions: { 
+            max_completion_tokens: 1000 
+        }
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+- **`model`** _(string)_: The model ID from the [models list](#models).
+
+- **`provider`** _(string)_ (optional): Set a specific provider to use for the LLM. Refer to the [models list](#models) for available providers. If not set, LiveKit Inference uses the best available provider, and bills accordingly.
+
+- **`extra_kwargs`** _(dict)_ (optional): Additional parameters to pass to the provider's Chat Completions API, such as `max_completion_tokens`. See the provider's [documentation](#additional-resources) for more information.
+
+In Node.js this parameter is called `modelOptions`.
+
+## Additional resources
+
+The following links provide more information about DeepSeek in LiveKit Inference.
+
+- **[Baseten Plugin](https://docs.livekit.io/agents/models/llm/plugins/baseten.md)**: Plugin to use your own Baseten account instead of LiveKit Inference.
+
+- **[DeepSeek Plugin](https://docs.livekit.io/agents/models/llm/plugins/deepseek.md)**: Plugin to use DeepSeek's official API instead of LiveKit Inference.
+
+- **[Baseten docs](https://docs.baseten.co/development/model-apis/overview)**: Baseten's official Model API documentation.
+
+---
+
+This document was rendered at 2025-11-19T10:45:14.868Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/inference/deepseek.md](https://docs.livekit.io/agents/models/llm/inference/deepseek.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Anthropic
+
+---
+
+# Anthropic Claude LLM plugin guide
+
+> How to use the Anthropic Claude LLM plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use the the [Claude API](https://claude.com/platform/api) as a LLM provider for your voice agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[anthropic]~=1.2"
+
+```
+
+### Authentication
+
+The Anthropic plugin requires an [Anthropic API key](https://console.anthropic.com/account/keys).
+
+Set `ANTHROPIC_API_KEY` in your `.env` file.
+
+### Usage
+
+Use Claude within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import anthropic
+
+session = AgentSession(
+    llm=anthropic.LLM(
+        model="claude-3-5-sonnet-20241022",
+        temperature=0.8,
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/anthropic/index.html.md#livekit.plugins.anthropic.LLM) for a complete list of all available parameters.
+
+- **`model`** _(str | ChatModels)_ (optional) - Default: `claude-3-5-sonnet-20241022`: Model to use. For a full list of available models, see the [Model options](https://docs.anthropic.com/en/docs/intro-to-claude#model-options).
+
+- **`max_tokens`** _(int)_ (optional): The maximum number of tokens to generate before stopping. To learn more, see the [Anthropic API reference](https://docs.anthropic.com/en/api/messages#body-max-tokens).
+
+- **`temperature`** _(float)_ (optional) - Default: `1`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `1`. To learn more, see the [Anthropic API reference](https://docs.anthropic.com/en/api/messages#body-temperature).
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Anthropic LLM plugin.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-anthropic/)**: The `livekit-plugins-anthropic` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/anthropic/index.html.md#livekit.plugins.anthropic.LLM)**: Reference for the Anthropic LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-anthropic)**: View the source or contribute to the LiveKit Anthropic LLM plugin.
+
+- **[Anthropic docs](https://docs.anthropic.com/en/docs/intro-to-claude)**: Anthropic Claude docs.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Anthropic.
+
+---
+
+This document was rendered at 2025-11-19T10:45:26.550Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/anthropic.md](https://docs.livekit.io/agents/models/llm/plugins/anthropic.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › AWS › Amazon Bedrock LLM Plugin
+
+---
+
+# Amazon Bedrock LLM plugin guide
+
+> How to use the Amazon Bedrock LLM plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Amazon Bedrock](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html) as a LLM provider for your voice agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[aws]~=1.2"
+
+```
+
+### Authentication
+
+The AWS plugin requires AWS credentials. Set the following environment variables in your `.env` file:
+
+```shell
+AWS_ACCESS_KEY_ID=<your-aws-access-key-id>
+AWS_SECRET_ACCESS_KEY=<your-aws-secret-access-key>
+
+```
+
+### Usage
+
+Use Bedrock within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import aws
+
+session = AgentSession(
+    llm=aws.LLM(
+        model="anthropic.claude-3-5-sonnet-20240620-v1:0",
+        temperature=0.8,
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/aws/index.html.md#livekit.plugins.aws.LLM).
+
+- **`model`** _(string | TEXT_MODEL)_ (optional) - Default: `anthropic.claude-3-5-sonnet-20240620-v1:0`: The model to use for the LLM. For more information, see the documentation for the `modelId` parameter in the [Amazon Bedrock API reference](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/bedrock-runtime/client/converse_stream.html).
+
+- **`region`** _(string)_ (optional) - Default: `us-east-1`: The region to use for AWS API requests.
+
+- **`temperature`** _(float)_ (optional): Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Default values vary depending on the model you select. To learn more, see [Inference request parameters and response fields for foundation models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters.html).
+
+- **`tool_choice`** _([ToolChoice | Literal['auto', 'required', 'none']])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Amazon Nova Sonic
+
+To use Amazon Nova Sonic on AWS Bedrock, refer to the following integration guide:
+
+- **[Amazon Nova Sonic](https://docs.livekit.io/agents/models/realtime/plugins/nova-sonic.md)**: Integration guide for the Amazon Nova Sonic speech-to-speech model on AWS Bedrock.
+
+## Additional resources
+
+The following links provide more information about the Amazon Bedrock LLM plugin.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-aws/)**: The `livekit-plugins-aws` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/aws/index.html.md#livekit.plugins.aws.LLM)**: Reference for the Amazon Bedrock LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-aws)**: View the source or contribute to the LiveKit Amazon Bedrock LLM plugin.
+
+- **[Bedrock docs](https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html)**: Amazon Bedrock docs.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Amazon Bedrock.
+
+- **[AWS ecosystem guide](https://docs.livekit.io/agents/integrations/aws.md)**: Overview of the entire AWS and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:45:31.479Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/aws.md](https://docs.livekit.io/agents/models/llm/plugins/aws.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Baseten
+
+---
+
+# Baseten LLM plugin guide
+
+> How to use the Baseten LLM plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Baseten](https://www.baseten.co/) as an LLM provider for your voice agents.
+
+> 💡 **LiveKit Inference**
+> 
+> Some Baseten models are also available in LiveKit Inference, with billing and integration handled automatically. See [the docs](https://docs.livekit.io/agents/models/llm.md) for more information.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[baseten]~=1.2"
+
+```
+
+### Authentication
+
+The Baseten plugin requires a [Baseten API key](https://app.baseten.co/settings/api-keys).
+
+Set the following in your `.env` file:
+
+```shell
+BASETEN_API_KEY=<your-baseten-api-key>
+
+```
+
+### Model selection
+
+LiveKit Agents integrates with Baseten's Model API, which supports the most popular open source LLMs with per-token billing. To use the Model API, you only need to activate the model and then copy its name.
+
+1. Activate your desired model in the [Model API](https://app.baseten.co/model-apis/create)
+2. Copy its name from your model API endpoint dialog in your [model library](https://app.baseten.co/model-apis)
+3. Use the model name in the plugin (e.g. `"openai/gpt-oss-120b"`)
+
+### Usage
+
+Use a Baseten LLM in your `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import baseten
+
+session = AgentSession(
+    llm=baseten.LLM(
+        model="openai/gpt-oss-120b"
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the [plugin reference](https://docs.livekit.io/python/v1/livekit/plugins/groq/services.html.md#livekit.plugins.groq.services.LLM).
+
+- **`model`** _(string)_ (optional) - Default: `meta-llama/Llama-4-Maverick-17B-128E-Instruct`: Name of the LLM model to use from the [Model API](https://www.baseten.co/model-apis). See [Model selection](#model-selection) for more information.
+
+## Additional resources
+
+The following resources provide more information about using Baseten with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-baseten/)**: The `livekit-plugins-baseten` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/baseten/index.html.md#livekit.plugins.baseten.LLM)**: Reference for the Baseten LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-baseten)**: View the source or contribute to the LiveKit Baseten LLM plugin.
+
+- **[Baseten docs](https://docs.baseten.co/)**: Baseten docs.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Baseten.
+
+- **[Baseten TTS](https://docs.livekit.io/agents/models/tts/plugins/baseten.md)**: Baseten TTS integration guide.
+
+- **[Baseten STT](https://docs.livekit.io/agents/models/stt/plugins/baseten.md)**: Baseten STT integration guide.
+
+---
+
+This document was rendered at 2025-11-19T10:45:36.183Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/baseten.md](https://docs.livekit.io/agents/models/llm/plugins/baseten.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Cerebras
+
+---
+
+# Cerebras LLM plugin guide
+
+> How to use the Cerebras inference with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Cerebras](https://www.cerebras.net/) as an LLM provider for your voice agents.
+
+> 💡 **LiveKit Inference**
+> 
+> Some Cerebras models are also available in LiveKit Inference, with billing and integration handled automatically. See [the docs](https://docs.livekit.io/agents/models/llm.md) for more information.
+
+## Usage
+
+Install the OpenAI plugin to add Cerebras support:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+CEREBRAS_API_KEY=<your-cerebras-api-key>
+
+```
+
+Create a Cerebras LLM using the `with_cerebras` method:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_cerebras(
+        model="llama3.1-8b",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM.withCerebras({
+        model: "llama3.1-8b",
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. See the plugin reference links in the [Additional resources](#additional-resources) section for a complete list of all available parameters.
+
+- **`model`** _(str | CerebrasChatModels)_ (optional) - Default: `llama3.1-8b`: Model to use for inference. To learn more, see [supported models](https://inference-docs.cerebras.ai/api-reference/chat-completions#param-model).
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `1.5`. To learn more, see the [Cerebras documentation](https://inference-docs.cerebras.ai/api-reference/chat-completions#param-temperature).
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Cerebras LLM integration.
+
+- **[Cerebras docs](https://inference-docs.cerebras.ai/)**: Cerebras inference docs.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Cerebras.
+
+---
+
+This document was rendered at 2025-11-19T10:45:41.582Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/cerebras.md](https://docs.livekit.io/agents/models/llm/plugins/cerebras.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › DeepSeek
+
+---
+
+# DeepSeek LLM plugin guide
+
+> How to use DeepSeek models with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use the [DeepSeek API](https://platform.deepseek.com/) as an LLM provider for your voice agents.
+
+> 💡 **LiveKit Inference**
+> 
+> DeepSeek models are also available in various providers in LiveKit Inference, with billing and integration handled automatically. See [the docs](https://docs.livekit.io/agents/models/llm.md) for more information.
+
+## Usage
+
+Use the OpenAI plugin's `with_deepseek` method to set the default agent session LLM to DeepSeek:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+DEEPSEEK_API_KEY=<your-deepseek-api-key>
+
+```
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_deepseek(
+        model="deepseek-chat", # this is DeepSeek-V3
+    ),
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+   llm: openai.LLM.withDeepSeek({
+    model: "deepseek-chat",  // this is DeepSeek-V3
+   })
+});
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str | DeepSeekChatModels)_ (optional) - Default: `deepseek-chat`: DeepSeek model to use. See [models and pricing](https://api-docs.deepseek.com/quick_start/pricing) for a complete list.
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `2`.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the DeepSeek LLM integration.
+
+- **[DeepSeek docs](https://platform.deepseek.com/docs)**: DeepSeek API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and DeepSeek.
+
+---
+
+This document was rendered at 2025-11-19T10:45:46.781Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/deepseek.md](https://docs.livekit.io/agents/models/llm/plugins/deepseek.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Fireworks
+
+---
+
+# Fireworks AI LLM plugin guide
+
+> How to use Fireworks AI with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Fireworks AI](https://fireworks.ai/) as an LLM provider for your voice agents.
+
+## Usage
+
+Install the OpenAI plugin to add Fireworks AI support:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+FIREWORKS_API_KEY=<your-fireworks-api-key>
+
+```
+
+Create a Fireworks AI LLM using the `with_fireworks` method:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_fireworks(
+        model="accounts/fireworks/models/llama-v3p3-70b-instruct",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM.withFireworks({
+        model: "accounts/fireworks/models/llama-v3p3-70b-instruct",
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str)_ (optional) - Default: `accounts/fireworks/models/llama-v3p3-70b-instruct`: Model to use for inference. To learn more, see [supported models](https://docs.fireworks.ai/models/).
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `1.5`.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Fireworks AI LLM integration.
+
+- **[Fireworks AI docs](https://docs.fireworks.ai/docs/overview)**: Fireworks AI API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Fireworks AI.
+
+---
+
+This document was rendered at 2025-11-19T10:45:51.972Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/fireworks.md](https://docs.livekit.io/agents/models/llm/plugins/fireworks.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Google › Gemini LLM Plugin
+
+---
+
+# Google Gemini LLM plugin guide
+
+> A guide to using Google Gemini with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Google Gemini](https://ai.google.dev/gemini-api/docs/models/gemini) as an LLM provider for your voice agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[google]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-google@1.x
+
+```
+
+### Authentication
+
+The Google plugin requires authentication based on your chosen service:
+
+- For Vertex AI, you must set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of the service account key file. For more information about mounting files as secrets when deploying to LiveKit Cloud, see [File-mounted secrets](https://docs.livekit.io/agents/ops/deployment/secrets.md#file-mounted-secrets) .
+- For Google Gemini API, set the `GOOGLE_API_KEY` environment variable.
+
+### Usage
+
+Use Gemini within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+**Python**:
+
+```python
+from livekit.plugins import google
+
+session = AgentSession(
+    llm=google.LLM(
+        model="gemini-2.0-flash-exp",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as google from '@livekit/agents-plugin-google';
+
+const session = new voice.AgentSession({
+    llm: google.LLM(
+        model: "gemini-2.0-flash-exp",
+    ),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the [plugin reference](https://docs.livekit.io/python/v1/livekit/plugins/google/index.html.md#livekit.plugins.google.LLM).
+
+- **`model`** _(ChatModels | str)_ (optional) - Default: `gemini-2.0-flash-001`: ID of the model to use. For a full list, see [Gemini models](https://ai.google.dev/gemini-api/docs/models/gemini).
+
+- **`api_key`** _(str)_ (optional) - Environment: `GOOGLE_API_KEY`: API key for Google Gemini API.
+
+- **`vertexai`** _(bool)_ (optional) - Default: `false`: True to use [Vertex AI](https://cloud.google.com/vertex-ai); false to use [Google AI](https://cloud.google.com/ai-platform/docs).
+
+- **`project`** _(str)_ (optional) - Environment: `GOOGLE_CLOUD_PROJECT`: Google Cloud project to use (only if using Vertex AI). Required if using Vertex AI and the environment variable isn't set.
+
+- **`location`** _(str)_ (optional) - Default: `` - Environment: `GOOGLE_CLOUD_LOCATION`: Google Cloud location to use (only if using Vertex AI). Required if using Vertex AI and the environment variable isn't set.
+
+- **`gemini_tools`** _(List[GeminiTool])_ (optional): List of built-in Google tools, such as Google Search. For more information, see [Gemini tools](#gemini-tools).
+
+### Gemini tools
+
+The `gemini_tools` parameter allows you to use built-in Google tools with the Gemini model. For example, you can use this feature to implement [Grounding with Google Search](https://ai.google.dev/gemini-api/docs/google-search):
+
+**Python**:
+
+```python
+from livekit.plugins import google
+from google.genai import types
+
+session = AgentSession(
+    llm=google.LLM(
+        model="gemini-2.0-flash-exp",
+        gemini_tools=[types.GoogleSearch()],
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as google from '@livekit/agents-plugin-google';
+
+const session = new voice.AgentSession({
+    llm: google.LLM(
+        model: "gemini-2.0-flash-exp",
+        geminiTools: [new google.types.GoogleSearch()],
+    ),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+The full list of supported tools, depending on the model, is:
+
+- `google.genai.types.GoogleSearchRetrieval()`
+- `google.genai.types.ToolCodeExecution()`
+- `google.genai.types.GoogleSearch()`
+- `google.genai.types.UrlContext()`
+- `google.genai.types.GoogleMaps()`
+
+## Additional resources
+
+The following resources provide more information about using Google Gemini with LiveKit Agents.
+
+- **[Gemini docs](https://ai.google.dev/gemini-api/docs/models/gemini)**: Google Gemini documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Google Gemini.
+
+- **[Google AI ecosystem guide](https://docs.livekit.io/agents/integrations/google.md)**: Overview of the entire Google AI and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:45:57.950Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/gemini.md](https://docs.livekit.io/agents/models/llm/plugins/gemini.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Groq › Groq LLM Plugin
+
+---
+
+# Groq LLM plugin guide
+
+> How to use the Groq LLM plugin for LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Groq](https://groq.com/) as an LLM provider for your voice agents.
+
+> 💡 **LiveKit Inference**
+> 
+> Some Groq models are also available in LiveKit Inference, with billing and integration handled automatically. See [the docs](https://docs.livekit.io/agents/models/llm.md) for more information.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[groq]~=1.2"
+
+```
+
+### Authentication
+
+The Groq plugin requires a [Groq API key](https://console.groq.com/keys).
+
+Set `GROQ_API_KEY` in your `.env` file.
+
+### Usage
+
+Use a Groq LLM in your `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import groq
+
+session = AgentSession(
+    llm=groq.LLM(
+        model="llama3-8b-8192"
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the [plugin reference](https://docs.livekit.io/python/v1/livekit/plugins/groq/services.html.md#livekit.plugins.groq.services.LLM).
+
+- **`model`** _(string)_ (optional) - Default: `llama-3.3-70b-versatile`: Name of the LLM model to use. For all options, see the [Groq model list](https://console.groq.com/docs/models).
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following resources provide more information about using Groq with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-groq/)**: The `livekit-plugins-groq` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/groq/index.html.md#livekit.plugins.groq.LLM)**: Reference for the Groq LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-groq)**: View the source or contribute to the LiveKit Groq LLM plugin.
+
+- **[Groq docs](https://console.groq.com/docs/overview)**: Groq's official API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Groq.
+
+- **[Groq ecosystem overview](https://docs.livekit.io/agents/integrations/groq.md)**: Overview of the entire Groq and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:46:02.908Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/groq.md](https://docs.livekit.io/agents/models/llm/plugins/groq.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › LangChain
+
+---
+
+# LangChain integration guide
+
+> How to use LangGraph workflows with LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [LangGraph](https://www.langchain.com/langgraph) as an LLM provider for your voice agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the LiveKit LangChain plugin from PyPI:
+
+```shell
+uv add "livekit-agents[langchain]~=1.2"
+
+```
+
+### Usage
+
+Use LangGraph workflows within an `AgentSession` by wrapping them with the `LLMAdapter`. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from langgraph.graph import StateGraph
+from livekit.agents import AgentSession, Agent
+from livekit.plugins import langchain
+
+# Define your LangGraph workflow
+def create_workflow():
+    workflow = StateGraph(...)
+    # Add your nodes and edges
+    return workflow.compile()
+
+# Use the workflow as an LLM
+session = AgentSession(
+    llm=langchain.LLMAdapter(
+        graph=create_workflow()
+    ),
+    # ... stt, tts, vad, turn_detection, etc.
+)
+
+```
+
+The `LLMAdapter` automatically converts the LiveKit chat context to [LangChain messages](https://python.langchain.com/docs/concepts/messages/#langchain-messages). The mapping is as follows:
+
+- `system` and `developer` messages to `SystemMessage`
+- `user` messages to `HumanMessage`
+- `assistant` messages to `AIMessage`
+
+### Parameters
+
+This section describes the available parameters for the `LLMAdapter`. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/langchain/index.html.md#livekit.plugins.langchain.LLMAdapter) for a complete list of all available parameters.
+
+- **`graph`** _(PregelProtocol)_: The LangGraph workflow to use as an LLM. Must be a locally compiled graph. To learn more, see  [Graph Definitions](https://langchain-ai.github.io/langgraph/reference/graphs/).
+
+- **`config`** _(RunnableConfig | None)_ (optional) - Default: `None`: Configuration options for the LangGraph workflow execution. This can include runtime configuration, callbacks, and other LangGraph-specific options. To learn more, see [RunnableConfig](https://python.langchain.com/docs/concepts/runnables/#runnableconfig).
+
+## Additional resources
+
+The following resources provide more information about using LangChain with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-langchain/)**: The `livekit-plugins-langchain` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/langchain/index.html.md#livekit.plugins.langchain.LLMAdapter)**: Reference for the LangChain LLM adapter.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-langchain)**: View the source or contribute to the LiveKit LangChain plugin.
+
+- **[LangChain docs](https://python.langchain.com/docs/)**: LangChain documentation and tutorials.
+
+- **[LangGraph docs](https://python.langchain.com/docs/langgraph)**: LangGraph documentation for building stateful workflows.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and LangChain.
+
+---
+
+This document was rendered at 2025-11-19T10:46:08.122Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/langchain.md](https://docs.livekit.io/agents/models/llm/plugins/langchain.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Letta
+
+---
+
+# Letta LLM plugin guide
+
+> How to use a Letta agent for your LLM with LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Letta](https://docs.letta.com/overview) as an LLM provider for your voice agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the OpenAI plugin to add Letta support:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+### Authentication
+
+If your Letta server requires authentication, you need to provide an API key. Set the following environment variable in your `.env` file:
+
+`LETTA_API_KEY`
+
+### Usage
+
+Use Letta LLM within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_letta(
+        agent_id="<agent-id>",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the parameters for the `with_letta` method. For a complete list of all available parameters, see the [plugin documentation](https://docs.livekit.io/reference/python/v1/livekit/plugins/openai/index.html.md#livekit.plugins.openai.LLM.with_letta).
+
+- **`agent_id`** _(string)_: Letta [agent ID](https://docs.letta.com/guides/ade/settings#agent-identity). Must begin with `agent-`.
+
+- **`base_url`** _(string)_ (optional) - Default: `https://api.letta.com/v1/voice-beta`: URL of the Letta server. For example, your [self-hosted server](https://docs.letta.com/guides/selfhosting) or [Letta Cloud](https://docs.letta.com/guides/cloud/overview).
+
+## Additional resources
+
+The following links provide more information about the Letta LLM plugin.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-openai/)**: The `livekit-plugins-openai` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/openai/index.html.md#livekit.plugins.openai.LLM.with_letta)**: Reference for the Letta LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-openai)**: View the source or contribute to the LiveKit OpenAI LLM plugin.
+
+- **[Letta docs](https://docs.letta.com/)**: Letta documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Letta.
+
+---
+
+This document was rendered at 2025-11-19T10:46:20.108Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/letta.md](https://docs.livekit.io/agents/models/llm/plugins/letta.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Mistral AI
+
+---
+
+# Mistral AI LLM plugin guide
+
+> How to integrate Mistral AI's La Plateforme inference service with LiveKit Agents.
+
+## Overview
+
+This plugin allows you to use [Mistral AI](https://mistral.ai/) as an LLM provider for your voice agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the LiveKit Mistral AI plugin from PyPI:
+
+```shell
+uv add "livekit-agents[mistralai]~=1.2"
+
+```
+
+### Authentication
+
+The Mistral AI integration requires a [Mistral AI API key](https://console.mistral.ai/api-keys/).
+
+Set the `MISTRAL_API_KEY` in your `.env` file.
+
+### Usage
+
+Use Mistral AI within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import mistralai
+
+session = AgentSession(
+    llm=mistralai.LLM(
+        model="mistral-medium-latest"
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/mistralai.md#livekit.plugins.mistralai.LLM) for a complete list of all available parameters.
+
+- **`model`** _(string | ChatModels)_ (optional) - Default: `ministral-8b-2410`: Which Mistral AI model to use. You can pass a string or a typed enum from `ChatModels`.
+
+- **`temperature`** _(float)_ (optional): Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+## Additional resources
+
+The following resources provide more information about using Mistral AI with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-mistralai)**: The `livekit-plugins-mistralai` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/mistralai.md#livekit.plugins.mistralai.LLM)**: Reference for the Mistral AI LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-mistralai)**: View the source or contribute to the LiveKit Mistral AI LLM plugin.
+
+- **[Mistral AI STT docs](https://docs.livekit.io/agents/models/stt/plugins/mistralai.md)**: Mistral AI STT documentation.
+
+- **[Mistral AI docs](https://docs.mistral.ai/)**: Mistral AI platform documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Mistral AI.
+
+---
+
+This document was rendered at 2025-11-19T10:46:24.875Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/mistralai.md](https://docs.livekit.io/agents/models/llm/plugins/mistralai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Ollama
+
+---
+
+# Ollama LLM plugin guide
+
+> How to run models locally using Ollama with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use a local [Ollama](https://ollama.com/library) instance as an LLM provider for your voice agents.
+
+## Usage
+
+Install the OpenAI plugin to add Ollama support:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+Create an Ollama LLM using the `with_ollama` method:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_ollama(
+        model="llama3.1",
+        base_url="http://localhost:11434/v1",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/openai/index.html.md#livekit.plugins.openai.LLM.with_cerebras) for a complete list of all available parameters.
+
+- **`model`** _(string)_ (optional) - Default: `llama3.1`: Ollama model to use. For a list of available models, see [Ollama models](https://ollama.com/models).
+
+- **`base_url`** _(string)_ (optional) - Default: `http://localhost:11434/v1`: Base URL for the Ollama API.
+
+- **`temperature`** _(float)_ (optional): Controls the randomness of the model's output. Higher values (e.g., 0.8) make the output more random, while lower values (e.g., 0.2) make it more focused and deterministic.
+
+## Links
+
+The following links provide more information about the Ollama integration.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-openai/)**: The `livekit-plugins-openai` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.run/reference/python/v1/livekit/plugins/openai/index.html#livekit.plugins.openai.LLM.with_ollama)**: Reference for the `with_ollama` method of the OpenAI LLM plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-openai)**: View the source or contribute to the LiveKit OpenAI LLM plugin.
+
+- **[Ollama docs](https://ollama.com/)**: Ollama site and documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Ollama.
+
+---
+
+This document was rendered at 2025-11-19T10:46:29.958Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/ollama.md](https://docs.livekit.io/agents/models/llm/plugins/ollama.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › OpenAI › OpenAI LLM Plugin
+
+---
+
+# OpenAI LLM plugin guide
+
+> How to use the OpenAI LLM plugin for LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use the [OpenAI platform](https://platform.openai.com/) as an LLM provider for your voice agents.
+
+> 💡 **LiveKit Inference**
+> 
+> OpenAI models are also available in LiveKit Inference with billing and integration handled automatically. See [the docs](https://docs.livekit.io/agents/models/llm/inference/openai.md) for more information.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+### Authentication
+
+The OpenAI plugin requires an [OpenAI API key](https://platform.openai.com/api-keys).
+
+Set `OPENAI_API_KEY` in your `.env` file.
+
+### Usage
+
+Use OpenAI within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM(
+        model="gpt-4o-mini"
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM(
+        model: "gpt-4o-mini"
+    ),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. See the plugin reference links in the [Additional resources](#additional-resources) section for a complete list of all available parameters.
+
+- **`model`** _(string)_ (optional) - Default: `gpt-4o-mini`: The model to use for the LLM. For more information, see the [OpenAI documentation](https://platform.openai.com/docs/models).
+
+- **`temperature`** _(float)_ (optional) - Default: `0.8`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `2`.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following resources provide more information about using OpenAI with LiveKit Agents.
+
+- **[OpenAI docs](https://platform.openai.com/docs)**: OpenAI platform documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and OpenAI.
+
+- **[OpenAI ecosystem overview](https://docs.livekit.io/agents/integrations/openai.md)**: Overview of the entire OpenAI and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:46:35.545Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/openai.md](https://docs.livekit.io/agents/models/llm/plugins/openai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Partner spotlight › Azure › Azure OpenAI LLM Plugin
+
+---
+
+# Azure OpenAI LLM plugin guide
+
+> How to use the Azure OpenAI LLM plugin for LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Azure OpenAI](https://azure.microsoft.com/en-us/products/ai-services/openai-service) as a LLM provider for your voice agents.
+
+> 💡 **LiveKit Inference**
+> 
+> Azure OpenAI is also available in LiveKit Inference, with billing and integration handled automatically. See [the docs](https://docs.livekit.io/agents/models/llm/inference/openai.md) for more information.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+### Authentication
+
+The Azure OpenAI plugin requires either an [Azure OpenAI API key](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource) or a Microsoft Entra ID token.
+
+Set the following environment variables in your `.env` file:
+
+- `AZURE_OPENAI_API_KEY` or `AZURE_OPENAI_ENTRA_TOKEN`
+- `AZURE_OPENAI_ENDPOINT`
+- `OPENAI_API_VERSION`
+
+### Usage
+
+Use Azure OpenAI within an `AgentSession` or as a standalone LLM service. For example, you can use this LLM in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_azure(
+        azure_deployment="<model-deployment>",
+        azure_endpoint="https://<endpoint>.openai.azure.com/", # or AZURE_OPENAI_ENDPOINT
+        api_key="<api-key>", # or AZURE_OPENAI_API_KEY
+        api_version="2024-10-01-preview", # or OPENAI_API_VERSION
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM.withAzure({
+        azureDeployment: "<model-deployment>",
+        azureEndpoint: "https://<endpoint>.openai.azure.com/", // or AZURE_OPENAI_ENDPOINT
+        apiKey: "<api-key>", // or AZURE_OPENAI_API_KEY
+        apiVersion: "2024-10-01-preview", // or OPENAI_API_VERSION
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+### Parameters
+
+This section describes the Azure-specific parameters. For a complete list of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`azure_deployment`** _(string)_: Name of your model deployment.
+
+- **`entra_token`** _(string)_ (optional): Microsoft Entra ID authentication token. Required if not using API key authentication. To learn more see Azure's [Authentication](https://learn.microsoft.com/en-us/azure/ai-services/openai/realtime-audio-reference#authentication) documentation.
+
+- **`temperature`** _(float)_ (optional) - Default: `0.1`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `2`.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Azure OpenAI LLM plugin.
+
+- **[Azure OpenAI docs](https://learn.microsoft.com/en-us/azure/ai-services/openai/)**: Azure OpenAI service documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Azure OpenAI.
+
+- **[Azure ecosystem overview](https://docs.livekit.io/agents/integrations/azure.md)**: Overview of the entire Azure AI ecosystem and LiveKit Agents integration.
+
+---
+
+This document was rendered at 2025-11-19T10:46:40.364Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/azure-openai.md](https://docs.livekit.io/agents/models/llm/plugins/azure-openai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › OpenRouter
+
+---
+
+# OpenRouter LLM plugin guide
+
+> How to use OpenRouter with LiveKit Agents to access 500+ AI models.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [OpenRouter](https://openrouter.ai/) as an LLM provider for your voice agents. OpenRouter provides access to hundreds of models from multiple providers through a unified API, with automatic fallback support and intelligent routing.
+
+## Usage
+
+Install the OpenAI plugin to add OpenRouter support:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+### Authentication
+
+The OpenRouter plugin requires an [OpenRouter API key](https://openrouter.ai/settings/keys).
+
+Set `OPENROUTER_API_KEY` in your `.env` file.
+
+Create an OpenRouter LLM using the `with_openrouter` method:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_openrouter(model="anthropic/claude-sonnet-4.5"),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. See the usage examples below and the plugin reference links in the [Additional resources](#additional-resources) section for a complete list of all available parameters.
+
+- **`model`** _(string)_ (optional) - Default: `openrouter/auto`: Model to use. Can be "openrouter/auto" to let OpenRouter choose, or specify a specific model like "anthropic/claude-sonnet-4.5". For a list of available models, see [OpenRouter models](https://openrouter.ai/models).
+
+- **`site_url`** _(string)_ (optional): Your site URL for analytics and ranking on OpenRouter. This is sent as the `HTTP-Referer` header.
+
+- **`app_name`** _(string)_ (optional): Your app name for analytics on OpenRouter. This is sent as the `X-Title` header.
+
+- **`fallback_models`** _(list[string])_ (optional): List of fallback models to use if the primary model is unavailable. Example: `fallback_models=["anthropic/claude-sonnet-4", "openai/gpt-5-mini"]`.
+
+- **`provider`** _(dict)_ (optional): Provider routing preferences for fine-grained control over model selection. Can include:
+
+- `order`: List of preferred providers in order
+- `allow_fallbacks`: Whether to allow fallback to other providers
+- `require_parameters`: Whether to require specific parameters
+- `data_collection`: Data collection preference, either "allow" or "deny"
+- `only`: List of providers to exclusively use
+- `ignore`: List of providers to exclude
+- `quantizations`: List of accepted quantization levels
+- `sort`: Sort providers by "price", "throughput", or "latency"
+- `max_price`: Maximum price per token
+Refer to the [OpenRouter documentation](https://openrouter.ai/docs/features/provider-routing) for more information.
+
+- **`plugins`** _(list[OpenRouterWebPlugin])_ (optional): List of OpenRouter plugins to enable. Currently supports web search plugin with configuration for max results and search prompts.
+
+### Examples
+
+The following examples demonstrate usage of various OpenRouter parameters.
+
+Configure multiple fallback models to use if the primary model is unavailable:
+
+```python
+from livekit.plugins import openai
+
+llm = openai.LLM.with_openrouter(
+    model="openai/gpt-4o",
+    fallback_models=[
+        "anthropic/claude-sonnet-4",
+        "openai/gpt-5-mini",
+    ],
+)
+
+```
+
+Control which providers are used for model inference:
+
+```python
+from livekit.plugins import openai
+
+llm = openai.LLM.with_openrouter(
+    model="deepseek/deepseek-chat-v3.1",
+    provider={
+        "order": ["novita/fp8", "gmicloud/fp8", "google-vertex"],
+        "allow_fallbacks": True,
+        "sort": "latency",
+    },
+)
+
+```
+
+Enable OpenRouter's web search capabilities:
+
+```python
+from livekit.plugins import openai
+
+llm = openai.LLM.with_openrouter(
+    model="google/gemini-2.5-flash-preview-09-2025",
+    plugins=[
+        openai.OpenRouterWebPlugin(
+            max_results=5,
+            search_prompt="Search for relevant information",
+        )
+    ],
+)
+
+```
+
+Include site and app information for OpenRouter analytics:
+
+```python
+from livekit.plugins import openai
+
+llm = openai.LLM.with_openrouter(
+    model="openrouter/auto",
+    site_url="https://myapp.com",
+    app_name="My Voice Agent",
+)
+
+```
+
+## Additional resources
+
+The following links provide more information about the OpenRouter integration.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-openai)**: View the source or contribute to the LiveKit OpenAI LLM plugin.
+
+- **[OpenRouter docs](https://openrouter.ai/docs)**: OpenRouter API documentation and model list.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and OpenRouter.
+
+---
+
+This document was rendered at 2025-11-19T10:46:45.702Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/openrouter.md](https://docs.livekit.io/agents/models/llm/plugins/openrouter.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Perplexity
+
+---
+
+# Perplexity LLM plugin guide
+
+> How to use Perplexity LLM with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Perplexity](https://www.perplexity.ai/) as an LLM provider for your voice agents.
+
+## Usage
+
+Install the OpenAI plugin to add Perplexity support:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+PERPLEXITY_API_KEY=<your-perplexity-api-key>
+
+```
+
+Create a Perplexity LLM using the `with_perplexity` method:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_perplexity(
+        model="llama-3.1-sonar-small-128k-chat",
+\    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM.withPerplexity({
+        model: "llama-3.1-sonar-small-128k-chat",
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str | PerplexityChatModels)_ (optional) - Default: `llama-3.1-sonar-small-128k-chat`: Model to use for inference. To learn more, see [supported models](https://docs.perplexity.ai/guides/model-cards).
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `2`.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Perplexity LLM integration.
+
+- **[Perplexity docs](https://docs.perplexity.ai/docs/overview)**: Perplexity API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Perplexity.
+
+---
+
+This document was rendered at 2025-11-19T10:46:50.979Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/perplexity.md](https://docs.livekit.io/agents/models/llm/plugins/perplexity.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Telnyx
+
+---
+
+# Telnyx LLM plugin guide
+
+> How to use Telnyx inference with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Telnyx](https://telnyx.com/) as an LLM provider for your voice agents.
+
+## Usage
+
+Install the OpenAI plugin to add Telnyx support:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+TELNYX_API_KEY=<your-telnyx-api-key>
+
+```
+
+Create a Telnyx LLM using the `with_telnyx` method:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_telnyx(
+        model="meta-llama/Meta-Llama-3.1-70B-Instruct",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM.withTelnyx({
+        model: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str | TelnyxChatModels)_ (optional) - Default: `meta-llama/Meta-Llama-3.1-70B-Instruct`: Model to use for inference. To learn more, see [supported models](https://developers.telnyx.com/docs/inference/getting-started#models).
+
+- **`temperature`** _(float)_ (optional) - Default: `0.1`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `2`.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Telnyx LLM integration.
+
+- **[Telnyx docs](https://developers.telnyx.com/docs/inference/getting-started)**: Telnyx API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Telnyx.
+
+---
+
+This document was rendered at 2025-11-19T10:46:56.190Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/telnyx.md](https://docs.livekit.io/agents/models/llm/plugins/telnyx.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › Together AI
+
+---
+
+# Together AI LLM plugin guide
+
+> How to use Together AI Llama models with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [Together AI](https://www.together.ai/) as an LLM provider for your voice agents.
+
+## Usage
+
+Install the OpenAI plugin to add Together AI support:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add@livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+TOGETHER_API_KEY=<your-together-api-key>
+
+```
+
+Create a Together AI LLM using the `with_together` method:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_together(
+        model="meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession(
+    llm: new openai.LLM.withTogether(
+        model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+    ),
+    // ... tts, stt, vad, turn_detection, etc.
+);
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str | TogetherChatModels)_ (optional) - Default: `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo`: Model to use for inference. To learn more, see [supported models](https://docs.together.ai/docs/inference-models).
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `1`.
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the Together AI LLM integration.
+
+- **[Together AI docs](https://docs.together.ai/docs/overview)**: Together AI API documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and Together AI.
+
+---
+
+This document was rendered at 2025-11-19T10:47:02.891Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/together.md](https://docs.livekit.io/agents/models/llm/plugins/together.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Large language models (LLM) › Plugins › xAI
+
+---
+
+# xAI LLM plugin guide
+
+> How to use xAI LLM with LiveKit Agents.
+
+Available in:
+- [x] Node.js
+- [x] Python
+
+## Overview
+
+This plugin allows you to use [xAI](https://x.ai/) as an LLM provider for your voice agents.
+
+## Usage
+
+Install the OpenAI plugin to add xAI support:
+
+**Python**:
+
+```shell
+uv add "livekit-agents[openai]~=1.2"
+
+```
+
+---
+
+**Node.js**:
+
+```shell
+pnpm add @livekit/agents-plugin-openai@1.x
+
+```
+
+Set the following environment variable in your `.env` file:
+
+```shell
+XAI_API_KEY=<your-xai-api-key>
+
+```
+
+Create a Grok LLM using the `with_x_ai` method:
+
+**Python**:
+
+```python
+from livekit.plugins import openai
+
+session = AgentSession(
+    llm=openai.LLM.with_x_ai(
+        model="grok-3-mini",
+    ),
+    # ... tts, stt, vad, turn_detection, etc.
+)
+
+```
+
+---
+
+**Node.js**:
+
+```typescript
+import * as openai from '@livekit/agents-plugin-openai';
+
+const session = new voice.AgentSession({
+    llm: openai.LLM.withXAI({
+        model: "grok-3-mini",
+    }),
+    // ... tts, stt, vad, turn_detection, etc.
+});
+
+```
+
+## Parameters
+
+This section describes some of the available parameters. For a complete reference of all available parameters, see the plugin reference links in the [Additional resources](#additional-resources) section.
+
+- **`model`** _(str | XAIChatModels)_ (optional) - Default: `grok-2-public`: Grok model to use. To learn more, see the [xAI Grok models](https://docs.x.ai/docs/models) page.
+
+- **`temperature`** _(float)_ (optional) - Default: `1.0`: Controls the randomness of the model's output. Higher values, for example 0.8, make the output more random, while lower values, for example 0.2, make it more focused and deterministic.
+
+Valid values are between `0` and `2`. To learn more, see the optional parameters for [Chat completions](https://docs.x.ai/docs/api-reference#chat-completions)
+
+- **`parallel_tool_calls`** _(bool)_ (optional): Controls whether the model can make multiple tool calls in parallel. When enabled, the model can make multiple tool calls simultaneously, which can improve performance for complex tasks.
+
+- **`tool_choice`** _(ToolChoice | Literal['auto', 'required', 'none'])_ (optional) - Default: `auto`: Controls how the model uses tools. Set to 'auto' to let the model decide, 'required' to force tool usage, or 'none' to disable tool usage.
+
+## Additional resources
+
+The following links provide more information about the xAI Grok LLM integration.
+
+- **[xAI docs](https://docs.x.ai/docs/overview)**: xAI Grok documentation.
+
+- **[Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)**: Get started with LiveKit Agents and xAI Grok.
+
+---
+
+This document was rendered at 2025-11-19T10:47:08.611Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/llm/plugins/xai.md](https://docs.livekit.io/agents/models/llm/plugins/xai.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).

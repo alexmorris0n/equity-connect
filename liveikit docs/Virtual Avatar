@@ -1,0 +1,922 @@
+LiveKit docs › Models › Virtual avatars › Overview
+
+---
+
+# Virtual avatar plugins
+
+> Guides for adding virtual avatars to your agents.
+
+## Overview
+
+Virtual avatars add lifelike video output for your voice AI agents. You can integrate a variety of providers to LiveKit Agents with just a few lines of code.
+
+## Available plugins
+
+The following plugins are available. Choose a plugin from this list for a step-by-step guide:
+
+| Provider | Python | Node.js |
+| -------- | ------ | ------- |
+| [Anam](https://docs.livekit.io/agents/models/avatar/plugins/anam.md) | ✓ | — |
+| [Beyond Presence](https://docs.livekit.io/agents/models/avatar/plugins/bey.md) | ✓ | — |
+| [bitHuman](https://docs.livekit.io/agents/models/avatar/plugins/bithuman.md) | ✓ | — |
+| [Hedra](https://docs.livekit.io/agents/models/avatar/plugins/hedra.md) | ✓ | — |
+| [Simli](https://docs.livekit.io/agents/models/avatar/plugins/simli.md) | ✓ | — |
+| [Tavus](https://docs.livekit.io/agents/models/avatar/plugins/tavus.md) | ✓ | — |
+
+Have another provider in mind? LiveKit is open source and welcomes [new plugin contributions](https://docs.livekit.io/agents/models.md#contribute).
+
+## How it works
+
+The virtual avatar plugins work with the `AgentSession` class automatically. The plugin adds a separate participant, the avatar worker, to the room. The agent session sends its audio output to the avatar worker instead of to the room, which the avatar worker uses to publish synchronized audio + video tracks to the room and the end user.
+
+To add a virtual avatar:
+
+1. Install the selected plugin and API keys
+2. Create an `AgentSession`, as in the [voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md)
+3. Create an `AvatarSession` and configure it as necessary
+4. Start the avatar session, passing in the `AgentSession` instance
+5. Start the `AgentSession` with audio output disabled (the audio is sent to the avatar session instead)
+
+## Sample code
+
+Here is an example using [Hedra Realtime Avatars](https://docs.livekit.io/agents/models/avatar/plugins/hedra.md):
+
+```python
+from livekit import agents
+from livekit.agents import AgentServer, AgentSession, RoomOutputOptions
+from livekit.plugins import hedra
+
+server = AgentServer()
+
+@server.rtc_session()
+async def my_agent(ctx: agents.JobContext):
+   session = AgentSession(
+      # ... stt, llm, tts, etc.
+   )
+
+   avatar = hedra.AvatarSession(
+      avatar_id="...",  # ID of the Hedra avatar to use
+   )
+
+   # Start the avatar and wait for it to join
+   await avatar.start(session, room=ctx.room)
+
+   # Start your agent session with the user
+   await session.start(
+      # ... room, agent, room_input_options, etc....
+   )
+
+```
+
+## Avatar workers
+
+To minimize latency, the avatar provider joins the LiveKit room directly as a secondary participant to publish synchronized audio and video to the room. In your frontend app, you must distinguish between the agent — your Python program running the `AgentSession` — and the avatar worker.
+
+```mermaid
+graph LR
+User[User] --"User Audio"--> Agent[Agent]
+Agent -."Audio Data".-> Avatar[Avatar Worker]
+Avatar --"Agent Video"--> User
+Avatar --"Agent Audio"--> User
+```
+
+You can identify an avatar worker as a participant of kind `agent` with the attribute `lk.publish_on_behalf`. Check for these values in your frontend code to associate the worker's audio and video tracks with the agent.
+
+```typescript
+const agent = room.remoteParticipants.find(
+  p => p.kind === Kind.Agent && p.attributes['lk.publish_on_behalf'] === null
+);
+const avatarWorker = room.remoteParticipants.find(
+  p => p.kind === Kind.Agent && p.attributes['lk.publish_on_behalf'] === agent.identity
+);
+
+```
+
+In React apps, use the [useVoiceAssistant hook](https://docs.livekit.io/reference/components/react/hook/usevoiceassistant.md) to get the correct audio and video tracks automatically:
+
+```typescript
+const { 
+  agent, // The agent participant
+  audioTrack, // the worker's audio track
+  videoTrack, // the worker's video track
+} = useVoiceAssistant();
+
+```
+
+## Frontend starter apps
+
+The following [frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps) include out-of-the-box support for virtual avatars.
+
+- **[SwiftUI Voice Agent](https://github.com/livekit-examples/agent-starter-swift)**: A native iOS, macOS, and visionOS voice AI assistant built in SwiftUI.
+
+- **[Next.js Voice Agent](https://github.com/livekit-examples/agent-starter-react)**: A web voice AI assistant built with React and Next.js.
+
+- **[Flutter Voice Agent](https://github.com/livekit-examples/agent-starter-flutter)**: A cross-platform voice AI assistant app built with Flutter.
+
+- **[React Native Voice Agent](https://github.com/livekit-examples/agent-starter-react-native)**: A native voice AI assistant app built with React Native and Expo.
+
+- **[Android Voice Agent](https://github.com/livekit-examples/agent-starter-android)**: A native Android voice AI assistant app built with Kotlin and Jetpack Compose.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your multimodal AI agent.
+
+## Additional resources
+
+- **[Web and mobile frontends](https://docs.livekit.io/agents/start/frontend.md)**: Guide to adding web or mobile frontends to your agent.
+
+- **[Vision](https://docs.livekit.io/agents/build/vision.md)**: Give your agent the ability to see you, too.
+
+---
+
+This document was rendered at 2025-11-19T10:51:18.445Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar.md](https://docs.livekit.io/agents/models/avatar.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Virtual avatars › Plugins › Anam
+
+---
+
+# Anam virtual avatar integration guide
+
+> How to use the Anam virtual avatar plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+[Anam](https://anam.ai/) provides lifelike avatars for realtime conversational AI. You can use the open source Anam integration for LiveKit Agents to enable seamless integration of Anam avatars into your voice AI app.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[anam]~=1.2"
+
+```
+
+### Authentication
+
+The Anam plugin requires an [Anam API key](https://lab.anam.ai/api-keys).
+
+Set `ANAM_API_KEY` in your `.env` file.
+
+### Usage
+
+Use the plugin in an `AgentSession`. For example, you can use this avatar in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit import agents
+from livekit.agents import AgentServer, AgentSession, RoomOutputOptions
+from livekit.plugins import anam
+
+server = AgentServer()
+
+@server.rtc_session()
+async def my_agent(ctx: agents.JobContext):
+   session = AgentSession(
+      # ... stt, llm, tts, etc.
+   )
+
+   avatar = anam.AvatarSession(
+      persona_config=anam.PersonaConfig(
+         name="...",  # Name of the avatar to use.
+         avatarId="...",  # ID of the avatar to use. See "Avatar setup" for details.
+      ),
+   )
+
+   # Start the avatar and wait for it to join
+   await avatar.start(session, room=ctx.room)
+
+   # Start your agent session with the user
+   await session.start(
+      # ... room, agent, room_input_options, etc....
+   )
+
+```
+
+Preview the avatar in the [Agents Playground](https://docs.livekit.io/agents/start/playground.md) or a frontend [starter app](https://docs.livekit.io/agents/start/frontend.md#starter-apps) that you build.
+
+### Avatar setup
+
+You can use stock avatars provided by Anam or create your own custom avatars using Anam Lab.
+
+- **Stock Avatars**: Browse a collection of ready-to-use avatars in the [Avatar Gallery](https://docs.anam.ai/resources/avatar-gallery).
+- **Custom Avatars**: Create your own personalized avatar using [Anam Lab](https://lab.anam.ai/avatars).
+
+To use a stock avatar, copy the avatar ID from the gallery and use it in your `PersonaConfig`. For custom avatars, create them in the lab and use the generated avatar ID.
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/anam/index.html.md#livekit.plugins.anam.AvatarSession) for a complete list of all available parameters.
+
+- **`persona_config`** _(anam.PersonaConfig)_ (optional): Configuration for the avatar to use.
+
+- - **`name`** _(string)_: Name of the avatar to use. See [Avatar setup](#avatar-setup) for details.
+- - **`avatarId`** _(string)_: ID of the avatar to use. See [Avatar setup](#avatar-setup) for details.
+
+- **`avatar_participant_name`** _(string)_ (optional) - Default: `anam-avatar-agent`: The participant name to use for the avatar.
+
+## Additional resources
+
+The following resources provide more information about using Anam with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-anam/)**: The `livekit-plugins-anam` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/anam/index.html.md)**: Reference for the Anam avatar plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-anam)**: View the source or contribute to the LiveKit Anam avatar plugin.
+
+- **[Anam API docs](https://docs.anam.ai/third-party-integrations/livekit)**: Anam's LiveKit integration docs.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your avatar agent.
+
+- **[Frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps)**: Ready-to-use frontend apps with avatar support.
+
+---
+
+This document was rendered at 2025-11-19T10:51:25.766Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar/plugins/anam.md](https://docs.livekit.io/agents/models/avatar/plugins/anam.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Virtual avatars › Plugins › Beyond Presence
+
+---
+
+# Beyond Presence virtual avatar integration guide
+
+> How to use the Beyond Presence virtual avatar plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+[Beyond Presence](https://www.beyondpresence.ai/) provides hyper-realistic interactive avatars for conversational video AI agents. You can use the open source Beyond Presence integration for LiveKit Agents to add virtual avatars to your voice AI app.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[bey]~=1.2"
+
+```
+
+### Authentication
+
+The Beyond Presence plugin requires a [Beyond Presence API key](https://docs.bey.dev/api-key).
+
+Set `BEY_API_KEY` in your `.env` file.
+
+### Usage
+
+Use the plugin in an `AgentSession`. For example, you can use this avatar in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit.plugins import bey
+
+session = AgentSession(
+   # ... stt, llm, tts, etc.
+)
+
+avatar = bey.AvatarSession(
+    avatar_id="...",  # ID of the Beyond Presence avatar to use
+)
+
+# Start the avatar and wait for it to join
+await avatar.start(session, room=ctx.room)
+
+# Start your agent session with the user
+await session.start(
+    room=ctx.room,
+)
+
+```
+
+Preview the avatar in the [Agents Playground](https://docs.livekit.io/agents/start/playground.md) or a frontend [starter app](https://docs.livekit.io/agents/start/frontend.md#starter-apps) that you build.
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/bey/index.html.md#livekit.plugins.bey.AvatarSession) for a complete list of all available parameters.
+
+- **`avatar_id`** _(string)_ (optional) - Default: `b9be11b8-89fb-4227-8f86-4a881393cbdb`: ID of the Beyond Presence avatar to use.
+
+- **`avatar_participant_identity`** _(string)_ (optional) - Default: `bey-avatar-agent`: The identity of the participant to use for the avatar.
+
+- **`avatar_participant_name`** _(string)_ (optional) - Default: `bey-avatar-agent`: The name of the participant to use for the avatar.
+
+## Additional resources
+
+The following resources provide more information about using Beyond Presence with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-bey/)**: The `livekit-plugins-bey` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/bey/index.html.md#livekit.plugins.bey.AvatarSession)**: Reference for the Beyond Presence avatar plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-bey)**: View the source or contribute to the LiveKit Beyond Presence avatar plugin.
+
+- **[Beyond Presence docs](https://docs.bey.dev/docs)**: Beyond Presence's full docs site.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your avatar agent.
+
+- **[Frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps)**: Ready-to-use frontend apps with avatar support.
+
+---
+
+This document was rendered at 2025-11-19T10:51:30.976Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar/plugins/bey.md](https://docs.livekit.io/agents/models/avatar/plugins/bey.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Virtual avatars › Plugins › bitHuman
+
+---
+
+# bitHuman virtual avatar integration guide
+
+> How to use the bitHuman virtual avatar plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+[bitHuman](https://www.bithuman.ai/) provides realtime virtual avatars that you can run either locally or in the cloud. You can use the open source bitHuman integration for LiveKit Agents to add virtual avatars to your voice AI app.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[bithuman]~=1.2"
+
+```
+
+If you plan to use cloud-hosted models with images, also install the LiveKit images dependency, which includes Pillow version 10.3 and above:
+
+```shell
+uv add "livekit-agents[images]"
+
+```
+
+### Authentication
+
+The bitHuman plugin requires a [bitHuman API Secret](https://imaginex.bithuman.ai/#api).
+
+Set `BITHUMAN_API_SECRET` in your `.env` file.
+
+### Avatar setup
+
+The bitHuman plugin supports three ways to set up avatars:
+
+- pass `.imx` model files
+- pass an image directly using PIL image objects or a source image path/URL
+- pass bitHuman avatar IDs
+
+#### Pass model files
+
+Create and download a bitHuman `.imx` file from the [bitHuman ImagineX console](https://imaginex.bithuman.ai). You can pass the model path to the avatar session or set the `BITHUMAN_MODEL_PATH` environment variable.
+
+> ℹ️ **Note**
+> 
+> Agents consume more CPU when using `.imx` models directly.
+
+#### Pass image directly
+
+Pass an image directly in the `avatar_image` parameter using PIL image objects or a source image path/URL.
+
+```python
+from PIL import Image
+from livekit.plugins import bithuman
+
+bithuman_avatar = bithuman.AvatarSession(
+    avatar_image=Image.open(os.path.join(os.path.dirname(__file__), "avatar.jpg")),
+)
+
+```
+
+The image can come from anywhere, including your local filesystem, a remote URL, [uploaded in realtime from your frontend](https://docs.livekit.io/home/client/data/byte-streams.md#sending-files) or generated by an external API or AI model.
+
+#### Pass avatar ID
+
+You can use an existing avatar by passing the `avatar_id` parameter to the plugin. You can find the ID in the [bitHuman ImagineX console](https://imaginex.bithuman.ai) in the description of the avatar on the **My Avatars** page.
+
+### Usage
+
+You can use the bitHuman plugin in an `AgentSession`. For example, you can use this avatar in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+You can preview your agent in the [Agents Playground](https://docs.livekit.io/agents/start/playground.md) or a frontend [starter app](https://docs.livekit.io/agents/start/frontend.md#starter-apps) that you build.
+
+The following code uses a local bitHuman `.imx` model.
+
+```python
+from livekit.plugins import bithuman
+
+session = AgentSession(
+   # ... stt, llm, tts, etc.
+)
+
+avatar = bithuman.AvatarSession(
+    model_path="./albert_einstein.imx", # This example uses a demo model installed in the current directory
+)
+
+# Start the avatar and wait for it to join
+await avatar.start(session, room=ctx.room)
+
+# Start your agent session with the user
+await session.start(
+    room=ctx.room,
+)
+
+```
+
+The following code uses an image or avatar ID.
+
+```python
+from livekit.plugins import bithuman
+from PIL import Image
+
+avatar = bithuman.AvatarSession(
+    avatar_image=Image.open("avatar.jpg").convert("RGB"), # This example uses an image in the current directory.
+    # or: avatar_id="your-avatar-id" # You can also use an existing avatar ID.
+)
+
+await avatar.start(session, room=ctx.room)
+
+await session.start(
+    room=ctx.room,
+    room_output_options=RoomOutputOptions(audio_enabled=False),
+)
+
+```
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/bithuman/index.html.md#livekit.plugins.bithuman.AvatarSession) for a complete list of all available parameters.
+
+- **`model`** _(string | Literal['essence', 'expression'])_: Model to use. `expression` provides dynamic expressions and emotional responses. `essence` uses predefined actions and expressions.
+
+- **`model_path`** _(string)_ (optional) - Environment: `BITHUMAN_MODEL_PATH`: Path to the bitHuman `.imx` model.
+
+- **`avatar_image`** _(PIL.Image.Image | str)_ (optional): Avatar image to use. Pass a PIL image (`Image.open("avatar.jpg")`) or a string (local path to the image).
+
+- **`avatar_id`** _(string)_ (optional): The avatar ID from bitHuman.
+
+## Additional resources
+
+The following resources provide more information about using bitHuman with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-bithuman/)**: The `livekit-plugins-bithuman` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/bithuman.md)**: Reference for the bitHuman avatar plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-bithuman)**: View the source or contribute to the LiveKit bitHuman avatar plugin.
+
+- **[bitHuman docs](https://sdk.docs.bithuman.ai)**: bitHuman's full API docs site.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your avatar agent.
+
+- **[Frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps)**: Ready-to-use frontend apps with avatar support.
+
+---
+
+This document was rendered at 2025-11-19T10:51:35.553Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar/plugins/bithuman.md](https://docs.livekit.io/agents/models/avatar/plugins/bithuman.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Virtual avatars › Plugins › Hedra
+
+---
+
+# Hedra Realtime Avatar integration guide
+
+> How to use the Hedra virtual avatar plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+[Hedra's](https://hedra.ai/) Realtime Avatars let you create your own avatar that can participate in live, interactive conversations. You can use the open source Hedra integration for LiveKit Agents in your voice AI app.
+
+- **[Hedra avatar examples](https://github.com/livekit-examples/python-agents-examples/tree/main/avatars/hedra)**: Multiple full-stack examples showing creative uses of Hedra Realtime Avatars with LiveKit Agents.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[hedra]~=1.2"
+
+```
+
+If you plan to upload images directly, also install the LiveKit images dependency, which includes Pillow version 10.3 and above:
+
+```shell
+uv add "livekit-agents[images]"
+
+```
+
+### Authentication
+
+The Hedra plugin requires a [Hedra API key](https://www.hedra.com/api-profile).
+
+Set `HEDRA_API_KEY` in your `.env` file.
+
+### Usage
+
+Use the plugin in an `AgentSession`. For example, you can use this avatar in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit import agents
+from livekit.agents import AgentServer, AgentSession, RoomOutputOptions
+from livekit.plugins import hedra
+
+server = AgentServer()
+
+@server.rtc_session()
+async def my_agent(ctx: agents.JobContext):
+   session = AgentSession(
+      # ... stt, llm, tts, etc.
+   )
+
+   avatar = hedra.AvatarSession(
+      avatar_id="...",  # ID of the Hedra avatar to use. See "Avatar setup" for details.
+   )
+
+   # Start the avatar and wait for it to join
+   await avatar.start(session, room=ctx.room)
+
+   # Start your agent session with the user
+   await session.start(
+      # ... room, agent, room_input_options, etc....
+   )
+
+```
+
+Preview the avatar in the [Agents Playground](https://docs.livekit.io/agents/start/playground.md) or a frontend [starter app](https://docs.livekit.io/agents/start/frontend.md#starter-apps) that you build.
+
+### Avatar setup
+
+The Hedra plugin requires a source image asset from which to generate the avatar. Avatars render as 512x512px square videos. Hedra automatically centers and crops around the face within the provided image. Hedra supports humanoid faces, in a range of styles from photorealistic to animated.
+
+You can specify the avatar image by ID or by passing an image directly.
+
+#### Pass avatar ID
+
+To use an existing avatar, pass the `avatar_id` parameter to the plugin. You can find the ID in the Hedra web studio or upload it using the Hedra API.
+
+##### Web studio
+
+Generate or upload an image in the [Hedra web studio](https://www.hedra.com/app/image). To find the ID to pass as `avatar_id`, download the image from the [library](https://www.hedra.com/app/library). The avatar ID is the filename of the downloaded image, minus the extension.
+
+##### API upload
+
+To upload an image with the Hedra API, first create a new asset:
+
+```shell
+curl -X POST \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"image","name":"<your-avatar-name>"}' \
+  https://api.hedra.com/web-app/public/assets
+
+```
+
+The response includes an asset `id`, which you need for the next step.
+
+Then upload the image:
+
+```shell
+curl -X POST \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@<your-local-image-path>" \
+  https://api.hedra.com/web-app/public/assets/<your-asset-id>/upload
+
+```
+
+You can now use the asset ID in the Hedra plugin as the `avatar_id`.
+
+#### Pass image directly
+
+To upload a new image directly in the plugin, pass a PIL `Image` object in the `avatar_image` parameter.
+
+```python
+from PIL import Image
+
+avatar_image = Image.open("/path/to/image.jpg")
+
+avatar = hedra.AvatarSession(
+   avatar_image=avatar_image,
+)
+
+```
+
+The plugin uploads the image to Hedra and uses it for the avatar session. The image can come from anywhere, including your local filesystem, a remote URL, [uploaded in realtime from your frontend](https://docs.livekit.io/home/client/data/byte-streams.md#sending-files), or generated by an external API or AI model.
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/hedra/index.html.md#livekit.plugins.hedra.AvatarSession) for a complete list of all available parameters.
+
+- **`avatar_id`** _(string)_ (optional): ID of the Hedra avatar to use. See [Avatar setup](#avatar-setup) for details.
+
+- **`avatar_image`** _(string)_ (optional): PIL `Image` object to use for the avatar. See [Image upload](#image-upload) for details.
+
+- **`avatar_participant_name`** _(string)_ (optional) - Default: `hedra-avatar-agent`: The name of the participant to use for the avatar.
+
+## Additional resources
+
+The following resources provide more information about using Hedra with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-hedra/)**: The `livekit-plugins-hedra` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/hedra/index.html.md)**: Reference for the Hedra avatar plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-hedra)**: View the source or contribute to the LiveKit Hedra avatar plugin.
+
+- **[Hedra API docs](https://api.hedra.com/web-app/redoc)**: Hedra's API docs.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your avatar agent.
+
+- **[Frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps)**: Ready-to-use frontend apps with avatar support.
+
+---
+
+This document was rendered at 2025-11-19T10:51:40.612Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar/plugins/hedra.md](https://docs.livekit.io/agents/models/avatar/plugins/hedra.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Virtual avatars › Plugins › Simli
+
+---
+
+# Simli virtual avatar integration guide
+
+> How to use the Simli virtual avatar plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+[Simli](https://simli.com/) provides realtime low-latency video avatars. You can use the open source Simli integration for LiveKit Agents to add virtual avatars to your voice AI app.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[simli]~=1.2"
+
+```
+
+### Authentication
+
+The Simli plugin requires a [Simli API key](https://app.simli.com/apikey).
+
+Set `SIMLI_API_KEY` in your `.env` file.
+
+### Usage
+
+Use the plugin in an `AgentSession`. For example, you can use this avatar in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit import agents
+from livekit.agents import AgentServer, AgentSession, RoomOutputOptions
+from livekit.plugins import simli
+
+server = AgentServer()
+
+@server.rtc_session()
+async def my_agent(ctx: agents.JobContext):
+   session = AgentSession(
+      # ... stt, llm, tts, etc.
+   )
+
+   avatar = simli.AvatarSession(
+      simli_config=simli.SimliConfig(
+         api_key=os.getenv("SIMLI_API_KEY"),
+         face_id="...",  # ID of the Simli face to use for your avatar. See "Face setup" for details.
+      ),
+   )
+
+   # Start the avatar and wait for it to join
+   await avatar.start(session, room=ctx.room)
+
+   # Start your agent session with the user
+   await session.start(
+      # ... room, agent, room_input_options, etc....
+   )
+
+```
+
+Preview the avatar in the [Agents Playground](https://docs.livekit.io/agents/start/playground.md) or a frontend [starter app](https://docs.livekit.io/agents/start/frontend.md#starter-apps) that you build.
+
+### Face setup
+
+The Simli plugin requires a face from which to generate the avatar. You can choose a face from the [default library](https://app.simli.com/create/from-existing) or [upload your own](https://app.simli.com/faces).
+
+Include the face ID in the `SimliConfig` when you create the `AvatarSession`.
+
+### Emotions
+
+Simli supports [configurable emotions](https://docs.simli.com/emotions). Pass an `emotion_id`  to the `SimliConfig` when you create the `AvatarSession`.
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/simli/index.html.md#livekit.plugins.simli.AvatarSession) for a complete list of all available parameters.
+
+- **`simli_config`** _(simli.SimliConfig)_ (optional): Configuration for the Simli face to use.
+
+- - **`face_id`** _(string)_: ID of the Simli face to use. See [Face setup](#face-setup) for details.
+- - **`emotion_id`** _(string)_: ID of the Simli emotion to use. See [Emotions](#emotions) for details.
+
+- **`avatar_participant_name`** _(string)_ (optional) - Default: `simli-avatar-agent`: The name of the participant to use for the avatar.
+
+## Additional resources
+
+The following resources provide more information about using Simli with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-simli/)**: The `livekit-plugins-simli` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/simli/index.html.md)**: Reference for the Simli avatar plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-simli)**: View the source or contribute to the LiveKit Simli avatar plugin.
+
+- **[Simli API docs](https://docs.simli.com/)**: Simli's API docs.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your avatar agent.
+
+- **[Frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps)**: Ready-to-use frontend apps with avatar support.
+
+---
+
+This document was rendered at 2025-11-19T10:51:45.941Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar/plugins/simli.md](https://docs.livekit.io/agents/models/avatar/plugins/simli.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
+
+LiveKit docs › Models › Virtual avatars › Plugins › Tavus
+
+---
+
+# Tavus virtual avatar integration guide
+
+> How to use the Tavus virtual avatar plugin for LiveKit Agents.
+
+Available in:
+- [ ] Node.js
+- [x] Python
+
+## Overview
+
+[Tavus](https://tavus.io/) provides hyper-realistic interactive avatars for conversational video AI agents. You can use the open source Tavus integration for LiveKit Agents to add virtual avatars to your voice AI app.
+
+- **[Tavus demo](https://www.youtube.com/watch?v=iuX5PDP73bQ)**: A video showcasing an educational AI agent that uses Tavus to create an interactive study partner.
+
+## Quick reference
+
+This section includes a basic usage example and some reference material. For links to more detailed documentation, see [Additional resources](#additional-resources).
+
+### Installation
+
+Install the plugin from PyPI:
+
+```shell
+uv add "livekit-agents[tavus]~=1.2"
+
+```
+
+### Authentication
+
+The Tavus plugin requires a [Tavus API key](https://docs.tavus.io/sections/guides/api-key-guide).
+
+Set `TAVUS_API_KEY` in your `.env` file.
+
+### Replica and persona setup
+
+The Tavus plugin requires a [Replica](https://docs.tavus.io/sections/replicas/overview) and a [Persona](https://docs.tavus.io/sections/conversational-video-interface/creating-a-persona) to start an avatar session.
+
+You can use any replica with the Tavus plugin, but must setup a persona with the following settings for full compatibility with LiveKit Agents:
+
+- Set the `pipeline_mode` to `echo`
+- Define a `transport` layer under `layers`, setting the `transport_type` inside to `livekit`.
+
+Here is a simple `curl` command to create a persona with the correct settings using the [Create Persona endpoint](https://docs.tavus.io/api-reference/personas/create-persona):
+
+```shell
+curl --request POST \
+  --url https://tavusapi.com/v2/personas \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <api-key>" \
+  -d '{
+    "layers": {
+        "transport": {
+            "transport_type": "livekit"
+        }
+    },
+    "persona_name": "My Persona",
+    "pipeline_mode": "echo"
+}'
+
+```
+
+Copy your replica ID and persona ID for the following steps.
+
+### Usage
+
+Use the plugin in an `AgentSession`. For example, you can use this avatar in the [Voice AI quickstart](https://docs.livekit.io/agents/start/voice-ai.md).
+
+```python
+from livekit import agents
+from livekit.agents import AgentServer, AgentSession, RoomOutputOptions
+from livekit.plugins import tavus
+
+server = AgentServer()
+
+@server.rtc_session()
+async def my_agent(ctx: agents.JobContext):
+   session = AgentSession(
+      # ... stt, llm, tts, etc.
+   )
+
+   avatar = tavus.AvatarSession(
+      replica_id="...",  # ID of the Tavus replica to use
+      persona_id="...",  # ID of the Tavus persona to use (see preceding section for configuration details)
+   )
+
+   # Start the avatar and wait for it to join
+   await avatar.start(session, room=ctx.room)
+
+   # Start your agent session with the user
+   await session.start(
+      # ... room, agent, room_input_options, etc....
+   )
+
+```
+
+Preview the avatar in the [Agents Playground](https://docs.livekit.io/agents/start/playground.md) or a frontend [starter app](https://docs.livekit.io/agents/start/frontend.md#starter-apps) that you build.
+
+### Parameters
+
+This section describes some of the available parameters. See the [plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/tavus/index.html.md#livekit.plugins.tavus.AvatarSession) for a complete list of all available parameters.
+
+- **`replica_id`** _(string)_: ID of the Tavus replica to use. See [Replica and persona setup](#persona) for details.
+
+- **`persona_id`** _(string)_: ID of the Tavus persona to use. See [Replica and persona setup](#persona) for details.
+
+- **`avatar_participant_name`** _(string)_ (optional) - Default: `Tavus-avatar-agent`: The name of the participant to use for the avatar.
+
+## Additional resources
+
+The following resources provide more information about using Tavus with LiveKit Agents.
+
+- **[Python package](https://pypi.org/project/livekit-plugins-tavus/)**: The `livekit-plugins-tavus` package on PyPI.
+
+- **[Plugin reference](https://docs.livekit.io/reference/python/v1/livekit/plugins/tavus/index.html.md)**: Reference for the Tavus avatar plugin.
+
+- **[GitHub repo](https://github.com/livekit/agents/tree/main/livekit-plugins/livekit-plugins-tavus)**: View the source or contribute to the LiveKit Tavus avatar plugin.
+
+- **[Tavus docs](https://docs.tavus.io/)**: Tavus's full docs site.
+
+- **[Agents Playground](https://docs.livekit.io/agents/start/playground.md)**: A virtual workbench to test your avatar agent.
+
+- **[Frontend starter apps](https://docs.livekit.io/agents/start/frontend.md#starter-apps)**: Ready-to-use frontend apps with avatar support.
+
+---
+
+This document was rendered at 2025-11-19T10:51:51.580Z.
+For the latest version of this document, see [https://docs.livekit.io/agents/models/avatar/plugins/tavus.md](https://docs.livekit.io/agents/models/avatar/plugins/tavus.md).
+
+To explore all LiveKit documentation, see [llms.txt](https://docs.livekit.io/llms.txt).
