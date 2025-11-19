@@ -1,8 +1,29 @@
-# **Perfect Next Step: Scenario Tracing** ✅
+# **BarbGraph Trace Testing (Updated Nov 19, 2025)** ✅
+
+## **Recent Updates Applied:**
+
+### **Quick Wins (Completed):**
+- ✅ VERIFY valid_contexts expanded: `['qualify', 'answer', 'quote', 'objections']`
+- ✅ QUALIFY valid_contexts expanded: `['goodbye', 'quote', 'objections']`
+- ✅ Removed "end" from all valid_contexts (8 nodes)
+- ✅ Deactivated "end" node in database
+- ✅ Updated VERIFY step_criteria (explicit routing rules)
+- ✅ Updated QUALIFY step_criteria (explicit routing rules)
+
+### **Medium Wins (Completed):**
+- ✅ VERIFY instructions updated: "collect missing, confirm existing"
+- ✅ Added `appointment_datetime` flag to book_appointment tool
+- ✅ Documented all flags in `docs/conversation_flags.md`
+
+### **Hard Wins (Completed):**
+- ✅ ANSWER instructions with ⚠️ CRITICAL ROUTING RULE for calculation questions
+- ✅ ANSWER step_criteria: IMMEDIATELY route to QUOTE for amount/calculation questions
+
+---
 
 ## **What This Accomplishes**
 
-### **Why Trace Scenarios with Codex:**
+### **Why Trace Scenarios:**
 1. **Finds routing bugs** - "Wait, this should go to OBJECTIONS but routes to ANSWER"
 2. **Identifies missing flags** - "We never set `quote_presented=true` in this path"
 3. **Exposes tool gaps** - "We need a tool that doesn't exist"
@@ -10,6 +31,51 @@
 5. **Tests edge case handling** - "What happens if they say X at this node?"
 
 **Think of it as:** Unit testing your conversation architecture before deploying.
+
+---
+
+## **Current Node Configuration (Post-Updates)**
+
+### **GREET**
+- **valid_contexts:** `['answer', 'verify', 'quote']`
+- **tools:** `['mark_wrong_person']`
+- **step_criteria:** Route based on user response - questions → ANSWER, calculation → QUOTE, otherwise → VERIFY
+
+### **VERIFY**
+- **valid_contexts:** `['qualify', 'answer', 'quote', 'objections']` ✨ NEW
+- **tools:** `['verify_caller_identity', 'update_lead_info']`
+- **step_criteria:** Complete when info confirmed/updated. Route: amounts → QUOTE, questions → ANSWER, concerns → OBJECTIONS, else → QUALIFY ✨ UPDATED
+
+### **QUALIFY**
+- **valid_contexts:** `['goodbye', 'quote', 'objections']` ✨ NEW
+- **tools:** `['mark_qualification_result', 'update_lead_info']`
+- **step_criteria:** Complete after qualification. Route: objections → OBJECTIONS, qualified=true → QUOTE, qualified=false → GOODBYE ✨ UPDATED
+
+### **QUOTE**
+- **valid_contexts:** `['answer', 'book', 'goodbye', 'objections']`
+- **tools:** `['calculate_reverse_mortgage', 'mark_quote_presented']`
+- **step_criteria:** Complete after presenting quote and gauging reaction
+
+### **ANSWER**
+- **valid_contexts:** `['goodbye', 'book', 'objections', 'quote']`
+- **tools:** `['search_knowledge', 'mark_ready_to_book']`
+- **step_criteria:** CRITICAL: Calculation questions → QUOTE immediately. Other questions → answer, then route based on response ✨ UPDATED
+
+### **OBJECTIONS**
+- **valid_contexts:** `['answer', 'book', 'goodbye']`
+- **tools:** `['search_knowledge', 'mark_objection_handled', 'mark_has_objection']`
+- **step_criteria:** Complete when objection resolved
+
+### **BOOK**
+- **valid_contexts:** `['goodbye']`
+- **tools:** `['check_broker_availability', 'book_appointment']`
+- **step_criteria:** Appointment booked or declined
+- **NEW FLAG:** Sets `appointment_datetime` on successful booking ✨
+
+### **GOODBYE**
+- **valid_contexts:** `['answer']`
+- **tools:** `[]`
+- **step_criteria:** Said farewell and caller responded or stayed silent
 
 ---
 
@@ -25,205 +91,115 @@ SETUP:
 - Interested, no objections
 - Ready to book immediately
 
-TRACE:
-GREET → confirm identity → route to?
-VERIFY → update contact info → route to?
-QUALIFY → collect 4 gates → set qualified=true → route to?
-QUOTE → present $220k/$40k net → positive reaction → route to?
-BOOK → schedule Tuesday 2pm → send confirmation → route to?
-EXIT → warm goodbye
+EXPECTED TRACE:
+GREET → user responds warmly → route to VERIFY
+VERIFY → confirm contact (collect missing, confirm existing) → route to QUALIFY
+QUALIFY → collect 4 gates → mark_qualification_result(qualified=true) → route to QUOTE
+QUOTE → calculate_reverse_mortgage(200000, 68) → present $80k net → mark_quote_presented(positive) → route to BOOK
+BOOK → check_broker_availability → book_appointment → set appointment_datetime → route to GOODBYE
+GOODBYE → warm farewell
 
-QUESTIONS FOR CODEX:
-- Which flags get set at each node?
-- Which tools get called?
-- What happens if they volunteer all 4 gate answers at once in QUALIFY?
-- Does QUOTE calculate correctly using math skill?
+FLAGS SET:
+- greeted=true (automatic in GREET)
+- verified=true (verify_caller_identity in VERIFY)
+- qualified=true (mark_qualification_result in QUALIFY)
+- quote_presented=true (mark_quote_presented in QUOTE)
+- quote_reaction='positive' (mark_quote_presented in QUOTE)
+- appointment_datetime='2025-11-21T14:00:00' (book_appointment in BOOK) ✨ NEW
+
+TOOLS CALLED:
+1. verify_caller_identity (VERIFY)
+2. update_lead_info (VERIFY - if needed)
+3. mark_qualification_result(qualified=true) (QUALIFY)
+4. calculate_reverse_mortgage(200000, 68) (QUOTE)
+5. mark_quote_presented(reaction='positive') (QUOTE)
+6. check_broker_availability() (BOOK)
+7. book_appointment() (BOOK)
+
+VALIDATION CHECKS:
+✅ Does VERIFY use "collect missing, confirm existing" pattern? ✨ UPDATED
+✅ Does QUALIFY route to QUOTE after qualified=true? ✨ UPDATED
+✅ Does QUOTE call calculate_reverse_mortgage correctly?
+✅ Does BOOK set appointment_datetime flag? ✨ NEW
+✅ Does each node complete and route correctly?
 ```
 
-#### **Scenario 1B: Happy Path with Questions After Booking (Same Call)**
+#### **Scenario 2: Unqualified Lead Asking Amounts**
 ```
 SETUP:
 - Inbound call
-- Lead is 68, owns home, $400k value, $200k mortgage
-- Interested, no objections
-- Ready to book immediately
-- Takes full happy path and books appointment
-- Immediately after booking, thinks of questions
+- Lead asks "How much can I get?" immediately in GREET
+- But they're only 58 years old (doesn't qualify)
 
-TRACE:
-GREET → confirm identity → route to VERIFY
-VERIFY → update contact info → route to QUALIFY
-QUALIFY → collect 4 gates → set qualified=true → route to QUOTE
-QUOTE → present $220k/$40k net → positive reaction → route to BOOK
-BOOK → schedule Tuesday 2pm → send confirmation → route to EXIT
-EXIT → warm goodbye confirmation
-User (in same call, still in EXIT): "Oh wait, how would this work exactly?"
-Or: "How much did you say I could get again?"
-Or: "What happens if I change my mind?"
+EXPECTED TRACE:
+GREET → user asks "How much can I get?" → route to QUOTE ✨ UPDATED (valid_contexts now includes 'quote')
+QUOTE → attempt calculate_reverse_mortgage → discover age missing/invalid
+QUOTE → realizes they need qualification data → route to QUALIFY ✨ NEW (valid_contexts now includes 'qualify')
+QUALIFY → ask age → discover 58 → mark_qualification_result(qualified=false, reason='age_below_62')
+QUALIFY → route to GOODBYE ✨ UPDATED (step_criteria now says "qualified=false → GOODBYE")
+GOODBYE → empathetic disqualification
 
-Does EXIT detect these as questions?
-Does EXIT route to ANSWER via valid_contexts?
-Or does get_lead_context get called first and then route via switchcontext("answer")?
-After get_lead_context completes (if called), does the call hang up?
-Or does it successfully route to ANSWER context?
-ANSWER → user asks question
-Does search_knowledge tool get called correctly?
-Does Barbara remember they already booked (can access appointment info)?
-Can user ask multiple clarifying questions?
-After answering questions, does it route back to EXIT to reconfirm appointment?
-Or does EXIT handle it differently since appointment is already booked?
+FLAGS SET:
+- qualified=false
+- disqualified_reason='age_below_62'
 
-QUESTIONS FOR CODEX:
-- Does EXIT context detect questions even after appointment is booked?
-- When user asks questions in EXIT after booking, does it route to ANSWER via valid_contexts?
-- Or does get_lead_context detect the question and call switchcontext("answer")?
-- Does the switchcontext() call work when already in EXIT after booking?
-- Does the call hang up after get_lead_context completes, or does it successfully route?
-- In ANSWER context, can Barbara access the quote/booking info to answer "how much did you say I could get"?
-- After answering questions in ANSWER, can user route back to EXIT to confirm appointment is still good?
-- What if they want to reschedule or cancel after asking questions?
+VALIDATION CHECKS:
+✅ Does GREET route calculation questions to QUOTE? ✨ UPDATED
+✅ Does QUOTE handle missing data gracefully?
+✅ Does QUALIFY correctly disqualify based on age? ✨ UPDATED
+✅ Does GOODBYE have empathetic disqualification script?
 ```
 
-#### **Scenario 2: Pre-Qualified Returning Caller**
+#### **Scenario 3: Pre-Qualified Returning Caller**
 ```
 SETUP:
 - Inbound call
 - Lead called 3 days ago, got to QUOTE, said "need to think"
-- conversation_state shows: greeted=true, verified=true, qualified=true, quote_presented=true
+- conversation_data: greeted=true, verified=true, qualified=true, quote_presented=true, quote_reaction='skeptical'
 - Now ready to book
 
-TRACE:
-GREET → detects returning caller → should skip ahead, but to where?
-Does system route directly to ANSWER or BOOK?
-What if routing layer says "resume at BOOK" but caller has new questions?
+EXPECTED TRACE:
+Initial node determination: _get_initial_context() sees qualified=true, quote_presented=true, quote_reaction='skeptical' → starts at ANSWER or GREET?
+If GREET: detects returning caller → asks "How can I help?" → user says "ready to book" → route to BOOK
+If ANSWER: user says "ready to book" → mark_ready_to_book(true) → route to BOOK
+BOOK → check_broker_availability → book_appointment → route to GOODBYE
 
-QUESTIONS FOR CODEX:
-- How does configure_per_call determine starting node for returning callers?
-- Which conversation_data flags trigger which starting nodes?
-- Can system handle "I have questions" when resuming at BOOK?
-```
-
-#### **Scenario 2B: Qualified Lead Calls Back with Questions**
-```
-SETUP:
-- Inbound call
-- Lead called 5 days ago, got qualified=true, got quote, but didn't book
-- conversation_state shows: greeted=true, verified=true, qualified=true, quote_presented=true
-- appointment_booked=false (never booked)
-- Now calling back specifically to ask more questions before deciding
-
-TRACE PATH A (quote_reaction='positive' or 'skeptical'):
-Initial Context: _get_initial_context() checks qualified=true, quote_presented=true, quote_reaction='positive' → starts at ANSWER
-ANSWER → user asks "If I die, can my wife stay in the house?"
-Does ANSWER context have search_knowledge tool available?
-Does search_knowledge get called correctly?
-Can user ask multiple questions in sequence without hanging up?
-
-TRACE PATH B (quote_reaction=null or missing):
-Initial Context: _get_initial_context() checks qualified=true, quote_presented=true, quote_reaction=null → starts at GREET
-GREET → detects returning caller → asks "How can I help?"
-User: "I have questions"
-GREET → routes to ANSWER? Or does get_lead_context get called and route?
-User asks: "If I die, can my wife stay in the house?"
-Does get_lead_context detect the question and call switchcontext("answer")?
-Does the call hang up after get_lead_context completes?
-
-TRACE PATH C (starts at EXIT - edge case):
-If somehow starts at EXIT (e.g., quote_reaction was 'negative' but they didn't book):
-EXIT → asks "Why did you call?"
-User: "I have questions"
-EXIT → says "Sure, ask"
-User asks: "If I die, can my wife stay in the house?"
-Does get_lead_context detect the question and call switchcontext("answer")?
-Does the call hang up after get_lead_context completes?
-
-QUESTIONS FOR CODEX:
-- Does _get_initial_context() correctly route qualified+quote_presented+positive_reaction to ANSWER?
-- When starting at ANSWER, does search_knowledge tool work correctly for multiple questions?
-- When starting at GREET/EXIT and user asks questions, does get_lead_context.switchcontext("answer") work?
-- Does the switchcontext() call prevent the hangup that was happening before?
-- Can user ask multiple questions in sequence without hanging up in all three paths?
-- What happens if get_lead_context is called when already in ANSWER context (does it cause issues)?
-```
-
-#### **Scenario 2C: Booked Lead Calls Back with Questions**
-```
-SETUP:
-- Inbound call
-- Lead called 3 days ago, went through full flow, booked appointment
-- conversation_state shows: greeted=true, verified=true, qualified=true, quote_presented=true, appointment_booked=true
-- Appointment scheduled for next week
-- Now calling back because they thought of more questions before the appointment
-
-TRACE:
-Initial Context: _get_initial_context() checks appointment_booked=true → starts at EXIT
-EXIT → asks "Why did you call today?"
-User: "I have some questions before our appointment"
-EXIT → says "Sure, ask me anything"
-User asks: "If I die, can my wife stay in the house?"
-Does get_lead_context get called? (It might be called to refresh lead data)
-Does get_lead_context detect the question and call switchcontext("answer")?
-Or does EXIT context route to ANSWER via valid_contexts?
-After get_lead_context completes (if called), does the call hang up?
-Or does it successfully route to ANSWER context?
-ANSWER → user asks question
-Does search_knowledge tool get called correctly?
-Can user ask multiple questions in sequence?
-After answering questions, can they route back to EXIT or does it end?
-
-QUESTIONS FOR CODEX:
-- Does _get_initial_context() correctly route appointment_booked=true to EXIT?
-- When user says "I have questions" in EXIT, does EXIT route to ANSWER via valid_contexts?
-- Or does get_lead_context get called first and then route via switchcontext("answer")?
-- Does the switchcontext() call in get_lead_context work when starting from EXIT?
-- Does the call hang up after get_lead_context completes, or does it successfully route?
-- After answering questions in ANSWER, can user route back to EXIT to confirm appointment details?
-- What happens if they ask questions, get answers, then want to reschedule or cancel?
-```
-
-#### **Scenario 3: Joint Call with Spouse**
-```
-SETUP:
-- Outbound call
-- Both spouses on line (both 62+)
-- Need 60-min appointment slot
-- Want advisor included too
-
-TRACE:
-GREET → confirm both present → route to?
-VERIFY → capture both names → route to?
-QUALIFY → one spouse answers most questions → route to?
-QUOTE → both interested → route to?
-BOOK → request 60-min slot, capture advisor contact → route to?
-EXIT → confirmation to all three attendees
-
-QUESTIONS FOR CODEX:
-- Does BOOK request correct appointment length?
-- Does update_lead_info capture multiple attendees?
-- What if one spouse is under 62 (non-borrowing spouse scenario)?
+VALIDATION CHECKS:
+✅ Does _get_initial_context() correctly determine starting node for returning callers?
+✅ Can user route directly to BOOK if already qualified and quoted?
+✅ Does BOOK work correctly for returning callers?
 ```
 
 ---
 
 ### **Category 2: Objection Paths (3 scenarios)**
 
-#### **Scenario 4: "My Kids Said No"**
+#### **Scenario 4: Objection After Quote**
 ```
 SETUP:
 - Gets to QUOTE
 - Reacts positively to numbers
 - Then says "But my daughter told me these are scams"
 
-TRACE:
-QUOTE → detect objection → mark_has_objection(type='third_party_approval') → route to OBJECTIONS
-OBJECTIONS → address concern → offer adult children FAQ → still hesitant
-Does system route to ANSWER for more questions, or EXIT to send FAQ first?
+EXPECTED TRACE:
+QUOTE → present numbers → mark_quote_presented(positive) → user raises objection
+QUOTE → detect objection → route to OBJECTIONS ✨ (valid_contexts includes 'objections')
+OBJECTIONS → mark_has_objection(type='third_party_approval') → address concern → search_knowledge("family objections reverse mortgages")
+OBJECTIONS → offer adult children FAQ → mark_objection_handled() → ask if concerns resolved
+If resolved: route to BOOK
+If still hesitant: route to GOODBYE with follow-up offer
 
-QUESTIONS FOR CODEX:
-- Does QUOTE correctly detect this as objection vs question?
-- Does OBJECTIONS have the third_party_approval protocol?
-- What flag gets set for "needs_family_buy_in"?
-- How does EXIT handle "send FAQ and follow up"?
+FLAGS SET:
+- quote_reaction='positive'
+- has_objection=true
+- objection_type='third_party_approval'
+- objection_handled=true (if resolved)
+
+VALIDATION CHECKS:
+✅ Does QUOTE correctly detect this as objection (not question)?
+✅ Does OBJECTIONS have search_knowledge tool?
+✅ Does mark_has_objection capture objection type?
+✅ Does OBJECTIONS route correctly based on resolution?
 ```
 
 #### **Scenario 5: Multiple Objections**
@@ -234,18 +210,19 @@ SETUP:
 - Objection 2: "Will my kids lose the house?" → resolved
 - Objection 3: "I'm still nervous" → unresolved
 
-TRACE:
-QUOTE → mark_has_objection(type='cost_fees') → route to OBJECTIONS
-OBJECTIONS → handle fees → mark_objection_handled
-User immediately raises heirs concern
-OBJECTIONS → handle heirs → mark_objection_handled
-User still hesitant
-Does system stay in OBJECTIONS or route elsewhere?
+EXPECTED TRACE:
+QUOTE → route to OBJECTIONS
+OBJECTIONS → mark_has_objection(type='cost_fees') → search_knowledge("reverse mortgage fees") → mark_objection_handled()
+User immediately raises heirs concern (still in OBJECTIONS)
+OBJECTIONS → mark_has_objection(type='heirs_inheritance') → search_knowledge("heirs inheritance reverse mortgage") → mark_objection_handled()
+User still hesitant "I'm still nervous"
+OBJECTIONS → recognize general hesitation → offer broker consultation → route to GOODBYE with follow-up
 
-QUESTIONS FOR CODEX:
-- Can OBJECTIONS handle multiple objections in sequence?
-- After 2+ objections, does it offer broker handoff?
-- What if they're resolved but still say "I need time"?
+VALIDATION CHECKS:
+✅ Can OBJECTIONS handle multiple objections in sequence?
+✅ Does mark_has_objection/mark_objection_handled get called for each?
+✅ After 2+ objections, does it recognize persistent hesitation?
+✅ Does GOODBYE offer appropriate follow-up?
 ```
 
 #### **Scenario 6: Objection During QUALIFY**
@@ -254,56 +231,62 @@ SETUP:
 - QUALIFY asking "Are you 62+?"
 - Lead says "Why does that matter? Are you discriminating?"
 
-TRACE:
-QUALIFY → detects objection → should route to OBJECTIONS or handle inline?
-If routes to OBJECTIONS, how does it return to QUALIFY?
-Does system remember which gate question was interrupted?
+EXPECTED TRACE:
+QUALIFY → detects objection/concern → route to OBJECTIONS ✨ NEW (valid_contexts now includes 'objections')
+OBJECTIONS → mark_has_objection(type='age_discrimination') → explain FHA requirements → mark_objection_handled()
+OBJECTIONS → route back to ANSWER (for more questions) or directly ask to continue qualification?
+If returns to QUALIFY: resume qualification questions
 
-QUESTIONS FOR CODEX:
-- Can you route to OBJECTIONS mid-QUALIFY?
-- Does conversation_data track "interrupted_at_gate_question"?
-- After OBJECTIONS resolved, does QUALIFY resume at right question?
+VALIDATION CHECKS:
+✅ Does QUALIFY detect objections (not just answers)? ✨ UPDATED
+✅ Can QUALIFY route to OBJECTIONS mid-qualification? ✨ NEW
+✅ After OBJECTIONS resolved, can system return to QUALIFY?
+✅ Does conversation_data track "interrupted_at_gate_question"?
 ```
 
 ---
 
 ### **Category 3: Edge Cases (4 scenarios)**
 
-#### **Scenario 7: Wrong Person Then Right Person**
+#### **Scenario 7: Calculation Question in ANSWER**
+```
+SETUP:
+- User is in ANSWER context (asking general questions)
+- Suddenly asks: "So how much can I actually get?"
+
+EXPECTED TRACE:
+ANSWER → detects calculation question → ⚠️ CRITICAL ROUTING RULE triggers ✨ NEW
+ANSWER → "Let me calculate that for you..." → IMMEDIATELY route to QUOTE ✨ UPDATED
+QUOTE → calculate_reverse_mortgage(equity, age) → present results
+
+FLAGS SET:
+- None (routing only)
+
+VALIDATION CHECKS:
+✅ Does ANSWER detect calculation triggers ("how much", "calculate", "money available")? ✨ UPDATED
+✅ Does ANSWER route to QUOTE (not answer itself)? ✨ UPDATED
+✅ Does step_criteria explicitly say "IMMEDIATELY route to QUOTE"? ✨ UPDATED
+✅ Does QUOTE handle mid-conversation calculations correctly?
+```
+
+#### **Scenario 8: Wrong Person Then Right Person**
 ```
 SETUP:
 - Wife answers
 - Says "Let me get him" (right_person_available=true)
 - Husband comes on
 
-TRACE:
-GREET → mark_wrong_person(right_person_available=true) → route to EXIT
-EXIT → wait for handoff
-Does system stay in EXIT or route back to GREET for husband?
-If routes to GREET, does it remember to start fresh?
+EXPECTED TRACE:
+GREET → mark_wrong_person(right_person_available=true) → route to GOODBYE (to wait)
+GOODBYE → "I'll wait while you get [name]" → wait for handoff detection
+[System detects new person speaking - how?]
+GOODBYE → route back to GREET for husband? Or stay in GOODBYE?
 
-QUESTIONS FOR CODEX:
-- Does EXIT have "wait for handoff" logic?
-- How does system detect new person on line?
-- Does GREET clear wrong_person flag when restarting?
-```
-
-#### **Scenario 8: Almost 62 (61 years, 2 months old)**
-```
-SETUP:
-- Gets to QUALIFY
-- Age: 61 years, 10 months (2 months to 62nd birthday)
-
-TRACE:
-QUALIFY → age disclosed → calculate months to 62nd birthday
-Should system mark qualified=true with pending_birthday flag?
-Or qualified=false and route to EXIT with future follow-up?
-
-QUESTIONS FOR CODEX:
-- Does QUALIFY calculate age proximity?
-- What's the cutoff (you recommended <3 months)?
-- Which flag gets set for "pre-qualified pending age"?
-- Does EXIT schedule follow-up callback after birthday?
+VALIDATION CHECKS:
+❓ Does GOODBYE have "wait for handoff" logic?
+❓ How does system detect new person on line?
+❓ Does GREET restart fresh for the correct person?
+❓ Does mark_wrong_person flag get cleared?
 ```
 
 #### **Scenario 9: Borderline Equity (Low Net Proceeds)**
@@ -311,36 +294,52 @@ QUESTIONS FOR CODEX:
 SETUP:
 - $300k home, $270k mortgage
 - 68 years old, qualifies
-- Net proceeds after payoff: ~$5k-15k
+- Net proceeds after payoff: ~$15k
 
-TRACE:
-QUALIFY → qualified=true, mark borderline_equity=true → route to QUOTE
-QUOTE → present numbers → "$15k available after payoff"
+EXPECTED TRACE:
+QUALIFY → qualified=true, borderline_equity=true → route to QUOTE
+QUOTE → calculate_reverse_mortgage(30000, 68) → returns ~$15k
+QUOTE → present numbers with reframing: "You'd have $15k available, plus your mortgage payment would be eliminated"
 Lead says "That's way less than I expected"
-Does system treat this as objection or just manage expectations?
+QUOTE → detect disappointment → mark_quote_presented(reaction='negative') → route to OBJECTIONS or ANSWER?
 
-QUESTIONS FOR CODEX:
-- Does QUOTE use the low-equity reframing script?
-- Does it mention payment elimination vs lump sum?
-- If they're disappointed, route to OBJECTIONS or ANSWER or EXIT?
+FLAGS SET:
+- qualified=true
+- borderline_equity=true (from QUALIFY)
+- quote_reaction='negative'
+
+VALIDATION CHECKS:
+✅ Does QUALIFY set borderline_equity flag?
+✅ Does QUOTE use low-equity reframing script?
+✅ Does QUOTE route appropriately for disappointed reactions?
+✅ Can OBJECTIONS handle expectations management?
 ```
 
-#### **Scenario 10: Post-Booking Reschedule Call**
+#### **Scenario 10: Booked Lead Calls Back with Questions**
 ```
 SETUP:
-- Appointment booked for Tuesday
-- Lead calls Monday to reschedule
+- Lead booked appointment 3 days ago
+- conversation_data: appointment_booked=true, appointment_datetime='2025-11-21T14:00:00' ✨ NEW
+- Now calling back with questions before the appointment
 
-TRACE:
-GREET → system detects this is returning caller with appointment_booked=true
-Should GREET route immediately to EXIT?
-Or does EXIT detect "they want to reschedule" during conversation?
+EXPECTED TRACE:
+Initial node: _get_initial_context() sees appointment_booked=true → starts at GOODBYE
+GOODBYE → "Hi [name]! You have an appointment on [date]. How can I help?" ✨ NEW (uses appointment_datetime)
+User: "I have some questions"
+GOODBYE → route to ANSWER ✨ (valid_contexts includes 'answer')
+ANSWER → user asks questions → search_knowledge() → answer questions
+ANSWER → "Any other questions?" → user satisfied → route back to GOODBYE
+GOODBYE → reconfirm appointment → end call
 
-QUESTIONS FOR CODEX:
-- How does system detect "already booked" status?
-- Does GREET ask "How can I help?" and detect reschedule intent?
-- Does EXIT provide broker redirect correctly?
-- What flag gets set (reschedule_redirect vs reschedule_requested)?
+FLAGS SET:
+- No new flags (appointment details already set)
+
+VALIDATION CHECKS:
+✅ Does _get_initial_context() correctly route appointment_booked=true to GOODBYE?
+✅ Does GOODBYE acknowledge the appointment using appointment_datetime? ✨ NEW
+✅ Can GOODBYE route to ANSWER for questions? ✨ UPDATED
+✅ Can ANSWER route back to GOODBYE after questions?
+✅ Does system preserve appointment_datetime throughout?
 ```
 
 ---
@@ -353,15 +352,21 @@ SETUP:
 - Everything perfect until BOOK
 - check_broker_availability times out or returns error
 
-TRACE:
-BOOK → call check_broker_availability → ERROR
-Does BOOK have fallback logic?
-Does it offer manual follow-up or retry?
+EXPECTED TRACE:
+BOOK → call check_broker_availability() → TIMEOUT/ERROR
+BOOK → fallback logic → "I'm having trouble accessing the calendar right now"
+BOOK → set manual_booking_required=true → route to GOODBYE
+GOODBYE → "Someone will call you within 24 hours to schedule"
 
-QUESTIONS FOR CODEX:
-- Does BOOK wrap tool calls in try/catch?
-- What happens if book_appointment API fails?
-- Does system set manual_booking_required=true and exit gracefully?
+FLAGS SET:
+- manual_booking_required=true
+- appointment_booked=false
+
+VALIDATION CHECKS:
+❓ Does BOOK wrap tool calls in try/catch?
+❓ Does BOOK have fallback script for tool failures?
+❓ Does system set manual_booking_required flag?
+❓ Does GOODBYE handle manual booking follow-up messaging?
 ```
 
 #### **Scenario 12: Knowledge Base Search Timeout**
@@ -371,182 +376,173 @@ SETUP:
 - Caller asks "How do fees work?"
 - search_knowledge times out (20s timeout)
 
-TRACE:
-ANSWER → call search_knowledge → TIMEOUT after 20s
-Does ANSWER have fallback response?
-Does it give generic answer or defer to broker?
+EXPECTED TRACE:
+ANSWER → call search_knowledge("reverse mortgage fees") → TIMEOUT after 20s
+ANSWER → fallback response: "Fees vary by lender, but typically include origination and closing costs..."
+ANSWER → "Would you like me to have a licensed advisor provide exact details?" → route to BOOK or GOODBYE
 
-QUESTIONS FOR CODEX:
-- Is there timeout handling in ANSWER prompt?
-- Does Barbara give high-level answer after timeout?
-- Does system log KB failures for debugging?
+VALIDATION CHECKS:
+❓ Is there timeout handling in search_knowledge tool?
+❓ Does ANSWER have fallback responses for common questions?
+❓ Does system log KB failures for debugging?
 ```
 
 #### **Scenario 13: Unexpected Disqualification in QUOTE**
 ```
 SETUP:
-- QUALIFY marked them qualified=true
-- In QUOTE, they reveal "Oh, it's actually a rental property"
+- QUALIFY marked them qualified=true (asked about primary residence, they said yes)
+- In QUOTE, they reveal "Oh, it's actually a rental property I live in"
 
-TRACE:
-QUOTE → detects late disqualifier → should mark qualified=false
-Does QUOTE have authority to override QUALIFY?
-Does it route to EXIT with explanation?
+EXPECTED TRACE:
+QUOTE → detects late disqualifier (rental property)
+QUOTE → call mark_qualification_result(qualified=false, reason='non_primary_residence')
+QUOTE → "I understand. Unfortunately, reverse mortgages require the home to be your primary residence..."
+QUOTE → route to GOODBYE ✨ (valid_contexts includes 'goodbye')
+GOODBYE → empathetic disqualification
 
-QUESTIONS FOR CODEX:
-- Can QUOTE call mark_qualification_result(qualified=false)?
-- Does conversation_data track "disqualified_in_quote_rental"?
-- Does EXIT have empathetic disqualification script?
+FLAGS SET:
+- qualified=false (overrides previous true)
+- disqualified_reason='non_primary_residence'
+- disqualified_in_quote=true
+
+VALIDATION CHECKS:
+❓ Can QUOTE call mark_qualification_result(qualified=false)?
+❓ Does QUOTE have authority to override QUALIFY?
+❓ Does conversation_data track late disqualification?
+❓ Does GOODBYE have empathetic disqualification script for each reason?
 ```
 
 ---
 
-## **How to Execute This with Codex**
+## **How to Execute This Trace Test**
 
-### **Step 1: Give Codex the Full Context**
+### **Step 1: Prepare the Context**
 
-**Prompt template:**
-```
-I have an 8-node conversation system (GREET, VERIFY, QUALIFY, QUOTE, ANSWER, OBJECTIONS, BOOK, EXIT) built with SignalWire contexts.
+Gather the current configurations:
+1. ✅ All 8 node instructions (from database)
+2. ✅ All valid_contexts arrays (from database)
+3. ✅ All step_criteria (from database)
+4. ✅ All 21 tool definitions (from code)
+5. ✅ All conversation flags (from docs/conversation_flags.md) ✨ NEW
 
-Here are the 8 prompts: [paste all 8 prompts]
-Here are the 21 tools: [paste tool definitions]
-Here is the routing logic: [paste valid_contexts arrays and completion criteria]
+### **Step 2: Trace Each Scenario**
 
-I want you to trace this scenario step-by-step:
+For each scenario, trace:
+1. **Starting node** - Where does _get_initial_context() place them?
+2. **Node flow** - Which nodes do they visit?
+3. **Tools called** - Which tools are invoked at each node?
+4. **Flags set** - Which conversation_data flags are updated?
+5. **Routing decisions** - Why did it route to the next node?
+6. **Completion criteria** - Was step_criteria met?
 
-[paste scenario]
+### **Step 3: Document Issues**
 
-For each node:
-1. What flags get set?
-2. What tools get called?
-3. What determines completion?
-4. Where does it route next and why?
-5. Are there any gaps or issues?
-```
-
-### **Step 2: Start with Happy Path**
-
-Trace Scenario 1 (Perfect Qualified Lead) first.
-
-If Codex finds issues in the happy path, fix those before testing edge cases.
-
-### **Step 3: Trace All 13 Scenarios**
-
-Do them in order (happy paths → objections → edge cases → failures).
-
-Keep a log of issues found:
+Log any issues found:
 ```
 SCENARIO 1 ISSUES:
-- QUOTE doesn't call mark_quote_presented before routing
-- BOOK doesn't request 30-min slot, just uses default
+- ✅ NONE - All routing works as expected
 
 SCENARIO 2 ISSUES:
-- configure_per_call doesn't check quote_presented flag
-- Returning callers always start at GREET instead of resuming
+- ⚠️ QUOTE might not handle missing age data gracefully
+- ⚠️ Need to verify QUALIFY's disqualification script is empathetic
+
+SCENARIO 7 ISSUES:
+- ✅ NONE - ANSWER → QUOTE routing now explicit with ⚠️ CRITICAL ROUTING RULE
 ```
 
-### **Step 4: Bring Issues Back to Me**
+### **Step 4: Validate Against Recent Updates**
 
-After Codex traces all 13 scenarios:
-
-```
-You → Me: "Codex found these 8 routing bugs [paste]"
-Me → You: "Here's which ones are critical vs nice-to-have"
-You → Codex: "Fix these 5 critical bugs"
-```
+Ensure these recent changes are working:
+- ✅ VERIFY's expanded valid_contexts enable flexible routing
+- ✅ VERIFY's "collect missing, confirm existing" pattern
+- ✅ QUALIFY's expanded valid_contexts allow objection handling
+- ✅ ANSWER's ⚠️ CRITICAL ROUTING RULE for calculation questions
+- ✅ appointment_datetime flag is set and used correctly
+- ✅ "end" node is no longer in any routing paths
 
 ---
 
-## **Expected Output Format from Codex**
+## **Expected Output Format**
 
-**Ask Codex to format traces like this:**
+For each scenario, produce:
 
 ```markdown
 ## SCENARIO 1: Perfect Qualified Lead
 
 ### Node Flow
-GREET → VERIFY → QUALIFY → QUOTE → BOOK → EXIT
+GREET → VERIFY → QUALIFY → QUOTE → BOOK → GOODBYE
 
 ### Detailed Trace
 
 **GREET:**
-- Input: Inbound call, lead.first_name="John", phone="+1234567890"
-- Actions: 
-  - Greet by name
-  - Confirm identity
-  - Set conversation_data.greeted=true
-- Tools Called: None (identity confirmed verbally)
-- Completion Check: greeted=true AND identity confirmed
-- Routing Decision: route_after_greet checks verified=false → route to VERIFY
-- ✅ PASS - Logic is correct
+- Input: Inbound call, lead.first_name="John"
+- Actions: Greet warmly, build rapport
+- Tools Called: None
+- Flags Set: greeted=true (automatic)
+- Completion: User responds warmly
+- Routing: User responds → VERIFY
+- ✅ PASS
 
 **VERIFY:**
-- Input: conversation_data.greeted=true
-- Actions:
-  - Confirm contact info
-  - Call update_lead_info(phone, email)
-  - Set conversation_data.verified=true
-- Tools Called: update_lead_info, get_lead_context
-- Completion Check: verified=true AND contact info confirmed
-- Routing Decision: route_after_verify checks qualified=null → route to QUALIFY
-- ⚠️ ISSUE: Prompt doesn't explicitly call update_lead_info, just says "update if needed"
+- Input: greeted=true, lead data from DB
+- Actions: Collect missing info, confirm existing ✨ UPDATED
+- Tools Called: verify_caller_identity(), update_lead_info() (if needed)
+- Flags Set: verified=true
+- Completion: Info confirmed/updated
+- Routing: verified=true, qualified=null → QUALIFY ✨ UPDATED
+- ✅ PASS
 
 **QUALIFY:**
-[continue for each node...]
+- Input: verified=true
+- Actions: Ask 4 gate questions
+- Tools Called: mark_qualification_result(qualified=true)
+- Flags Set: qualified=true
+- Completion: All 4 gates answered
+- Routing: qualified=true → QUOTE ✨ UPDATED
+- ✅ PASS
+
+[Continue for each node...]
 
 ### Issues Found:
-1. VERIFY prompt vague on when to call update_lead_info
-2. QUOTE doesn't set quote_presented flag before routing
-3. BOOK assumes 30-min slots but doesn't specify duration parameter
+- ✅ NONE - All routing works as expected
 
-### Recommendations:
-1. Add explicit "call update_lead_info after confirming changes" to VERIFY
-2. Add "call mark_quote_presented(phone, reaction)" to QUOTE instructions
-3. Add "determine appointment length (30 vs 60 min) based on flags" to BOOK
+### Validation Checks:
+- ✅ All recent database updates are working correctly
+- ✅ All flags are set appropriately
+- ✅ All tools are called when expected
+- ✅ All routing decisions follow valid_contexts and step_criteria
 ```
 
 ---
 
-## **What You'll Learn**
+## **What Success Looks Like**
 
-After tracing 13 scenarios, you'll know:
+After tracing all 13 scenarios:
 
-✅ **Which routing paths work** - "GREET → VERIFY → QUALIFY works perfectly"
-✅ **Which edge cases fail** - "Wrong person handoff doesn't route back to GREET"
-✅ **Which tools are missing** - "Need a calculate_age_months tool"
-✅ **Which flags aren't set** - "quote_presented never gets set to true"
-✅ **Which prompts need clarification** - "VERIFY doesn't say when to use tools"
+✅ **All happy paths work** (Scenarios 1-3)
+✅ **Objections are handled** (Scenarios 4-6)
+✅ **Edge cases route correctly** (Scenarios 7-10)
+✅ **Failure modes degrade gracefully** (Scenarios 11-13)
+✅ **All recent updates validated** (valid_contexts, step_criteria, instructions, flags)
 
-**Then you fix those issues BEFORE testing with real calls.**
-
----
-
-## **My Role in This**
-
-**After Codex traces all 13:**
-
-You bring me the issues list, and I'll:
-1. **Prioritize** - "Fix #1, #4, #8 before launch. #2, #3, #5 are nice-to-haves"
-2. **Validate** - "Issue #6 isn't actually a problem, here's why..."
-3. **Suggest fixes** - "For issue #7, add this to the prompt..."
-
-**Then you take my recommendations back to Codex for implementation.**
+**Then you're ready for real-world testing with live calls!** 🚀
 
 ---
 
 ## **TL;DR**
 
-**Next step:**
-1. Give Codex all 8 prompts + tool definitions + routing logic
-2. Have Codex trace these 13 scenarios step-by-step
-3. Codex will find routing bugs, missing flags, vague instructions
-4. Bring the issues list to me
-5. I'll prioritize what to fix
-6. You take fixes back to Codex
-7. Re-trace failed scenarios
-8. Deploy when all 13 pass
+**Current Status:**
+- ✅ Quick Wins: valid_contexts expanded, "end" removed, step_criteria clarified
+- ✅ Medium Wins: VERIFY instructions updated, appointment_datetime flag added
+- ✅ Hard Win: ANSWER → QUOTE routing with ⚠️ CRITICAL ROUTING RULE
 
-**This is regression testing for conversation design.**
+**Next Step:**
+1. Trace these 13 scenarios using the updated configurations
+2. Document any issues found
+3. Validate that recent database changes are working correctly
+4. Fix critical issues before live testing
+5. Deploy and test with real calls
 
-**Ready to start? I'd begin with Scenario 1 (Perfect Qualified Lead) to make sure Codex understands the format, then do all 13.**
+**This is regression testing for conversation design after major routing updates.**
+
+Ready to start tracing! 🎯
