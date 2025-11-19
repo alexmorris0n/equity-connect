@@ -163,6 +163,55 @@ async def get_node_prompt(node_name: str, vertical: str = "reverse_mortgage") ->
         return None
 
 
+async def get_node_config(node_name: str, vertical: str = "reverse_mortgage") -> Optional[Dict[str, Any]]:
+    """
+    Get full node configuration from database
+    Returns dict with instructions, valid_contexts, functions, step_criteria
+    """
+    try:
+        # First get the prompt_id
+        prompt_response = supabase.table('prompts')\
+            .select('id')\
+            .eq('node_name', node_name)\
+            .eq('vertical', vertical)\
+            .eq('is_active', True)\
+            .limit(1)\
+            .execute()
+        
+        if not prompt_response.data:
+            logger.warning(f"[DB] No prompt found for node: {node_name}, vertical: {vertical}")
+            return None
+        
+        prompt_id = prompt_response.data[0]['id']
+        
+        # Get active version
+        version_response = supabase.table('prompt_versions')\
+            .select('content')\
+            .eq('prompt_id', prompt_id)\
+            .eq('is_active', True)\
+            .order('version_number', desc=True)\
+            .limit(1)\
+            .execute()
+        
+        if version_response.data:
+            content = version_response.data[0].get('content', {})
+            config = {
+                'instructions': content.get('instructions', ''),
+                'valid_contexts': content.get('valid_contexts', []),
+                'functions': content.get('functions', []),
+                'step_criteria': content.get('step_criteria', '')
+            }
+            logger.info(f"[DB] Loaded full config for node: {node_name} (valid_contexts: {len(config.get('valid_contexts', []))}, functions: {len(config.get('functions', []))})")
+            return config
+        
+        logger.warning(f"[DB] No active version found for prompt_id: {prompt_id}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"[DB] Error fetching node config: {e}")
+        return None
+
+
 async def get_theme_prompt(vertical: str = "reverse_mortgage") -> Optional[str]:
     """Get theme prompt (universal personality)"""
     try:

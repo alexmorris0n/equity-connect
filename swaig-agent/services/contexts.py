@@ -4,7 +4,7 @@ Implements native SignalWire context switching per docs/SignalWire Promp Context
 """
 
 from typing import Dict, Any, List, Optional
-from services.database import get_node_prompt, get_theme_prompt
+from services.database import get_node_prompt, get_theme_prompt, get_node_config
 from services.prompts import build_context_injection
 import logging
 
@@ -49,12 +49,20 @@ async def build_contexts_structure(
     contexts = {}
     
     for node_name in ALL_NODES:
-        # Load node prompt from database
-        node_instructions = await get_node_prompt(node_name, vertical)
+        # Load full node configuration from database (instructions, valid_contexts, functions)
+        node_config = await get_node_config(node_name, vertical)
         
-        if not node_instructions:
-            logger.warning(f"[CONTEXTS] No prompt found for node: {node_name}, using fallback")
+        if not node_config:
+            logger.warning(f"[CONTEXTS] No config found for node: {node_name}, using fallback")
             node_instructions = f"You are Barbara. Continue the conversation naturally in the {node_name} stage."
+            valid_contexts = get_valid_contexts_for_node(node_name)  # Fallback to hardcoded
+            functions = get_functions_for_node(node_name)  # Fallback to hardcoded
+        else:
+            node_instructions = node_config.get('instructions', '')
+            # Load valid_contexts from database (fallback to hardcoded if missing)
+            valid_contexts = node_config.get('valid_contexts') or get_valid_contexts_for_node(node_name)
+            # Load functions from database (fallback to hardcoded if missing)
+            functions = node_config.get('functions') or get_functions_for_node(node_name)
         
         # Combine: Theme → Context → Node Instructions
         full_prompt_parts = []
@@ -67,9 +75,6 @@ async def build_contexts_structure(
         
         full_prompt = "\n\n".join(full_prompt_parts)
         
-        # Get valid contexts for this node (from routing logic)
-        valid_contexts = get_valid_contexts_for_node(node_name)
-        
         # Build step for this context
         step = {
             "name": "main",
@@ -77,10 +82,13 @@ async def build_contexts_structure(
             "valid_contexts": valid_contexts
         }
         
-        # Add functions available in this node
-        functions = get_functions_for_node(node_name)
+        # Add functions available in this node (from database)
         if functions:
             step["functions"] = functions
+        
+        # Add step_criteria if available in database
+        if node_config and node_config.get('step_criteria'):
+            step["step_criteria"] = node_config.get('step_criteria')
         
         # Set as default if it's the starting node
         if node_name == starting_node:
