@@ -83,8 +83,13 @@ async def build_contexts_structure(
         }
         
         # Add functions available in this node (from database)
+        # CRITICAL: If functions array is set, it RESTRICTS which functions are available in this step
+        # If empty/missing, all globally declared functions are available
         if functions:
             step["functions"] = functions
+            logger.info(f"[CONTEXTS] Set functions for '{node_name}': {functions}")
+        else:
+            logger.warning(f"[CONTEXTS] ⚠️  No functions array for '{node_name}' - all global functions available (may be too many)")
         
         # Add step_criteria if available in database
         if node_config and node_config.get('step_criteria'):
