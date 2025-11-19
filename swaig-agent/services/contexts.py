@@ -85,9 +85,21 @@ async def build_contexts_structure(
         # Add functions available in this node (from database)
         # CRITICAL: If functions array is set, it RESTRICTS which functions are available in this step
         # If empty/missing, all globally declared functions are available
+        
+        # Map legacy function names from Agent SDK to SWAIG function names
+        FUNCTION_NAME_MAP = {
+            "calculate": "calculate_reverse_mortgage",  # Agent SDK legacy → SWAIG custom function
+            "math": "calculate_reverse_mortgage",  # Agent SDK native → SWAIG custom function
+        }
+        
         if functions:
-            step["functions"] = functions
-            logger.info(f"[CONTEXTS] Set functions for '{node_name}': {functions}")
+            # Map legacy names to current function names
+            mapped_functions = [FUNCTION_NAME_MAP.get(f, f) for f in functions]
+            step["functions"] = mapped_functions
+            if mapped_functions != functions:
+                logger.info(f"[CONTEXTS] Mapped functions for '{node_name}': {functions} → {mapped_functions}")
+            else:
+                logger.info(f"[CONTEXTS] Set functions for '{node_name}': {functions}")
         else:
             logger.warning(f"[CONTEXTS] ⚠️  No functions array for '{node_name}' - all global functions available (may be too many)")
         
