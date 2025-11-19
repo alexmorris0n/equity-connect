@@ -65,7 +65,7 @@ class BarbaraAgent(Agent):
         self.call_type = call_type  # For context injection
         self.lead_context = lead_context or {}  # For context injection
         self.current_node = "greet"
-        self.session = None  # Set after AgentSession creates it
+        # Note: self.session is a property from Agent base class, set automatically
     
     async def on_enter(self):
         """Agent joins - start with greet node"""
@@ -596,9 +596,6 @@ async def entrypoint(ctx: JobContext):
         preemptive_generation=preemptive_generation,
     )
     
-    # Link session to agent (for generate_reply and node routing)
-    agent.session = session
-    
     # Hook routing checks after each agent turn
     @session.on("agent_speech_committed")
     async def on_agent_finished_speaking():
@@ -606,6 +603,7 @@ async def entrypoint(ctx: JobContext):
         await agent.check_and_route()
     
     # Start the session with custom BarbaraAgent that auto-greets on entry
+    # The session property is set automatically when session.start() is called
     exit_reason: Optional[str] = None
     try:
         await session.start(
