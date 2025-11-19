@@ -123,12 +123,13 @@ async def barbara_agent(request: Request):
         
         logger.info(f"[AGENT] Starting at node: {current_node}")
         
-        # Load prompt from database
-        prompt_text = await build_full_prompt(
-            node_name=current_node,
+        # Build contexts structure (all 8 nodes) from database
+        from services.contexts import build_contexts_structure
+        contexts = await build_contexts_structure(
             lead_context=lead,
             phone_number=phone,
-            vertical="reverse_mortgage"
+            vertical="reverse_mortgage",
+            starting_node=current_node
         )
         
         # Load voice configuration from database
@@ -142,12 +143,11 @@ async def barbara_agent(request: Request):
             voice_string = "elevenlabs.rachel"
         
         logger.info(f"[AGENT] Voice loaded: {voice_string} (engine: {voice_config.get('engine')}, voice: {voice_config.get('voice_name')})")
+        logger.info(f"[AGENT] Built {len(contexts)} contexts with native SignalWire context switching")
         
         # Build SWML response (per SignalWire official docs)
-        # CRITICAL: Vendor parameters (llm_vendor, stt_vendor, tts_vendor) DO NOT EXIST in ai.params!
-        # LLM: Use ai_model in params
-        # STT: Use openai_asr_engine in params (format: "engine:model")
-        # TTS: Use voice in languages array (format: "engine.voice_id")
+        # CRITICAL: Using prompt.contexts for native context switching (not single prompt.text)
+        # This enables the AI to switch between contexts based on valid_contexts in each step
         swml = {
             "version": "1.0.0",
             "sections": {
@@ -159,7 +159,9 @@ async def barbara_agent(request: Request):
                             "post_prompt_url": f"https://{os.getenv('PUBLIC_URL', 'localhost:8080')}/webhooks/post-conversation",
                             "prompt": {
                                 "temperature": 0.6,
-                                "text": prompt_text
+                                # Use contexts structure instead of single text prompt
+                                # This enables native SignalWire context switching
+                                "contexts": contexts
                             },
                             "params": {
                                 # LLM Configuration (OpenAI)
@@ -413,27 +415,15 @@ async def handle_routing_check(caller_id: str, current_node: str, args: dict):
         if next_node and next_node != current_node:
             logger.info(f"[ROUTING] {current_node} → {next_node}")
             
-            # Update database
+            # Update database for tracking
             await update_conversation_state(phone, {'current_node': next_node})
             
-            # Load new node prompt
-            lead = await get_lead_by_phone(phone)
-            new_prompt = await build_full_prompt(
-                node_name=next_node,
-                lead_context=lead,
-                phone_number=phone,
-                vertical="reverse_mortgage"
-            )
-            
-            # Return SWML action to switch prompt
-            # Note: SignalWire uses different action format - need to check docs
+            # SignalWire handles context switching automatically via valid_contexts
+            # All contexts are already defined in the initial SWML, so the AI will
+            # transition naturally when valid_contexts allows it
+            logger.info(f"[ROUTING] Database updated to {next_node}. SignalWire will handle context switch.")
             return {
-                "response": f"Moving to {next_node} stage",
-                "action": [{
-                    "set_meta_data": {
-                        "current_node": next_node
-                    }
-                }]
+                "response": f"Ready to transition to {next_node}. The AI will switch contexts automatically based on valid_contexts."
             }
     
     return {"response": "Continue current node"}
