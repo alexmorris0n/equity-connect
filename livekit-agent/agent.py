@@ -628,10 +628,13 @@ async def entrypoint(ctx: JobContext):
     )
     
     # Hook routing checks after each agent turn
-    @session.on("agent_speech_committed")
-    async def on_agent_finished_speaking():
+    # Note: .on() requires sync callback, so we wrap async function
+    def on_agent_finished_speaking():
         """Agent finished speaking - check if we should route"""
-        await agent.check_and_route()
+        import asyncio
+        asyncio.create_task(agent.check_and_route())
+    
+    session.on("agent_speech_committed", on_agent_finished_speaking)
     
     # Start the session with custom BarbaraAgent that auto-greets on entry
     # The session property is set automatically when session.start() is called
