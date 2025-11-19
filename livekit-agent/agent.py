@@ -233,8 +233,9 @@ class BarbaraAgent(Agent):
                     instructions="Say a warm goodbye and thank them for their time."
                 )
         elif next_node != self.current_node:
-            # Transition to new node (don't speak immediately)
-            await self.load_node(next_node, speak_now=False)
+            # Transition to new node - speak immediately to execute new node behavior
+            # This ensures LLM follows the new node's instructions (e.g., ask verification question)
+            await self.load_node(next_node, speak_now=True)
     
     def route_next(self, state_row: dict, conversation_data: dict):
         """Use existing router functions to determine next node
