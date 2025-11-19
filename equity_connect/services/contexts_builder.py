@@ -44,10 +44,12 @@ def build_contexts_object(
         }
     """
     
-    logger.info(f"🏗️  Building contexts for {vertical}, initial: {initial_context}")
+    logger.warning(f"🏗️  [STARTUP] Building contexts for {vertical}, initial: {initial_context}")
     
     # Query database for all contexts and their steps
     contexts_data = _query_contexts_from_db(vertical, use_draft=use_draft, lead_context=lead_context)
+    
+    logger.warning(f"🏗️  [STARTUP] Loaded {len(contexts_data)} contexts from database: {list(contexts_data.keys())}")
     
     if not contexts_data:
         logger.error(f"❌ No contexts found for vertical: {vertical}")
@@ -246,9 +248,12 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
             # All other contexts must wait for explicit tool-driven routing
             if context_name not in ['book', 'objections', 'goodbye']:
                 original_len = len(valid_ctx_list)
+                original_list = valid_ctx_list.copy()
                 valid_ctx_list = [ctx for ctx in valid_ctx_list if ctx not in ['goodbye', 'end']]
                 if len(valid_ctx_list) < original_len:
-                    logger.info(f"[ANTI-RACE] {context_name.upper()}: Removed goodbye/end. Allowed: {valid_ctx_list}")
+                    logger.warning(f"[ANTI-RACE] STEP-LEVEL {context_name.upper()}: Removed goodbye/end from {original_list} → {valid_ctx_list}")
+                elif 'goodbye' in original_list or 'end' in original_list:
+                    logger.error(f"[ANTI-RACE] ERROR: Filter should have removed goodbye/end but didn't! Original: {original_list}, Filtered: {valid_ctx_list}")
             
             step['valid_contexts'] = valid_ctx_list
             # Track at context level too
@@ -264,9 +269,12 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         # Context-level valid_contexts can override step-level restrictions
         if context_name not in ['book', 'objections', 'goodbye']:
             original_len = len(context['valid_contexts'])
+            original_list = context['valid_contexts'].copy()
             context['valid_contexts'] = [ctx for ctx in context['valid_contexts'] if ctx not in ['goodbye', 'end']]
             if len(context['valid_contexts']) < original_len:
-                logger.info(f"[ANTI-RACE] CONTEXT-LEVEL {context_name.upper()}: Removed goodbye/end. Allowed: {context['valid_contexts']}")
+                logger.warning(f"[ANTI-RACE] CONTEXT-LEVEL {context_name.upper()}: Removed goodbye/end from {original_list} → {context['valid_contexts']}")
+            elif 'goodbye' in original_list or 'end' in original_list:
+                logger.error(f"[ANTI-RACE] ERROR: Context-level filter should have removed goodbye/end but didn't! Original: {original_list}, Filtered: {context['valid_contexts']}")
     
     return contexts_data
 
