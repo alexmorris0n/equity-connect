@@ -330,16 +330,47 @@ async def entrypoint(ctx: JobContext):
         if participants:
             participant = participants[0]
             
+            # Log ALL participant attributes for debugging
+            logger.info(f"🔍 Participant attributes: {participant.attributes}")
+            logger.info(f"🔍 Participant identity: {participant.identity}")
+            logger.info(f"🔍 Participant name: {participant.name}")
+            
             # Check if this is a SIP participant
             from livekit import rtc
             if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
-                # OFFICIAL LIVEKIT FIELD for caller phone
-                caller_phone = participant.attributes.get('sip.phoneNumber')
-                # Called number (trunk number dialed)
-                called_number = participant.attributes.get('sip.trunkPhoneNumber')
+                # Try multiple possible attribute names (LiveKit may use different names)
+                # Common patterns: sip_from, sip_to, sip.phoneNumber, sip_from_number, etc.
+                caller_phone = (
+                    participant.attributes.get('sip_from') or
+                    participant.attributes.get('sip.phoneNumber') or
+                    participant.attributes.get('sip_from_number') or
+                    participant.attributes.get('caller_number') or
+                    participant.attributes.get('from')
+                )
+                
+                called_number = (
+                    participant.attributes.get('sip_to') or
+                    participant.attributes.get('sip.trunkPhoneNumber') or
+                    participant.attributes.get('sip_to_number') or
+                    participant.attributes.get('called_number') or
+                    participant.attributes.get('to')
+                )
+                
                 logger.info(f"✅ SIP Participant: FROM {caller_phone} → TO {called_number}")
+                
+                # Also check room metadata for SIP info
+                if not caller_phone:
+                    logger.info(f"🔍 Checking room metadata for SIP info...")
+                    room_meta = room.metadata or "{}"
+                    try:
+                        room_data = json.loads(room_meta) if isinstance(room_meta, str) else room_meta
+                        caller_phone = room_data.get('sip_from') or room_data.get('from')
+                        called_number = room_data.get('sip_to') or room_data.get('to')
+                        logger.info(f"✅ Found in room metadata: FROM {caller_phone} → TO {called_number}")
+                    except:
+                        pass
     except Exception as e:
-        logger.warning(f"Failed to extract SIP attributes: {e}")
+        logger.warning(f"Failed to extract SIP attributes: {e}", exc_info=True)
     
     # Fallback to metadata (for custom/test calls)
     if not caller_phone:
