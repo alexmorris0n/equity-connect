@@ -176,7 +176,7 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			"call_status": "completed",
 			"call_ended_at": datetime.now(timezone.utc).isoformat(),
 			"exit_reason": "interrupted_or_replaced",
-		}).eq("id", existing["id"]).execute()
+		}).eq("id", existing["id"]).select("*").execute()
 		# Re-read
 		existing = _fetch_by_phone(phone_value) or existing
 
