@@ -405,6 +405,17 @@ async def swml_outbound_webhook(request: Request):
     livekit_sip_uri = f"sip:{to_phone}@{Config.LIVEKIT_SIP_DOMAIN};transport=tcp"
     
     # Build SWML script
+    # Headers must be an array of {name, value} objects, not a dict
+    headers_list = [
+        {"name": "X-Room-Name", "value": room_name},
+        {"name": "X-From", "value": from_phone},
+        {"name": "X-To", "value": to_phone}
+    ]
+    if lead_id:
+        headers_list.append({"name": "X-Lead-Id", "value": lead_id})
+    if broker_id:
+        headers_list.append({"name": "X-Broker-Id", "value": broker_id})
+    
     swml_script = {
         "version": "1.0.0",
         "sections": {
@@ -415,13 +426,7 @@ async def swml_outbound_webhook(request: Request):
                         "from": from_phone,
                         "answer_on_bridge": True,
                         "timeout": 30,
-                        "headers": {
-                            "X-Room-Name": room_name,
-                            "X-From": from_phone,
-                            "X-To": to_phone,
-                            **({"X-Lead-Id": lead_id} if lead_id else {}),
-                            **({"X-Broker-Id": broker_id} if broker_id else {})
-                        }
+                        "headers": headers_list
                     }
                 }
             ]
@@ -454,13 +459,21 @@ async def swml_inbound_webhook(request: Request):
     
     # Build SWML script using template variables (per SignalWire's official LiveKit guide)
     # Reference: https://developer.signalwire.com/ai/guides/integrations/livekit/inbound/
+    # Headers must be an array of {name, value} objects, not a dict
     swml_script = {
         "version": "1.0.0",
         "sections": {
             "main": [
                 {
                     "connect": {
-                        "to": f"sip:%{{call.to}}@{Config.LIVEKIT_SIP_DOMAIN};transport=tcp"
+                        "to": f"sip:%{{call.to}}@{Config.LIVEKIT_SIP_DOMAIN};transport=tcp",
+                        "from": "%{call.from}",
+                        "answer_on_bridge": True,
+                        "timeout": 30,
+                        "headers": [
+                            {"name": "X-SignalWire-To", "value": "%{call.to}"},
+                            {"name": "X-SignalWire-From", "value": "%{call.from}"}
+                        ]
                     }
                 }
             ]
