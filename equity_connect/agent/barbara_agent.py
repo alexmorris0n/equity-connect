@@ -264,8 +264,15 @@ List specific actions needed based on conversation outcome.
 				if valid_steps:
 					step.set_valid_steps(valid_steps)
 
-				# NOTE: 'valid_contexts' is set at the Context level, not Step level in this SDK version.
-				# We rely on context.set_valid_contexts() which was called above.
+				# Restore valid_contexts on Step (verified in examples)
+				step_valid_contexts = self._ensure_list(step_cfg.get("valid_contexts"))
+				action = step_cfg.get("action")
+				if action and action.get("type") == "set_context":
+					target_ctx = action.get("context")
+					if target_ctx and target_ctx not in step_valid_contexts:
+						step_valid_contexts.append(target_ctx)
+				if step_valid_contexts:
+					step.set_valid_contexts(step_valid_contexts)
 				
 				# NOTE: 'skip_user_turn' and 'on_step_change' are not supported in the public Step API
 				# Removing them to prevent AttributeError.
