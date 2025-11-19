@@ -236,12 +236,14 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         if content.get('valid_contexts'):
             valid_ctx_list = content['valid_contexts']
             
-            # CRITICAL FIX: Prevent "Racing to Exit" in ANSWER context
-            # Remove 'goodbye' and 'end' from ANSWER context's valid_contexts
-            # to trap Barbara in the loop until complete_questions tool is called
-            if context_name == 'answer':
+            # CRITICAL FIX: Prevent "Racing to Exit" across ALL contexts
+            # Only BOOK and OBJECTIONS should naturally route to goodbye/end
+            # All other contexts must wait for explicit tool-driven routing
+            if context_name not in ['book', 'objections', 'goodbye']:
+                original_len = len(valid_ctx_list)
                 valid_ctx_list = [ctx for ctx in valid_ctx_list if ctx not in ['goodbye', 'end']]
-                logger.info(f"[ANTI-RACE] Filtered 'goodbye'/'end' from ANSWER context. Allowed: {valid_ctx_list}")
+                if len(valid_ctx_list) < original_len:
+                    logger.info(f"[ANTI-RACE] {context_name.upper()}: Removed goodbye/end. Allowed: {valid_ctx_list}")
             
             step['valid_contexts'] = valid_ctx_list
             # Track at context level too
