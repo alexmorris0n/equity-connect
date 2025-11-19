@@ -35,6 +35,7 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
         "mark_has_objection": "has_objection",
         "mark_objection_handled": "objection_handled",
         "mark_questions_answered": "questions_answered",
+        "mark_wrong_person": "wrong_person",  # Added for LiveKit compatibility
     }
     
     flag_name = flag_map.get(function_name)
@@ -62,6 +63,11 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
         current_node = state.get("current_node", "answer")
         conversation_data_update["node_before_objection"] = current_node
     
+    elif function_name == "mark_wrong_person":
+        conversation_data_update["wrong_person"] = args.get("wrong_person", True)
+        if "right_person_available" in args:
+            conversation_data_update["right_person_available"] = args["right_person_available"]
+    
     else:
         # Simple boolean flag
         flag_value = args.get(flag_name, True)
@@ -85,6 +91,7 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
             "mark_has_objection": "Objection noted",
             "mark_objection_handled": "Objection handled",
             "mark_questions_answered": "Questions answered",
+            "mark_wrong_person": "Wrong person noted",
         }
         
         return {

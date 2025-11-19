@@ -211,9 +211,15 @@ async def barbara_agent(request: Request):
                                         "mark_qualification_result",  # Vue/database uses this name
                                         "mark_quote_presented",
                                         "mark_ready_to_book",
+                                        "mark_wrong_person",  # Added for LiveKit compatibility
+                                        "mark_objection_handled",  # Added for LiveKit compatibility
+                                        "mark_has_objection",  # Added for LiveKit compatibility
                                         "calculate_reverse_mortgage",
                                         "search_knowledge",
-                                        "book_appointment"
+                                        "book_appointment",
+                                        "verify_caller_identity",  # Added for LiveKit compatibility
+                                        "update_lead_info",  # Added for LiveKit compatibility
+                                        "check_broker_availability"  # Added for LiveKit compatibility
                                     ],
                                     "url": f"https://{os.getenv('PUBLIC_URL', 'localhost:8080')}/functions"
                                 }],
@@ -378,6 +384,78 @@ async def get_function_declarations(request: Request):
                     },
                     "required": ["preferred_time"]
                 }
+            },
+            "mark_wrong_person": {
+                "function": "mark_wrong_person",
+                "description": "Mark that wrong person answered the call",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "wrong_person": {"type": "boolean", "description": "Wrong person answered"},
+                        "right_person_available": {"type": "boolean", "description": "Is the right person available?"}
+                    }
+                }
+            },
+            "mark_objection_handled": {
+                "function": "mark_objection_handled",
+                "description": "Mark that caller's objection has been resolved",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "objection_handled": {"type": "boolean", "description": "Objection resolved"}
+                    }
+                }
+            },
+            "mark_has_objection": {
+                "function": "mark_has_objection",
+                "description": "Mark that caller has raised an objection or concern",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "has_objection": {"type": "boolean", "description": "Caller has objection"}
+                    }
+                }
+            },
+            "verify_caller_identity": {
+                "function": "verify_caller_identity",
+                "description": "Verify caller identity by name and phone. Creates lead if new.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "first_name": {"type": "string", "description": "Caller's first name"},
+                        "phone": {"type": "string", "description": "Caller's phone number"}
+                    },
+                    "required": ["first_name", "phone"]
+                }
+            },
+            "update_lead_info": {
+                "function": "update_lead_info",
+                "description": "Update lead information (name, address, property details, etc.)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "phone": {"type": "string", "description": "Caller's phone number"},
+                        "first_name": {"type": "string", "description": "First name"},
+                        "last_name": {"type": "string", "description": "Last name"},
+                        "property_address": {"type": "string", "description": "Property address"},
+                        "property_city": {"type": "string", "description": "Property city"},
+                        "property_state": {"type": "string", "description": "Property state"},
+                        "property_zip": {"type": "string", "description": "Property ZIP code"},
+                        "age": {"type": "integer", "description": "Caller's age"},
+                        "estimated_equity": {"type": "number", "description": "Estimated home equity"}
+                    }
+                }
+            },
+            "check_broker_availability": {
+                "function": "check_broker_availability",
+                "description": "Check if assigned broker has availability for appointment",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "preferred_date": {"type": "string", "description": "Preferred date (optional)"},
+                        "preferred_time": {"type": "string", "description": "Preferred time (optional)"}
+                    }
+                }
             }
         }
         
@@ -458,7 +536,8 @@ async def handle_function_call(function_name: str, request: Request):
         from tools.flags import handle_flag_update
         from tools.calculate import handle_calculate
         from tools.knowledge import handle_knowledge_search
-        from tools.booking import handle_booking
+        from tools.booking import handle_booking, handle_check_broker_availability
+        from tools.lead import handle_verify_caller_identity, handle_update_lead_info
         
         # Route to appropriate handler
         if function_name == "route_conversation":
@@ -475,6 +554,15 @@ async def handle_function_call(function_name: str, request: Request):
         
         elif function_name == "book_appointment":
             result = await handle_booking(caller_id, args)
+        
+        elif function_name == "verify_caller_identity":
+            result = await handle_verify_caller_identity(caller_id, args)
+        
+        elif function_name == "update_lead_info":
+            result = await handle_update_lead_info(caller_id, args)
+        
+        elif function_name == "check_broker_availability":
+            result = await handle_check_broker_availability(caller_id, args)
         
         else:
             result = {"response": f"Unknown function: {function_name}"}

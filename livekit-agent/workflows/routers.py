@@ -8,6 +8,36 @@ from services.conversation_state import get_conversation_state, extract_phone_fr
 logger = logging.getLogger(__name__)
 
 
+def validate_transition(from_node: str, to_node: str, vertical: str = "reverse_mortgage") -> bool:
+    """Validate that transition is allowed according to database valid_contexts
+    
+    Args:
+        from_node: Current node name
+        to_node: Target node name
+        vertical: Business vertical
+        
+    Returns:
+        True if transition is valid (or if valid_contexts not found, assume valid)
+    """
+    try:
+        from services.prompt_loader import load_node_config
+        config = load_node_config(from_node, vertical)
+        valid_contexts = config.get('valid_contexts', [])
+        
+        if valid_contexts:
+            # Check if to_node is in valid_contexts
+            is_valid = to_node in valid_contexts or to_node == "exit" or to_node == END
+            if not is_valid:
+                logger.warning(f"⚠️ Invalid transition: {from_node} → {to_node} (valid: {valid_contexts})")
+            return is_valid
+        else:
+            # No valid_contexts defined - allow all transitions (backward compatible)
+            return True
+    except Exception as e:
+        logger.debug(f"Could not validate transition: {e}, allowing it")
+        return True  # Fail open - allow transition if validation fails
+
+
 def _db(state: ConversationState) -> Optional[Dict[str, Any]]:
 	"""Fetch DB row based on state phone_number or messages fallback."""
 	phone = state.get("phone_number")  # Preferred if present in graph state

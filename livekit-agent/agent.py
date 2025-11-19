@@ -77,12 +77,28 @@ class EquityConnectAgent(Agent):
         
         IMPORTANT: This only updates the system instructions, NOT the conversation history.
         The agent retains full memory of the conversation across all nodes.
+        
+        Now loads full node config from database (instructions, step_criteria, valid_contexts, tools).
         """
         logger.info(f"📍 Loading node: {node_name} (vertical={self.vertical})")
         
-        # Load prompt from database or file WITH vertical parameter
-        from services.prompt_loader import build_context_injection
+        # Load full node config from database (includes tools, valid_contexts, step_criteria)
+        from services.prompt_loader import build_context_injection, load_node_config
         
+        # Load full config to get tools list (for awareness/logging)
+        node_config = load_node_config(node_name, vertical=self.vertical)
+        db_tools = node_config.get('tools', [])
+        valid_contexts = node_config.get('valid_contexts', [])
+        
+        if db_tools:
+            logger.info(f"📋 Node '{node_name}' has {len(db_tools)} tools in DB: {db_tools}")
+        else:
+            logger.info(f"📋 Node '{node_name}' has no tools restriction in DB (all tools available)")
+        
+        if valid_contexts:
+            logger.info(f"🔄 Node '{node_name}' valid transitions: {valid_contexts}")
+        
+        # Load prompt text (includes theme + instructions)
         node_prompt = load_node_prompt(node_name, vertical=self.vertical)
         
         # Inject call context for situational awareness (Plan 1 requirement)
@@ -97,6 +113,10 @@ class EquityConnectAgent(Agent):
         full_prompt = f"{context}\n\n{node_prompt}"
         
         self.current_node = node_name
+        
+        # TODO: Filter tools per node based on db_tools array
+        # Currently all tools are available (simpler, but could be enhanced)
+        # To filter: Create filtered_tools list and update self.tools or session.tools
         
         # Update the agent's instructions WITHOUT clearing conversation history
         # The session maintains the full conversation context (user messages, agent responses, tool calls)
@@ -135,13 +155,18 @@ class EquityConnectAgent(Agent):
         # Extract conversation_data (contains flags)
         state = state_row.get("conversation_data", {})
         
-        # Check if current node is complete
-        if not is_node_complete(self.current_node, state):
+        # Check if current node is complete (now supports database step_criteria)
+        if not is_node_complete(self.current_node, state, vertical=self.vertical):
             logger.info(f"⏳ Node '{self.current_node}' not complete yet")
             return
         
         # Route to next node using existing router logic
         next_node = self.route_next(state_row, state)
+        
+        # Validate transition against database valid_contexts (safety check)
+        from workflows.routers import validate_transition
+        if next_node != END and not validate_transition(self.current_node, next_node, vertical=self.vertical):
+            logger.warning(f"⚠️ Router suggested invalid transition {self.current_node} → {next_node}, but allowing it (router logic takes precedence)")
         
         logger.info(f"🧭 Router: {self.current_node} → {next_node}")
         

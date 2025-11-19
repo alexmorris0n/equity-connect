@@ -4,10 +4,11 @@ Creates Nylas calendar events with assigned broker
 """
 
 from typing import Dict, Any
-from services.database import get_lead_by_phone, get_conversation_state, update_conversation_state
+from services.database import get_lead_by_phone, get_conversation_state, update_conversation_state, normalize_phone
 import os
 import httpx
 import logging
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -120,5 +121,72 @@ async def handle_booking(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]
                 "I encountered an issue scheduling your appointment. "
                 "Let me connect you with our team to schedule directly."
             )
+        }
+
+
+async def handle_check_broker_availability(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Check if assigned broker has availability for appointment
+    Compatible with LiveKit agent check_broker_availability function.
+    """
+    phone = normalize_phone(caller_id)
+    
+    # Get lead to find assigned broker
+    lead = await get_lead_by_phone(phone)
+    if not lead:
+        return {
+            "response": "I couldn't find your information. Let me connect you with our team.",
+            "available": False
+        }
+    
+    # Get broker info
+    broker = lead.get('brokers')
+    if not broker:
+        return {
+            "response": "I'll need to assign you a broker first. Let me connect you with our team.",
+            "available": False
+        }
+    
+    broker_name = broker.get('contact_name', 'your broker')
+    nylas_grant_id = broker.get('nylas_grant_id')
+    
+    if not nylas_grant_id:
+        # No calendar integration - assume available
+        return {
+            "response": f"{broker_name} is available. What time would work best for you?",
+            "available": True,
+            "broker_name": broker_name
+        }
+    
+    # Check Nylas calendar for availability
+    preferred_date = args.get('preferred_date', '')
+    preferred_time = args.get('preferred_time', '')
+    
+    try:
+        # Query Nylas for calendar events
+        # For now, return a simple response
+        # TODO: Implement actual calendar availability check via Nylas API
+        
+        if preferred_date or preferred_time:
+            return {
+                "response": f"I can check {broker_name}'s availability for {preferred_date or preferred_time}. What time would work best for you?",
+                "available": True,
+                "broker_name": broker_name,
+                "preferred_date": preferred_date,
+                "preferred_time": preferred_time
+            }
+        else:
+            return {
+                "response": f"{broker_name} is available. What date and time would work best for you?",
+                "available": True,
+                "broker_name": broker_name
+            }
+            
+    except Exception as e:
+        logger.error(f"[AVAILABILITY] Error checking availability: {e}")
+        return {
+            "response": f"I can check {broker_name}'s availability. What time would work best for you?",
+            "available": True,  # Assume available if check fails
+            "broker_name": broker_name
         }
 

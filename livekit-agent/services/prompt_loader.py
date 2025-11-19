@@ -62,6 +62,46 @@ You are Barbara, a warm and professional voice assistant.
     return fallback_theme
 
 
+def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict:
+    """Load full node configuration from database (instructions, step_criteria, valid_contexts, tools)
+    
+    Returns dict with:
+    - instructions: str (prompt text)
+    - step_criteria: str (when node is complete)
+    - valid_contexts: list (allowed transitions)
+    - tools: list (available function names)
+    """
+    try:
+        from services.supabase import get_supabase_client
+        
+        sb = get_supabase_client()
+        result = sb.rpc('get_node_prompt', {
+            'p_vertical': vertical,
+            'p_node_name': node_name
+        }).execute()
+        
+        if result.data and len(result.data) > 0:
+            content = result.data[0].get('content', {})
+            
+            return {
+                'instructions': content.get('instructions', ''),
+                'step_criteria': content.get('step_criteria', ''),
+                'valid_contexts': content.get('valid_contexts', []),
+                'tools': content.get('tools') or content.get('functions', []),  # Support both fields
+                'role': content.get('role', '')  # Optional
+            }
+    except Exception as e:
+        logger.warning(f"Failed to load node config from database: {e}")
+    
+    return {
+        'instructions': '',
+        'step_criteria': '',
+        'valid_contexts': [],
+        'tools': [],
+        'role': ''
+    }
+
+
 def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
     """Load node prompt from database or fallback to markdown file
     
@@ -89,12 +129,16 @@ def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:
             # Extract JSONB content from Plan 2 structure
             content = result.data[0].get('content', {})
             
-            # Build prompt from JSONB fields (Plan 2 schema)
+            # Build prompt from JSONB fields (Plan 2/3 schema)
+            # SignalWire uses: content.instructions (required)
+            # LiveKit compatible: content.role (optional), content.instructions (required)
             prompt_parts = []
             if content.get('role'):
                 prompt_parts.append(f"## Role\n{content['role']}\n")
             if content.get('instructions'):
                 prompt_parts.append(f"## Instructions\n{content['instructions']}")
+            elif content.get('text'):  # Fallback for old structure
+                prompt_parts.append(content['text'])
             
             if prompt_parts:
                 node_prompt = "\n".join(prompt_parts)
