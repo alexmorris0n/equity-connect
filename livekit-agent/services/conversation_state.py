@@ -88,9 +88,9 @@ def _fetch_by_phone(phone: str) -> Optional[Dict[str, Any]]:
 		candidates.append(normalized)
 	
 	# Build OR filter - try each candidate phone number
-	# Supabase Python client: .or_() must come before .select()
+	# Supabase Python client: .or_() comes after .select()
 	or_conditions = ",".join([f"phone_number.eq.{c}" for c in candidates])
-	resp = supabase.table(TABLE_NAME).or_(or_conditions).select("*").limit(1).execute()
+	resp = supabase.table(TABLE_NAME).select("*").or_(or_conditions).limit(1).execute()
 	if resp.data:
 		return resp.data[0]
 	return None

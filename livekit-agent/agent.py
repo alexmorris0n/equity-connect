@@ -409,11 +409,11 @@ async def entrypoint(ctx: JobContext):
             # Query Supabase for lead by phone number
             from services.supabase import get_supabase_client
             supabase = get_supabase_client()
-            # Supabase Python client: .or_() must come before .select()
+            # Supabase Python client: .or_() comes after .select()
             or_conditions = f"primary_phone.ilike.%{caller_phone}%,primary_phone_e164.eq.{caller_phone}"
-            response = supabase.table("leads").or_(or_conditions).select(
+            response = supabase.table("leads").select(
                 "*, brokers!assigned_broker_id(*)"
-            ).limit(1).execute()
+            ).or_(or_conditions).limit(1).execute()
             
             if response.data and len(response.data) > 0:
                 lead = response.data[0]
