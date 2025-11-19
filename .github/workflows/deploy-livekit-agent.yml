@@ -22,8 +22,8 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
       
       - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only --app barbara-livekit
+        run: flyctl deploy --remote-only --app barbara-livekit --config livekit-agent/fly.toml
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        working-directory: ./livekit-agent
+        # Build context is repo root (Dockerfile expects this)
 

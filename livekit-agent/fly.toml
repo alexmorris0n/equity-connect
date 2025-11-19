@@ -4,6 +4,7 @@ primary_region = "lax"
 [build]
   dockerfile = "deploy/agent/Dockerfile"
   build_args = {}
+  # Build context is repo root (Dockerfile copies from livekit-agent/)
 
 [env]
   PYTHONUNBUFFERED = "1"
