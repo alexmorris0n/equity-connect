@@ -67,9 +67,11 @@ class BarbaraAgent(AgentBase):
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
-			basic_auth=(agent_username, agent_password),
-			options=agent_options # Pass timeouts and other config via options dict
+			basic_auth=(agent_username, agent_password)
 		)
+		
+		# Set AI parameters (timeouts, limits, etc.)
+		self.set_params(agent_options)
 		
 		# Enable SIP routing - REQUIRED for SignalWire to route calls to this agent
 		# This makes Barbara reachable at barbara-agent@domain and /agent@domain
