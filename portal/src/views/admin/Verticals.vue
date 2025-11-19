@@ -104,94 +104,440 @@
           <div class="settings-form">
             <h2>Models & Voice Configuration</h2>
             
-            <div class="form-group">
-              <label>LLM Provider</label>
-              <select v-model="config.models.llm.provider" @change="onLLMProviderChange">
-                <option value="openai">OpenAI</option>
-                <!-- SignalWire only supports OpenAI by default. Other providers require custom integration. -->
-              </select>
-              <small class="form-hint">SignalWire SDK supports OpenAI models by default. Other providers (Anthropic, Groq, etc.) require bringing your own model integration.</small>
-            </div>
-
-            <div class="form-group">
-              <label>LLM Model</label>
-              <select v-model="config.models.llm.model" :disabled="availableLLMModels.length === 0">
-                <option v-if="availableLLMModels.length === 0" value="">No models available - check database</option>
-                <option v-for="model in availableLLMModels" :key="model.value" :value="model.value">
-                  {{ model.label }}
-                </option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>STT Provider</label>
-              <select v-model="config.models.stt.provider" @change="onSTTProviderChange">
-                <option value="deepgram">Deepgram</option>
-                <option value="openai">OpenAI</option>
-                <option value="assemblyai">AssemblyAI</option>
-                <option value="google">Google Cloud</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>STT Model</label>
-              <select v-model="config.models.stt.model" :disabled="availableSTTModels.length === 0">
-                <option v-for="model in availableSTTModels" :key="model.value" :value="model.value">
-                  {{ model.label }}
-                </option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>TTS Provider</label>
-              <select v-model="config.models.tts.provider" @change="onTTSProviderChange">
-                <option value="elevenlabs">ElevenLabs</option>
-                <option value="openai">OpenAI</option>
-                <option value="amazon">Amazon Polly</option>
-                <option value="rime">Rime</option>
-                <option value="google">Google Cloud</option>
-                <option value="cartesia">Cartesia</option>
-                <option value="azure">Microsoft Azure</option>
-                <option value="speechify">Speechify</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>TTS Voice</label>
-              <select v-model="config.models.tts.voice" :disabled="availableTTSVoices.length === 0">
-                <option v-for="voice in availableTTSVoices" :key="voice.value" :value="voice.value">
-                  {{ voice.label }}
-                </option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label>VAD Enabled</label>
-              <input type="checkbox" v-model="config.vad.enabled" />
-            </div>
-
-            <div class="form-group" v-if="config.vad.enabled">
-              <label>VAD Silence (ms)</label>
-              <input type="number" v-model.number="config.vad.silence_ms" />
-            </div>
-
-            <div class="form-group">
-              <label>End of Speech Timeout (ms)</label>
-              <input type="number" v-model.number="config.eos_timeout_ms" />
-            </div>
-
-            <div class="form-group">
-              <label>Record Calls</label>
-              <input type="checkbox" v-model="config.record_call" />
-            </div>
-
-            <div class="form-actions">
-              <button class="btn-save" @click="saveConfig" :disabled="loading">
-                Save Settings
+            <!-- Platform Switcher -->
+            <div class="platform-switcher">
+              <button 
+                class="platform-tab" 
+                :class="{ active: selectedPlatform === 'signalwire' }"
+                @click="selectedPlatform = 'signalwire'"
+              >
+                SignalWire
               </button>
-              <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
-                🎯 Test Full Vertical
+              <button 
+                class="platform-tab" 
+                :class="{ active: selectedPlatform === 'livekit' }"
+                @click="selectedPlatform = 'livekit'"
+              >
+                LiveKit
               </button>
+            </div>
+
+            <!-- SignalWire Configuration -->
+            <div v-if="selectedPlatform === 'signalwire'" class="platform-config">
+              <h3>SignalWire Voice Configuration</h3>
+              <small class="form-hint">SignalWire bundles STT and LLM automatically. Only TTS voice is configurable.</small>
+              
+              <div class="form-group">
+                <label>TTS Engine</label>
+                <select v-model="signalwireConfig.tts_engine" @change="onSignalWireTTSChange">
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="google">Google Cloud</option>
+                  <option value="amazon">Amazon Polly</option>
+                  <option value="azure">Microsoft Azure</option>
+                  <option value="cartesia">Cartesia</option>
+                  <option value="rime">Rime</option>
+                  <option value="speechify">Speechify</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Voice Name</label>
+                <select v-model="signalwireConfig.voice_name" :disabled="availableSignalWireVoices.length === 0">
+                  <option v-if="availableSignalWireVoices.length === 0" value="">Select TTS Engine first</option>
+                  <option v-for="voice in availableSignalWireVoices" :key="voice.value" :value="voice.value">
+                    {{ voice.label }}
+                  </option>
+                </select>
+                <small class="form-hint">Format: provider.voice_name (e.g., elevenlabs.rachel)</small>
+              </div>
+
+              <div class="form-group">
+                <label>Model Override (Optional)</label>
+                <input type="text" v-model="signalwireConfig.model" placeholder="e.g., eleven_turbo_v2_5" />
+                <small class="form-hint">Only needed for providers that require model specification (Rime Arcana, Amazon Neural, etc.)</small>
+              </div>
+
+              <div class="form-group">
+                <label>Language</label>
+                <select v-model="signalwireConfig.language_code">
+                  <option value="en-US">English (US)</option>
+                  <option value="es-US">Spanish (US)</option>
+                  <option value="es-MX">Spanish (Mexico)</option>
+                </select>
+              </div>
+
+              <div class="form-actions">
+                <button class="btn-save" @click="saveSignalWireConfig" :disabled="loading">
+                  Save SignalWire Settings
+                </button>
+              </div>
+            </div>
+
+            <!-- LiveKit Configuration -->
+            <div v-if="selectedPlatform === 'livekit'" class="platform-config">
+              <h3>LiveKit AI Template Configuration</h3>
+              <small class="form-hint">Full control over STT, TTS, and LLM providers with your own API keys. Or use Realtime models for bundled STT+LLM+TTS.</small>
+              
+              <!-- Model Type Selector -->
+              <div class="form-group">
+                <label>Model Type</label>
+                <select v-model="livekitConfig.model_type" @change="onModelTypeChange">
+                  <option value="pipeline">STT-LLM-TTS Pipeline (Separate Providers)</option>
+                  <option value="openai_realtime">OpenAI Realtime (Bundled STT+LLM+TTS)</option>
+                  <option value="gemini_live">Gemini Live (Bundled STT+LLM+TTS)</option>
+                </select>
+                <small class="form-hint">Realtime models combine STT, LLM, and TTS into a single model for lower latency. Requires API keys.</small>
+              </div>
+
+              <!-- OpenAI Realtime Configuration -->
+              <div v-if="livekitConfig.model_type === 'openai_realtime'" class="config-section">
+                <h4>OpenAI Realtime API</h4>
+                <small class="form-hint">Bundled STT, LLM, and TTS in a single realtime model. Requires OPENAI_API_KEY.</small>
+                
+                <div class="form-group">
+                  <label>Model</label>
+                  <select v-model="livekitConfig.realtime_model">
+                    <option value="gpt-realtime">gpt-realtime (Default)</option>
+                    <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Voice</label>
+                  <select v-model="livekitConfig.realtime_voice">
+                    <option value="alloy">Alloy</option>
+                    <option value="echo">Echo</option>
+                    <option value="fable">Fable</option>
+                    <option value="onyx">Onyx</option>
+                    <option value="nova">Nova</option>
+                    <option value="shimmer">Shimmer</option>
+                    <option value="ash">Ash</option>
+                    <option value="ballad">Ballad</option>
+                    <option value="coral">Coral</option>
+                    <option value="sage">Sage</option>
+                    <option value="verse">Verse</option>
+                    <option value="charon">Charon</option>
+                    <option value="juniper">Juniper</option>
+                    <option value="lime">Lime</option>
+                    <option value="river">River</option>
+                    <option value="ember">Ember</option>
+                    <option value="marin">Marin</option>
+                    <option value="cove">Cove</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Temperature</label>
+                  <input type="number" v-model.number="livekitConfig.realtime_temperature" min="0.6" max="1.2" step="0.1" />
+                  <small class="form-hint">0.6-1.2 (default: 0.8)</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Modalities</label>
+                  <select v-model="livekitConfig.realtime_modalities" multiple>
+                    <option value="text">Text</option>
+                    <option value="audio">Audio</option>
+                  </select>
+                  <small class="form-hint">Select both for full realtime, or just 'text' to use with separate TTS</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Turn Detection Type</label>
+                  <select v-model="livekitConfig.realtime_turn_detection_type">
+                    <option value="server_vad">Server VAD (Default)</option>
+                    <option value="semantic_vad">Semantic VAD</option>
+                  </select>
+                </div>
+
+                <div v-if="livekitConfig.realtime_turn_detection_type === 'server_vad'" class="form-group">
+                  <label>VAD Threshold</label>
+                  <input type="number" v-model.number="livekitConfig.realtime_vad_threshold" min="0" max="1" step="0.1" />
+                  <small class="form-hint">Higher = less sensitive to background noise</small>
+                </div>
+
+                <div v-if="livekitConfig.realtime_turn_detection_type === 'server_vad'" class="form-group">
+                  <label>Prefix Padding (ms)</label>
+                  <input type="number" v-model.number="livekitConfig.realtime_prefix_padding_ms" min="0" max="1000" />
+                </div>
+
+                <div v-if="livekitConfig.realtime_turn_detection_type === 'server_vad'" class="form-group">
+                  <label>Silence Duration (ms)</label>
+                  <input type="number" v-model.number="livekitConfig.realtime_silence_duration_ms" min="0" max="5000" />
+                  <small class="form-hint">Shorter = faster turn detection</small>
+                </div>
+
+                <div v-if="livekitConfig.realtime_turn_detection_type === 'semantic_vad'" class="form-group">
+                  <label>Eagerness</label>
+                  <select v-model="livekitConfig.realtime_eagerness">
+                    <option value="auto">Auto (Medium)</option>
+                    <option value="low">Low (Let users take their time)</option>
+                    <option value="medium">Medium (Balanced)</option>
+                    <option value="high">High (Respond quickly)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Gemini Live Configuration -->
+              <div v-if="livekitConfig.model_type === 'gemini_live'" class="config-section">
+                <h4>Gemini Live API</h4>
+                <small class="form-hint">Bundled STT, LLM, and TTS in a single realtime model. Requires GOOGLE_API_KEY or GOOGLE_APPLICATION_CREDENTIALS.</small>
+                
+                <div class="form-group">
+                  <label>Model</label>
+                  <select v-model="livekitConfig.gemini_model">
+                    <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp (Default)</option>
+                    <option value="gemini-2.5-flash-native-audio-preview-09-2025">gemini-2.5-flash-native-audio-preview-09-2025</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Voice</label>
+                  <select v-model="livekitConfig.gemini_voice">
+                    <option value="Puck">Puck (Default)</option>
+                    <option value="Charon">Charon</option>
+                    <option value="Kore">Kore</option>
+                    <option value="Fenrir">Fenrir</option>
+                    <option value="Aoede">Aoede</option>
+                  </select>
+                  <small class="form-hint">See Gemini docs for full voice list</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Temperature</label>
+                  <input type="number" v-model.number="livekitConfig.gemini_temperature" min="0" max="2" step="0.1" />
+                  <small class="form-hint">0.0 = deterministic, 2.0 = creative</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Instructions</label>
+                  <textarea v-model="livekitConfig.gemini_instructions" rows="3" placeholder="System instructions for tone and behavior"></textarea>
+                  <small class="form-hint">System instructions to control model output and tone</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Modalities</label>
+                  <select v-model="livekitConfig.gemini_modalities" multiple>
+                    <option value="AUDIO">Audio</option>
+                    <option value="TEXT">Text</option>
+                  </select>
+                  <small class="form-hint">Select AUDIO for full realtime, or TEXT to use with separate TTS</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Enable Affective Dialog</label>
+                  <input type="checkbox" v-model="livekitConfig.gemini_enable_affective_dialog" />
+                  <small class="form-hint">Enable emotional understanding on supported models</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Proactivity</label>
+                  <input type="checkbox" v-model="livekitConfig.gemini_proactivity" />
+                  <small class="form-hint">Enable proactive audio (model can choose not to respond)</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Use Vertex AI</label>
+                  <input type="checkbox" v-model="livekitConfig.gemini_vertexai" />
+                  <small class="form-hint">Use Vertex AI instead of Gemini API (requires GOOGLE_APPLICATION_CREDENTIALS)</small>
+                </div>
+              </div>
+
+              <!-- STT Configuration (only for pipeline mode) -->
+              <div v-if="livekitConfig.model_type === 'pipeline'">
+              <!-- STT Configuration -->
+              <div class="config-section">
+                <h4>Speech-to-Text (STT)</h4>
+                <div class="form-group">
+                  <label>STT Provider</label>
+                  <select v-model="livekitConfig.stt_provider" @change="onLiveKitSTTChange">
+                    <option value="deepgram">Deepgram</option>
+                    <option value="assemblyai">AssemblyAI</option>
+                    <option value="cartesia">Cartesia</option>
+                  </select>
+                  <small class="form-hint">LiveKit Inference supports these providers. For OpenAI, Google Cloud, and others, use plugins with your own API keys.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>STT Model</label>
+                  <select v-model="livekitConfig.stt_model" :disabled="availableLiveKitSTTModels.length === 0">
+                    <option v-if="availableLiveKitSTTModels.length === 0" value="">Select STT Provider first</option>
+                    <option v-for="model in availableLiveKitSTTModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>STT Language</label>
+                  <select v-model="livekitConfig.stt_language">
+                    <option value="en-US">English (US)</option>
+                    <option value="es-US">Spanish (US)</option>
+                    <option value="es-MX">Spanish (Mexico)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- TTS Configuration -->
+              <div class="config-section">
+                <h4>Text-to-Speech (TTS)</h4>
+                <div class="form-group">
+                  <label>TTS Provider</label>
+                  <select v-model="livekitConfig.tts_provider" @change="onLiveKitTTSChange">
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="cartesia">Cartesia</option>
+                    <option value="inworld">Inworld</option>
+                    <option value="rime">Rime</option>
+                  </select>
+                  <small class="form-hint">LiveKit Inference supports these providers. For OpenAI, Google Cloud, Speechify, and others, use plugins with your own API keys.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Model</label>
+                  <select v-model="livekitConfig.tts_model" :disabled="availableLiveKitTTSModels.length === 0">
+                    <option v-if="availableLiveKitTTSModels.length === 0" value="">Select TTS Provider first</option>
+                    <option v-for="model in availableLiveKitTTSModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Voice ID</label>
+                  <select v-model="livekitConfig.tts_voice_id" :disabled="availableLiveKitTTSVoices.length === 0">
+                    <option v-if="availableLiveKitTTSVoices.length === 0" value="">Select TTS Model first</option>
+                    <option v-for="voice in availableLiveKitTTSVoices" :key="voice.value" :value="voice.value">
+                      {{ voice.label }}
+                    </option>
+                  </select>
+                  <small class="form-hint">Shows suggested voices from LiveKit docs. Each provider has many more voices available - check provider documentation for full list.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Speed</label>
+                  <input type="number" v-model.number="livekitConfig.tts_speed" min="0.5" max="2.0" step="0.1" />
+                  <small class="form-hint">1.0 = normal speed</small>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Stability</label>
+                  <input type="number" v-model.number="livekitConfig.tts_stability" min="0" max="1" step="0.1" />
+                  <small class="form-hint">0.0 = more variation, 1.0 = more consistent</small>
+                </div>
+              </div>
+
+              <!-- LLM Configuration -->
+              <div class="config-section">
+                <h4>Language Model (LLM)</h4>
+                <div class="form-group">
+                  <label>LLM Provider</label>
+                  <select v-model="livekitConfig.llm_provider" @change="onLiveKitLLMChange">
+                    <option value="openai">OpenAI</option>
+                    <option value="gemini">Gemini (Google)</option>
+                    <option value="qwen">Qwen</option>
+                    <option value="kimi">Kimi</option>
+                    <option value="deepseek">DeepSeek</option>
+                  </select>
+                  <small class="form-hint">LiveKit Inference supports these providers. For Anthropic, Google (non-Gemini), and others, use plugins with your own API keys.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>LLM Model</label>
+                  <select v-model="livekitConfig.llm_model" :disabled="availableLiveKitLLMModels.length === 0">
+                    <option v-if="availableLiveKitLLMModels.length === 0" value="">Select LLM Provider first</option>
+                    <option v-for="model in availableLiveKitLLMModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Temperature</label>
+                  <input type="number" v-model.number="livekitConfig.llm_temperature" min="0" max="2" step="0.1" />
+                  <small class="form-hint">0.0 = deterministic, 2.0 = creative</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Max Tokens</label>
+                  <input type="number" v-model.number="livekitConfig.llm_max_tokens" min="1" max="8192" />
+                </div>
+
+                <div class="form-group">
+                  <label>Top P</label>
+                  <input type="number" v-model.number="livekitConfig.llm_top_p" min="0" max="1" step="0.1" />
+                </div>
+
+                <div class="form-group">
+                  <label>Frequency Penalty</label>
+                  <input type="number" v-model.number="livekitConfig.llm_frequency_penalty" min="-2" max="2" step="0.1" />
+                </div>
+
+                <div class="form-group">
+                  <label>Presence Penalty</label>
+                  <input type="number" v-model.number="livekitConfig.llm_presence_penalty" min="-2" max="2" step="0.1" />
+                </div>
+              </div>
+
+              <!-- VAD Configuration -->
+              <div class="config-section">
+                <h4>Voice Activity Detection (VAD)</h4>
+                <div class="form-group">
+                  <label>VAD Enabled</label>
+                  <input type="checkbox" v-model="livekitConfig.vad_enabled" />
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.vad_enabled">
+                  <label>VAD Threshold</label>
+                  <input type="number" v-model.number="livekitConfig.vad_threshold" min="0" max="1" step="0.1" />
+                  <small class="form-hint">Higher = less sensitive to background noise</small>
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.vad_enabled">
+                  <label>VAD Prefix Padding (ms)</label>
+                  <input type="number" v-model.number="livekitConfig.vad_prefix_padding_ms" min="0" max="1000" />
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.vad_enabled">
+                  <label>VAD Silence Duration (ms)</label>
+                  <input type="number" v-model.number="livekitConfig.vad_silence_duration_ms" min="0" max="5000" />
+                </div>
+              </div>
+
+              <!-- Audio Configuration (only for pipeline mode) -->
+              <div v-if="livekitConfig.model_type === 'pipeline'" class="config-section">
+                <h4>Audio Settings</h4>
+                <div class="form-group">
+                  <label>Turn Detection Type</label>
+                  <select v-model="livekitConfig.turn_detection_type">
+                    <option value="server_vad">Server VAD</option>
+                    <option value="client_vad">Client VAD</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Audio Input Transcription</label>
+                  <input type="checkbox" v-model="livekitConfig.audio_input_transcription" />
+                </div>
+
+                <div class="form-group">
+                  <label>Audio Sample Rate</label>
+                  <select v-model="livekitConfig.audio_sample_rate">
+                    <option value="16000">16 kHz</option>
+                    <option value="24000">24 kHz</option>
+                    <option value="48000">48 kHz</option>
+                  </select>
+                </div>
+              </div>
+              </div>
+
+              <div class="form-actions">
+                <button class="btn-save" @click="saveLiveKitConfig" :disabled="loading">
+                  Save LiveKit Template
+                </button>
+                <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
+                  🎯 Test Full Vertical
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -948,6 +1294,78 @@ const config = ref({
   telephony: { auto_answer: false, ring_delay_ms: 4000 },
   safety: { blocked_phrases: [], max_tool_depth: 2 }
 })
+
+// Platform switcher state
+const selectedPlatform = ref('signalwire') // 'signalwire' or 'livekit'
+
+// SignalWire configuration (agent_voice_config table)
+const signalwireConfig = ref({
+  vertical: 'reverse_mortgage',
+  language_code: 'en-US',
+  tts_engine: 'elevenlabs',
+  voice_name: 'rachel',
+  model: null,
+  is_active: true
+})
+
+// LiveKit configuration (ai_templates table)
+const livekitConfig = ref({
+  name: 'Default Template',
+  description: '',
+  model_type: 'pipeline', // 'pipeline', 'openai_realtime', 'gemini_live'
+  
+  // Pipeline mode (STT-LLM-TTS)
+  stt_provider: 'deepgram',
+  stt_model: 'nova-3', // Updated to match LiveKit Inference default
+  stt_language: 'en-US',
+  tts_provider: 'elevenlabs',
+  tts_model: 'eleven_turbo_v2_5',
+  tts_voice_id: 'iP95p4xoKVk53GoZ742B', // Chris (suggested voice from docs)
+  tts_speed: 1.0,
+  tts_stability: 0.5,
+  llm_provider: 'openai',
+  llm_model: 'gpt-4.1-mini', // Updated to match LiveKit Inference default
+  llm_temperature: 0.7,
+  llm_max_tokens: 4096,
+  llm_top_p: 1.0,
+  llm_frequency_penalty: 0.0,
+  llm_presence_penalty: 0.0,
+  vad_enabled: true,
+  vad_threshold: 0.5,
+  vad_prefix_padding_ms: 300,
+  vad_silence_duration_ms: 500,
+  turn_detection_type: 'server_vad',
+  audio_input_transcription: true,
+  audio_sample_rate: 24000,
+  
+  // OpenAI Realtime mode
+  realtime_model: 'gpt-realtime',
+  realtime_voice: 'alloy',
+  realtime_temperature: 0.8,
+  realtime_modalities: ['text', 'audio'],
+  realtime_turn_detection_type: 'server_vad',
+  realtime_vad_threshold: 0.5,
+  realtime_prefix_padding_ms: 300,
+  realtime_silence_duration_ms: 500,
+  realtime_eagerness: 'auto',
+  
+  // Gemini Live mode
+  gemini_model: 'gemini-2.0-flash-exp',
+  gemini_voice: 'Puck',
+  gemini_temperature: 0.8,
+  gemini_instructions: '',
+  gemini_modalities: ['AUDIO'],
+  gemini_enable_affective_dialog: false,
+  gemini_proactivity: false,
+  gemini_vertexai: false
+})
+
+// Available options for dropdowns
+const availableSignalWireVoices = ref([])
+const availableLiveKitSTTModels = ref([])
+const availableLiveKitTTSModels = ref([])
+const availableLiveKitTTSVoices = ref([])
+const availableLiveKitLLMModels = ref([])
 
 // LLM models loaded from database (will be populated on mount)
 const llmModelsFromDB = ref({})
@@ -1800,6 +2218,421 @@ async function checkForDraft() {
 // Save config (called from Models/Telephony/Safety tabs)
 async function saveConfig() {
   await saveTheme() // Config is stored with theme
+}
+
+// ==================== SignalWire Configuration ====================
+
+// Load SignalWire config from database
+async function loadSignalWireConfig() {
+  try {
+    const { data, error } = await supabase
+      .from('agent_voice_config')
+      .select('*')
+      .eq('vertical', selectedVertical.value)
+      .eq('language_code', signalwireConfig.value.language_code)
+      .eq('is_active', true)
+      .limit(1)
+      .single()
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.error('Error loading SignalWire config:', error)
+      return
+    }
+
+    if (data) {
+      signalwireConfig.value = {
+        ...signalwireConfig.value,
+        ...data,
+        vertical: selectedVertical.value
+      }
+      // Load available voices for selected TTS engine
+      await loadSignalWireVoices()
+    }
+  } catch (error) {
+    console.error('Failed to load SignalWire config:', error)
+  }
+}
+
+// Save SignalWire config to database
+async function saveSignalWireConfig() {
+  loading.value = true
+  try {
+    const configData = {
+      vertical: selectedVertical.value,
+      language_code: signalwireConfig.value.language_code,
+      tts_engine: signalwireConfig.value.tts_engine,
+      voice_name: signalwireConfig.value.voice_name,
+      model: signalwireConfig.value.model || null,
+      is_active: true,
+      updated_at: new Date().toISOString()
+    }
+
+    const { data, error } = await supabase
+      .from('agent_voice_config')
+      .upsert(configData, {
+        onConflict: 'vertical,language_code'
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    signalwireConfig.value = { ...signalwireConfig.value, ...data }
+    window.$message?.success('SignalWire configuration saved successfully!')
+  } catch (error) {
+    console.error('Failed to save SignalWire config:', error)
+    window.$message?.error('Failed to save SignalWire configuration: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Load available SignalWire voices based on TTS engine
+async function loadSignalWireVoices() {
+  // For SignalWire, voices are in format: provider.voice_name
+  // We'll use the constants from voices.ts or load from database
+  const voiceMap = {
+    elevenlabs: [
+      { value: 'rachel', label: 'Rachel' },
+      { value: 'domi', label: 'Domi' },
+      { value: 'bella', label: 'Bella' },
+      { value: 'antoni', label: 'Antoni' },
+      { value: 'elli', label: 'Elli' },
+      { value: 'josh', label: 'Josh' },
+      { value: 'arnold', label: 'Arnold' },
+      { value: 'adam', label: 'Adam' },
+      { value: 'sam', label: 'Sam' }
+    ],
+    openai: [
+      { value: 'alloy', label: 'Alloy' },
+      { value: 'echo', label: 'Echo' },
+      { value: 'fable', label: 'Fable' },
+      { value: 'onyx', label: 'Onyx' },
+      { value: 'nova', label: 'Nova' },
+      { value: 'shimmer', label: 'Shimmer' }
+    ],
+    google: [
+      { value: 'en-US-Neural2-A', label: 'Neural2-A (Female)' },
+      { value: 'en-US-Neural2-B', label: 'Neural2-B (Male)' },
+      { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)' },
+      { value: 'en-US-Neural2-D', label: 'Neural2-D (Male)' }
+    ]
+  }
+
+  const engine = signalwireConfig.value.tts_engine
+  availableSignalWireVoices.value = voiceMap[engine] || []
+}
+
+// Handle SignalWire TTS engine change
+function onSignalWireTTSChange() {
+  signalwireConfig.value.voice_name = ''
+  loadSignalWireVoices()
+}
+
+// ==================== LiveKit Configuration ====================
+
+// Load LiveKit config from database (loads system default or broker-specific template)
+async function loadLiveKitConfig() {
+  try {
+    // Try to load system default template first
+    const { data, error } = await supabase
+      .from('ai_templates')
+      .select('*')
+      .eq('is_system_default', true)
+      .eq('is_active', true)
+      .limit(1)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error loading LiveKit config:', error)
+      return
+    }
+
+    if (data) {
+      livekitConfig.value = {
+        ...livekitConfig.value,
+        ...data
+      }
+      // Load available options for selected providers
+      await loadLiveKitSTTModels()
+      await loadLiveKitTTSModels()
+      await loadLiveKitLLMModels()
+    }
+  } catch (error) {
+    console.error('Failed to load LiveKit config:', error)
+  }
+}
+
+// Save LiveKit config to database (creates/updates ai_templates entry)
+async function saveLiveKitConfig() {
+  loading.value = true
+  try {
+    const templateData = {
+      name: livekitConfig.value.name || 'Default Template',
+      description: livekitConfig.value.description || '',
+      model_type: livekitConfig.value.model_type,
+      
+      // Pipeline mode fields (only save if model_type is 'pipeline')
+      ...(livekitConfig.value.model_type === 'pipeline' ? {
+        stt_provider: livekitConfig.value.stt_provider,
+        stt_model: livekitConfig.value.stt_model,
+        stt_language: livekitConfig.value.stt_language,
+        tts_provider: livekitConfig.value.tts_provider,
+        tts_model: livekitConfig.value.tts_model,
+        tts_voice_id: livekitConfig.value.tts_voice_id,
+        tts_speed: livekitConfig.value.tts_speed,
+        tts_stability: livekitConfig.value.tts_stability,
+        llm_provider: livekitConfig.value.llm_provider,
+        llm_model: livekitConfig.value.llm_model,
+        llm_temperature: livekitConfig.value.llm_temperature,
+        llm_max_tokens: livekitConfig.value.llm_max_tokens,
+        llm_top_p: livekitConfig.value.llm_top_p,
+        llm_frequency_penalty: livekitConfig.value.llm_frequency_penalty,
+        llm_presence_penalty: livekitConfig.value.llm_presence_penalty,
+        vad_enabled: livekitConfig.value.vad_enabled,
+        vad_threshold: livekitConfig.value.vad_threshold,
+        vad_prefix_padding_ms: livekitConfig.value.vad_prefix_padding_ms,
+        vad_silence_duration_ms: livekitConfig.value.vad_silence_duration_ms,
+        turn_detection_type: livekitConfig.value.turn_detection_type,
+        audio_input_transcription: livekitConfig.value.audio_input_transcription,
+        audio_sample_rate: livekitConfig.value.audio_sample_rate,
+      } : {}),
+      
+      // OpenAI Realtime fields (only save if model_type is 'openai_realtime')
+      ...(livekitConfig.value.model_type === 'openai_realtime' ? {
+        realtime_model: livekitConfig.value.realtime_model,
+        realtime_voice: livekitConfig.value.realtime_voice,
+        realtime_temperature: livekitConfig.value.realtime_temperature,
+        realtime_modalities: Array.isArray(livekitConfig.value.realtime_modalities) 
+          ? livekitConfig.value.realtime_modalities 
+          : (livekitConfig.value.realtime_modalities || 'text,audio').split(','),
+        realtime_turn_detection_type: livekitConfig.value.realtime_turn_detection_type,
+        realtime_vad_threshold: livekitConfig.value.realtime_vad_threshold,
+        realtime_prefix_padding_ms: livekitConfig.value.realtime_prefix_padding_ms,
+        realtime_silence_duration_ms: livekitConfig.value.realtime_silence_duration_ms,
+        realtime_eagerness: livekitConfig.value.realtime_eagerness,
+      } : {}),
+      
+      // Gemini Live fields (only save if model_type is 'gemini_live')
+      ...(livekitConfig.value.model_type === 'gemini_live' ? {
+        gemini_model: livekitConfig.value.gemini_model,
+        gemini_voice: livekitConfig.value.gemini_voice,
+        gemini_temperature: livekitConfig.value.gemini_temperature,
+        gemini_instructions: livekitConfig.value.gemini_instructions,
+        gemini_modalities: Array.isArray(livekitConfig.value.gemini_modalities)
+          ? livekitConfig.value.gemini_modalities
+          : (livekitConfig.value.gemini_modalities || 'AUDIO').split(','),
+        gemini_enable_affective_dialog: livekitConfig.value.gemini_enable_affective_dialog,
+        gemini_proactivity: livekitConfig.value.gemini_proactivity,
+        gemini_vertexai: livekitConfig.value.gemini_vertexai,
+      } : {}),
+      
+      is_system_default: true, // For now, save as system default
+      is_active: true
+    }
+
+    // Check if system default exists
+    const { data: existing } = await supabase
+      .from('ai_templates')
+      .select('id')
+      .eq('is_system_default', true)
+      .eq('is_active', true)
+      .limit(1)
+      .single()
+
+    let result
+    if (existing) {
+      // Update existing
+      const { data, error } = await supabase
+        .from('ai_templates')
+        .update(templateData)
+        .eq('id', existing.id)
+        .select()
+        .single()
+      
+      if (error) throw error
+      result = data
+    } else {
+      // Create new
+      const { data, error } = await supabase
+        .from('ai_templates')
+        .insert(templateData)
+        .select()
+        .single()
+      
+      if (error) throw error
+      result = data
+    }
+
+    livekitConfig.value = { ...livekitConfig.value, ...result }
+    window.$message?.success('LiveKit template saved successfully!')
+  } catch (error) {
+    console.error('Failed to save LiveKit config:', error)
+    window.$message?.error('Failed to save LiveKit template: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Load available STT models for selected provider (LiveKit Inference)
+async function loadLiveKitSTTModels() {
+  const modelMap = {
+    deepgram: [
+      { value: 'nova-3', label: 'Nova-3 (Multilingual, 8 languages)' },
+      { value: 'nova-3-medical', label: 'Nova-3 Medical (English only)' },
+      { value: 'nova-2', label: 'Nova-2 (Multilingual, 33 languages)' },
+      { value: 'nova-2-medical', label: 'Nova-2 Medical (English only)' },
+      { value: 'nova-2-conversational-ai', label: 'Nova-2 Conversational AI (English only)' },
+      { value: 'nova-2-phonecall', label: 'Nova-2 Phonecall (English only)' }
+    ],
+    assemblyai: [
+      { value: 'universal-streaming', label: 'Universal-Streaming (English only)' }
+    ],
+    cartesia: [
+      { value: 'ink-whisper', label: 'Ink Whisper (98 languages)' }
+    ]
+  }
+
+  const provider = livekitConfig.value.stt_provider
+  availableLiveKitSTTModels.value = modelMap[provider] || []
+}
+
+// Load available TTS models for selected provider (LiveKit Inference)
+async function loadLiveKitTTSModels() {
+  const modelMap = {
+    elevenlabs: [
+      { value: 'eleven_turbo_v2_5', label: 'Eleven Turbo v2.5' },
+      { value: 'eleven_multilingual_v2', label: 'Eleven Multilingual v2' }
+    ],
+    cartesia: [
+      { value: 'sonic-3', label: 'Sonic-3' }
+    ],
+    inworld: [
+      { value: 'inworld-tts-1', label: 'Inworld TTS-1' }
+    ],
+    rime: [
+      { value: 'arcana', label: 'Arcana' }
+    ]
+  }
+
+  const provider = livekitConfig.value.tts_provider
+  availableLiveKitTTSModels.value = modelMap[provider] || []
+  // Also load voices for the selected model
+  await loadLiveKitTTSVoices()
+}
+
+// Load available TTS voices for selected model (LiveKit Inference suggested voices)
+async function loadLiveKitTTSVoices() {
+  const provider = livekitConfig.value.tts_provider
+  const model = livekitConfig.value.tts_model
+
+  if (provider === 'elevenlabs' && model === 'eleven_turbo_v2_5') {
+    availableLiveKitTTSVoices.value = [
+      { value: 'Xb7hH8MSUJpSbSDYk0k2', label: 'Alice (Clear, friendly British woman, en-GB)' },
+      { value: 'iP95p4xoKVk53GoZ742B', label: 'Chris (Natural American male, en-US)' },
+      { value: 'cjVigY5qzO86Huf0OWal', label: 'Eric (Smooth tenor Mexican male, es-MX)' },
+      { value: 'cgSgspJ2msm6clMCkdW9', label: 'Jessica (Young, playful American female, en-US)' }
+    ]
+  } else if (provider === 'cartesia' && model === 'sonic-3') {
+    availableLiveKitTTSVoices.value = [
+      { value: 'a167e0f3-df7e-4d52-a9c3-f949145efdab', label: 'Blake (Energetic American male, en-US)' },
+      { value: '5c5ad5e7-1020-476b-8b91-fdcbe9cc313c', label: 'Daniela (Calm Mexican female, es-MX)' },
+      { value: '9626c31c-bec5-4cca-baa8-f8ba9e84c8bc', label: 'Jacqueline (Confident American female, en-US)' },
+      { value: 'f31cc6a7-c1e8-4764-980c-60a361443dd1', label: 'Robyn (Neutral Australian female, en-AU)' }
+    ]
+  } else if (provider === 'rime' && model === 'arcana') {
+    availableLiveKitTTSVoices.value = [
+      { value: 'astra', label: 'Astra (Chipper, upbeat American female, en-US)' },
+      { value: 'celeste', label: 'Celeste (Chill Gen-Z American female, en-US)' },
+      { value: 'luna', label: 'Luna (Chill but excitable American female, en-US)' },
+      { value: 'ursa', label: 'Ursa (Young, emo American male, en-US)' }
+    ]
+  } else if (provider === 'inworld' && model === 'inworld-tts-1') {
+    availableLiveKitTTSVoices.value = [
+      { value: 'Ashley', label: 'Ashley (Warm, natural American female, en-US)' },
+      { value: 'Diego', label: 'Diego (Soothing Mexican male, es-MX)' },
+      { value: 'Edward', label: 'Edward (Fast-talking American male, en-US)' },
+      { value: 'Olivia', label: 'Olivia (Upbeat British female, en-GB)' }
+    ]
+  } else {
+    availableLiveKitTTSVoices.value = []
+  }
+}
+
+// Load available LLM models for selected provider (LiveKit Inference)
+async function loadLiveKitLLMModels() {
+  const modelMap = {
+    openai: [
+      { value: 'gpt-4o', label: 'GPT-4o' },
+      { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
+      { value: 'gpt-4.1', label: 'GPT-4.1' },
+      { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
+      { value: 'gpt-4.1-nano', label: 'GPT-4.1 nano' },
+      { value: 'gpt-5', label: 'GPT-5' },
+      { value: 'gpt-5-mini', label: 'GPT-5 mini' },
+      { value: 'gpt-5-nano', label: 'GPT-5 nano' },
+      { value: 'gpt-oss-120b', label: 'GPT OSS 120B' }
+    ],
+    gemini: [
+      { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' }
+    ],
+    qwen: [
+      { value: 'qwen3-235b-a22b-instruct', label: 'Qwen3 235B A22B Instruct' }
+    ],
+    kimi: [
+      { value: 'kimi-k2-instruct', label: 'Kimi K2 Instruct' }
+    ],
+    deepseek: [
+      { value: 'deepseek-v3', label: 'DeepSeek V3' }
+    ]
+  }
+
+  const provider = livekitConfig.value.llm_provider
+  availableLiveKitLLMModels.value = modelMap[provider] || []
+}
+
+// Handle model type change
+function onModelTypeChange() {
+  // Reset relevant fields when switching model types
+  if (livekitConfig.value.model_type === 'pipeline') {
+    // Ensure pipeline fields are initialized
+    if (!livekitConfig.value.stt_provider) livekitConfig.value.stt_provider = 'deepgram'
+    if (!livekitConfig.value.llm_provider) livekitConfig.value.llm_provider = 'openai'
+    if (!livekitConfig.value.tts_provider) livekitConfig.value.tts_provider = 'elevenlabs'
+  } else if (livekitConfig.value.model_type === 'openai_realtime') {
+    // Initialize OpenAI Realtime defaults
+    if (!livekitConfig.value.realtime_model) livekitConfig.value.realtime_model = 'gpt-realtime'
+    if (!livekitConfig.value.realtime_voice) livekitConfig.value.realtime_voice = 'alloy'
+    if (!livekitConfig.value.realtime_temperature) livekitConfig.value.realtime_temperature = 0.8
+    if (!livekitConfig.value.realtime_modalities) livekitConfig.value.realtime_modalities = ['text', 'audio']
+  } else if (livekitConfig.value.model_type === 'gemini_live') {
+    // Initialize Gemini Live defaults
+    if (!livekitConfig.value.gemini_model) livekitConfig.value.gemini_model = 'gemini-2.0-flash-exp'
+    if (!livekitConfig.value.gemini_voice) livekitConfig.value.gemini_voice = 'Puck'
+    if (!livekitConfig.value.gemini_temperature) livekitConfig.value.gemini_temperature = 0.8
+    if (!livekitConfig.value.gemini_modalities) livekitConfig.value.gemini_modalities = ['AUDIO']
+  }
+}
+
+// Handle LiveKit provider changes
+function onLiveKitSTTChange() {
+  livekitConfig.value.stt_model = ''
+  loadLiveKitSTTModels()
+}
+
+function onLiveKitTTSChange() {
+  livekitConfig.value.tts_model = ''
+  livekitConfig.value.tts_voice_id = ''
+  loadLiveKitTTSModels()
+}
+
+function onLiveKitLLMChange() {
+  livekitConfig.value.llm_model = ''
+  loadLiveKitLLMModels()
 }
 
 // Handle LLM provider change - reset model to first available
@@ -3777,8 +4610,26 @@ onMounted(async () => {
   await loadSTTModelsFromDB()
   await loadLLMModelsFromDB()
   await loadTTSVoicesFromDB()
+  // Load platform-specific configurations
+  await loadSignalWireConfig()
+  await loadLiveKitConfig()
   // Auto-load Reverse Mortgage on mount
   await onVerticalChange()
+})
+
+// Watch for vertical changes to reload SignalWire config
+watch(selectedVertical, async () => {
+  if (selectedPlatform.value === 'signalwire') {
+    signalwireConfig.value.vertical = selectedVertical.value
+    await loadSignalWireConfig()
+  }
+})
+
+// Watch for TTS model changes to reload voices
+watch(() => livekitConfig.value.tts_model, async () => {
+  if (livekitConfig.value.tts_model && livekitConfig.value.tts_provider) {
+    await loadLiveKitTTSVoices()
+  }
 })
 
 // Update all open dropdown positions (debounced)
@@ -4163,6 +5014,66 @@ onUnmounted(() => {
   font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.6) !important;
   font-style: italic;
+}
+
+/* Platform Switcher */
+.platform-switcher {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 1rem;
+}
+
+.platform-tab {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.5rem;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.platform-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.platform-tab.active {
+  background: rgba(138, 43, 226, 0.3);
+  border-color: rgba(138, 43, 226, 0.6);
+  color: #fff;
+}
+
+.platform-config {
+  margin-top: 1.5rem;
+}
+
+.platform-config h3 {
+  color: #fff;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.platform-config h4 {
+  color: #fff;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.config-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .form-group input[type="text"],

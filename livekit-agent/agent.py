@@ -15,6 +15,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
+from livekit.agents.llm import ChatContext, ChatMessage
 from livekit.plugins import silero
 
 # Import English turn detector only to avoid registering multilingual runner at startup
@@ -73,13 +74,36 @@ class BarbaraAgent(Agent):
         logger.info("🎤 Agent joined - loading greet node")
         await self.load_node("greet", speak_now=True)
     
+    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
+        """IMPROVEMENT #3: Routing Timing
+        Called when user's turn ends, before agent's reply.
+        This allows earlier routing checks for smoother transitions.
+        
+        Per LiveKit docs: This hook receives:
+        - turn_ctx: Full ChatContext up to but not including user's latest message
+        - new_message: User's latest message representing their current turn
+        """
+        # Check routing after user turn completes (earlier than waiting for agent speech)
+        # This provides faster node transitions
+        try:
+            await self.check_and_route()
+        except Exception as e:
+            logger.warning(f"⚠️ Routing check failed in on_user_turn_completed: {e}")
+            # Don't block agent reply if routing check fails
+    
     async def load_node(self, node_name: str, speak_now: bool = False):
         """Load node prompt and optionally trigger immediate speech
         
+        IMPROVEMENT #1: Instructions Persistence
+        - Store instructions in session.userdata for continuity
+        - Always pass instructions to generate_reply (per-turn only per LiveKit docs)
+        
+        IMPROVEMENT #2: Tool Filtering per Node
+        - Filter tools based on database configuration
+        - Use agent.update_tools() to dynamically update available tools
+        
         IMPORTANT: This only updates the system instructions, NOT the conversation history.
         The agent retains full memory of the conversation across all nodes.
-        
-        Now loads full node config from database (instructions, step_criteria, valid_contexts, tools).
         """
         logger.info(f"📍 Loading node: {node_name} (vertical={self.vertical})")
         
@@ -99,6 +123,28 @@ class BarbaraAgent(Agent):
         if valid_contexts:
             logger.info(f"🔄 Node '{node_name}' valid transitions: {valid_contexts}")
         
+        # IMPROVEMENT #2: Filter tools per node
+        if db_tools and self.session:
+            # Create mapping from tool names to tool objects
+            tool_name_map = {tool.__name__: tool for tool in all_tools}
+            
+            # Filter tools based on database configuration
+            filtered_tools = []
+            for tool_name in db_tools:
+                if tool_name in tool_name_map:
+                    filtered_tools.append(tool_name_map[tool_name])
+                else:
+                    logger.warning(f"⚠️ Tool '{tool_name}' not found in all_tools - skipping")
+            
+            if filtered_tools:
+                logger.info(f"🔧 Updating tools for node '{node_name}': {[t.__name__ for t in filtered_tools]}")
+                await self.update_tools(filtered_tools)
+            else:
+                logger.warning(f"⚠️ No valid tools found for node '{node_name}', keeping all tools")
+        elif not db_tools:
+            # No tool restriction - keep all tools (default behavior)
+            logger.info(f"🔧 Node '{node_name}' has no tool restrictions - all {len(all_tools)} tools available")
+        
         # Load prompt text (includes theme + instructions)
         node_prompt = load_node_prompt(node_name, vertical=self.vertical)
         
@@ -115,19 +161,42 @@ class BarbaraAgent(Agent):
         
         self.current_node = node_name
         
-        # TODO: Filter tools per node based on db_tools array
-        # Currently all tools are available (simpler, but could be enhanced)
-        # To filter: Create filtered_tools list and update self.tools or session.tools
+        # IMPROVEMENT #1: Store instructions in session.userdata for persistence
+        # LiveKit docs confirm generate_reply(instructions=...) is per-turn only
+        # We store in userdata to ensure continuity across turns
+        if self.session:
+            # Initialize userdata as dict if not set (LiveKit supports dict or custom object)
+            if not hasattr(self.session, 'userdata') or self.session.userdata is None:
+                self.session.userdata = {}
+            
+            # Update userdata with current instructions (works with dict or object)
+            if isinstance(self.session.userdata, dict):
+                self.session.userdata['current_instructions'] = full_prompt
+                self.session.userdata['current_node'] = node_name
+            else:
+                # If userdata is a custom object, set attributes
+                setattr(self.session.userdata, 'current_instructions', full_prompt)
+                setattr(self.session.userdata, 'current_node', node_name)
         
-        # Update the agent's instructions WITHOUT clearing conversation history
-        # The session maintains the full conversation context (user messages, agent responses, tool calls)
-        # Only the system-level instructions change to guide the next phase
-        # Note: self.instructions is read-only, so we store in _instructions and pass to generate_reply
+        # Store in instance variable as well (for backward compatibility)
         self._instructions = full_prompt
         
         # If speak_now, generate immediate response with new instructions
+        # Always pass instructions explicitly (per-turn only per LiveKit docs)
         if speak_now and self.session:
             await self.session.generate_reply(instructions=full_prompt)
+    
+    async def _get_current_instructions(self) -> str:
+        """IMPROVEMENT #1: Get current instructions from session.userdata
+        Ensures instructions are always available for generate_reply calls.
+        Falls back to instance variable if userdata not available.
+        """
+        if self.session and hasattr(self.session, 'userdata') and self.session.userdata:
+            if isinstance(self.session.userdata, dict):
+                return self.session.userdata.get('current_instructions', self._instructions)
+            else:
+                return getattr(self.session.userdata, 'current_instructions', self._instructions)
+        return self._instructions
     
     async def check_and_route(self):
         """Check if we should transition to next node"""
@@ -488,76 +557,187 @@ async def entrypoint(ctx: JobContext):
     # Get VAD settings FIRST (used by both STT and AgentSession)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
-    # === LIVEKIT INFERENCE MODE ===
-    # Build model strings for LiveKit Inference (unified billing + lower latency)
-    # Format: "provider/model-name"
+    # Check if using realtime model (bundled STT+LLM+TTS)
+    model_type = template.get("model_type", "pipeline")
     
-    # STT model string - LiveKit Inference format: "provider/model:language"
-    stt_provider = template.get("stt_provider", "deepgram")
-    stt_model = template.get("stt_model", "nova-2")
-    stt_language = template.get("stt_language", "en-US")
-    
-    # Convert language codes to LiveKit Inference format (e.g., "en-US" -> "en")
-    lang_code = stt_language.split("-")[0] if stt_language else "en"
-    
-    if stt_provider == "deepgram":
-        stt_string = f"deepgram/{stt_model}:{lang_code}"
-    elif stt_provider == "assemblyai":
-        stt_string = f"assemblyai/universal-streaming:{lang_code}"
-    elif stt_provider == "cartesia":
-        stt_string = f"cartesia/ink-whisper:{lang_code}"
-    elif stt_provider == "openai":
-        stt_string = "openai/whisper-1"  # OpenAI doesn't need language suffix
+    # === REALTIME MODEL MODE ===
+    # Note: Realtime models have optimized built-in turn detection - we use that instead of LiveKit's
+    if model_type == "openai_realtime":
+        logger.info("🚀 Using OpenAI Realtime API (bundled STT+LLM+TTS)")
+        
+        from livekit.plugins.openai import realtime
+        from openai.types.beta.realtime.session import TurnDetection
+        
+        # Build turn detection config - use OpenAI's built-in turn detection (optimized for realtime)
+        turn_detection_type = template.get("realtime_turn_detection_type", "server_vad")
+        turn_detection_config = None
+        
+        if turn_detection_type == "server_vad":
+            turn_detection_config = TurnDetection(
+                type="server_vad",
+                threshold=template.get("realtime_vad_threshold", 0.5),
+                prefix_padding_ms=template.get("realtime_prefix_padding_ms", 300),
+                silence_duration_ms=template.get("realtime_silence_duration_ms", 500),
+                create_response=True,
+                interrupt_response=True,
+            )
+        elif turn_detection_type == "semantic_vad":
+            eagerness = template.get("realtime_eagerness", "auto")
+            turn_detection_config = TurnDetection(
+                type="semantic_vad",
+                eagerness=eagerness,
+                create_response=True,
+                interrupt_response=True,
+            )
+        
+        logger.info(f"🎯 Turn Detection: {turn_detection_type} (OpenAI built-in - optimized for realtime)")
+        
+        # Parse modalities (can be string or array)
+        modalities = template.get("realtime_modalities", ["text", "audio"])
+        if isinstance(modalities, str):
+            modalities = [m.strip() for m in modalities.split(",")]
+        
+        # Create realtime model
+        realtime_model = realtime.RealtimeModel(
+            model=template.get("realtime_model", "gpt-realtime"),
+            voice=template.get("realtime_voice", "alloy"),
+            temperature=template.get("realtime_temperature", 0.8),
+            modalities=modalities,
+            turn_detection=turn_detection_config,
+        )
+        
+        logger.info(f"🎙️ OpenAI Realtime: model={template.get('realtime_model', 'gpt-realtime')}, voice={template.get('realtime_voice', 'alloy')}, temp={template.get('realtime_temperature', 0.8)}")
+        
+        # Use realtime model as LLM (it handles STT and TTS internally)
+        llm_instance = realtime_model
+        stt_string = None
+        tts_string = None
+        
+    elif model_type == "gemini_live":
+        logger.info("🚀 Using Gemini Live API (bundled STT+LLM+TTS)")
+        
+        from livekit.plugins import google
+        from google.genai.types import Modality
+        
+        # Parse modalities (can be string or array)
+        modalities = template.get("gemini_modalities", ["AUDIO"])
+        if isinstance(modalities, str):
+            modalities = [m.strip() for m in modalities.split(",")]
+        # Convert to Modality enum if needed
+        modality_enums = []
+        for m in modalities:
+            if m.upper() == "AUDIO":
+                modality_enums.append(Modality.AUDIO)
+            elif m.upper() == "TEXT":
+                modality_enums.append(Modality.TEXT)
+        
+        # Build realtime model config
+        # Note: Gemini Live has built-in VAD-based turn detection (enabled by default)
+        # We use that instead of LiveKit's TurnDetector for optimal performance
+        realtime_kwargs = {
+            "model": template.get("gemini_model", "gemini-2.0-flash-exp"),
+            "voice": template.get("gemini_voice", "Puck"),
+            "temperature": template.get("gemini_temperature", 0.8),
+            "modalities": modality_enums if modality_enums else [Modality.AUDIO],
+        }
+        
+        logger.info("🎯 Turn Detection: Built-in VAD (Gemini Live - optimized for realtime)")
+        
+        # Add optional fields
+        if template.get("gemini_instructions"):
+            realtime_kwargs["instructions"] = template.get("gemini_instructions")
+        if template.get("gemini_enable_affective_dialog"):
+            realtime_kwargs["enable_affective_dialog"] = True
+        if template.get("gemini_proactivity"):
+            realtime_kwargs["proactivity"] = True
+        if template.get("gemini_vertexai"):
+            realtime_kwargs["vertexai"] = True
+        
+        # Create realtime model
+        realtime_model = google.realtime.RealtimeModel(**realtime_kwargs)
+        
+        logger.info(f"🎙️ Gemini Live: model={template.get('gemini_model', 'gemini-2.0-flash-exp')}, voice={template.get('gemini_voice', 'Puck')}, temp={template.get('gemini_temperature', 0.8)}")
+        
+        # Use realtime model as LLM (it handles STT and TTS internally)
+        llm_instance = realtime_model
+        stt_string = None
+        tts_string = None
+        
     else:
-        stt_string = f"deepgram/nova-2:{lang_code}"  # fallback
+        # === LIVEKIT INFERENCE MODE (Pipeline) ===
+        # Build model strings for LiveKit Inference (unified billing + lower latency)
+        # Format: "provider/model-name"
+        
+        # STT model string - LiveKit Inference format: "provider/model:language"
+        stt_provider = template.get("stt_provider", "deepgram")
+        stt_model = template.get("stt_model", "nova-2")
+        stt_language = template.get("stt_language", "en-US")
     
-    logger.info(f"🎙️ STT: {stt_string} (LiveKit Inference)")
-    
-    # LLM model string - LiveKit Inference supports multiple providers
-    llm_provider = template.get("llm_provider", "openai")
-    llm_model = template.get("llm_model", "gpt-4o")
-    
-    if llm_provider == "openrouter":
-        # OpenRouter models - use direct model name (will still go through OpenRouter)
-        llm_string = llm_model  # e.g., "gpt-4o", "anthropic/claude-3-5-sonnet"
-    elif llm_provider == "openai":
-        llm_string = f"openai/{llm_model}"
-    elif llm_provider == "anthropic":
-        llm_string = f"anthropic/{llm_model}"
-    elif llm_provider == "google":
-        llm_string = f"google/{llm_model}"
-    elif llm_provider == "deepseek":
-        llm_string = f"deepseek/{llm_model}"
-    elif llm_provider == "qwen":
-        llm_string = f"qwen/{llm_model}"
-    elif llm_provider == "kimi":
-        llm_string = f"kimi/{llm_model}"
-    else:
-        llm_string = f"{llm_provider}/{llm_model}"
-    
-    logger.info(f"🧠 LLM: {llm_string} (LiveKit Inference)")
-    
-    # TTS model string - LiveKit Inference supports custom voice IDs
-    # Format: "provider/model:voice_id"
-    tts_provider = template.get("tts_provider", "elevenlabs")
-    tts_voice_id = template.get("tts_voice_id", "6aDn1KB0hjpdcocrUkmq")
-    tts_model = template.get("tts_model", "eleven_turbo_v2_5")
-    
-    if tts_provider == "elevenlabs":
-        tts_string = f"elevenlabs/{tts_model}:{tts_voice_id}"
-        logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
-    elif tts_provider == "cartesia":
-        tts_string = f"cartesia/{tts_model}:{tts_voice_id}"
-        logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
-    elif tts_provider == "openai":
-        tts_string = f"openai/tts-1"
-        logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
-    elif tts_provider == "google":
-        tts_string = f"google/neural2"
-        logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
-    else:
-        tts_string = f"elevenlabs/eleven_turbo_v2_5:{tts_voice_id}"
-        logger.info(f"🔊 TTS: {tts_string} fallback (LiveKit Inference)")
+        # Convert language codes to LiveKit Inference format (e.g., "en-US" -> "en")
+        lang_code = stt_language.split("-")[0] if stt_language else "en"
+        
+        if stt_provider == "deepgram":
+            stt_string = f"deepgram/{stt_model}:{lang_code}"
+        elif stt_provider == "assemblyai":
+            stt_string = f"assemblyai/universal-streaming:{lang_code}"
+        elif stt_provider == "cartesia":
+            stt_string = f"cartesia/ink-whisper:{lang_code}"
+        elif stt_provider == "openai":
+            stt_string = "openai/whisper-1"  # OpenAI doesn't need language suffix
+        else:
+            stt_string = f"deepgram/nova-2:{lang_code}"  # fallback
+        
+        logger.info(f"🎙️ STT: {stt_string} (LiveKit Inference)")
+        
+        # LLM model string - LiveKit Inference supports multiple providers
+        llm_provider = template.get("llm_provider", "openai")
+        llm_model = template.get("llm_model", "gpt-4o")
+        
+        if llm_provider == "openrouter":
+            # OpenRouter models - use direct model name (will still go through OpenRouter)
+            llm_string = llm_model  # e.g., "gpt-4o", "anthropic/claude-3-5-sonnet"
+        elif llm_provider == "openai":
+            llm_string = f"openai/{llm_model}"
+        elif llm_provider == "anthropic":
+            llm_string = f"anthropic/{llm_model}"
+        elif llm_provider == "google":
+            llm_string = f"google/{llm_model}"
+        elif llm_provider == "deepseek":
+            llm_string = f"deepseek/{llm_model}"
+        elif llm_provider == "qwen":
+            llm_string = f"qwen/{llm_model}"
+        elif llm_provider == "kimi":
+            llm_string = f"kimi/{llm_model}"
+        else:
+            llm_string = f"{llm_provider}/{llm_model}"
+        
+        logger.info(f"🧠 LLM: {llm_string} (LiveKit Inference)")
+        
+        # TTS model string - LiveKit Inference supports custom voice IDs
+        # Format: "provider/model:voice_id"
+        tts_provider = template.get("tts_provider", "elevenlabs")
+        # Default to Sarah voice (EXAVITQu4vr4xnSDxMaL) - young American female, soft tone
+        # LiveKit Inference only supports ElevenLabs default voices, not custom/premium voices
+        tts_voice_id = template.get("tts_voice_id", "EXAVITQu4vr4xnSDxMaL")
+        tts_model = template.get("tts_model", "eleven_turbo_v2_5")
+        
+        if tts_provider == "elevenlabs":
+            tts_string = f"elevenlabs/{tts_model}:{tts_voice_id}"
+            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
+        elif tts_provider == "cartesia":
+            tts_string = f"cartesia/{tts_model}:{tts_voice_id}"
+            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
+        elif tts_provider == "openai":
+            tts_string = f"openai/tts-1"
+            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
+        elif tts_provider == "google":
+            tts_string = f"google/neural2"
+            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
+        else:
+            tts_string = f"elevenlabs/eleven_turbo_v2_5:{tts_voice_id}"
+            logger.info(f"🔊 TTS: {tts_string} fallback (LiveKit Inference)")
+        
+        llm_instance = None  # Will use llm_string for pipeline mode
     
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
@@ -566,42 +746,49 @@ async def entrypoint(ctx: JobContext):
     resume_false_interruption = template.get("resume_false_interruption", True)
     false_interruption_timeout = template.get("false_interruption_timeout", 1.0)
     
-    logger.info(f"🎙️ STT: {stt_string} (LiveKit Inference)")
-    logger.info(f"🧠 LLM: {llm_string} (LiveKit Inference)")
-    if template.get('enable_web_search', False):
-        logger.info(f"🌐 Web Search: ENABLED (max_results={template.get('web_search_max_results', 5)})")
-    logger.info(f"🎛️ VAD: Silero (speech gate only)")
-    logger.info(f"🎯 TurnDetector: SOLE SOURCE OF TRUTH for turn ending")
-    logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
-    logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
-    
-    # Load TurnDetector with EOU built-in
-    # EnglishModel and MultilingualModel have EOU integrated (no separate class needed)
-    # unlikely_threshold: Lower = faster turn detection, Higher = more cautious
+    # Initialize variables for both modes
     turn_detector = None
-    turn_detector_model = template.get("turn_detector_model", "english")
-    unlikely_threshold = 0.25  # Aggressive for faster turn detection
+    min_endpointing_delay = None
+    max_endpointing_delay = None
     
-    try:
-        if turn_detector_model == "multilingual":
-            from livekit.plugins.turn_detector.multilingual import MultilingualModel
-            turn_detector = MultilingualModel(unlikely_threshold=unlikely_threshold)
-            logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU (unlikely_threshold={unlikely_threshold})")
-        else:
-            from livekit.plugins.turn_detector.english import EnglishModel
-            turn_detector = EnglishModel(unlikely_threshold=unlikely_threshold)
-            logger.info(f"🎯 Turn Detector: ENGLISH with EOU (unlikely_threshold={unlikely_threshold})")
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
-        raise
-    
-    # Create session with LiveKit Inference (full unified billing)
-    # Format: STT="provider/model", LLM="provider/model", TTS="provider/model:voice_id"
-    min_endpointing_delay = 0.1  # Very aggressive - 100ms
-    max_endpointing_delay = 3.0  # Prevent lengthy delays
-    
-    logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
-    logger.info(f"🚀 Full LiveKit Inference mode - unified billing for STT/LLM/TTS")
+    if model_type == "pipeline":
+        # Pipeline mode logging and turn detector setup
+        if template.get('enable_web_search', False):
+            logger.info(f"🌐 Web Search: ENABLED (max_results={template.get('web_search_max_results', 5)})")
+        logger.info(f"🎛️ VAD: Silero (speech gate only)")
+        logger.info(f"🎯 TurnDetector: SOLE SOURCE OF TRUTH for turn ending")
+        logger.info(f"🔄 Interruptions: enabled={allow_interruptions}, min_duration={min_interruption_duration}s, preemptive={preemptive_generation}")
+        logger.info(f"📝 Prompt: {call_type} (instructions loaded)")
+        
+        # Load TurnDetector with EOU built-in (only for pipeline mode)
+        # EnglishModel and MultilingualModel have EOU integrated (no separate class needed)
+        # unlikely_threshold: Lower = faster turn detection, Higher = more cautious
+        turn_detector_model = template.get("turn_detector_model", "english")
+        unlikely_threshold = 0.25  # Aggressive for faster turn detection
+        
+        try:
+            if turn_detector_model == "multilingual":
+                from livekit.plugins.turn_detector.multilingual import MultilingualModel
+                turn_detector = MultilingualModel(unlikely_threshold=unlikely_threshold)
+                logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU (unlikely_threshold={unlikely_threshold})")
+            else:
+                from livekit.plugins.turn_detector.english import EnglishModel
+                turn_detector = EnglishModel(unlikely_threshold=unlikely_threshold)
+                logger.info(f"🎯 Turn Detector: ENGLISH with EOU (unlikely_threshold={unlikely_threshold})")
+        except Exception as e:
+            logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
+            raise
+        
+        # Create session with LiveKit Inference (full unified billing)
+        # Format: STT="provider/model", LLM="provider/model", TTS="provider/model:voice_id"
+        min_endpointing_delay = 0.1  # Very aggressive - 100ms
+        max_endpointing_delay = 3.0  # Prevent lengthy delays
+        
+        logger.info(f"⏱️ TurnDetector timing: min={min_endpointing_delay}s, max={max_endpointing_delay}s")
+        logger.info(f"🚀 Full LiveKit Inference mode - unified billing for STT/LLM/TTS")
+    else:
+        # Realtime models have built-in turn detection, no separate turn detector needed
+        logger.info(f"🚀 Realtime model mode - built-in turn detection")
     
     # IMPORTANT: Ensure caller_phone is set before creating agent
     # If caller_phone is None/empty, the agent won't be able to look up conversation state
@@ -622,23 +809,40 @@ async def entrypoint(ctx: JobContext):
         lead_context=lead_context or {}
     )
     
-    session = AgentSession(
-        stt=stt_string,  # LiveKit Inference string format
-        llm=llm_string,  # LiveKit Inference string format
-        tts=tts_string,  # LiveKit Inference string format with voice ID
-        vad=ctx.proc.userdata["vad"],
-        turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
-        # Endpointing timing - faster response
-        min_endpointing_delay=min_endpointing_delay,
-        max_endpointing_delay=max_endpointing_delay,
-        # Interruption settings from template
-        allow_interruptions=allow_interruptions,
-        min_interruption_duration=min_interruption_duration,
-        resume_false_interruption=resume_false_interruption,
-        false_interruption_timeout=false_interruption_timeout,
-        # Response generation settings from template
-        preemptive_generation=preemptive_generation,
-    )
+    # Create session - different config for realtime vs pipeline
+    if model_type in ["openai_realtime", "gemini_live"]:
+        # Realtime model mode - use realtime model as LLM (handles STT+TTS internally)
+        # Realtime models use their built-in turn detection (optimized for their architecture)
+        session = AgentSession(
+            llm=llm_instance,  # RealtimeModel instance (has built-in turn detection)
+            vad=ctx.proc.userdata["vad"],
+            # Interruption settings from template
+            allow_interruptions=allow_interruptions,
+            min_interruption_duration=min_interruption_duration,
+            resume_false_interruption=resume_false_interruption,
+            false_interruption_timeout=false_interruption_timeout,
+            # Response generation settings from template
+            preemptive_generation=preemptive_generation,
+        )
+    else:
+        # Pipeline mode - separate STT, LLM, TTS
+        session = AgentSession(
+            stt=stt_string,  # LiveKit Inference string format
+            llm=llm_string,  # LiveKit Inference string format
+            tts=tts_string,  # LiveKit Inference string format with voice ID
+            vad=ctx.proc.userdata["vad"],
+            turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
+            # Endpointing timing - faster response
+            min_endpointing_delay=min_endpointing_delay,
+            max_endpointing_delay=max_endpointing_delay,
+            # Interruption settings from template
+            allow_interruptions=allow_interruptions,
+            min_interruption_duration=min_interruption_duration,
+            resume_false_interruption=resume_false_interruption,
+            false_interruption_timeout=false_interruption_timeout,
+            # Response generation settings from template
+            preemptive_generation=preemptive_generation,
+        )
     
     # Hook routing checks after each agent turn
     # Note: .on() requires sync callback, so we wrap async function
