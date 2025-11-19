@@ -277,6 +277,19 @@ async def entrypoint(ctx: JobContext):
             if participants:
                 participant = participants[0]
                 
+                # LiveKit SIP also stores phone in participant identity
+                # Format: "sip:+16505300051@domain" or just the phone number
+                participant_identity = participant.identity
+                logger.info(f"🔍 Participant identity: {participant_identity}")
+                
+                # Extract phone from SIP identity if present
+                if participant_identity and "sip:" in participant_identity:
+                    # Extract phone from "sip:+16505300051@domain" format
+                    phone_match = participant_identity.split("sip:")[1].split("@")[0]
+                    if not metadata.get("sip_from"):
+                        metadata["sip_from"] = phone_match
+                        logger.info(f"✅ Extracted sip_from from participant identity: {phone_match}")
+                
                 # Try participant.metadata first
                 participant_metadata_str = participant.metadata or "{}"
                 logger.info(f"🔍 Raw participant.metadata: {participant_metadata_str}")
@@ -300,7 +313,22 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}, call_type={call_type}")
     
     # Extract phone metadata for conversation state
-    caller_phone = metadata.get("phone_number") or metadata.get("from") or metadata.get("caller")
+    # LiveKit SIP puts phone numbers in specific fields:
+    # - sip_from: caller's phone number (e.g., "+16505300051")
+    # - sip_to: called number (e.g., "+14244851544")
+    caller_phone = (
+        metadata.get("sip_from") or  # LiveKit SIP standard field
+        metadata.get("phone_number") or  # Custom metadata
+        metadata.get("from") or  # Fallback
+        metadata.get("caller")  # Fallback
+    )
+    
+    # Also extract the called number for context
+    called_number = metadata.get("sip_to") or metadata.get("to")
+    
+    # Log what we extracted
+    logger.info(f"📞 SIP Call: FROM {caller_phone} → TO {called_number}")
+    
     lead_id = metadata.get("lead_id")
     qualified = metadata.get("qualified", False)
     
