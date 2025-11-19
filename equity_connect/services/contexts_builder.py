@@ -252,8 +252,16 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         contexts_data[context_name]['steps'].append(step)
     
     # Deduplicate valid_contexts at context level
-    for context in contexts_data.values():
+    for context_name, context in contexts_data.items():
         context['valid_contexts'] = list(set(context['valid_contexts']))
+        
+        # CRITICAL: Apply anti-racing filter to context-level valid_contexts too
+        # Context-level valid_contexts can override step-level restrictions
+        if context_name not in ['book', 'objections', 'goodbye']:
+            original_len = len(context['valid_contexts'])
+            context['valid_contexts'] = [ctx for ctx in context['valid_contexts'] if ctx not in ['goodbye', 'end']]
+            if len(context['valid_contexts']) < original_len:
+                logger.info(f"[ANTI-RACE] CONTEXT-LEVEL {context_name.upper()}: Removed goodbye/end. Allowed: {context['valid_contexts']}")
     
     return contexts_data
 

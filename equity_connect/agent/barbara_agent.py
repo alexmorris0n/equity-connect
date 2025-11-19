@@ -125,7 +125,10 @@ class BarbaraAgent(AgentBase):
 		try:
 			logger.info("🏗️  Building contexts from database...")
 			# Build contexts object for default vertical
-			contexts_obj = build_contexts_object(vertical="reverse_mortgage", initial_context="greet")
+			initial_context = "greet"
+			logger.info(f"📍 [INITIAL CONTEXT] {initial_context}")
+			contexts_obj = build_contexts_object(vertical="reverse_mortgage", initial_context=initial_context)
+			self._current_context = initial_context
 			
 			# TRAP STRATEGY: Force 'answer' context to NOT route to exit/goodbye automatically.
 			# This forces the agent to wait for user input and use a Tool to transition.
@@ -367,6 +370,7 @@ List specific actions needed based on conversation outcome.
 		# Explicitly switch context on the agent instance
 		try:
 			if hasattr(self, "set_active_context"):
+				logger.info(f"🔄 [CONTEXT SWITCH] greet → answer")
 				self.set_active_context("answer")
 			else:
 				logger.warning("AgentBase missing set_active_context, attempting SWML fallback")
@@ -565,7 +569,11 @@ List specific actions needed based on conversation outcome.
 		# Explicitly switch context
 		try:
 			if hasattr(self, "set_active_context"):
+				# Get current context if available
+				current_ctx = getattr(self, '_current_context', 'unknown')
+				logger.info(f"🔄 [CONTEXT SWITCH] {current_ctx} → {next_ctx}")
 				self.set_active_context(next_ctx)
+				self._current_context = next_ctx
 			else:
 				logger.warning("AgentBase missing set_active_context")
 		except Exception as e:
@@ -742,7 +750,10 @@ List specific actions needed based on conversation outcome.
 		# Explicitly switch context
 		try:
 			if hasattr(self, "set_active_context"):
+				current_ctx = getattr(self, '_current_context', 'unknown')
+				logger.info(f"🔄 [CONTEXT SWITCH] {current_ctx} → end")
 				self.set_active_context("end")
+				self._current_context = "end"
 			else:
 				logger.warning("AgentBase missing set_active_context")
 		except Exception as e:
@@ -847,6 +858,17 @@ Status: {'✅ QUALIFIED' if lead_data.get('qualified') else '❌ Not Qualified' 
 			logger.error(f"[SWML] Error loading caller info: {e}")
 		
 		return super().on_swml_request(query_params, body_params, headers)
+
+	def on_function_call(self, name: str, args: Dict[str, Any], raw_data: Optional[Dict[str, Any]] = None):
+		"""Override to log all tool/function calls"""
+		logger.info(f"🔧 [TOOL CALL] {name} | Args: {json.dumps(args, default=str)}")
+		try:
+			result = super().on_function_call(name, args, raw_data)
+			logger.info(f"✅ [TOOL RESULT] {name} | Success")
+			return result
+		except Exception as e:
+			logger.error(f"❌ [TOOL ERROR] {name} | Error: {e}", exc_info=True)
+			raise
 
 	def on_summary(self, summary: Optional[Dict[str, Any]], raw_data: Optional[Dict[str, Any]] = None):
 		"""Handle conversation summary after call ends"""
