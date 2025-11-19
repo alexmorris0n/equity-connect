@@ -15,7 +15,7 @@ from equity_connect.services import (
 	knowledge_service,
 	interaction_service,
 )
-from equity_connect.services.contexts_builder import build_contexts_object, load_theme
+from equity_connect.services.contexts_builder import build_contexts_object
 from equity_connect.services.conversation_state import get_conversation_state
 
 logger = logging.getLogger(__name__)
@@ -145,10 +145,8 @@ class BarbaraAgent(AgentBase):
 			self._apply_contexts_via_builder(self, contexts_obj)
 			logger.info(f"✅ Loaded {len(contexts_obj)} contexts from database")
 			
-			# Load Theme (Personality)
-			theme_text = load_theme("reverse_mortgage")
-			self.prompt_add_section("Personality", body=theme_text)
-			logger.info("✅ Loaded theme/personality from database")
+			# Theme is now prepended to each context's step text in build_contexts_object()
+			# No need to add it as a global section - it's part of each context's prompt
 			
 		except Exception as e:
 			logger.error(f"❌ CRITICAL: Failed to load contexts from DB: {e}")

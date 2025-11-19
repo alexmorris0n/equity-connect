@@ -46,8 +46,12 @@ def build_contexts_object(
     
     logger.warning(f"🏗️  [STARTUP] Building contexts for {vertical}, initial: {initial_context}")
     
+    # Load theme first - will be prepended to each context's step text
+    theme_text = load_theme(vertical, use_draft=use_draft, lead_context=lead_context)
+    logger.info(f"✅ Loaded theme ({len(theme_text)} chars) - will be prepended to each context")
+    
     # Query database for all contexts and their steps
-    contexts_data = _query_contexts_from_db(vertical, use_draft=use_draft, lead_context=lead_context)
+    contexts_data = _query_contexts_from_db(vertical, use_draft=use_draft, lead_context=lead_context, theme_text=theme_text)
     
     logger.warning(f"🏗️  [STARTUP] Loaded {len(contexts_data)} contexts from database: {list(contexts_data.keys())}")
     
@@ -120,8 +124,11 @@ def build_contexts_object(
     return contexts_obj
 
 
-def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context: Optional[dict] = None) -> Dict:
+def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context: Optional[dict] = None, theme_text: Optional[str] = None) -> Dict:
     """Query database for all contexts and their steps
+    
+    Args:
+        theme_text: Optional theme text to prepend to each step's text
     
     Returns:
         {
@@ -218,10 +225,15 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
             prompt_text = prompt_template
             logger.info(f"[RAW] Prompt for {context_name} with $variables (first 150 chars): {prompt_text[:150] if prompt_text else 'empty'}...")
         
+        # Prepend theme to step text (SignalWire POM pattern: theme + node instructions)
+        if theme_text:
+            prompt_text = f"{theme_text}\n\n---\n\n{prompt_text}"
+            logger.info(f"[THEME] Prepend theme to {context_name} step text")
+        
         # Build step object - CRITICAL: Map 'tools' field to 'functions' array
         step = {
             "name": prompt.get('step_name', 'main'),  # Default step name
-            "text": prompt_text,  # ← Substituted text with actual values
+            "text": prompt_text,  # ← Theme + substituted text with actual values
             "functions": content.get('tools', [])  # ← READ "tools" FROM DB, OUTPUT AS "functions"
         }
         
