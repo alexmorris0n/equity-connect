@@ -2,10 +2,9 @@ app = "barbara-livekit"
 primary_region = "lax"
 
 [build]
-  dockerfile = "../deploy/agent/Dockerfile"
-  build_args = {}
+  # Dockerfile path will be overridden by --dockerfile flag in workflow
   # Build context is repo root (Dockerfile copies from livekit-agent/)
-  # Path is relative to fly.toml location (livekit-agent/), so go up one level
+  build_args = {}
 
 [env]
   PYTHONUNBUFFERED = "1"
