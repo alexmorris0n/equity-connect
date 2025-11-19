@@ -209,6 +209,12 @@ async def get_node_config(node_name: str, vertical: str = "reverse_mortgage") ->
             logger.info(f"[DB]   - functions: {config.get('functions', [])}")
             logger.info(f"[DB]   - step_criteria: {config.get('step_criteria', '')[:100] if config.get('step_criteria') else 'MISSING'}...")
             logger.info(f"[DB]   - instructions length: {len(config.get('instructions', ''))} chars")
+            # Log first 500 chars of instructions to see if they mention calling functions
+            instructions_preview = config.get('instructions', '')[:500]
+            if 'calculate' in instructions_preview.lower() or 'function' in instructions_preview.lower() or 'call ' in instructions_preview.lower():
+                logger.info(f"[DB]   - instructions preview (first 500 chars): {instructions_preview}...")
+            else:
+                logger.warning(f"[DB]   ⚠️  Instructions for '{node_name}' don't mention calling functions! Preview: {instructions_preview[:200]}...")
             return config
         
         logger.warning(f"[DB] No active version found for prompt_id: {prompt_id}")
