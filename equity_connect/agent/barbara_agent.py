@@ -63,7 +63,7 @@ class BarbaraAgent(AgentBase):
 			route="/agent",
 			host="0.0.0.0",  # Listen on all interfaces for Docker/Fly.io
 			port=8080,
-			use_pom=True,  # ENABLED: Use Prompt Object Model for advanced routing
+			use_pom=False,  # DISABLED: We use regular text prompts with contexts, not POM format
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
