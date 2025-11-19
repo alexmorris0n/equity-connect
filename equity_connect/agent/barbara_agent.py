@@ -247,6 +247,7 @@ List specific actions needed based on conversation outcome.
 			# Context-level properties
 			valid_contexts = self._ensure_list(ctx_config.get("valid_contexts"))
 			if valid_contexts:
+				logger.info(f"📋 [CONTEXT CONFIG] Context '{ctx_name}': valid_contexts = {valid_contexts}")
 				context.set_valid_contexts(valid_contexts)
 			if ctx_config.get("isolated") and hasattr(context, "set_isolated"):
 				context.set_isolated(True)
@@ -286,6 +287,7 @@ List specific actions needed based on conversation outcome.
 					if target_ctx and target_ctx not in step_valid_contexts:
 						step_valid_contexts.append(target_ctx)
 				if step_valid_contexts:
+					logger.info(f"📋 [STEP CONFIG] Context '{ctx_name}' Step '{step_name}': valid_contexts = {step_valid_contexts}")
 					step.set_valid_contexts(step_valid_contexts)
 				
 				# NOTE: 'skip_user_turn' and 'on_step_change' are not supported in the public Step API

@@ -110,6 +110,11 @@ def build_contexts_object(
     
     logger.info(f"✅ Built {len(contexts_obj)} contexts: {list(contexts_obj.keys())}")
     
+    # DIAGNOSTIC: Log final valid_contexts for each context
+    for ctx_name, ctx_config in contexts_with_steps.items():
+        final_valid = ctx_config.get('valid_contexts', [])
+        logger.info(f"🔍 [FINAL CONFIG] Context '{ctx_name}': final valid_contexts = {final_valid}")
+    
     return contexts_obj
 
 
