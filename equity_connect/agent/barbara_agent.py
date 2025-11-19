@@ -352,9 +352,19 @@ List specific actions needed based on conversation outcome.
 	def route_to_answer_for_question(self, args, raw_data):
 		"""Tool: Route from GREET to ANSWER"""
 		logger.info(f"=== TOOL CALLED - route_to_answer_for_question: {args.get('user_question')} ===")
+		
+		# Explicitly switch context on the agent instance
+		try:
+			if hasattr(self, "set_active_context"):
+				self.set_active_context("answer")
+			else:
+				logger.warning("AgentBase missing set_active_context, attempting SWML fallback")
+		except Exception as e:
+			logger.error(f"Failed to set active context: {e}")
+
 		result = SwaigFunctionResult()
 		result.response = "Great question! Let me help you with that."
-		result.swml_change_step("answer")
+		# result.swml_change_step("answer") # Removed: unsupported method
 		return result
 
 	@AgentBase.tool(
@@ -540,8 +550,18 @@ List specific actions needed based on conversation outcome.
 		"""Tool: Complete questions and route"""
 		next_ctx = args.get("next_context", "goodbye")
 		logger.info(f"=== TOOL CALLED - complete_questions → {next_ctx} ===")
+		
+		# Explicitly switch context
+		try:
+			if hasattr(self, "set_active_context"):
+				self.set_active_context(next_ctx)
+			else:
+				logger.warning("AgentBase missing set_active_context")
+		except Exception as e:
+			logger.error(f"Failed to set active context: {e}")
+
 		result = SwaigFunctionResult()
-		result.swml_change_step(next_ctx)
+		# result.swml_change_step(next_ctx) # Removed: unsupported
 		result.response = "Understood. Let me help you with that."
 		return result
 
@@ -707,10 +727,19 @@ List specific actions needed based on conversation outcome.
 	def mark_wrong_person(self, args, raw_data):
 		"""Tool: Mark wrong person and end call"""
 		logger.info("=== TOOL CALLED - mark_wrong_person ===")
-		# Logic to update lead status could go here
+		
+		# Explicitly switch context
+		try:
+			if hasattr(self, "set_active_context"):
+				self.set_active_context("end")
+			else:
+				logger.warning("AgentBase missing set_active_context")
+		except Exception as e:
+			logger.error(f"Failed to set active context: {e}")
+
 		result = SwaigFunctionResult()
 		result.response = "I apologize for the mistake. I'll update our records. Goodbye."
-		result.swml_change_step("end")
+		# result.swml_change_step("end") # Removed: unsupported
 		return result
 
 	# ==================== END TOOLS ====================
