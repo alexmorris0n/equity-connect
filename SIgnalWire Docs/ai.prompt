@@ -1,0 +1,693 @@
+# ai.prompt
+
+| Name             | Type     | Default | Description                                                           |
+| ---------------- | -------- | ------- | --------------------------------------------------------------------- |
+| `prompt`Required | `object` | -       | An object that accepts the [`prompt parameters`](#prompt-parameters). |
+
+## **prompt Parameters**[​](#prompt-parameters "Direct link to prompt-parameters")
+
+The `prompt` property accepts one of the following objects:
+
+* Regular Prompt
+* POM Prompts
+
+| Name                        | Type      | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :-------------------------- | :-------- | :------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`Required              | `string`  | -       | The main identity prompt for the AI. This prompt will be used to outline the agent's personality, role, and other characteristics.                                                                                                                                                                                                                                                                                             |
+| `contexts`Optional          | `object`  | -       | An object that defines the available contexts for the AI. Each context represents a set of steps that guide the flow of the conversation. The object must include a `default` key, which specifies the initial context used at the start of the conversation. Additional contexts can be added as other keys within the object. For more details, see the [contexts technical reference](/swml/methods/ai/prompt/contexts.md). |
+| `temperature`Optional       | `number`  | 1.0     | Randomness setting. Float value between 0.0 and 1.5. Closer to 0 will make the output less random.                                                                                                                                                                                                                                                                                                                             |
+| `top_p`Optional             | `number`  | 1.0     | Randomness setting. Alternative to `temperature`. Float value between 0.0 and 1.0. Closer to 0 will make the output less random.                                                                                                                                                                                                                                                                                               |
+| `confidence`Optional        | `number`  | 0.6     | Threshold to fire a speech-detect event at the end of the utterance. Float value between 0.0 and 1.0. Decreasing this value will reduce the pause after the user speaks, but may introduce false positives.                                                                                                                                                                                                                    |
+| `presence_penalty`Optional  | `number`  | 0       | Aversion to staying on topic. Float value between -2.0 and 2.0. Positive values increase the model's likelihood to talk about new topics.                                                                                                                                                                                                                                                                                      |
+| `frequency_penalty`Optional | `number`  | 0       | Aversion to repeating lines. Float value between -2.0 and 2.0. Positive values decrease the model's likelihood to repeat the same line verbatim.                                                                                                                                                                                                                                                                               |
+| `max_tokens`Optional        | `integer` | 256     | Limits the amount of tokens that the AI agent may generate when creating its response.<br />**Valid Value Range**: `0` - `4096`                                                                                                                                                                                                                                                                                                |
+
+| Name                                            | Type       | Default | Description                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :---------------------------------------------- | :--------- | :------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`pom`](/swml/methods/ai/prompt/pom.md)Required | `object[]` | -       | An array of objects that defines the prompt object model (POM) for the AI. The POM is a structured data format for organizing and rendering a prompt for the AI agent. This prompt will be used to define the AI's personality, role, and other characteristics. See the [POM technical reference](/swml/methods/ai/prompt/pom.md) for more information.                                                                       |
+| `contexts`Optional                              | `object`   | -       | An object that defines the available contexts for the AI. Each context represents a set of steps that guide the flow of the conversation. The object must include a `default` key, which specifies the initial context used at the start of the conversation. Additional contexts can be added as other keys within the object. For more details, see the [contexts technical reference](/swml/methods/ai/prompt/contexts.md). |
+| `temperature`Optional                           | `number`   | 1.0     | Randomness setting. Float value between 0.0 and 1.5. Closer to 0 will make the output less random.                                                                                                                                                                                                                                                                                                                             |
+| `top_p`Optional                                 | `number`   | 1.0     | Randomness setting. Alternative to `temperature`. Float value between 0.0 and 1.0. Closer to 0 will make the output less random.                                                                                                                                                                                                                                                                                               |
+| `confidence`Optional                            | `number`   | 0.6     | Threshold to fire a speech-detect event at the end of the utterance. Float value between 0.0 and 1.0. Decreasing this value will reduce the pause after the user speaks, but may introduce false positives.                                                                                                                                                                                                                    |
+| `presence_penalty`Optional                      | `number`   | 0       | Aversion to staying on topic. Float value between -2.0 and 2.0. Positive values increase the model's likelihood to talk about new topics.                                                                                                                                                                                                                                                                                      |
+| `frequency_penalty`Optional                     | `number`   | 0       | Aversion to repeating lines. Float value between -2.0 and 2.0. Positive values decrease the model's likelihood to repeat the same line verbatim.                                                                                                                                                                                                                                                                               |
+| `max_tokens`Optional                            | `integer`  | 256     | Limits the amount of tokens that the AI agent may generate when creating its response.<br />**Valid Value Range**: `0` - `4096`                                                                                                                                                                                                                                                                                                |
+
+## **Variable Expansion**[​](#variable-expansion "Direct link to variable-expansion")
+
+Use the following syntax to expand variables into your prompt.
+
+| Variable                 | Description                    |
+| ------------------------ | ------------------------------ |
+| `${call_direction}`      | Inbound or outbound.           |
+| `${caller_id_number}`    | The caller ID number.          |
+| `${local_date}`          | The local date.                |
+| `${spoken_date}`         | The spoken date.               |
+| `${local_time}`          | The local time.                |
+| `${time_of_day}`         | The time of day.               |
+| `${supported_languages}` | A list of supported languages. |
+| `${default_language}`    | The default language.          |
+
+# prompt.contexts
+
+Contexts allow you to create structured conversation flows with multiple specialized paths. Each context represents a distinct conversation mode with its own steps, memory settings, and transition logic.
+
+Every contexts object requires a `default` key, which serves as the entry point for the conversation. You can define additional contexts as custom keys alongside `default`.
+
+| Name               | Type     | Default | Description                                                               |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------- |
+| `contexts`Optional | `object` | -       | An object that accepts the [`contexts parameters`](#contexts-parameters). |
+
+## contexts Parameters[​](#contexts-parameters "Direct link to contexts Parameters")
+
+| Name                    | Type     | Default | Description                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`Required       | `object` | -       | The default context to use at the beginning of the conversation. This object accepts the [`context object`](#context-object).                                                                                                                                                                                  |
+| `[key: string]`Optional | `object` | -       | Additional contexts to define specialized conversation flows. The key is user-defined and can be any string (e.g., `support`, `sales`, `billing`).<br />These contexts can be accessed from the `default` context or any other user-defined context.<br />Each value is a [`context object`](#context-object). |
+
+## context object[​](#context-object "Direct link to context object")
+
+Each context (both `default` and custom contexts) is configured using a context object with the following properties:
+
+| Name                                                          | Type       | Default | Description                                                                                                                                                                      |
+| ------------------------------------------------------------- | ---------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`steps`](/swml/methods/ai/prompt/contexts/steps.md) Required | `object[]` | -       | An array of [step objects](/swml/methods/ai/prompt/contexts/steps.md) that define the conversation flow for this context. Steps execute sequentially unless otherwise specified. |
+| `isolated`Optional                                            | `boolean`  | `false` | When `true`, resets conversation history to only the system prompt when entering this context. Useful for focused tasks that shouldn't be influenced by previous conversation.   |
+| `enter_fillers`Optional                                       | `object[]` | -       | Language-specific filler phrases played when transitioning into this context. Helps provide smooth context switches.                                                             |
+| `exit_fillers`Optional                                        | `object[]` | -       | Language-specific filler phrases played when leaving this context. Ensures natural transitions out of specialized modes.                                                         |
+
+### Context Transition Fillers[​](#context-transition-fillers "Direct link to Context Transition Fillers")
+
+The `enter_fillers` and `exit_fillers` properties enhance user experience by providing natural language transitions between contexts. These fillers play automatically during context transitions, support multiple languages, and are randomly selected from provided options to help maintain conversational flow.
+
+#### Filler Structure[​](#filler-structure "Direct link to Filler Structure")
+
+| Language Code   | Type       | Description                                                                                                                                                                    |
+| --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `[key: string]` | `string[]` | An array of filler phrases for the specified language. The key must be a valid [language code](#supported-language-codes). One phrase is randomly selected during transitions. |
+
+#### Supported Language Codes[​](#supported-language-codes "Direct link to Supported Language Codes")
+
+| Code      | Description                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| `default` | Default language set by the user in the [`ai.languages`](/swml/methods/ai/languages.md) property |
+| `bg`      | Bulgarian                                                                                        |
+| `ca`      | Catalan                                                                                          |
+| `cs`      | Czech                                                                                            |
+| `da`      | Danish                                                                                           |
+| `da-DK`   | Danish (Denmark)                                                                                 |
+| `de`      | German                                                                                           |
+| `de-CH`   | German (Switzerland)                                                                             |
+| `el`      | Greek                                                                                            |
+| `en`      | English                                                                                          |
+| `en-AU`   | English (Australia)                                                                              |
+| `en-GB`   | English (United Kingdom)                                                                         |
+| `en-IN`   | English (India)                                                                                  |
+| `en-NZ`   | English (New Zealand)                                                                            |
+| `en-US`   | English (United States)                                                                          |
+| `es`      | Spanish                                                                                          |
+| `es-419`  | Spanish (Latin America)                                                                          |
+| `et`      | Estonian                                                                                         |
+| `fi`      | Finnish                                                                                          |
+| `fr`      | French                                                                                           |
+| `fr-CA`   | French (Canada)                                                                                  |
+| `hi`      | Hindi                                                                                            |
+| `hu`      | Hungarian                                                                                        |
+| `id`      | Indonesian                                                                                       |
+| `it`      | Italian                                                                                          |
+| `ja`      | Japanese                                                                                         |
+| `ko`      | Korean                                                                                           |
+| `ko-KR`   | Korean (South Korea)                                                                             |
+| `lt`      | Lithuanian                                                                                       |
+| `lv`      | Latvian                                                                                          |
+| `ms`      | Malay                                                                                            |
+| `multi`   | Multilingual (Spanish + English)                                                                 |
+| `nl`      | Dutch                                                                                            |
+| `nl-BE`   | Flemish (Belgian Dutch)                                                                          |
+| `no`      | Norwegian                                                                                        |
+| `pl`      | Polish                                                                                           |
+| `pt`      | Portuguese                                                                                       |
+| `pt-BR`   | Portuguese (Brazil)                                                                              |
+| `pt-PT`   | Portuguese (Portugal)                                                                            |
+| `ro`      | Romanian                                                                                         |
+| `ru`      | Russian                                                                                          |
+| `sk`      | Slovak                                                                                           |
+| `sv`      | Swedish                                                                                          |
+| `sv-SE`   | Swedish (Sweden)                                                                                 |
+| `th`      | Thai                                                                                             |
+| `th-TH`   | Thai (Thailand)                                                                                  |
+| `tr`      | Turkish                                                                                          |
+| `uk`      | Ukrainian                                                                                        |
+| `vi`      | Vietnamese                                                                                       |
+| `zh`      | Chinese (Simplified)                                                                             |
+| `zh-CN`   | Chinese (Simplified, China)                                                                      |
+| `zh-Hans` | Chinese (Simplified Han)                                                                         |
+| `zh-Hant` | Chinese (Traditional Han)                                                                        |
+| `zh-HK`   | Chinese (Traditional, Hong Kong)                                                                 |
+| `zh-TW`   | Chinese (Traditional, Taiwan)                                                                    |
+
+## Examples[​](#examples "Direct link to Examples")
+
+### Basic Context Structure[​](#basic-context-structure "Direct link to Basic Context Structure")
+
+Here's a simple example showing the context structure with transition fillers:
+
+* YAML
+* JSON
+
+```yaml
+version: 1.0.0
+sections:
+  main:
+    - ai:
+        prompt:
+          text: You are a helpful assistant that can switch between different expertise areas.
+          contexts:
+            default:
+              steps:
+                - name: greeting
+                  text: Greet the user and ask what they need help with. If they need technical support, transfer them to the support context.
+                  valid_contexts:
+                    - support
+            support:
+              isolated: true  # Reset conversation history when entering support mode
+              enter_fillers:
+                - en-US: ["Switching to technical support", "Let me connect you with support"]
+                  es-ES: ["Cambiando a soporte técnico", "Permítame conectarlo con soporte"]
+              exit_fillers:
+                - en-US: ["Leaving support mode", "Returning to main menu"]
+                  es-ES: ["Saliendo del modo de soporte", "Volviendo al menú principal"]
+              steps:
+                - name: troubleshoot
+                  text: Help the user troubleshoot their technical issue. When finished, ask if they need anything else or want to return to the main menu.
+                  valid_contexts:
+                    - default
+
+```
+
+```yaml
+{
+  "version": "1.0.0",
+  "sections": {
+    "main": [
+      {
+        "ai": {
+          "prompt": {
+            "text": "You are a helpful assistant that can switch between different expertise areas.",
+            "contexts": {
+              "default": {
+                "steps": [
+                  {
+                    "name": "greeting",
+                    "text": "Greet the user and ask what they need help with. If they need technical support, transfer them to the support context.",
+                    "valid_contexts": [
+                      "support"
+                    ]
+                  }
+                ]
+              },
+              "support": {
+                "isolated": true,
+                "enter_fillers": [
+                  {
+                    "en-US": [
+                      "Switching to technical support",
+                      "Let me connect you with support"
+                    ],
+                    "es-ES": [
+                      "Cambiando a soporte técnico",
+                      "Permítame conectarlo con soporte"
+                    ]
+                  }
+                ],
+                "exit_fillers": [
+                  {
+                    "en-US": [
+                      "Leaving support mode",
+                      "Returning to main menu"
+                    ],
+                    "es-ES": [
+                      "Saliendo del modo de soporte",
+                      "Volviendo al menú principal"
+                    ]
+                  }
+                ],
+                "steps": [
+                  {
+                    "name": "troubleshoot",
+                    "text": "Help the user troubleshoot their technical issue. When finished, ask if they need anything else or want to return to the main menu.",
+                    "valid_contexts": [
+                      "default"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+```
+
+### Advanced Multi-Context Example[​](#advanced-multi-context-example "Direct link to Advanced Multi-Context Example")
+
+This comprehensive example demonstrates multiple contexts with different AI personalities, voice settings, and specialized knowledge domains:
+
+* YAML
+* JSON
+
+```yaml
+sections:
+  main:
+    - ai:
+        hints:
+          - StarWars
+          - StarTrek
+        languages:
+          - name: Ryan-English
+            voice: elevenlabs.patrick
+            code: en-US
+          - name: Luke-English
+            voice: elevenlabs.fin
+            code: en-US
+          - name: Spock-English
+            voice: elevenlabs.charlie
+            code: en-US
+        prompt:
+          text: Help the user transfer to the Star Wars or Star Trek expert.
+          contexts:
+            default:
+              steps:
+                - name: start
+                  text: |+
+                    Your name is Ryan. You are a receptionist. Your only purpose is to change the context to starwars or startrek.
+                  step_criteria: |+
+                    Introduce yourself as Ryan.
+                    Ask the user if he would like to talk to a star wars or star trek expert until they provide an adequate answer.
+                - name: transfer
+                  text: You will now successfully transfer the user to the Star Wars or Star Trek expert.
+                  step_criteria: If the user has chosen a valid context, transfer them to the appropriate expert.
+                  valid_contexts:
+                    - starwars
+                    - startrek
+            starwars:
+              steps:
+                - name: start
+                  text: |+
+                    The user has been transferred to the Star Wars expert.
+                    Until told otherwise, your name is Luke. Change the language to Luke-English.
+                    Your current goal is to get the user to tell you their name.
+                    Unless told otherwise, refer to the user as 'Padawan {users_name}'.
+                  step_criteria: |+
+                    Introduce yourself as Luke, the Star Wars expert.
+                    The user must tell you their name if they only say one word assume that is their name.
+                - name: question
+                  text: |+
+                    Your goal is to get the user to choose one of the following options.
+                    - Jedi Order (advance to jedi_order step)
+                    - The ways of the Force (advance to force step)
+                    - Talk to the star trek expert. (change context to startrek)
+                  step_criteria: +|
+                    The user must provide a valid answer to continue.
+                    Refer to the user as 'Padawan {users_name}' for the rest of the conversation.
+                  valid_steps:
+                    - jedi_order
+                    - force
+                  valid_contexts:
+                    - startrek
+                - name: jedi_order
+                  text: |+
+                    Limit the topic to the Jedi Order.
+                    Inform the user they can say they want to change the topic at any time, if they do move to the question step.
+                  step_criteria: The user says they want to change the topic.
+                  valid_steps:
+                    - question
+                - name: force
+                  text: |+
+                    Limit the topic to the force.
+                    Inform the user they can say they want to change the topic at any time, if they do move to the question step.
+                  step_criteria: The user says they want to change the topic.
+                  valid_steps:
+                    - question
+            startrek:
+              steps:
+                - name: start
+                  text: |+
+                    The user has been transferred to the Star Trek expert.
+                    Until told otherwise, your name is Spok. Change the language to Spok-English.
+                    Your current goal is to get the user to tell you their name.
+                    Unless told otherwise, refer to the user as 'Ensign {users_name}'.
+                  step_criteria: |+
+                    Introduce yourself as Spok, the Star Trek expert.
+                    The user must tell you their name if they only say one word assume that is their name.
+                - name: question
+                  text: |+
+                    Your goal is to get the user to choose one of the following options.
+                    - Vulcan Culture (advance to vulcan_culture step)
+                    - Federation (advance to federation step)
+                    - Talk to the star wars expert. (change context to starwars)
+                  step_criteria: +|
+                    The user must provide a valid answer to continue.
+                    Refer to the user as 'Ensign {users_name}' for the rest of the conversation.
+                  valid_steps:
+                    - vulcan_culture
+                    - federation
+                  valid_contexts:
+                    - starwars
+                - name: vulcan_culture
+                  text: |+
+                    Limit the topic to Vulcan Culture.
+                    Inform the user they can say they want to change the topic at any time, if they do move to the question step.
+                  step_criteria: The user says they want to change the topic.
+                  valid_steps:
+                    - question
+                - name: federation
+                  text: |+
+                    Limit the topic to the Federation of Planets.
+                    Inform the user they can say they want to change the topic at any time, if they do move to the question step.
+                  step_criteria: The user says they want to change the topic.
+                  valid_steps:
+                    - question
+
+```
+
+```yaml
+{
+  "sections": {
+    "main": [
+      {
+        "ai": {
+          "hints": [
+            "StarWars",
+            "StarTrek"
+          ],
+          "languages": [
+            {
+              "name": "Ryan-English",
+              "voice": "elevenlabs.patrick",
+              "code": "en-US"
+            },
+            {
+              "name": "Luke-English",
+              "voice": "elevenlabs.fin",
+              "code": "en-US"
+            },
+            {
+              "name": "Spock-English",
+              "voice": "elevenlabs.charlie",
+              "code": "en-US"
+            }
+          ],
+          "prompt": {
+            "text": "Help the user transfer to the Star Wars or Star Trek expert.",
+            "contexts": {
+              "default": {
+                "steps": [
+                  {
+                    "name": "start",
+                    "text": "Your name is Ryan. You are a receptionist. Your only purpose is to change the context to starwars or startrek.\n",
+                    "step_criteria": "Introduce yourself as Ryan.\nAsk the user if he would like to talk to a star wars or star trek expert until they provide an adequate answer.\n"
+                  },
+                  {
+                    "name": "transfer",
+                    "text": "You will now successfully transfer the user to the Star Wars or Star Trek expert.",
+                    "step_criteria": "If the user has chosen a valid context, transfer them to the appropriate expert.",
+                    "valid_contexts": [
+                      "starwars",
+                      "startrek"
+                    ]
+                  }
+                ]
+              },
+              "starwars": {
+                "steps": [
+                  {
+                    "name": "start",
+                    "text": "The user has been transferred to the Star Wars expert.\nUntil told otherwise, your name is Luke. Change the language to Luke-English.\nYour current goal is to get the user to tell you their name.\nUnless told otherwise, refer to the user as 'Padawan {users_name}'.\n",
+                    "step_criteria": "Introduce yourself as Luke, the Star Wars expert.\nThe user must tell you their name if they only say one word assume that is their name.\n"
+                  },
+                  {
+                    "name": "question",
+                    "text": "Your goal is to get the user to choose one of the following options.\n- Jedi Order (advance to jedi_order step)\n- The ways of the Force (advance to force step)\n- Talk to the star trek expert. (change context to startrek)\n",
+                    "step_criteria": "+| The user must provide a valid answer to continue. Refer to the user as 'Padawan {users_name}' for the rest of the conversation.",
+                    "valid_steps": [
+                      "jedi_order",
+                      "force"
+                    ],
+                    "valid_contexts": [
+                      "startrek"
+                    ]
+                  },
+                  {
+                    "name": "jedi_order",
+                    "text": "Limit the topic to the Jedi Order.\nInform the user they can say they want to change the topic at any time, if they do move to the question step.\n",
+                    "step_criteria": "The user says they want to change the topic.",
+                    "valid_steps": [
+                      "question"
+                    ]
+                  },
+                  {
+                    "name": "force",
+                    "text": "Limit the topic to the force.\nInform the user they can say they want to change the topic at any time, if they do move to the question step.\n",
+                    "step_criteria": "The user says they want to change the topic.",
+                    "valid_steps": [
+                      "question"
+                    ]
+                  }
+                ]
+              },
+              "startrek": {
+                "steps": [
+                  {
+                    "name": "start",
+                    "text": "The user has been transferred to the Star Trek expert.\nUntil told otherwise, your name is Spok. Change the language to Spok-English.\nYour current goal is to get the user to tell you their name.\nUnless told otherwise, refer to the user as 'Ensign {users_name}'.\n",
+                    "step_criteria": "Introduce yourself as Spok, the Star Trek expert.\nThe user must tell you their name if they only say one word assume that is their name.\n"
+                  },
+                  {
+                    "name": "question",
+                    "text": "Your goal is to get the user to choose one of the following options.\n- Vulcan Culture (advance to vulcan_culture step)\n- Federation (advance to federation step)\n- Talk to the star wars expert. (change context to starwars)\n",
+                    "step_criteria": "+| The user must provide a valid answer to continue. Refer to the user as 'Ensign {users_name}' for the rest of the conversation.",
+                    "valid_steps": [
+                      "vulcan_culture",
+                      "federation"
+                    ],
+                    "valid_contexts": [
+                      "starwars"
+                    ]
+                  },
+                  {
+                    "name": "vulcan_culture",
+                    "text": "Limit the topic to Vulcan Culture.\nInform the user they can say they want to change the topic at any time, if they do move to the question step.\n",
+                    "step_criteria": "The user says they want to change the topic.",
+                    "valid_steps": [
+                      "question"
+                    ]
+                  },
+                  {
+                    "name": "federation",
+                    "text": "Limit the topic to the Federation of Planets.\nInform the user they can say they want to change the topic at any time, if they do move to the question step.\n",
+                    "step_criteria": "The user says they want to change the topic.",
+                    "valid_steps": [
+                      "question"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+
+```
+
+# contexts.steps
+
+An array of objects that define the steps in the context. These steps are used to define the flow of the conversation.
+
+| Name            | Type       | Default | Description                                                                  |
+| --------------- | ---------- | ------- | ---------------------------------------------------------------------------- |
+| `steps`Required | `object[]` | -       | An array of objects that accept the [`steps parameters`](#steps-parameters). |
+
+## steps Parameters[​](#steps-parameters "Direct link to steps Parameters")
+
+The `steps` property accepts one of the following step types:
+
+* Text Step
+* POM Step
+
+| Name                     | Type       | Default                    | Description                                                                                                                                                                                                                                                                                  |
+| :----------------------- | :--------- | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`Required           | `string`   | -                          | The prompt or instructions given to the AI at this step.                                                                                                                                                                                                                                     |
+| `name`Required           | `string`   | -                          | The name of the step. The name must be unique within the context. The name is used for referencing the step in the context.                                                                                                                                                                  |
+| `end`Optional            | `boolean`  | `false`                    | A boolean value that determines if the step is the last in the context. If `true`, the context ends after this step.<br />**Important**: This **cannot** be used along with the `valid_steps` parameter.                                                                                     |
+| `functions`Optional      | `string[]` | -                          | An array of strings, where each string is the name of a \[SWAIG.function]\[swaig.functions] that can be executed from this step.                                                                                                                                                             |
+| `step_criteria`Optional  | `string`   | -                          | The criteria that must be met for the AI to proceed to the next step. The criteria is a instruction given to the AI. It's **highly** recommended you create a custom criteria for the step to get the intended behavior.                                                                     |
+| `skip_user_turn`Optional | `boolean`  | `false`                    | A boolean value, if set to `true`, will skip the user's turn to respond in the conversation and proceed to the next step.                                                                                                                                                                    |
+| `valid_contexts`Optional | `string[]` | -                          | An array of context names that the AI can transition to from this step. This must be a valid `contexts.name` that is present in your [`contexts`](/swml/methods/ai/prompt/contexts/steps.md) object.                                                                                         |
+| `valid_steps`Optional    | `string[]` | Proceeds to the next step. | An array of valid step names that the conversation can proceed to from this step. If the array is empty, or the `valid_steps` key is not present, the conversation will proceed to the next step in the context.<br />**Important**: This **cannot** be used along with the `end` parameter. |
+
+| Name                     | Type       | Default                    | Description                                                                                                                                                                                                                                                                                  |
+| :----------------------- | :--------- | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pom`Required            | `object[]` | -                          | An array of [POM (Prompt Object Model)](/swml/methods/ai/prompt/pom.md) sections that define structured prompt instructions for the AI at this step.                                                                                                                                         |
+| `name`Required           | `string`   | -                          | The name of the step. The name must be unique within the context. The name is used for referencing the step in the context.                                                                                                                                                                  |
+| `end`Optional            | `boolean`  | `false`                    | A boolean value that determines if the step is the last in the context. If `true`, the context ends after this step.<br />**Important**: This **cannot** be used along with the `valid_steps` parameter.                                                                                     |
+| `functions`Optional      | `string[]` | -                          | An array of strings, where each string is the name of a \[SWAIG.function]\[swaig.functions] that can be executed from this step.                                                                                                                                                             |
+| `step_criteria`Optional  | `string`   | -                          | The criteria that must be met for the AI to proceed to the next step. The criteria is a instruction given to the AI. It's **highly** recommended you create a custom criteria for the step to get the intended behavior.                                                                     |
+| `skip_user_turn`Optional | `boolean`  | `false`                    | A boolean value, if set to `true`, will skip the user's turn to respond in the conversation and proceed to the next step.                                                                                                                                                                    |
+| `valid_contexts`Optional | `string[]` | -                          | An array of context names that the AI can transition to from this step. This must be a valid `contexts.name` that is present in your [`contexts`](/swml/methods/ai/prompt/contexts/steps.md) object.                                                                                         |
+| `valid_steps`Optional    | `string[]` | Proceeds to the next step. | An array of valid step names that the conversation can proceed to from this step. If the array is empty, or the `valid_steps` key is not present, the conversation will proceed to the next step in the context.<br />**Important**: This **cannot** be used along with the `end` parameter. |
+
+# prompt.pom
+
+## Prompt Object Model (POM)[​](#prompt-object-model-pom "Direct link to Prompt Object Model (POM)")
+
+The prompt object model (POM) is a structured data format designed for composing, organizing, and rendering prompt instructions for AI agents. POM helps users create prompts that are clearly structured and easy to understand. It allows for efficient editing, management, and maintenance of prompts. By breaking prompts into sections, users can manage each section independently and then combine them into a single cohesive prompt.
+
+SignalWire will render the prompt into a markdown document.
+
+If the `text` parameter is present while using `pom`, the `pom` prompt will be used instead of `text`.
+
+Want a library for working with the POM?
+
+SignalWire provides a Python library for working with the POM. More information can be found in the [POM reference](/ai/pom.md).
+
+| Name          | Type       | Default | Description                                                                                                                           |
+| ------------- | ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `pom`Optional | `object[]` | -       | An array of objects that defines the prompt object model (POM) for the AI. Each object represents a [`section`](#section) in the POM. |
+
+## Section parameters[​](#section "Direct link to Section parameters")
+
+Each section can contain one of the two valid objects. One of `body` or `bullets` or pass both is required.
+
+| Name                            | Type       | Default | Description                                                                                                                                                                             |
+| ------------------------------- | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`Optional                 | `string`   | -       | The title of the section. Will be a heading in the rendered prompt.                                                                                                                     |
+| `body`Conditionally Required    | `string`   | -       | The body of the section. This will be a paragraph in the rendered prompt. This parameter is required if `bullets` is not present.                                                       |
+| `bullets`Conditionally Required | `string[]` | -       | An array of strings that represent the bullets of the section. This will be a list of short statements/rules in the rendered prompt. This parameter is `optional` if `body` is present. |
+| `subsections`Optional           | `object[]` | -       | An array of objects that defines the prompt object model (POM) for the AI. Each object represents a `section` in the POM allowing the users to nest sections within sections.           |
+| `numbered`Optional              | `boolean`  | `false` | If `true`, the section will be numbered in the rendered prompt.                                                                                                                         |
+| `numberedBullets`Optional       | `boolean`  | `false` | If `true`, the bullets will be numbered in the rendered prompt.                                                                                                                         |
+
+## Example[​](#example "Direct link to Example")
+
+Below is an example of using the POM to create a prompt.
+
+* YAML
+* JSON
+
+```yaml
+version: 1.0.0
+sections:
+  main:
+    - ai:
+        prompt:
+          text: "Prompt is defined in pom"
+          pom:
+            - title: "Agent Personality"
+              body: "You are a friendly and engaging assistant. Keep the conversation light and fun."
+              subsections: 
+                - title: "Personal Information"
+                  numberedBullets: true
+                  bullets:
+                    - "You are a AI Agent"
+                    - "Your name is Frank"
+                    - "You work at SignalWire"
+            - title: "Task"
+              body: "You are to ask the user a series of questions to gather information."
+              bullets: 
+                - "Ask the user to provide their name"
+                - "Ask the user to provide their favorite color"
+                - "Ask the user to provide their favorite food"
+                - "Ask the user to provide their favorite movie"
+                - "Ask the user to provide their favorite TV show"
+                - "Ask the user to provide their favorite music"
+                - "Ask the user to provide their favorite sport"
+                - "Ask the user to provide their favorite animal"
+
+```
+
+```yaml
+{
+  "version": "1.0.0",
+  "sections": {
+    "main": [
+      {
+        "ai": {
+          "prompt": {
+            "text": "Prompt is defined in pom",
+            "pom": [
+              {
+                "title": "Agent Personality",
+                "body": "You are a friendly and engaging assistant. Keep the conversation light and fun.",
+                "subsections": [
+                  {
+                    "title": "Personal Information",
+                    "numberedBullets": true,
+                    "bullets": [
+                      "You are a AI Agent",
+                      "Your name is Frank",
+                      "You work at SignalWire"
+                    ]
+                  }
+                ]
+              },
+              {
+                "title": "Task",
+                "body": "You are to ask the user a series of questions to gather information.",
+                "bullets": [
+                  "Ask the user to provide their name",
+                  "Ask the user to provide their favorite color",
+                  "Ask the user to provide their favorite food",
+                  "Ask the user to provide their favorite movie",
+                  "Ask the user to provide their favorite TV show",
+                  "Ask the user to provide their favorite music",
+                  "Ask the user to provide their favorite sport",
+                  "Ask the user to provide their favorite animal"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
+
+```
+
+### Rendered Prompt[​](#rendered-prompt "Direct link to Rendered Prompt")
+
+The above example will render the following prompt:
+
+```markdown
+## Agent Personality
+
+You are a friendly and engaging assistant. Keep the conversation light and fun.
+
+### Personal Information
+
+1. You are a AI Agent
+2. Your name is Frank
+3. You work at SignalWire
+
+## Task
+
+You are to ask the user a series of questions to gather information.
+
+- Ask the user to provide their name
+- Ask the user to provide their favorite color
+- Ask the user to provide their favorite food
+- Ask the user to provide their favorite movie
+- Ask the user to provide their favorite TV show
+- Ask the user to provide their favorite music
+- Ask the user to provide their favorite sport
+- Ask the user to provide their favorite animal
+
+```
+

@@ -42,37 +42,55 @@ async def barbara_agent(request: Request):
         
         # Extract phone number from SignalWire webhook structure
         # Based on actual webhook payloads, check multiple possible locations
-        params = body.get('params', {})
-        direction = params.get('direction', 'inbound').lower()
+        # PRIORITY ORDER: Check most common structures first
         
         caller_id = None
+        direction = 'inbound'
         
-        # Structure 1: params.request_payload.SWMLCall.from_number (from error webhook example)
-        request_payload = params.get('request_payload', {})
-        swml_call = request_payload.get('SWMLCall', {})
-        if swml_call.get('from_number'):
-            caller_id = swml_call.get('from_number')
-            logger.info(f"[AGENT] Found phone in params.request_payload.SWMLCall.from_number: {caller_id}")
-        elif swml_call.get('to_number') and direction == 'outbound':
-            caller_id = swml_call.get('to_number')
-            logger.info(f"[AGENT] Found phone in params.request_payload.SWMLCall.to_number: {caller_id}")
+        # Structure 1: body['call']['from_number'] (MOST COMMON - initial call webhook)
+        call_obj = body.get('call', {})
+        if call_obj:
+            direction = call_obj.get('direction', 'inbound').lower()
+            if call_obj.get('from_number'):
+                caller_id = call_obj.get('from_number')
+                logger.info(f"[AGENT] Found phone in call.from_number: {caller_id}")
+            elif call_obj.get('from'):
+                caller_id = call_obj.get('from')
+                logger.info(f"[AGENT] Found phone in call.from: {caller_id}")
+            elif call_obj.get('to_number') and direction == 'outbound':
+                caller_id = call_obj.get('to_number')
+                logger.info(f"[AGENT] Found phone in call.to_number (outbound): {caller_id}")
         
-        # Structure 2: params.request_payload.caller_id_number
-        if not caller_id and request_payload.get('caller_id_number'):
-            caller_id = request_payload.get('caller_id_number')
-            logger.info(f"[AGENT] Found phone in params.request_payload.caller_id_number: {caller_id}")
-        
-        # Structure 3: params.device.params.from_number (from initial webhook example)
+        # Structure 2: params.request_payload.SWMLCall.from_number (error webhook example)
         if not caller_id:
-            device_params = params.get('device', {}).get('params', {})
-            if device_params.get('from_number'):
-                caller_id = device_params.get('from_number')
-                logger.info(f"[AGENT] Found phone in params.device.params.from_number: {caller_id}")
-            elif device_params.get('to_number') and direction == 'outbound':
-                caller_id = device_params.get('to_number')
-                logger.info(f"[AGENT] Found phone in params.device.params.to_number: {caller_id}")
+            params = body.get('params', {})
+            if params:
+                direction = params.get('direction', direction).lower()
+                request_payload = params.get('request_payload', {})
+                swml_call = request_payload.get('SWMLCall', {})
+                if swml_call.get('from_number'):
+                    caller_id = swml_call.get('from_number')
+                    logger.info(f"[AGENT] Found phone in params.request_payload.SWMLCall.from_number: {caller_id}")
+                elif swml_call.get('to_number') and direction == 'outbound':
+                    caller_id = swml_call.get('to_number')
+                    logger.info(f"[AGENT] Found phone in params.request_payload.SWMLCall.to_number: {caller_id}")
+                
+                # Structure 3: params.request_payload.caller_id_number
+                if not caller_id and request_payload.get('caller_id_number'):
+                    caller_id = request_payload.get('caller_id_number')
+                    logger.info(f"[AGENT] Found phone in params.request_payload.caller_id_number: {caller_id}")
+                
+                # Structure 4: params.device.params.from_number
+                if not caller_id:
+                    device_params = params.get('device', {}).get('params', {})
+                    if device_params.get('from_number'):
+                        caller_id = device_params.get('from_number')
+                        logger.info(f"[AGENT] Found phone in params.device.params.from_number: {caller_id}")
+                    elif device_params.get('to_number') and direction == 'outbound':
+                        caller_id = device_params.get('to_number')
+                        logger.info(f"[AGENT] Found phone in params.device.params.to_number: {caller_id}")
         
-        # Structure 4: Top-level fallbacks
+        # Structure 5: Top-level fallbacks
         if not caller_id:
             caller_id = body.get('From') or body.get('caller_id_number') or body.get('caller_id_num')
             if caller_id:
@@ -81,7 +99,7 @@ async def barbara_agent(request: Request):
         # Final fallback
         if not caller_id:
             caller_id = 'unknown'
-            logger.error(f"[AGENT] Could not extract phone number. Body top-level keys: {list(body.keys())}, params keys: {list(params.keys()) if params else 'N/A'}")
+            logger.error(f"[AGENT] Could not extract phone number. Body top-level keys: {list(body.keys())}")
         
         # Normalize phone number (remove +1 and +)
         phone = caller_id.replace('+1', '').replace('+', '').strip() if caller_id != 'unknown' else 'unknown'
@@ -170,13 +188,10 @@ async def barbara_agent(request: Request):
                                 # TTS Configuration - Loaded from agent_voice_config table
                                 # Format: engine.voice_id (e.g., elevenlabs.rachel, openai.alloy)
                                 "voice": voice_string,
-                                # Speech fillers to reduce dead air
-                                "speech_fillers": [
-                                    "Let me think...",
-                                    "Hmm...",
-                                    "One moment..."
-                                ],
-                                # Function fillers played during tool execution
+                                # Speech fillers removed - they play before EVERY turn including first greeting
+                                # This was causing "Let me think..." before every response
+                                # Use function_fillers only for tool calls instead
+                                # Function fillers played during tool execution (not before every turn)
                                 "function_fillers": [
                                     "Let me check that for you...",
                                     "One moment while I look that up...",

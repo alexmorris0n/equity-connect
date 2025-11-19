@@ -1,0 +1,59 @@
+# ai.pronounce
+
+Use this object to clarify AI's pronunciation of certain words or expressions.
+
+| Name                | Type     | Default | Description                                                                  |
+| ------------------- | -------- | ------- | ---------------------------------------------------------------------------- |
+| `pronounce`Optional | `object` | -       | An object that contains the [`pronounce parameters`](#pronounce-parameters). |
+
+## **pronounce Parameters**[​](#pronounce-parameters "Direct link to pronounce-parameters")
+
+| Name                  | Type      | Default | Description                                               |
+| --------------------- | --------- | ------- | --------------------------------------------------------- |
+| `replace`Required     | `string`  | -       | The expression to replace.                                |
+| `with`Required        | `string`  | -       | The phonetic spelling of the expression.                  |
+| `ignore_case`Optional | `boolean` | `true`  | Whether the pronunciation replacement should ignore case. |
+
+## **Example usage**[​](#example-usage "Direct link to example-usage")
+
+* YAML
+* JSON
+
+```yaml
+version: 1.0.0
+sections:
+  main:
+    - ai:
+        prompt:
+          text: |
+            You are an expert in the GIF file format. Tell the user whatever they'd like to know in this
+            field.
+        pronounce:
+          - replace: GIF
+            with: jif
+
+```
+
+```yaml
+{
+  "version": "1.0.0",
+  "sections": {
+    "main": [
+      {
+        "ai": {
+          "prompt": {
+            "text": "You are an expert in the GIF file format. Tell the user whatever they'd like to know in this\nfield.\n"
+          },
+          "pronounce": [
+            {
+              "replace": "GIF",
+              "with": "jif"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+```

@@ -1,0 +1,18 @@
+# ai.post\_prompt
+
+The final set of instructions and configuration settings to send to the agent.
+
+| Name                  | Type     | Default | Description                                                                     |
+| --------------------- | -------- | ------- | ------------------------------------------------------------------------------- |
+| `post_prompt`Optional | `object` | -       | An object that accepts the [`post_prompt parameters`](#post_prompt-parameters). |
+
+## **post\_prompt Parameters**[​](#post_prompt-parameters "Direct link to post_prompt-parameters")
+
+| Name                        | Type     | Default | Description                                                                                                                                                                                                 |
+| --------------------------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `text`Required              | `string` | -       | The instructions to send to the agent.                                                                                                                                                                      |
+| `temperature`Optional       | `number` | 1.0     | Randomness setting. Float value between 0.0 and 1.5. Closer to 0 will make the output less random.                                                                                                          |
+| `top_p`Optional             | `number` | 1.0     | Randomness setting. Alternative to `temperature`. Float value between 0.0 and 1.0. Closer to 0 will make the output less random.                                                                            |
+| `confidence`Optional        | `number` | 0.6     | Threshold to fire a speech-detect event at the end of the utterance. Float value between 0.0 and 1.0. Decreasing this value will reduce the pause after the user speaks, but may introduce false positives. |
+| `presence_penalty`Optional  | `number` | 0       | Aversion to staying on topic. Float value between -2.0 and 2.0. Positive values increase the model's likelihood to talk about new topics.                                                                   |
+| `frequency_penalty`Optional | `number` | 0       | Aversion to repeating lines. Float value between -2.0 and 2.0. Positive values decrease the model's likelihood to repeat the same line verbatim.                                                            |
