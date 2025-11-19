@@ -22,9 +22,12 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
       
       - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only --app barbara-livekit --config livekit-agent/fly.toml --dockerfile deploy/agent/Dockerfile
+        run: |
+          # Ensure we're in repo root (build context)
+          cd ${{ github.workspace }}
+          flyctl deploy --remote-only --app barbara-livekit --config livekit-agent/fly.toml --dockerfile deploy/agent/Dockerfile
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         # Build context is repo root (Dockerfile expects this)
-        # Override dockerfile path to be relative to repo root
+        # --dockerfile path is relative to current directory (repo root)
 
