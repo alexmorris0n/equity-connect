@@ -333,7 +333,9 @@ async def entrypoint(ctx: JobContext):
     # OFFICIAL LIVEKIT SIP PATTERN: participant.attributes['sip.phoneNumber']
     # This is the CORRECT field for inbound SIP caller ID
     # See: https://docs.livekit.io/sip/sip-participant/
-    caller_phone = None
+    # Note: caller_phone may already be set from room name extraction above
+    if not caller_phone:
+        caller_phone = None  # Reset only if not already set
     called_number = None
     
     # First, try to get from SIP participant attributes (CORRECT METHOD)
