@@ -1,147 +1,85 @@
-# BarbGraph: Event-Based Conversation Routing System
+# BarbGraph: Database-Driven Conversation Routing System
 
-**Version:** 2.0  
-**Last Updated:** November 18, 2025  
-**Status:** ⚠️ **DEPRECATED - Replaced by SignalWire Native Contexts System**
+**Version:** 3.0  
+**Last Updated:** November 19, 2025  
+**Status:** ✅ **PRODUCTION READY - Dual Platform (SignalWire SWML + LiveKit Agents)**
 
-> **⚠️ IMPORTANT:** BarbGraph was replaced by SignalWire's native contexts system on November 13, 2025. This document is preserved for historical reference. For current implementation details, see:
-> - **`MASTER_PRODUCTION_PLAN.md`** - Current system architecture (SignalWire Contexts)
-> - **SignalWire Contexts System** - Uses `valid_contexts` arrays in database instead of custom Python routing
-> - **`equity_connect/services/contexts_builder.py`** - Current implementation
+> **✅ CURRENT SYSTEM:** BarbGraph is a platform-agnostic routing system that works identically on both SignalWire SWML and LiveKit Agents. Single source of truth in database enables A/B testing and cost comparison.
 > 
-> **🎯 Nov 18, 2025 - HOW THE SYSTEM ACTUALLY WORKS:**
+> **Key Innovation:** Same routing logic, prompts, tools, and flags stored in database, implemented on two platforms for comparison and redundancy.
+> 
+> **🎯 Nov 18-19, 2025 - HOW THE SYSTEM ACTUALLY WORKS:**
 >
-> **Database-Driven Per-Call Loading (NOT Hybrid):**
+> **Dual Platform Architecture with Single Source of Truth:**
 > 
-> Every call triggers TWO database loading phases:
+> BarbGraph routing logic is stored in the database and works on BOTH platforms:
 > 
-> 1. **`configure_per_call()`** - Loads context structure from database
->    - Queries `prompt_versions` table for instructions, tools, routing
->    - Queries `agent_voice_config` table for voice settings
->    - Queries `theme_prompts` table for personality
->    - Builds contexts dynamically from database
->    - If DB fails → Falls back to hardcoded contexts in `__init__`
+> **1. SignalWire SWML Bridge** (`swaig-agent/`)
+>    - FastAPI SWAIG bridge generates SWML responses
+>    - Contexts built from database via `services/contexts.py`
+>    - Tools declared as SWAIG functions via `function_includes`
+>    - SignalWire handles transitions natively based on `valid_contexts`
+>    - Deployed to Fly.io (`barbara-swaig-bridge.fly.dev`)
 >
-> 2. **`on_swml_request()`** - Loads caller personalization from database
->    - Queries `leads` table for name, property, age, etc.
->    - Queries `conversation_state` table for call history
->    - Queries `brokers` table for assigned broker
->    - Injects as text section into prompt
->    - Sets global_data for tools
+> **2. LiveKit Agent** (`livekit-agent/`)
+>    - BarbaraAgent class with `AgentSession`
+>    - Python routers check database flags and `valid_contexts`
+>    - Tools decorated with `@function_tool`
+>    - Manual transitions via `session.generate_reply()`
+>    - Deployed to Fly.io (`barbara-livekit.fly.dev`)
+>
+> **Database Schema (Shared):**
+> - `prompts` / `prompt_versions` - Instructions, tools, valid_contexts, step_criteria
+> - `theme_prompts` - Core personality per vertical
+> - `conversation_state` - Multi-call persistence, conversation_data JSONB flags
+> - `agent_voice_config` - SignalWire voice configuration
+> - `ai_templates` - LiveKit AI configuration (STT, LLM, TTS, VAD)
+>
+> **Tool Implementations (Mirrored):**
+> - **SignalWire:** Returns `{response: str, action: []}` for SWAIG
+> - **LiveKit:** Returns `str` or `None` for function calling
+> - **Same Business Logic:** Both call same Supabase queries, APIs
 >
 > **Portal Changes Flow:**
-> - Edit in Vue Portal (Verticals.vue) → Saves to database → Next call loads from database → Changes are live
+> - Edit in Vue Portal (Verticals.vue) → Saves to database → Next call loads from database → Changes are live on BOTH platforms
 >
-> **Hardcoded Contexts = FALLBACK ONLY (lines 107-188 in barbara_agent.py)**
-> - Only used if database query fails
-> - Not the primary system
-> - Safety net for high availability
+> **Why Dual Platform:**
+> - ✅ A/B testing - Compare SignalWire vs LiveKit with identical routing
+> - ✅ Cost optimization - Real-world data on which is cheaper
+> - ✅ Risk mitigation - One platform down, other continues
+> - ✅ Provider flexibility - SignalWire native plugins vs LiveKit Inference
+> - ✅ Single source of truth - One set of prompts, tools, routing
 >
-> **Key Changes:**
-> - Custom Python routing (`routers.py`, `node_completion.py`) → SignalWire native contexts
-> - Event-based state machine → Database-driven `valid_contexts` arrays
-> - Manual routing code (~500 lines) → Framework-native routing
-> - Same 8-node structure, but implemented via SignalWire's POM mode
+> **Key Changes (Nov 18-19):**
+> - SignalWire Agent SDK abandoned (tool availability bug)
+> - Rebuilt as SWML bridge (FastAPI + SWAIG functions)
+> - LiveKit agent spun up as backup/comparison platform
+> - Database-driven routing works on both platforms
+> - All routing improvements applied (valid_contexts, step_criteria, instructions)
+> - Both deployed to Fly.io with auto-deploy via GitHub Actions
 >
-> **Nov 16-18, 2025 Critical POM Conversion & Tool Fixes:**
-> 
-> **🏗️ SignalWire POM Architecture:**
-> - **Removed `on_swml_request` Override:** Overriding prevented SDK from calling `configure_per_call`. Deleted entire method (498 lines) to enable SDK's default implementation.
-> - **Python-Side Variable Substitution:** Prompts stored with `$variable` syntax (Python `string.Template`), substituted in `contexts_builder.py` before calling `agent.prompt_add_section()`.
-> - **Official Pattern:** Matches SignalWire SDK examples - substitution happens in YOUR code, not at LLM runtime.
-> - **ContextBuilder API:** Uses `agent.prompt_add_section("Section Title", substituted_text)` for dynamic prompt building.
-> 
-> **🔧 Critical Bug Fixes (Nov 17-18):**
-> - **Phone Extraction:** Fixed nested `body_params['call']['from']` extraction on initial request, added fallback to `caller_id_num` for mid-call reconfigs.
-> - **Static Configuration:** Restored hints, pronunciations, post-prompt to `__init__` (lost when deleting `on_swml_request`).
-> - **Global Data Structure:** Dual structure - nested (for tools) + flat (for prompt substitution).
-> - **Cache Restoration:** Added `last_name` to prevent full-name greetings.
-> - **Tool Availability:** Merged `flow_flags` into `tools` arrays, removed `trg_enforce_flow_flags_separated` trigger (was preventing updates).
-> - **Tool Execution:** Fixed `get_lead_context` to access `global_data` via `raw_data` parameter, added error handling to all 21 tools.
+> **Routing Improvements (Nov 19):**
+> - VERIFY valid_contexts expanded: `['qualify', 'answer', 'quote', 'objections']`
+> - QUALIFY valid_contexts expanded: `['goodbye', 'quote', 'objections']`
+> - "end" node removed from all routing
+> - VERIFY step_criteria clarified with explicit routing rules
+> - QUALIFY step_criteria clarified with explicit routing rules
+> - VERIFY instructions: "collect missing, confirm existing" pattern
+> - ANSWER instructions with ⚠️ CRITICAL ROUTING RULE for calculations
+> - Added `appointment_datetime`, `borderline_equity`, `pending_birthday`, `manual_booking_required` flags
 >
-> **Nov 14, 2025 Validation Enhancements:**
-> - `contexts_builder.py` now guards against zero-step contexts, logs every skip, and auto-applies default V1 prompts from `services/default_contexts.py`.
-> - `barbara_agent.py` uses `set_global_data`, `_ensure_skill`, and safer phone normalization to eliminate runtime regressions surfaced by CLI tests.
-> - The new `cli-testing-service/` runs `swaig-test` for every node save so invalid context payloads are caught before activation.
->
-> **Nov 17, 2025 Voice UX Improvements:**
-> - **`skip_user_turn` Support:** Step-level execution control added to eliminate awkward silences
-> - **GREET Context:** `skip_user_turn: true` + `step_criteria: "none"` → Barbara speaks IMMEDIATELY on call connect
-> - **QUOTE & EXIT:** `skip_user_turn: true` → Smooth transitions without pauses
-> - **All Others:** `skip_user_turn: false` → Wait for user input (questions require responses)
-> - **3-Layer Stack Complete:** Agent-level (`wait_for_user=False`) + Prompt structure (front-loaded greeting) + Step-level (`skip_user_turn`)
-> - **Tool Auto-Toggle:** 7 tools (get_lead_context, verify_caller_identity, find_broker_by_territory, book_appointment, assign_tracking_number, mark_qualification_result, mark_quote_presented) disable themselves after execution using `SwaigFunctionResult` to save LLM tokens
->
-> **🚨 Nov 18, 2025 - The `configure_per_call` Crisis:**
-> 
-> **CRITICAL WARNING: Dynamic Context Rebuilding is a Trap**
-> 
-> SignalWire's `configure_per_call` callback appears to offer per-call personalization, but in practice:
-> 
-> **Fatal Problems Encountered:**
-> 1. **Maximum Recursion Depth:** Conflicting context definitions between `__init__` and `configure_per_call` cause infinite loops
-> 2. **Undocumented Callback Timing:** Called multiple times per call (initial, after tools, reconfigs) with NO documentation on when/why
-> 3. **Phone Extraction Chaos:** Different extraction logic needed for each invocation (query_params vs body_params)
-> 4. **`on_swml_request` Conflict:** Overriding it SILENTLY prevents `configure_per_call` from firing (no warning, 8+ hours lost)
-> 5. **Variable Substitution Lies:** `%{variable}` syntax only works in SWML mode, NOT in POM mode (undocumented)
-> 6. **Context State Pollution:** Rebuilding contexts mid-call thrashes state and loses conversation history
-> 
-> **Time Lost:** ~12 hours debugging recursion, callbacks, and variables
-> 
-> **Documentation Quality:** 2/10 - Critical behaviors undocumented, examples misleading
-> 
-> **The ONLY Working Pattern:**
-> ```python
-> def __init__(self):
->     # Build contexts ONCE from database (stable structure)
->     contexts = self._load_context_configs_from_db()
->     self.set_prompt(contexts)
->     
-> def on_swml_request(self, query_params, body_params, headers):
->     # Extract phone and load lead data ONCE per call
->     phone = self._extract_phone_from_params(query_params, body_params)
->     lead = load_lead(phone)
->     
->     # Inject as SECTION (not rebuilding contexts)
->     caller_info = f"=== CALLER INFO ===\nName: {lead['first_name']}\n..."
->     self.prompt_add_section("Caller Info", caller_info)
->     self.set_global_data({"lead_id": lead['id'], ...})
->     
->     return None  # DON'T modify SWML
-> ```
-> 
-> **Lessons:**
-> - ✅ `on_swml_request` called ONCE per call (predictable)
-> - ✅ Contexts built ONCE in `__init__` (stable, no recursion)
-> - ✅ Personalization via sections (LLM sees it, tools access global_data)
-> - ❌ `configure_per_call` is for SDK EXPERTS ONLY (avoid unless you enjoy pain)
-> - ❌ Don't rebuild contexts per-call (context pollution, recursion errors)
-> - ❌ Variable substitution must happen in Python BEFORE passing to SDK
->
-> **Recommendation:** Avoid `configure_per_call` unless you have SignalWire support on speed dial.
->
-> **🎯 Nov 18, 2025 - 8-Node Revenue System Implemented:**
-> 
-> **Business Requirement:** "We get paid per booking. Answers, objections, and booking are our money makers."
-> 
 > **Complete 8-Node System:**
-> 1. GREET (rapport) → 2. VERIFY (security) → 3. QUALIFY (gates) → 4. QUOTE (value) → 5. ANSWER (education) ←→ 6. OBJECTIONS (concerns) → 7. BOOK ($$$) → 8. GOODBYE (close)
-> 
-> **New Nodes Created (Nov 18):**
-> - **VERIFY:** Security confirmation (city + last 4 digits) - builds trust
-> - **QUALIFY:** Smart gates (62+, homeowner, equity, owner-occupied) - filters leads
-> - **QUOTE:** Equity estimate with math skill (50-60% calculation) - creates desire
-> - **OBJECTIONS:** Empathy + facts (FHA insurance, legal protections) - saves deals
-> 
-> **Revenue Impact:**
-> - VERIFY: Reduces hang-ups (trust)
-> - QUALIFY: Saves time (filters unqualified)
-> - QUOTE: Creates desire (concrete value)
-> - ANSWER: Builds trust (education)
-> - OBJECTIONS: Recovers deals (addresses doubts)
-> - BOOK: $$$ REVENUE $$$ ($300-$350 per show)
-> 
-> **Status:** ✅ All 8 nodes created in database, routing configured, production-ready
+1. **GREET** (rapport) → 2. **VERIFY** (security) → 3. **QUALIFY** (gates) → 4. **QUOTE** (value) → 5. **ANSWER** (education) ←→ 6. **OBJECTIONS** (concerns) → 7. **BOOK** ($$$) → 8. **GOODBYE** (close)
+
+**Revenue Impact:**
+- VERIFY: Reduces hang-ups (trust)
+- QUALIFY: Saves time (filters unqualified)
+- QUOTE: Creates desire (concrete value)
+- ANSWER: Builds trust (education)
+- OBJECTIONS: Recovers deals (addresses doubts)
+- BOOK: $$$ REVENUE $$$ ($300-$350 per show)
+
+**Status:** ✅ All 8 nodes active on both platforms, routing improvements applied, production-ready
 
 ---
 
@@ -190,13 +128,14 @@ Each stage has its own focused instructions, and Barbara automatically moves bet
 
 ## What is BarbGraph?
 
-**BarbGraph** (Barbara + Graph) is an **event-based state machine** that orchestrates multi-stage conversations for voice AI agents.
+**BarbGraph** (Barbara + Graph) is a **database-driven conversation routing system** that works on multiple AI voice platforms.
 
 Think of it like a GPS for conversations:
 - **Current Location:** Which conversation stage Barbara is in right now
 - **Destination:** What goal needs to be achieved in this stage
 - **Route Calculation:** Dynamically deciding the next stage based on what happened
 - **Rerouting:** Adapting when the caller takes an unexpected turn
+- **Platform-Agnostic:** Same routing logic works on SignalWire SWML and LiveKit Agents
 
 ### Key Concepts
 
@@ -204,7 +143,26 @@ Think of it like a GPS for conversations:
 - **Theme:** Universal personality prompt applied to all nodes (eliminates duplication)
 - **State:** Data about the conversation stored in the database (e.g., "Has the caller been verified?")
 - **Router:** Decision-making logic that determines which node comes next
-- **Event:** A trigger that happens during the call (e.g., "Barbara finished speaking")
+- **valid_contexts:** Database array defining which nodes a node can route to
+- **step_criteria:** Database text explaining when a node is complete
+- **Platform:** The AI voice system executing the routing (SignalWire or LiveKit)
+
+### Dual Platform Implementation
+
+**SignalWire SWML:**
+- FastAPI bridge generates SWML responses with contexts
+- SignalWire handles transitions natively based on `valid_contexts`
+- Tools declared as SWAIG functions
+
+**LiveKit Agents:**
+- Python routers check flags and `valid_contexts` from database
+- Manual transitions via `session.generate_reply()`
+- Tools decorated with `@function_tool`
+
+**Both platforms:**
+- Load same prompts, tools, routing rules from database
+- Use same business logic (Supabase queries, API calls)
+- Update same conversation_state flags
 
 ---
 
@@ -297,59 +255,75 @@ This is called **dynamic routing** - the path changes based on what actually hap
 
 ### System Overview
 
-BarbGraph is a **3-layer architecture**:
+BarbGraph is a **3-layer architecture** with dual platform backend:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     LAYER 1: FRONTEND                        │
-│  Vue Portal - Node-Based Prompt Editor (PromptManagement.vue)│
+│  Vue Portal - Context-Based Prompt Editor (Verticals.vue)   │
 │  • Vertical selector (reverse_mortgage, solar, hvac)        │
-│  • 8-node tab navigation (greet, verify, qualify, quote, etc.)     │
-│  • Theme editor (universal personality per vertical)        │
-│  • JSONB content editor (role, instructions, tools)         │
-│  • Save/Load via Supabase RPC                               │
+│  • 8-node cards (greet, verify, qualify, quote, answer,     │
+│    objections, book, goodbye)                               │
+│  • JSONB content editor (instructions, tools, valid_contexts)│
+│  • AI Helper (✨) for theme and node generation            │
+│  • Variable insertion (⚡) for {lead.first_name} syntax    │
+│  • Dual platform tabs: SignalWire + LiveKit config         │
 └─────────────────────────────────────────────────────────────┘
                               ▼ saves to
 ┌─────────────────────────────────────────────────────────────┐
-│                    LAYER 2: DATABASE                         │
+│              LAYER 2: DATABASE (Single Source of Truth)      │
 │  Supabase PostgreSQL                                         │
-│  • prompts table (vertical, node_name, current_version)     │
-│  • prompt_versions table (content JSONB, version_number)    │
-│  • conversation_state table (conversation_data JSONB)        │
-│  • active_node_prompts view (latest active prompts)         │
-│  • get_node_prompt() RPC (query with fallback)              │
+│  • prompts table (vertical, node_name)                      │
+│  • prompt_versions table (content JSONB with valid_contexts)│
+│  • theme_prompts table (universal personality per vertical) │
+│  • conversation_state table (conversation_data JSONB flags) │
+│  • agent_voice_config table (SignalWire TTS settings)       │
+│  • ai_templates table (LiveKit STT/LLM/TTS/VAD config)      │
 └─────────────────────────────────────────────────────────────┘
                               ▼ loads from
 ┌─────────────────────────────────────────────────────────────┐
-│                     LAYER 3: BACKEND                         │
-│  LiveKit Agent Worker (Northflank)                           │
-│  • EquityConnectAgent class (custom Agent subclass)         │
-│  • Event-based routing (agent_speech_committed hook)        │
-│  • Prompt loader (DB query + file fallback)                 │
-│  • State flag tools (mark_ready_to_book, etc.)              │
-│  • Node completion checkers (is_node_complete)              │
-│  • Dynamic routers (route_after_greet, etc.)                │
+│              LAYER 3: DUAL PLATFORM BACKEND                  │
+│                                                              │
+│  ┌──────────────────────────┐  ┌─────────────────────────┐ │
+│  │  SignalWire SWML Bridge  │  │  LiveKit Agent Worker   │ │
+│  │  (Fly.io)                │  │  (Fly.io)               │ │
+│  ├──────────────────────────┤  ├─────────────────────────┤ │
+│  │ • FastAPI SWAIG bridge   │  │ • BarbaraAgent class    │ │
+│  │ • contexts.py (DB → SWML)│  │ • routers.py (BarbGraph)│ │
+│  │ • SWAIG function handlers│  │ • @function_tool tools  │ │
+│  │ • SignalWire transitions │  │ • AgentSession          │ │
+│  └──────────────────────────┘  └─────────────────────────┘ │
+│                                                              │
+│  Both platforms share:                                       │
+│  • Same prompts from database                               │
+│  • Same routing rules (valid_contexts, step_criteria)       │
+│  • Same business logic (Supabase queries, APIs)             │
+│  • Same conversation_state flags                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow: End-to-End
+### Data Flow: End-to-End (Both Platforms)
 
 ```
 1. Admin edits "Greet" node prompt in Vue Portal
                     ↓
 2. Vue saves to Supabase (prompts + prompt_versions)
                     ↓
-3. Inbound call arrives → LiveKit Cloud dispatches
+3. Inbound call arrives → Routes to SignalWire OR LiveKit
                     ↓
-4. Agent loads "Greet" prompt from Supabase
+4. Agent loads "Greet" prompt from Supabase (both platforms)
                     ↓
 5. Agent speaks greeting (using loaded instructions)
                     ↓
-6. agent_speech_committed event fires
+6. Routing check fires (platform-specific trigger)
+   - SignalWire: After function call
+   - LiveKit: On agent_speech_committed event
                     ↓
 7. Agent checks: is_node_complete("greet", state)?
                     ↓
-8. If complete → route_after_greet(state) decides next node
+8. If complete → determine next node using routing logic
+   - SignalWire: valid_contexts array + LLM intent
+   - LiveKit: route_after_greet(state) Python function
                     ↓
 9. Agent loads "Verify" prompt from Supabase
                     ↓
@@ -571,7 +545,7 @@ CREATE TABLE conversation_state (
 );
 ```
 
-**Example `conversation_data` JSONB:**
+### conversation_data JSONB Fields (Used by Both Platforms):
 
 ```json
 {
@@ -582,15 +556,25 @@ CREATE TABLE conversation_state (
   "quote_reaction": "positive",
   "questions_answered": false,
   "ready_to_book": false,
-  "has_objection": false,
+  "has_objections": false,
   "objection_handled": false,
   "appointment_booked": false,
+  "appointment_datetime": "2025-11-21T14:00:00",
   "appointment_id": null,
   "wrong_person": false,
   "right_person_available": false,
-  "node_before_objection": "answer"
+  "node_before_objection": "answer",
+  "borderline_equity": false,
+  "pending_birthday": false,
+  "manual_booking_required": false
 }
 ```
+
+**New Flags (Nov 19):**
+- `appointment_datetime`: Exact booking time for returning caller acknowledgment
+- `borderline_equity`: Low net proceeds (< $20k), needs special handling
+- `pending_birthday`: Close to 62nd birthday (< 3 months), pre-qualify
+- `manual_booking_required`: Booking tool failed, broker needs to follow up
 
 **QUOTE Node Flags:**
 - `quote_presented`: Boolean - Has the financial quote been presented?
@@ -641,250 +625,339 @@ $$ LANGUAGE plpgsql;
 
 ---
 
-### 3. Backend: Agent Components
+### 3. Backend: Agent Components (Dual Platform)
 
-#### Component 3.1: BarbaraAgent Class
+#### Component 3.1a: SignalWire SWML Bridge
 
-**File:** `equity_connect/agent/barbara_agent.py`
+**File:** `swaig-agent/main.py`
 
-**Purpose:** Custom Agent subclass (SignalWire AgentBase) that implements event-based routing.
+**Purpose:** FastAPI bridge that generates SWML responses with contexts for SignalWire.
 
 **Key Features:**
-- Inherits from `signalwire_agents.AgentBase`
-- Stores: `phone_number`, `call_type`, `current_node`
-- Manages node transitions using **`context_switch` SWAIG action**
-- Automatic routing after tool execution via `check_and_route()`
+- Receives POST from SignalWire at `/agent/barbara`
+- Builds contexts from database via `services/contexts.py`
+- Declares SWAIG functions via `function_includes`
+- Returns SWML JSON with `prompt.contexts`
+- Handles function execution and routing updates
 
-**Code Snippet: Agent Class (SignalWire SDK)**
+**Code Snippet: SWML Response Generation**
 
 ```python
-from signalwire_agents import AgentBase
-from signalwire_agents.core import SwaigFunctionResult
+from fastapi import FastAPI, Request
+from services.contexts import build_contexts_object
+from services.database import get_lead_by_phone, get_conversation_state
 
-class BarbaraAgent(AgentBase):
+app = FastAPI()
+
+@app.post("/agent/barbara")
+async def handle_agent_request(request: Request):
+    """Main SWAIG endpoint - generates SWML with contexts"""
+    body = await request.json()
+    
+    # Extract call info
+    phone = body.get("call", {}).get("from")
+    
+    # Load lead and conversation state
+    lead = get_lead_by_phone(phone)
+    state = get_conversation_state(phone)
+    
+    # Determine starting node (or resume from state)
+    current_node = "greet"
+    if state and state.get("conversation_data"):
+        cd = state["conversation_data"]
+        if cd.get("appointment_booked"):
+            current_node = "goodbye"
+        elif cd.get("ready_to_book"):
+            current_node = "book"
+        elif cd.get("qualified") is not None:
+            current_node = "answer"
+    
+    # Build contexts object from database
+    contexts = build_contexts_object(
+        vertical="reverse_mortgage",
+        lead_context=lead,
+        phone_number=phone,
+        default_node=current_node
+    )
+    
+    # Return SWML response
+    return {
+        "version": "1.0.0",
+        "sections": {
+            "main": [
+                {
+                    "ai": {
+                        "prompt": {
+                            "contexts": contexts  # SignalWire handles routing
+                        },
+                        "params": {
+                            "end_of_speech_timeout": 800,
+                            "attention_timeout": 30000
+                        }
+                    }
+                }
+            ]
+        }
+    }
+```
+
+**SWAIG Function Declaration:**
+
+```python
+# In main.py - declare all tools
+native_functions = [
+    "mark_ready_to_book",
+    "mark_has_objection",
+    "mark_objection_handled",
+    "mark_wrong_person",
+    "mark_quote_presented",
+    "mark_qualification_result",
+    "verify_caller_identity",
+    "update_lead_info",
+    "check_broker_availability",
+    "book_appointment",
+    "search_knowledge"
+]
+
+# Function specifications
+function_specs = {
+    "mark_ready_to_book": {
+        "function": "mark_ready_to_book",
+        "purpose": "Mark that caller is ready to schedule appointment",
+        "argument": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    # ... more function specs
+}
+```
+
+**Function Execution:**
+
+```python
+@app.post("/function/{function_name}")
+async def handle_function(function_name: str, request: Request):
+    """Handle SWAIG function execution"""
+    body = await request.json()
+    phone = body.get("caller_id_num")
+    
+    # Route to appropriate handler
+    if function_name == "mark_ready_to_book":
+        from tools.flags import handle_mark_ready_to_book
+        result = handle_mark_ready_to_book(phone)
+    elif function_name == "book_appointment":
+        from tools.booking import handle_book_appointment
+        args = body.get("argument", {})
+        result = handle_book_appointment(phone, **args)
+    # ... more handlers
+    
+    # Return SWAIG response format
+    return {
+        "response": result.get("response", "Done"),
+        "action": result.get("action", [])
+    }
+```
+
+---
+
+#### Component 3.1b: LiveKit Agent
+
+**File:** `livekit-agent/agent.py`
+
+**Purpose:** LiveKit Agent class that implements event-based routing with BarbGraph.
+
+**Key Features:**
+- Inherits from LiveKit's `Agent` base class
+- Stores: `phone_number`, `call_type`, `current_node`
+- Event hook: `on_agent_finished_speaking` triggers routing checks
+- Manual node transitions via `load_node()` + `session.generate_reply()`
+
+**Code Snippet: Agent Class (LiveKit)**
+
+```python
+from livekit.agents import Agent, AgentSession
+from livekit.agents.llm import function_tool
+
+class BarbaraAgent(Agent):
     """Barbara - Conversational AI agent for reverse mortgage lead qualification
     
-    Uses BarbGraph 8-node event-driven routing with SignalWire SDK infrastructure.
-    All business logic (tools, routers, checkers) remains unchanged from LiveKit version.
+    Uses BarbGraph 8-node routing with LiveKit Agents framework.
     """
     
     def __init__(self):
-        super().__init__(
-            name="barbara-agent",
-            route="/agent",
-            host="0.0.0.0",
-            port=8080,
-            use_pom=True,  # Enable Prompt Object Model
-            auto_answer=True,
-            record_call=True
-        )
-        
-        # Enable SIP routing for inbound calls
-        self.enable_sip_routing(auto_map=True)
-        
-        # Set up dynamic configuration (per-request)
-        self.set_dynamic_config_callback(self.configure_per_call)
-        
-        # BarbGraph routing state
+        super().__init__()
         self.current_node = "greet"
         self.phone_number = None
         self.call_type = "inbound"
     
-    def configure_per_call(self, query_params, body_params, headers, agent):
-        """Configure agent dynamically per-request
+    async def on_enter(self, session: AgentSession):
+        """Called when agent joins room - initial setup"""
+        # Extract phone from room name or metadata
+        room_name = session.room.name
+        self.phone_number = self._extract_phone_from_room(room_name)
         
-        This runs for EVERY incoming call and handles:
-        - AI provider configuration (TTS/LLM/STT)
-        - Multi-call persistence (resume where left off)
-        - Initial BarbGraph node selection
-        - Prompt loading with context injection
-        """
-        # Extract call info
-        phone = body_params.get('From') or query_params.get('phone')
-        broker_id = query_params.get('broker_id')
+        # Load conversation state
+        state = get_conversation_state(self.phone_number)
         
-        # Configure AI (TTS/LLM/STT/skills)
-        agent.add_language("English", "en-US", voice="rachel", engine="elevenlabs")
-        agent.set_params({"ai_model": "gpt-4o", "end_of_speech_timeout": 800})
-        agent.add_skill("datetime")  # Temporal awareness
-        agent.add_skill("math")  # Reliable calculations
+        # Determine starting node
+        if state and state.get("conversation_data"):
+            cd = state["conversation_data"]
+            if cd.get("appointment_booked"):
+                self.current_node = "goodbye"
+            elif cd.get("ready_to_book"):
+                self.current_node = "book"
+            elif cd.get("qualified") is not None:
+                self.current_node = "answer"
         
-        # Multi-call persistence: check if returning caller
-        current_node = "greet"
-        if phone:
-            state_row = get_conversation_state(phone)
-            if state_row:
-                cd = state_row.get("conversation_data", {})
-                if cd.get("appointment_booked"):
-                    current_node = "exit"  # Already done
-                elif cd.get("ready_to_book"):
-                    current_node = "book"  # Resume at booking
-                elif cd.get("qualified") is not None:
-                    current_node = "answer"  # Already qualified
+        # Load node prompt and start
+        await self.load_node(self.current_node, speak_now=True)
         
-        # Load BarbGraph node prompt (theme + context + node)
-        instructions = build_instructions_for_node(
-            node_name=current_node,
-            call_type="inbound",
-            lead_context=lead_context,
-            phone_number=phone,
+        # Register routing callback
+        session.on("agent_finished_speaking", self._on_agent_finished_speaking)
+    
+    async def load_node(self, node_name: str, speak_now: bool = False):
+        """Load a node's prompt from database and update session"""
+        # Load from database
+        node_config = load_node_config(node_name, "reverse_mortgage")
+        
+        # Build full prompt (theme + context + node)
+        full_prompt = build_instructions_for_node(
+            node_name=node_name,
+            call_type=self.call_type,
+            lead_context=self._get_lead_context(),
+            phone_number=self.phone_number,
             vertical="reverse_mortgage"
         )
         
-        agent.set_prompt_text(instructions)
+        self.current_node = node_name
         
-        # Store state
-        self.current_node = current_node
-        self.phone_number = phone
+        # Update session with new instructions
+        if speak_now:
+            await session.generate_reply(instructions=full_prompt, speak_now=True)
+        else:
+            # Just update instructions for next turn
+            self._instructions = full_prompt
     
-    def check_and_route(self, tool_name: str):
-        """Check if we should transition to next node after tool execution"""
-        phone = self.phone_number
-        if not phone:
+    async def _on_agent_finished_speaking(self, session: AgentSession):
+        """Called after Barbara finishes speaking - check for routing"""
+        await self.check_and_route()
+    
+    async def check_and_route(self):
+        """Check if we should transition to next node"""
+        state = get_conversation_state(self.phone_number)
+        if not state:
             return
         
-        # Get conversation state from DB
-        state_row = get_conversation_state(phone)
-        if not state_row:
-            return
+        conversation_data = state.get("conversation_data", {})
         
         # Check if current node is complete
-        conversation_data = state_row.get("conversation_data", {})
         if is_node_complete(self.current_node, conversation_data):
-            # Determine next node using BarbGraph routers
-            next_node = self._get_next_node(state_row)
+            # Get next node using BarbGraph routers
+            next_node = self._get_next_node(state)
             
             if next_node and next_node != self.current_node:
                 logger.info(f"🔀 Routing: {self.current_node} → {next_node}")
-                self._route_to_node(next_node, phone)
+                await self.load_node(next_node, speak_now=True)
     
-    def _route_to_node(self, node_name: str, phone: str):
-        """Route to new BarbGraph node using context_switch for smooth transitions
-        
-        This is the proper SignalWire pattern for mid-call prompt changes.
-        Uses context_switch action instead of basic set_prompt_text() to:
-        - Provide transition context to the LLM
-        - Consolidate conversation history (save tokens)
-        - Create natural, smooth node transitions
-        
-        Returns:
-            SwaigFunctionResult with context_switch action
-        """
-        # Save per-node summary before transitioning
-        self._save_node_summary(self.current_node, phone)
-        
-        # Get conversation state for context
-        state_row = get_conversation_state(phone)
-        lead_context = self._extract_lead_context(state_row)
-        
-        # Load new node prompt (theme + context + node)
-        node_prompt = build_instructions_for_node(
-            node_name=node_name,
-            call_type=self.call_type,
-            lead_context=lead_context,
-            phone_number=phone,
-            vertical="reverse_mortgage"
+    def _get_next_node(self, state: dict) -> str:
+        """Use BarbGraph routers to determine next node"""
+        from workflows.routers import (
+            route_after_greet, route_after_verify, route_after_qualify,
+            route_after_quote, route_after_answer, route_after_objections,
+            route_after_book, route_after_goodbye
         )
         
-        # Build transition context message
-        transition_message = self._build_transition_message(node_name, state_row)
-        
-        # Use SWAIG context_switch action (proper SignalWire pattern)
-        result = SwaigFunctionResult()
-        result.switch_context(
-            system_prompt=node_prompt,
-            user_prompt=transition_message,
-            consolidate=True  # Summarize previous conversation to save tokens
-        )
-        
-        # Update tracking
-        self.current_node = node_name
-        self.phone_number = phone
-        
-        # Apply function restrictions per node
-        self._apply_node_function_restrictions(node_name)
-        
-        logger.info(f"✅ Context switched to node '{node_name}' with consolidation")
-        
-        return result
-    
-    def _build_transition_message(self, node_name: str, state: dict) -> str:
-        """Build user message to provide context for node transition
-        
-        This message helps the LLM understand WHY the prompt changed and what
-        happened in the previous node. Creates smoother, more natural transitions.
-        """
-        conversation_data = state.get("conversation_data", {}) if state else {}
-        
-        messages = {
-            "greet": "Call starting. Greet the caller warmly and introduce yourself.",
-            "verify": "Caller has been greeted. Now verify their identity and collect basic information.",
-            "qualify": "Identity verified. Now determine if they qualify for a reverse mortgage.",
-            "quote": f"Lead is qualified. Present the financial quote using their equity.",
-            "answer": "Quote presented. Answer any questions they have about reverse mortgages.",
-            "objections": f"Caller expressed concerns. Address them empathetically with facts.",
-            "book": "Caller is ready to schedule. Check broker availability and book a time.",
-            "exit": "Call objectives complete. Thank the caller and end professionally."
+        routers = {
+            "greet": route_after_greet,
+            "verify": route_after_verify,
+            "qualify": route_after_qualify,
+            "quote": route_after_quote,
+            "answer": route_after_answer,
+            "objections": route_after_objections,
+            "book": route_after_book,
+            "goodbye": route_after_goodbye
         }
         
-        return messages.get(node_name, "Continue the conversation naturally.")
+        router = routers.get(self.current_node)
+        return router(state) if router else None
 ```
 
-**SignalWire Routing Pattern:**
-
-Unlike LiveKit's `agent_speech_committed` event hook, SignalWire routing happens **after tool execution**:
+**LiveKit Function Tools:**
 
 ```python
-# Automatic routing after each tool call
-def check_and_route(self, tool_name: str):
-    """Called after EVERY tool execution to check for node transitions"""
-    # 1. Check if current node is complete
-    # 2. If complete, get next node from BarbGraph router
-    # 3. Call _route_to_node() which returns SwaigFunctionResult
-    # 4. SignalWire SDK applies context_switch action automatically
-```
+# Tools decorated with @function_tool
+@function_tool
+async def mark_ready_to_book(phone: str) -> str:
+    """Mark that the caller is ready to schedule an appointment."""
+    logger.info(f"🎯 Marking caller ready to book: {phone}")
+    
+    update_conversation_state(phone, {
+        "conversation_data": {
+            "ready_to_book": True,
+            "questions_answered": True
+        }
+    })
+    
+    return "Caller marked as ready to book."
 
-**Key Difference from LiveKit:**
-- **LiveKit:** Hook into `agent_speech_committed` event explicitly
-- **SignalWire:** Routing happens in tool execution flow, uses SWAIG actions
+@function_tool
+async def book_appointment(
+    phone: str,
+    date_time: str,
+    duration_minutes: int = 30
+) -> str:
+    """Book an appointment with broker."""
+    # Nylas API integration
+    result = create_nylas_event(phone, date_time, duration_minutes)
+    
+    # Update conversation state
+    update_conversation_state(phone, {
+        "conversation_data": {
+            "appointment_booked": True,
+            "appointment_datetime": date_time,
+            "appointment_id": result["event_id"]
+        }
+    })
+    
+    return f"Appointment booked for {date_time}."
+```
 
 ---
 
-#### Component 3.2: Prompt Loader (SignalWire Implementation)
+#### Component 3.2: Prompt Loader (Both Platforms)
 
-**File:** `equity_connect/services/prompt_loader.py`
+**SignalWire File:** `swaig-agent/services/contexts.py`
+**LiveKit File:** `livekit-agent/services/prompt_loader.py`
 
-**Purpose:** Load node prompts from Supabase with file fallback + context injection for SignalWire SDK.
+**Purpose:** Load node prompts from Supabase with context injection.
 
-**Key Functions:**
+**Both platforms implement:**
 1. `load_theme()` - Loads universal personality prompt for vertical
 2. `load_node_prompt()` - Loads node-specific prompt and combines with theme
 3. `build_context_injection()` - Builds call-specific context string
-4. `build_instructions_for_node()` - **Main function** that combines all three layers
+4. `build_instructions_for_node()` - Main function that combines all three layers
 
-**Context Injection Method:**
-SignalWire uses **string concatenation** (not template variables like `{{variable}}`). Context is injected as a formatted text block that gets inserted between the theme and node sections.
+**Variable Substitution:**
+- Both use Python `Template().safe_substitute()` for `{lead.first_name}` style variables
+- Context injected as formatted text block between theme and node
 
-**Code Snippet: Main Function**
+**Code Snippet: Main Function (Same for Both)**
 
 ```python
 def build_instructions_for_node(
     node_name: str,
-    call_type: str = "outbound",
+    call_type: str = "inbound",
     lead_context: Optional[dict] = None,
     phone_number: Optional[str] = None,
     vertical: str = "reverse_mortgage"
 ) -> str:
     """Build complete instructions for a node (theme + context + node prompt)
     
-    This is the main function called by BarbaraAgent to get full prompt text for SignalWire.
-    Combines theme, call context, and node-specific instructions in the correct order.
-    
     Returns:
-        Complete prompt text ready for agent.set_prompt_text() or context_switch
+        Complete prompt text ready for agent
     """
-    # 1. Load node prompt (already includes theme from load_node_prompt())
-    # load_node_prompt() returns: theme + "---" + node
+    # 1. Load node prompt (already includes theme)
     node_prompt_with_theme = load_node_prompt(node_name, vertical)
     
     # 2. Build context injection (if we have context)
@@ -893,105 +966,19 @@ def build_instructions_for_node(
         context = build_context_injection(call_type, lead_context, phone_number)
     
     # 3. Combine: Theme → Context → Node
-    # Insert context between theme and node sections
     if context:
-        # Split on the separator "---" that load_node_prompt adds
         if "\n---\n" in node_prompt_with_theme:
             theme_part, node_part = node_prompt_with_theme.split("\n---\n", 1)
             instructions = f"{theme_part}\n\n{context}\n\n---\n{node_part}"
         else:
-            # Fallback: append context after everything
             instructions = f"{node_prompt_with_theme}\n\n{context}"
     else:
-        # No context: use node prompt as-is (already has theme)
         instructions = node_prompt_with_theme
     
     return instructions
 ```
 
-**Code Snippet: Context Injection**
-
-```python
-def build_context_injection(call_type: str, lead_context: dict, phone_number: str) -> str:
-    """Build context string to inject into prompt
-    
-    Creates a formatted text block with call-specific information:
-    - Call type and direction
-    - Lead status (known/new)
-    - Property information
-    - Qualification status
-    - Broker assignment
-    
-    This context is inserted between theme and node sections so the LLM
-    has situational awareness without needing separate prompts per call type.
-    """
-    is_inbound = call_type.startswith("inbound")
-    is_qualified = lead_context.get("qualified", False)
-    lead_id = lead_context.get("lead_id")
-    lead_name = lead_context.get("name", "Unknown")
-    
-    context_parts = [
-        "=== CALL CONTEXT ===",
-        f"Call Type: {call_type}",
-        f"Direction: {'Inbound' if is_inbound else 'Outbound'}",
-        f"Phone: {phone_number}",
-    ]
-    
-    if lead_id:
-        context_parts.append(f"Lead Status: Known (ID: {lead_id})")
-        context_parts.append(f"Lead Name: {lead_name}")
-        context_parts.append(f"Qualified: {'Yes' if is_qualified else 'No'}")
-        
-        # Add property context if available
-        if lead_context.get("property_address"):
-            context_parts.append(f"Property: {lead_context['property_address']}")
-        elif lead_context.get("property_city") or lead_context.get("property_state"):
-            # Construct from city/state if full address not available
-            addr_parts = []
-            if lead_context.get("property_city"):
-                addr_parts.append(lead_context['property_city'])
-            if lead_context.get("property_state"):
-                addr_parts.append(lead_context['property_state'])
-            if addr_parts:
-                context_parts.append(f"Property: {', '.join(addr_parts)}")
-        
-        if lead_context.get("estimated_equity"):
-            context_parts.append(f"Est. Equity: ${lead_context['estimated_equity']:,}")
-        
-        # Add broker info if assigned
-        if lead_context.get("broker_name"):
-            broker_info = f"Assigned Broker: {lead_context.get('broker_name')}"
-            if lead_context.get("broker_company"):
-                broker_info += f" ({lead_context.get('broker_company')})"
-            context_parts.append(broker_info)
-    else:
-        context_parts.append("Lead Status: Unknown (new caller)")
-    
-    context_parts.append("===================\n")
-    return "\n".join(context_parts)
-```
-
-**Final Prompt Assembly (SignalWire):**
-
-```python
-# In barbara_agent.py on_swml_request() or _route_to_node():
-
-# Load complete instructions (theme + context + node)
-instructions = build_instructions_for_node(
-    node_name=current_node,
-    call_type=call_direction,
-    lead_context=lead_context,
-    phone_number=phone,
-    vertical="reverse_mortgage"
-)
-
-# Apply to agent
-self.set_prompt_text(instructions)  # Initial call setup
-# OR
-result.switch_context(system_prompt=instructions, ...)  # Mid-call routing
-```
-
-**Final Prompt Structure:**
+**Final Prompt Structure (Both Platforms):**
 ```
 # Barbara - Core Personality
 [Theme content - universal personality for vertical]
@@ -1017,13 +1004,6 @@ Assigned Broker: Walter White (ABC Mortgage)
 ## Instructions
 [Node-specific instructions]
 ```
-
-**Key Points:**
-- ✅ **"Injection" is the correct term** - it's a common industry term meaning "inserting data into a template/prompt"
-- ✅ Context is injected as **formatted text**, not template variables (SignalWire doesn't use `{{variable}}` syntax)
-- ✅ Order: **Theme → Context → Node** (optimal for LLM parsing)
-- ✅ Context is **optional** - if no lead_context provided, prompt still works (theme + node only)
-- ✅ Same node prompt adapts to different call types via context injection (no duplicate prompts needed)
 
 ---
 
@@ -1183,14 +1163,40 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
 
 ---
 
-#### Component 3.5: State Flag Tools
+#### Component 3.5: State Flag Tools (Both Platforms)
 
-**File:** `equity_connect/tools/conversation_flags.py`
+**SignalWire File:** `swaig-agent/tools/flags.py`
+**LiveKit File:** `livekit-agent/tools/flags.py`
 
 **Purpose:** Allow the LLM to signal routing intent by setting flags in the database.
 
-**Code Snippet: mark_ready_to_book**
+**Implementation Differences:**
+- **SignalWire:** Returns `{response: str, action: []}` dictionary for SWAIG format
+- **LiveKit:** Returns `str` for function calling format
+- **Business Logic:** Identical - same database updates
 
+**Code Snippet: mark_ready_to_book (Both Platforms)**
+
+**SignalWire Version:**
+```python
+def handle_mark_ready_to_book(phone: str) -> dict:
+    """Mark that the caller is ready to schedule an appointment."""
+    logger.info(f"🎯 Marking caller ready to book: {phone}")
+    
+    update_conversation_state(phone, {
+        "conversation_data": {
+            "ready_to_book": True,
+            "questions_answered": True
+        }
+    })
+    
+    return {
+        "response": "Caller marked as ready to book.",
+        "action": []  # SWAIG format
+    }
+```
+
+**LiveKit Version:**
 ```python
 @function_tool
 async def mark_ready_to_book(phone: str) -> str:
@@ -1200,60 +1206,22 @@ async def mark_ready_to_book(phone: str) -> str:
     update_conversation_state(phone, {
         "conversation_data": {
             "ready_to_book": True,
-            "questions_answered": True,  # Implicit - satisfied enough to book
+            "questions_answered": True
         }
     })
     
-    return "Caller marked as ready to book. Transition to booking node will occur."
+    return "Caller marked as ready to book."
 ```
 
-**Code Snippet: mark_has_objection**
-
-```python
-@function_tool
-async def mark_has_objection(phone: str, current_node: str) -> str:
-    """Mark that the caller has raised an objection or concern."""
-    logger.info(f"🚧 Objection detected for: {phone}")
-    
-    update_conversation_state(phone, {
-        "conversation_data": {
-            "has_objection": True,
-            "node_before_objection": current_node,  # Remember where we were
-        }
-    })
-    
-    return "Objection noted. Will transition to objection handling."
-```
-
-**Code Snippet: mark_wrong_person**
-
-```python
-@function_tool
-async def mark_wrong_person(phone: str, right_person_available: bool = False) -> str:
-    """Mark that we're speaking to the wrong person."""
-    logger.info(f"❌ Wrong person on call: {phone}")
-    
-    update_conversation_state(phone, {
-        "conversation_data": {
-            "wrong_person": True,
-            "right_person_available": right_person_available,
-        }
-    })
-    
-    if right_person_available:
-        return "Wrong person, but right person is available. Will re-greet."
-    else:
-        return "Wrong person and not available. Will politely exit."
-```
-
-**Available Tools:**
+**Available Tools (Both Platforms):**
 1. `mark_ready_to_book(phone)` - Caller wants to book
-2. `mark_has_objection(phone, objection_type)` - Caller has concerns
+2. `mark_has_objection(phone, current_node)` - Caller has concerns
 3. `mark_objection_handled(phone)` - Objection resolved
-4. `mark_questions_answered(phone)` - All questions answered
+4. `mark_questions_answered(phone)` - All questions answered (DEPRECATED)
 5. `mark_quote_presented(phone, quote_reaction)` - Quote presented with reaction
-6. `mark_wrong_person(phone, right_person_available)` - Wrong person answered
-7. `clear_conversation_flags(phone)` - Reset routing flags (new call)
+6. `mark_qualification_result(phone, qualified, reason)` - Set qualification status
+7. `mark_wrong_person(phone, right_person_available)` - Wrong person answered
+8. `clear_conversation_flags(phone)` - Reset routing flags (DEPRECATED)
 
 ---
 
@@ -1579,19 +1547,28 @@ Same agent code, different prompts loaded via vertical selector
 
 | File | Purpose |
 |------|---------|
-| `equity_connect/agent/barbara_agent.py` | BarbaraAgent class (SignalWire AgentBase) + routing hooks |
-| `equity_connect/services/prompt_loader.py` | DB query + context injection (SignalWire implementation) |
-| `equity_connect/workflows/node_completion.py` | Completion criteria checkers |
-| `equity_connect/workflows/routers.py` | 8 dynamic routing functions (added route_after_quote) |
-| `equity_connect/tools/conversation_flags.py` | 7 state flag tools (added mark_quote_presented) |
-| `equity_connect/tools/lead.py` | Lead lookup + verification tools |
-| `equity_connect/tools/calendar.py` | Appointment booking tools |
-| `portal/src/views/admin/PromptManagement.vue` | Node editor UI |
+| **SignalWire SWML Bridge** |
+| `swaig-agent/main.py` | FastAPI SWAIG bridge + SWML generation |
+| `swaig-agent/services/contexts.py` | Build contexts from database |
+| `swaig-agent/services/database.py` | Supabase client + node configs |
+| `swaig-agent/tools/flags.py` | State flag handlers (SWAIG format) |
+| `swaig-agent/tools/lead.py` | Lead management handlers |
+| `swaig-agent/tools/booking.py` | Calendar integration handlers |
+| `swaig-agent/tools/knowledge.py` | Vector search handler |
+| **LiveKit Agent** |
+| `livekit-agent/agent.py` | BarbaraAgent class + routing hooks |
+| `livekit-agent/services/prompt_loader.py` | DB query + context injection |
+| `livekit-agent/workflows/node_completion.py` | Completion criteria checkers |
+| `livekit-agent/workflows/routers.py` | 8 dynamic routing functions |
+| `livekit-agent/tools/flags.py` | State flag tools (@function_tool) |
+| `livekit-agent/tools/lead.py` | Lead lookup + verification |
+| `livekit-agent/tools/calendar.py` | Appointment booking |
+| `livekit-agent/tools/knowledge.py` | Vector search |
+| **Shared/Portal** |
+| `portal/src/views/admin/Verticals.vue` | Node editor UI (dual platform tabs) |
 | `database/migrations/20251111_add_theme_prompts.sql` | Theme table creation |
 | `database/migrations/20251111_add_quote_node_prompt.sql` | QUOTE node creation |
 | `database/migrations/20251111_strip_personality_from_nodes.sql` | Personality removal |
-| `database/migrations/20251111_add_vertical_node_to_prompts.sql` | Schema update |
-| `database/migrations/20251111_seed_reverse_mortgage_node_prompts.sql` | Initial prompt seeding |
 
 ---
 
@@ -1604,16 +1581,18 @@ Same agent code, different prompts loaded via vertical selector
 - **Easier Maintenance:** Edit one node without breaking the entire system
 - **Multi-Call Support:** Pick up where you left off, no matter when you call back
 - **Scalability:** Same architecture works across all business verticals
+- **Platform Flexibility:** Works on both SignalWire SWML and LiveKit Agents
+- **A/B Testing:** Compare platforms with identical routing logic for cost/performance optimization
+- **Risk Mitigation:** One platform down, the other continues serving calls
 
-Whether you're a business owner looking to improve call quality or a developer building conversational AI, BarbGraph provides the foundation for world-class voice agent experiences.
+Whether you're a business owner looking to improve call quality or a developer building conversational AI, BarbGraph provides the foundation for world-class voice agent experiences with the flexibility to choose or switch platforms as needed.
 
 ---
 
 **Questions?** Contact the dev team or consult the implementation docs:
-- `BARBGRAPH_SYSTEM_VERIFICATION.md` - System verification results (21 tools, field names, data flow)
-- `THEME_AND_QUOTE_IMPLEMENTATION_COMPLETE.md` - Theme system + QUOTE node implementation
-- `BARBGRAPH_INTEGRATION_FIXES_COMPLETE.md` - Bug fixes log
-- `EVENT_BASED_STATE_MACHINE_IMPLEMENTATION.md` - Backend implementation
-- `PLAN_3_EXECUTION_COMPLETE.md` - Frontend implementation
-- `MASTER_PRODUCTION_PLAN.md` - Complete system overview
+- `MASTER_PRODUCTION_PLAN.md` - Complete system overview (Nov 19 dual platform update)
+- `BARBGRAPH_SYSTEM_VERIFICATION.md` - System verification results
+- `THEME_AND_QUOTE_IMPLEMENTATION_COMPLETE.md` - Theme system + QUOTE node
+- `docs/conversation_flags.md` - All conversation flags documented
+- `prompts/rewrite/trace_test.md` - 13 test scenarios with routing improvements
 
