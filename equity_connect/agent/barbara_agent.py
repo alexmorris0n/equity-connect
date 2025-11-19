@@ -39,6 +39,25 @@ class BarbaraAgent(AgentBase):
 			logger.error(error_msg)
 			raise ValueError(error_msg)
 		
+		# Apply agent parameters (timeouts, etc.)
+		agent_params = get_agent_params(vertical="reverse_mortgage", language="en-US")
+		
+		# Build options dictionary for AgentBase
+		# These are passed to the underlying SWML configuration
+		agent_options = {
+			"attention_timeout": agent_params.get("attention_timeout", 8000),
+			"end_of_speech_timeout": agent_params.get("end_of_speech_timeout", 800),
+		}
+		
+		if agent_params.get("attention_timeout_prompt"):
+			agent_options["attention_timeout_prompt"] = agent_params["attention_timeout_prompt"]
+			
+		if agent_params.get("hard_stop_time"):
+			agent_options["hard_stop_time"] = agent_params["hard_stop_time"]
+			
+		if agent_params.get("hard_stop_prompt"):
+			agent_options["hard_stop_prompt"] = agent_params["hard_stop_prompt"]
+		
 		super().__init__(
 			name="barbara-agent",
 			route="/agent",
@@ -48,7 +67,8 @@ class BarbaraAgent(AgentBase):
 			auto_answer=True,
 			record_call=True,
 			record_format="mp3",
-			basic_auth=(agent_username, agent_password)
+			basic_auth=(agent_username, agent_password),
+			options=agent_options # Pass timeouts and other config via options dict
 		)
 		
 		# Enable SIP routing - REQUIRED for SignalWire to route calls to this agent
@@ -134,20 +154,6 @@ class BarbaraAgent(AgentBase):
 		)
 		logger.info(f"✅ Voice set to {voice_string}")
 		
-		# Apply agent parameters (timeouts, etc.)
-		agent_params = get_agent_params(vertical="reverse_mortgage", language="en-US")
-		
-		self.set_attention_timeout(agent_params.get("attention_timeout", 8000))
-		if agent_params.get("attention_timeout_prompt"):
-			self.set_attention_timeout_prompt(agent_params["attention_timeout_prompt"])
-		
-		self.set_end_of_speech_timeout(agent_params.get("end_of_speech_timeout", 800))
-		
-		if agent_params.get("hard_stop_time"):
-			self.set_hard_stop(agent_params["hard_stop_time"])
-		if agent_params.get("hard_stop_prompt"):
-			self.set_hard_stop_prompt(agent_params["hard_stop_prompt"])
-			
 		# Pattern hints
 		self.add_pattern_hint(
 			hint="AI Agent",
@@ -528,7 +534,7 @@ List specific actions needed based on conversation outcome.
 		parameters={
 			"type": "object",
 			"properties": {
-				"next_context": {"type": "string", "enum": ["book", "exit"]}
+				"next_context": {"type": "string", "enum": ["book", "goodbye"]}
 			},
 			"required": ["next_context"]
 		}

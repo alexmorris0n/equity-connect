@@ -16,7 +16,8 @@ _BASE_VALID_CONTEXTS = [
 	"answer",
 	"objections",
 	"book",
-	"exit"
+	"goodbye",
+	"end"
 ]
 
 
@@ -39,7 +40,7 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				"Caller feels welcomed and you understand their reason for calling."
 			)
 		],
-		"valid_contexts": ["verify", "answer", "exit"]
+		"valid_contexts": ["verify", "answer", "goodbye", "end"]
 	},
 	"verify": {
 		"steps": [
@@ -51,7 +52,7 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				["verify_caller_identity", "mark_wrong_person"]
 			)
 		],
-		"valid_contexts": ["qualify", "quote", "answer", "exit"]
+		"valid_contexts": ["qualify", "quote", "answer", "goodbye"]
 	},
 	"qualify": {
 		"steps": [
@@ -63,7 +64,7 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				["update_lead_info", "mark_wrong_person"]
 			)
 		],
-		"valid_contexts": ["quote", "answer", "exit"]
+		"valid_contexts": ["quote", "answer", "goodbye"]
 	},
 	"quote": {
 		"steps": [
@@ -75,7 +76,7 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				["mark_quote_presented", "mark_questions_answered", "mark_ready_to_book"]
 			)
 		],
-		"valid_contexts": ["answer", "book", "exit"]
+		"valid_contexts": ["answer", "book", "goodbye"]
 	},
 	"answer": {
 		"steps": [
@@ -87,7 +88,7 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				["search_knowledge", "mark_ready_to_book", "mark_has_objection", "mark_questions_answered"]
 			)
 		],
-		"valid_contexts": ["objections", "book", "exit"]
+		"valid_contexts": ["objections", "book", "goodbye"]
 	},
 	"objections": {
 		"steps": [
@@ -99,7 +100,7 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				["search_knowledge", "mark_objection_handled", "mark_wrong_person"]
 			)
 		],
-		"valid_contexts": ["answer", "book", "exit"]
+		"valid_contexts": ["answer", "book", "goodbye"]
 	},
 	"book": {
 		"steps": [
@@ -111,9 +112,9 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				["check_broker_availability", "book_appointment", "assign_tracking_number"]
 			)
 		],
-		"valid_contexts": ["exit"]
+		"valid_contexts": ["goodbye"]
 	},
-	"exit": {
+	"goodbye": {
 		"steps": [
 			_step(
 				"farewell",
@@ -121,6 +122,17 @@ DEFAULT_CONTEXTS: Dict[str, Dict[str, Any]] = {
 				"callback scenarios. Confirm the caller feels taken care of.",
 				"Conversation closed with a clear next step.",
 				["mark_wrong_person"]
+			)
+		],
+		"valid_contexts": ["end"]
+	},
+	"end": {
+		"steps": [
+			_step(
+				"hangup",
+				"The call is ending. Say nothing and disconnect.",
+				"Call disconnected.",
+				[]
 			)
 		],
 		"valid_contexts": []
