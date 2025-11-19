@@ -459,18 +459,15 @@ async def swml_inbound_webhook(request: Request):
     
     # Build SWML script using template variables (per SignalWire's official LiveKit guide)
     # Reference: https://developer.signalwire.com/ai/guides/integrations/livekit/inbound/
-    # Note: Headers not needed - LiveKit SIP extracts call info from SIP headers automatically
-    # (sip_to and sip_from are available in room metadata)
+    # Minimal format: only 'to' field required per SignalWire docs
+    # LiveKit SIP extracts call info from SIP headers automatically (sip_to, sip_from in room metadata)
     swml_script = {
         "version": "1.0.0",
         "sections": {
             "main": [
                 {
                     "connect": {
-                        "to": f"sip:%{{call.to}}@{Config.LIVEKIT_SIP_DOMAIN};transport=tcp",
-                        "from": "%{call.from}",
-                        "answer_on_bridge": True,
-                        "timeout": 30
+                        "to": f"sip:%{{call.to}}@{Config.LIVEKIT_SIP_DOMAIN};transport=tcp"
                     }
                 }
             ]
