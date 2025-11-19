@@ -234,9 +234,18 @@ def _query_contexts_from_db(vertical: str, use_draft: bool = False, lead_context
         
         # Add valid_contexts if present
         if content.get('valid_contexts'):
-            step['valid_contexts'] = content['valid_contexts']
+            valid_ctx_list = content['valid_contexts']
+            
+            # CRITICAL FIX: Prevent "Racing to Exit" in ANSWER context
+            # Remove 'goodbye' and 'end' from ANSWER context's valid_contexts
+            # to trap Barbara in the loop until complete_questions tool is called
+            if context_name == 'answer':
+                valid_ctx_list = [ctx for ctx in valid_ctx_list if ctx not in ['goodbye', 'end']]
+                logger.info(f"[ANTI-RACE] Filtered 'goodbye'/'end' from ANSWER context. Allowed: {valid_ctx_list}")
+            
+            step['valid_contexts'] = valid_ctx_list
             # Track at context level too
-            contexts_data[context_name]['valid_contexts'].extend(content['valid_contexts'])
+            contexts_data[context_name]['valid_contexts'].extend(valid_ctx_list)
         
         contexts_data[context_name]['steps'].append(step)
     

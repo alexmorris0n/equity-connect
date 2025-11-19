@@ -127,6 +127,17 @@ class BarbaraAgent(AgentBase):
 			# Build contexts object for default vertical
 			contexts_obj = build_contexts_object(vertical="reverse_mortgage", initial_context="greet")
 			
+			# TRAP STRATEGY: Force 'answer' context to NOT route to exit/goodbye automatically.
+			# This forces the agent to wait for user input and use a Tool to transition.
+			if "answer" in contexts_obj:
+				# Remove exit paths from valid_contexts
+				current_valid = contexts_obj["answer"].get("valid_contexts", [])
+				contexts_obj["answer"]["valid_contexts"] = [
+					ctx for ctx in current_valid 
+					if ctx not in ["goodbye", "end", "exit"]
+				]
+				logger.info(f"🔒 TRAP APPLIED: Restricted 'answer' context routing to: {contexts_obj['answer']['valid_contexts']}")
+			
 			# Apply contexts using builder API
 			self._apply_contexts_via_builder(self, contexts_obj)
 			logger.info(f"✅ Loaded {len(contexts_obj)} contexts from database")
@@ -789,12 +800,18 @@ List specific actions needed based on conversation outcome.
 				logger.info(f"[SWML] Found lead: {lead_data.get('first_name')} {lead_data.get('last_name')}")
 				
 				# 1. Build Caller Info String
+				# Safely handle None values for currency formatting
+				prop_val = lead_data.get('property_value')
+				est_equity = lead_data.get('estimated_equity')
+				prop_val = prop_val if prop_val is not None else 0
+				est_equity = est_equity if est_equity is not None else 0
+				
 				caller_info = f"""
 === CALLER INFORMATION ===
 Name: {lead_data.get('first_name', 'Unknown')} {lead_data.get('last_name', '')}
 Phone: {phone}
 Property: {lead_data.get('property_address') or lead_data.get('property_city', 'Unknown')}
-Value: ${lead_data.get('property_value', 0):,} | Equity: ${lead_data.get('estimated_equity', 0):,}
+Value: ${prop_val:,} | Equity: ${est_equity:,}
 Status: {'✅ QUALIFIED' if lead_data.get('qualified') else '❌ Not Qualified' if lead_data.get('qualified') is False else 'Unknown'}
 """
 				if conversation_data.get('appointment_booked'):
