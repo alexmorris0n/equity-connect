@@ -1,8 +1,8 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 19, 2025  
+**Last Updated:** November 20, 2025  
 **Status:** ✅ Production Ready - SWML Bridge (Fly.io) + LiveKit Agent (Fly.io) - Dual Platform  
-**Current Phase:** SignalWire Agent SDK Abandoned → SWML Bridge + LiveKit Agents Active + BarbGraph Routing Improvements Complete
+**Current Phase:** SignalWire Component-Based Model Loading Complete + Database Format Fixes Applied
 
 ---
 
@@ -101,6 +101,180 @@ equity-connect/ (Git Monorepo)
 - `portal/**` changes → Deploy to Vercel
 - `workflows/**` changes → Update n8n workflows
 - `database/**` changes → Run Supabase migrations
+
+---
+
+## 🔥 Nov 20: Component-Based Model Loading for Both Platforms + Database Format Fixes
+
+**Date:** November 20, 2025  
+**Status:** ✅ **COMPLETE - Both SignalWire and LiveKit Models Load from Database**
+
+### LiveKit Component-Based Configuration System
+
+**Problem:**
+- LiveKit agent was using hardcoded model values or template-based configuration
+- Vue portal dropdowns appeared blank after refresh (not loading active models from database)
+- LiveKit models were mixed with SignalWire models in same tables
+- Realtime models (OpenAI Realtime, Gemini Live) were not properly supported
+- Custom ElevenLabs voices were not correctly handled (plugin vs inference)
+
+**The Solution: Component-Based Active Model Loading**
+
+**Database Schema Separation:**
+1. ✅ Created separate `livekit_*` tables (commit 801cc9a)
+   - `livekit_available_llm_models` - All LiveKit Inference LLM models (21 models)
+   - `livekit_available_stt_models` - All LiveKit Inference STT models (16 models)
+   - `livekit_available_voices` - All LiveKit Inference TTS voices (175 voices)
+   - `livekit_available_realtime_models` - Realtime plugin models (OpenAI Realtime, Gemini Live)
+   - All tables use `is_active` flag for component selection
+   - All tables use `model_id_full` / `voice_id_full` for LiveKit Inference format (slash format)
+
+**LiveKit Agent (`livekit-agent/agent.py`):**
+2. ✅ Updated `entrypoint` to load active components from database (commit 801cc9a)
+   - Queries `livekit_available_stt_models` for active STT (uses `model_id_full`)
+   - Queries `livekit_available_llm_models` for active LLM (uses `model_id_full`)
+   - Queries `livekit_available_voices` for active TTS (uses `voice_id_full`)
+   - Queries `livekit_available_realtime_models` for active realtime model
+   - Uses `.maybe_single()` for safe query handling (prevents crashes when no active model) - commit 92e891a
+   - Falls back to default values if no active components found
+
+3. ✅ Realtime Model Support (commit 801cc9a)
+   - If active realtime model found, sets `model_type` to `"openai_realtime"` or `"gemini_live"`
+   - Realtime models take precedence over pipeline mode (STT+LLM+TTS)
+   - Uses `model_id_full` from database (just model name, no provider prefix)
+   - Supports OpenAI Realtime API with built-in turn detection
+   - Supports Gemini Live API with native audio support
+
+4. ✅ Custom ElevenLabs Voice Support (commit 801cc9a)
+   - Checks `is_custom` flag on active TTS voice
+   - If `is_custom=True`, uses ElevenLabs plugin with user's API key
+   - If `is_custom=False`, uses LiveKit Inference (standard voices)
+   - `build_tts_plugin()` function handles plugin instantiation
+
+5. ✅ Model Format Handling (commit 801cc9a)
+   - Uses `model_id_full` directly from database for STT/LLM (e.g., `"deepgram/nova-3:en"`)
+   - Uses `voice_id_full` directly from database for TTS (e.g., `"elevenlabs/eleven_turbo_v2_5:Xb7hH8MSUJpSbSDYk0k2"`)
+   - No format conversion needed - database stores correct LiveKit Inference format
+
+**Vue Portal (`portal/src/views/admin/Verticals.vue`):**
+6. ✅ Added `loadActiveLiveKitModels()` function (commit 801cc9a)
+   - Loads active STT, LLM, TTS, and realtime models from component tables on mount
+   - Sets `livekitConfig.value` with active selections
+   - Populates dropdowns with active values (no more blank dropdowns after refresh)
+   - Handles realtime model loading (OpenAI Realtime vs Gemini Live)
+
+7. ✅ Fixed `saveActiveComponents()` for LiveKit (commit 801cc9a)
+   - Queries by `model_id_full` for LLM/STT (matches dropdown values)
+   - Queries by `voice_id_full` for TTS (matches dropdown values)
+   - Handles realtime model activation/deactivation
+   - Deactivates realtime models when switching to pipeline mode
+
+8. ✅ Realtime Model UI Support (commit 801cc9a)
+   - Added `loadOpenAIRealtimeModels()` and `loadGeminiRealtimeModels()` functions
+   - Model type selector: Pipeline, OpenAI Realtime, Gemini Live
+   - Realtime model dropdowns populate from `livekit_available_realtime_models` table
+   - `onModelTypeChange()` async function loads appropriate models
+
+**Database Migrations:**
+9. ✅ Created `20251120_separate_signalwire_livekit_tables.sql` (commit 801cc9a)
+   - Renamed existing tables to `livekit_*` (they were holding LiveKit models)
+   - Created new empty `signalwire_*` tables
+   - Seeded LiveKit tables with all LiveKit Inference models (21 LLM, 16 STT, 175 TTS)
+   - Moved realtime models to `livekit_available_realtime_models` table
+   - Seeded SignalWire tables with SignalWire-specific models
+
+10. ✅ Created `20251120_fix_livekit_format_dots_to_slashes.sql`
+    - Converted dot-format model IDs to slash format (LiveKit Inference format)
+    - Handled duplicates and preserved `is_active` status
+    - Fixed ElevenLabs model name format (added `eleven_` prefix)
+
+11. ✅ Created `20251120_fix_livekit_inference_models.sql`
+    - Added missing OpenAI LLM models (`gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`)
+    - Added missing Google Gemini LLM models (2.5 and 2.0 variants)
+    - Removed plugin-only models (Google/OpenAI STT/TTS, Amazon/Azure TTS)
+    - Added missing Cartesia, ElevenLabs, Inworld, and Rime TTS models
+
+12. ✅ Created `20251120_fix_realtime_model_format.sql`
+    - Fixed `model_id_full` format for realtime models (removed provider prefix)
+    - Added missing Gemini 2.5 model
+    - Ensured format matches what LiveKit plugins expect
+
+**Format Verification (Per LiveKit Docs):**
+- ✅ **LLM (`model_id_full`)**: Slash format (e.g., `"openai/gpt-5"`, `"google/gemini-2.5-pro"`)
+- ✅ **STT (`model_id_full`)**: Slash format with language (e.g., `"deepgram/nova-3:en"`, `"assemblyai/universal-streaming:multi"`)
+- ✅ **TTS (`voice_id_full`)**: Slash format with voice ID (e.g., `"elevenlabs/eleven_turbo_v2_5:Xb7hH8MSUJpSbSDYk0k2"`)
+- ✅ **Realtime (`model_id_full`)**: Just model name (e.g., `"gpt-4o-realtime-preview"`, `"gemini-2.0-flash-exp"`)
+
+**Impact:**
+- ✅ LiveKit agent now loads active models from database (no hardcoded fallbacks)
+- ✅ Vue portal displays active configuration on page load/refresh
+- ✅ All model formats match LiveKit Inference documentation exactly
+- ✅ Realtime models (OpenAI Realtime, Gemini Live) fully supported
+- ✅ Custom ElevenLabs voices work via plugin with user's API key
+- ✅ Safer database queries with `.maybe_single()` (prevents crashes)
+- ✅ Complete separation of SignalWire and LiveKit models in database
+
+**Status:** ✅ **COMPLETE - LiveKit Component-Based Configuration Active (November 20, 2025)**
+
+---
+
+### SignalWire Component-Based Configuration System
+
+**Problem:**
+- SignalWire agent was using hardcoded model values (`"ai_model": "gpt-4o-mini"`, `"openai_asr_engine": "deepgram:nova-3"`)
+- Vue portal dropdowns appeared blank after refresh (not loading active models from database)
+- TTS voice saving was matching by wrong field (`voice_name` instead of `voice_id_full`)
+- Missing Azure TTS voices in SignalWire database
+
+**The Solution: Component-Based Active Model Loading**
+
+**SignalWire Agent (`swaig-agent/`):**
+1. ✅ Created `get_active_signalwire_models()` function in `services/database.py`
+   - Queries `signalwire_available_llm_models` for active LLM (uses `model_id_full`)
+   - Queries `signalwire_available_stt_models` for active STT (uses `model_id_full`)
+   - Queries `signalwire_available_voices` for active TTS (uses `voice_id_full`)
+   - Returns formats matching SignalWire docs exactly
+   - Uses `.maybe_single()` for safe query handling (prevents crashes when no active model)
+
+2. ✅ Updated `main.py` to load active models from database
+   - Replaced hardcoded `"ai_model": "gpt-4o-mini"` with `llm_model` from database
+   - Replaced hardcoded `"openai_asr_engine": "deepgram:nova-3"` with `stt_model` from database
+   - Replaced `get_voice_config()` (old `agent_voice_config` table) with `get_active_signalwire_models()` (component tables)
+   - All models now load dynamically per call
+
+**Vue Portal (`portal/src/views/admin/Verticals.vue`):**
+3. ✅ Added `loadActiveSignalWireModels()` function
+   - Loads active LLM, STT, TTS from component tables on mount
+   - Sets `signalwireConfig.value` with active selections
+   - Populates dropdowns with active values (no more blank dropdowns after refresh)
+
+4. ✅ Fixed `loadSignalWireVoices()` to use `voice_id_full`
+   - Changed dropdown values from `voice_name` to `voice_id_full` (e.g., `"elevenlabs.rachel"`)
+   - Matches format stored in database and expected by SignalWire
+
+5. ✅ Fixed `saveSignalWireConfig()` to match by `voice_id_full`
+   - Changed query from `voice_name` to `voice_id_full` when marking voices as active
+   - Ensures correct voice is activated when saving
+
+**Database Migrations:**
+6. ✅ Created `20251120_fix_signalwire_models.sql`
+   - Added 37 Microsoft Azure US English TTS voices (Neural + Multilingual)
+   - Removed `deepgram:nova-2-medical` from STT models (not in SignalWire docs)
+   - All formats verified against SignalWire documentation
+
+**Format Verification (Per SignalWire Docs):**
+- ✅ **LLM (`ai_model`)**: Model name only (e.g., `"gpt-4.1-mini"`, `"gpt-4o-mini"`, `"gpt-4.1-nano"`)
+- ✅ **STT (`openai_asr_engine`)**: Colon format (e.g., `"deepgram:nova-2"`, `"deepgram:nova-3"`)
+- ✅ **TTS (`voice`)**: Dot format (e.g., `"elevenlabs.rachel"`, `"amazon.Joanna:neural:en-US"`)
+
+**Impact:**
+- ✅ SignalWire agent now loads active models from database (no hardcoded fallbacks)
+- ✅ Vue portal displays active configuration on page load/refresh
+- ✅ All model formats match SignalWire documentation exactly
+- ✅ Azure TTS voices now available in SignalWire configuration
+- ✅ Safer database queries with `.maybe_single()` (prevents crashes)
+
+**Status:** ✅ **COMPLETE - SignalWire Component-Based Configuration Active (November 20, 2025)**
 
 ---
 
