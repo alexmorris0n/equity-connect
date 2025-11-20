@@ -565,15 +565,15 @@ async def entrypoint(ctx: JobContext):
     supabase = get_supabase_client()
     
     # Get active STT (from LiveKit tables)
-    stt_result = supabase.table("livekit_available_stt_models").select("*").eq("is_active", True).single().execute()
+    stt_result = supabase.table("livekit_available_stt_models").select("*").eq("is_active", True).maybe_single().execute()
     active_stt = stt_result.data if stt_result.data else None
     
     # Get active LLM (from LiveKit tables)
-    llm_result = supabase.table("livekit_available_llm_models").select("*").eq("is_active", True).single().execute()
+    llm_result = supabase.table("livekit_available_llm_models").select("*").eq("is_active", True).maybe_single().execute()
     active_llm = llm_result.data if llm_result.data else None
     
     # Get active TTS (from LiveKit tables)
-    tts_result = supabase.table("livekit_available_voices").select("*").eq("is_active", True).single().execute()
+    tts_result = supabase.table("livekit_available_voices").select("*").eq("is_active", True).maybe_single().execute()
     active_tts = tts_result.data if tts_result.data else None
     
     logger.info(f"🎙️ ACTIVE STT: {active_stt.get('provider')}/{active_stt.get('model_name') if active_stt else 'NOT SET'}")
