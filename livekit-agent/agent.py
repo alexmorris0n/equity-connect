@@ -71,8 +71,10 @@ class BarbaraAgent(Agent):
     
     async def on_enter(self):
         """Agent joins - start with greet node"""
-        logger.info("🎤 Agent joined - loading greet node")
+        logger.info("🎤 ON_ENTER: Agent joined - loading greet node")
+        logger.info(f"🎤 ON_ENTER: Phone={self.phone}, Vertical={self.vertical}, CallType={self.call_type}")
         await self.load_node("greet", speak_now=True)
+        logger.info("✅ ON_ENTER: Greet node loaded")
     
     async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
         """IMPROVEMENT #3: Routing Timing
@@ -157,7 +159,15 @@ class BarbaraAgent(Agent):
         
         # Combine: Theme → Call Context → Node Prompt
         # (Theme is already included in node_prompt from load_node_prompt)
-        full_prompt = f"{context}\n\n{node_prompt}"
+        # For verify node, add explicit phone number reminder
+        if node_name == "verify":
+            logger.info(f"📞 VERIFY NODE: Phone number available: {self.phone}")
+            if not self.phone or self.phone.startswith("sip-"):
+                logger.warning(f"⚠️ VERIFY NODE: Phone number may be invalid: {self.phone}")
+            phone_reminder = f"\n\n⚠️ CRITICAL FOR VERIFY NODE: The caller's phone number is {self.phone}. You MUST use this phone number when calling verify_caller_identity or get_lead_context tools. Do not ask for the phone number - you already have it from caller ID.\n"
+            full_prompt = f"{context}\n\n{node_prompt}{phone_reminder}"
+        else:
+            full_prompt = f"{context}\n\n{node_prompt}"
         
         self.current_node = node_name
         
@@ -192,26 +202,32 @@ class BarbaraAgent(Agent):
             logger.warning("No state found in DB")
             return
         
-        # Increment node visit count for ANSWER node to enable loop cap logic
+        # Increment node visit count for ANSWER and VERIFY nodes to enable loop cap logic
         try:
-            if self.current_node == "answer":
+            if self.current_node in ["answer", "verify"]:
                 cd = state_row.get("conversation_data") or {}
-                visits = ((cd.get("node_visits") or {}).get("answer") or 0) + 1
+                node_visits = cd.get("node_visits") or {}
+                visits = (node_visits.get(self.current_node) or 0) + 1
+                node_visits[self.current_node] = visits
                 update_conversation_state(self.phone, {
                     "conversation_data": {
-                        "node_visits": {
-                            "answer": visits
-                        }
+                        "node_visits": node_visits
                     }
                 })
+                logger.debug(f"📊 Node '{self.current_node}' visit count: {visits}")
         except Exception as e:
-            logger.warning(f"Failed to increment answer node visits: {e}")
+            logger.warning(f"Failed to increment node visits: {e}")
         
         # Extract conversation_data (contains flags)
         state = state_row.get("conversation_data", {})
         
+        # DEBUG: Log state for verify node
+        if self.current_node == "verify":
+            logger.info(f"🔍 Verify node state check: verified={state.get('verified')}, lead_id={state_row.get('lead_id')}, state_keys={list(state.keys())[:10]}")
+        
         # Check if current node is complete (now supports database step_criteria)
-        if not is_node_complete(self.current_node, state, vertical=self.vertical):
+        # Pass state_row for fallback checks (e.g., verify node can check lead_id)
+        if not is_node_complete(self.current_node, state, vertical=self.vertical, state_row=state_row):
             logger.info(f"⏳ Node '{self.current_node}' not complete yet")
             return
         
@@ -327,10 +343,13 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint - handles each call"""
+    logger.info("🚀 ENTRYPOINT: Starting call handler")
     await ctx.connect()
+    logger.info("✅ ENTRYPOINT: Connected to LiveKit room")
     
     room = ctx.room
     room_name = room.name
+    logger.info(f"📞 ENTRYPOINT: Room name: {room_name}")
     
     # Try to extract phone number from room name as early fallback
     # LiveKit SIP rooms are named like: sip-_+16505300051_LWWx7vjKCBcD
@@ -447,18 +466,26 @@ async def entrypoint(ctx: JobContext):
             metadata.get("from") or  # Legacy fallback
             metadata.get("caller")  # Legacy fallback
         )
-        logger.info(f"📞 Using metadata phone: {caller_phone}")
+        if caller_phone:
+            logger.info(f"📞 ENTRYPOINT: Using metadata phone: {caller_phone}")
     
     if not called_number:
         called_number = metadata.get("sip_to") or metadata.get("to")
+    
+    # FINAL PHONE EXTRACTION SUMMARY
+    if caller_phone:
+        logger.info(f"✅ ENTRYPOINT: Phone number extracted successfully: {caller_phone}")
+    else:
+        logger.warning(f"⚠️ ENTRYPOINT: NO PHONE NUMBER FOUND - will use room_name as fallback")
     
     lead_id = metadata.get("lead_id")
     qualified = metadata.get("qualified", False)
     
     # For inbound calls, query Supabase to get full lead context by phone number
     lead_context = None
+    logger.info(f"🔍 ENTRYPOINT: Lead lookup check - caller_phone={caller_phone}, lead_id={lead_id}")
     if caller_phone and not lead_id:
-        logger.info(f"🔍 Looking up lead by phone: {caller_phone}")
+        logger.info(f"🔍 ENTRYPOINT: Looking up lead by phone: {caller_phone}")
         try:
             # Query Supabase for lead by phone number
             from services.supabase import get_supabase_client
@@ -516,34 +543,49 @@ async def entrypoint(ctx: JobContext):
     if caller_phone:
         try:
             cs_start_call(str(caller_phone), {"lead_id": lead_id, "qualified": bool(qualified)})
-            logger.info(f"📒 start_call recorded for {caller_phone}")
+            logger.info(f"📒 ENTRYPOINT: start_call recorded for {caller_phone}")
         except Exception as e:
-            logger.warning(f"Failed to start_call for {caller_phone}: {e}")
+            logger.warning(f"⚠️ ENTRYPOINT: Failed to start_call for {caller_phone}: {e}")
+            # FALLBACK: If start_call fails but we have lead_id, manually update state
+            if lead_id:
+                try:
+                    from services.conversation_state import update_conversation_state
+                    update_conversation_state(str(caller_phone), {
+                        "lead_id": str(lead_id),
+                        "qualified": bool(qualified)
+                    })
+                    logger.info(f"✅ ENTRYPOINT: Manually set lead_id={lead_id} in conversation state (fallback)")
+                except Exception as e2:
+                    logger.error(f"❌ ENTRYPOINT: Failed to set lead_id fallback: {e2}")
     
+    logger.info(f"🎮 ENTRYPOINT: Loading template - is_test={is_test}, template_id={template_id}, call_type={call_type}")
     if is_test and template_id:
         # Load template (configuration) from Supabase
-        logger.info(f"🎮 Test room - loading template {template_id} + prompt {call_type}")
+        logger.info(f"🎮 ENTRYPOINT: Test room - loading template {template_id} + prompt {call_type}")
         template = await load_template(template_id)
         if not template:
-            logger.error(f"❌ Template {template_id} not found")
+            logger.error(f"❌ ENTRYPOINT: Template {template_id} not found")
             return
         
         # Load prompt (instructions) from prompts table
         instructions = await load_prompt_instructions(call_type)
         if not instructions:
-            logger.warning(f"⚠️ Prompt {call_type} not found, using fallback")
+            logger.warning(f"⚠️ ENTRYPOINT: Prompt {call_type} not found, using fallback")
             instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
     else:
         # Regular call - use default template + prompt
-        logger.info(f"📞 Regular call - using defaults")
+        logger.info(f"📞 ENTRYPOINT: Regular call - using defaults")
         template = await load_default_template()
         instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
+    
+    logger.info(f"✅ ENTRYPOINT: Template loaded - model_type={template.get('model_type', 'pipeline')}")
     
     # Get VAD settings FIRST (used by both STT and AgentSession)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
     # Check if using realtime model (bundled STT+LLM+TTS)
     model_type = template.get("model_type", "pipeline")
+    logger.info(f"🔧 ENTRYPOINT: Model type: {model_type}")
     
     # === REALTIME MODEL MODE ===
     # Note: Realtime models have optimized built-in turn detection - we use that instead of LiveKit's
@@ -672,7 +714,7 @@ async def entrypoint(ctx: JobContext):
         else:
             stt_string = f"deepgram/nova-2:{lang_code}"  # fallback
         
-        logger.info(f"🎙️ STT: {stt_string} (LiveKit Inference)")
+        logger.info(f"🎙️ ENTRYPOINT: STT initialized - {stt_string} (LiveKit Inference)")
         
         # LLM model string - LiveKit Inference supports multiple providers
         llm_provider = template.get("llm_provider", "openai")
@@ -696,7 +738,7 @@ async def entrypoint(ctx: JobContext):
         else:
             llm_string = f"{llm_provider}/{llm_model}"
         
-        logger.info(f"🧠 LLM: {llm_string} (LiveKit Inference)")
+        logger.info(f"🧠 ENTRYPOINT: LLM initialized - {llm_string} (LiveKit Inference)")
         
         # TTS model string - LiveKit Inference supports custom voice IDs
         # Format: "provider/model:voice_id"
@@ -708,7 +750,7 @@ async def entrypoint(ctx: JobContext):
         
         if tts_provider == "elevenlabs":
             tts_string = f"elevenlabs/{tts_model}:{tts_voice_id}"
-            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
+            logger.info(f"🔊 ENTRYPOINT: TTS initialized - {tts_string} (LiveKit Inference)")
         elif tts_provider == "cartesia":
             tts_string = f"cartesia/{tts_model}:{tts_voice_id}"
             logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
@@ -755,11 +797,11 @@ async def entrypoint(ctx: JobContext):
             if turn_detector_model == "multilingual":
                 from livekit.plugins.turn_detector.multilingual import MultilingualModel
                 turn_detector = MultilingualModel(unlikely_threshold=unlikely_threshold)
-                logger.info(f"🎯 Turn Detector: MULTILINGUAL with EOU (unlikely_threshold={unlikely_threshold})")
+                logger.info(f"🎯 ENTRYPOINT: Turn Detector initialized - MULTILINGUAL with EOU (unlikely_threshold={unlikely_threshold})")
             else:
                 from livekit.plugins.turn_detector.english import EnglishModel
                 turn_detector = EnglishModel(unlikely_threshold=unlikely_threshold)
-                logger.info(f"🎯 Turn Detector: ENGLISH with EOU (unlikely_threshold={unlikely_threshold})")
+                logger.info(f"🎯 ENTRYPOINT: Turn Detector initialized - ENGLISH with EOU (unlikely_threshold={unlikely_threshold})")
         except Exception as e:
             logger.error(f"❌ CRITICAL: Turn detector init failed ({e})")
             raise
@@ -778,13 +820,16 @@ async def entrypoint(ctx: JobContext):
     # IMPORTANT: Ensure caller_phone is set before creating agent
     # If caller_phone is None/empty, the agent won't be able to look up conversation state
     if not caller_phone:
-        logger.warning("⚠️ No caller_phone available - using room_name as fallback identifier")
+        logger.warning(f"⚠️ ENTRYPOINT: No caller_phone available - using room_name as fallback identifier: {room_name}")
         caller_phone = room_name  # Use room name as fallback for state tracking
+    else:
+        logger.info(f"✅ ENTRYPOINT: Final caller_phone for agent: {caller_phone}")
     
     # Detect vertical from metadata (for multi-vertical support)
     vertical = metadata.get("vertical", "reverse_mortgage")
-    logger.info(f"🏢 Vertical: {vertical}")
+    logger.info(f"🏢 ENTRYPOINT: Vertical: {vertical}")
     
+    logger.info(f"🤖 ENTRYPOINT: Creating BarbaraAgent - phone={caller_phone}, vertical={vertical}, call_type={call_type}")
     # Create agent with phone number, vertical, call_type, and lead context for event-based routing
     agent = BarbaraAgent(
         instructions=instructions,
@@ -793,6 +838,7 @@ async def entrypoint(ctx: JobContext):
         call_type=call_type,
         lead_context=lead_context or {}
     )
+    logger.info(f"✅ ENTRYPOINT: BarbaraAgent created")
     
     # Create session - different config for realtime vs pipeline
     if model_type in ["openai_realtime", "gemini_live"]:
@@ -842,6 +888,7 @@ async def entrypoint(ctx: JobContext):
     
     # Start the session with custom BarbaraAgent that auto-greets on entry
     # The session property is set automatically when session.start() is called
+    logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
     exit_reason: Optional[str] = None
     try:
         await session.start(
@@ -854,6 +901,7 @@ async def entrypoint(ctx: JobContext):
                 audio_enabled=True,  # CRITICAL: Enable audio output for TTS
             ),
         )
+        logger.info(f"✅ ENTRYPOINT: AgentSession started - agent.on_enter() should be called next")
         
         exit_reason = "hangup"
     except Exception as e:

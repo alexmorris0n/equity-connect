@@ -138,11 +138,14 @@ async def get_lead_context(phone: str) -> str:
 async def verify_caller_identity(first_name: str, phone: str) -> str:
     """Verify caller identity by name and phone. Creates lead if new.
     
+    CRITICAL: You MUST call this tool immediately after getting the caller's name.
+    This tool sets verified=True in conversation state, which allows routing to continue.
+    
     Args:
         first_name: Caller's first name
-        phone: Caller's phone number
+        phone: Caller's phone number (use the phone number from call context)
     """
-    logger.info(f"🔍 Verifying caller identity: {first_name}, {phone}")
+    logger.info(f"✅ TOOL CALLED: verify_caller_identity(first_name='{first_name}', phone='{phone}')")
     
     # First check if lead exists
     lead_info = await get_lead_context(phone)

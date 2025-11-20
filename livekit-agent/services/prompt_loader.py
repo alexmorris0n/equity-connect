@@ -21,22 +21,33 @@ def load_theme(vertical: str = "reverse_mortgage") -> str:
         vertical: Business vertical (default: "reverse_mortgage")
     
     Returns:
-        Theme prompt content defining core personality
+        Theme prompt content defining core personality (assembled from structured sections)
     """
-    # TRY DATABASE FIRST
+    # TRY DATABASE FIRST (Structured JSONB format)
     try:
         from services.supabase import get_supabase_client
         
         sb = get_supabase_client()
-        result = sb.table('theme_prompts').select('content').eq('vertical', vertical).eq('is_active', True).execute()
+        result = sb.table('theme_prompts').select('content_structured, content').eq('vertical', vertical).eq('is_active', True).execute()
         
         if result.data and len(result.data) > 0:
-            theme = result.data[0].get('content', '')
-            if theme:
-                logger.info(f"✅ Loaded theme for {vertical}: {len(theme)} chars")
+            row = result.data[0]
+            
+            # PREFER: Structured format (content_structured JSONB)
+            if row.get('content_structured'):
+                theme_data = row['content_structured']
+                assembled = _assemble_theme(theme_data)
+                if assembled:
+                    logger.info(f"✅ Loaded structured theme for {vertical}: {len(assembled)} chars")
+                    return assembled
+            
+            # FALLBACK: Old format (content TEXT) for backward compatibility
+            if row.get('content'):
+                theme = row['content']
+                logger.info(f"✅ Loaded legacy theme for {vertical}: {len(theme)} chars (consider migrating to structured format)")
                 return theme
-            else:
-                logger.warning(f"Database returned empty theme for {vertical}, using fallback")
+            
+            logger.warning(f"Database returned empty theme for {vertical}, using fallback")
         else:
             logger.warning(f"No theme found in database for {vertical}, using fallback")
     
@@ -44,22 +55,68 @@ def load_theme(vertical: str = "reverse_mortgage") -> str:
         logger.warning(f"Failed to load theme from database: {e}, using fallback")
     
     # FALLBACK: Basic theme if database fails
-    fallback_theme = """# Barbara - Core Personality
+    fallback_theme = """You are Barbara, a warm and professional voice assistant.
 
-You are Barbara, a warm and professional voice assistant.
+# Output rules
 
-## Speaking Style
-- Brief, natural responses
-- Simple language, no jargon
-- Patient with seniors
+- Respond in plain text only. Keep replies brief.
+- Spell out numbers and phone numbers.
+- Avoid complex formatting.
 
-## Core Rules
-- Never pressure
-- Use tools for facts
-- Listen more than talk
+# Conversational flow
+
+- Help the caller efficiently. Be patient.
+- Provide guidance in small steps.
+
+# Tools
+
+- Use available tools as needed.
+- Speak outcomes clearly.
+
+# Guardrails
+
+- Stay within safe, lawful use.
+- Protect privacy.
 """
     logger.info(f"Using fallback theme for {vertical}: {len(fallback_theme)} chars")
     return fallback_theme
+
+
+def _assemble_theme(theme_data: dict) -> str:
+    """Assemble structured theme JSONB into single text block
+    
+    Combines 5 sections (identity, output_rules, conversational_flow, tools, guardrails)
+    into one formatted prompt matching LiveKit's structure.
+    
+    Args:
+        theme_data: Dict with keys: identity, output_rules, conversational_flow, tools, guardrails
+    
+    Returns:
+        Assembled theme as single text block
+    """
+    sections = []
+    
+    # Section 1: Identity (no header, just the statement)
+    if theme_data.get('identity'):
+        sections.append(theme_data['identity'])
+    
+    # Section 2: Output rules
+    if theme_data.get('output_rules'):
+        sections.append(f"# Output rules\n\n{theme_data['output_rules']}")
+    
+    # Section 3: Conversational flow
+    if theme_data.get('conversational_flow'):
+        sections.append(f"# Conversational flow\n\n{theme_data['conversational_flow']}")
+    
+    # Section 4: Tools
+    if theme_data.get('tools'):
+        sections.append(f"# Tools\n\n{theme_data['tools']}")
+    
+    # Section 5: Guardrails
+    if theme_data.get('guardrails'):
+        sections.append(f"# Guardrails\n\n{theme_data['guardrails']}")
+    
+    return "\n\n".join(sections)
 
 
 def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict:
@@ -203,6 +260,7 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
         f"Call Type: {call_type}",
         f"Direction: {'Inbound' if is_inbound else 'Outbound'}",
         f"Phone: {phone_number}",
+        f"IMPORTANT: Use this phone number ({phone_number}) when calling tools that require a phone parameter.",
     ]
     
     if lead_id:

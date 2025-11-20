@@ -176,7 +176,7 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			"call_status": "completed",
 			"call_ended_at": datetime.now(timezone.utc).isoformat(),
 			"exit_reason": "interrupted_or_replaced",
-		}).eq("id", existing["id"]).select("*").execute()
+		}).eq("id", existing["id"]).execute()
 		# Re-read
 		existing = _fetch_by_phone(phone_value) or existing
 
@@ -200,8 +200,11 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			continue
 		update_payload[k] = v
 
-	resp = supabase.table(TABLE_NAME).update(update_payload).eq("id", existing["id"]).select("*").execute()
-	return resp.data[0]
+	# Update and return the updated row
+	supabase.table(TABLE_NAME).update(update_payload).eq("id", existing["id"]).execute()
+	# Re-fetch to get updated row
+	updated = _fetch_by_phone(phone_value)
+	return updated if updated else existing
 
 
 def get_conversation_state(phone: str) -> Optional[Dict[str, Any]]:
