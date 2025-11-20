@@ -558,27 +558,62 @@ async def entrypoint(ctx: JobContext):
                 except Exception as e2:
                     logger.error(f"❌ ENTRYPOINT: Failed to set lead_id fallback: {e2}")
     
-    logger.info(f"🎮 ENTRYPOINT: Loading template - is_test={is_test}, template_id={template_id}, call_type={call_type}")
-    if is_test and template_id:
-        # Load template (configuration) from Supabase
-        logger.info(f"🎮 ENTRYPOINT: Test room - loading template {template_id} + prompt {call_type}")
-        template = await load_template(template_id)
-        if not template:
-            logger.error(f"❌ ENTRYPOINT: Template {template_id} not found")
-            return
-        
-        # Load prompt (instructions) from prompts table
-        instructions = await load_prompt_instructions(call_type)
-        if not instructions:
-            logger.warning(f"⚠️ ENTRYPOINT: Prompt {call_type} not found, using fallback")
-            instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
-    else:
-        # Regular call - use default template + prompt
-        logger.info(f"📞 ENTRYPOINT: Regular call - using defaults")
-        template = await load_default_template()
-        instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
+    logger.info(f"🎮 ENTRYPOINT: Loading active components")
     
-    logger.info(f"✅ ENTRYPOINT: Template loaded - model_type={template.get('model_type', 'pipeline')}")
+    # Load ACTIVE components (STT, LLM, TTS) from database
+    from services.supabase import get_supabase_client
+    supabase = get_supabase_client()
+    
+    # Get active STT (from LiveKit tables)
+    stt_result = supabase.table("livekit_available_stt_models").select("*").eq("is_active", True).single().execute()
+    active_stt = stt_result.data if stt_result.data else None
+    
+    # Get active LLM (from LiveKit tables)
+    llm_result = supabase.table("livekit_available_llm_models").select("*").eq("is_active", True).single().execute()
+    active_llm = llm_result.data if llm_result.data else None
+    
+    # Get active TTS (from LiveKit tables)
+    tts_result = supabase.table("livekit_available_voices").select("*").eq("is_active", True).single().execute()
+    active_tts = tts_result.data if tts_result.data else None
+    
+    logger.info(f"🎙️ ACTIVE STT: {active_stt.get('provider')}/{active_stt.get('model_name') if active_stt else 'NOT SET'}")
+    logger.info(f"🧠 ACTIVE LLM: {active_llm.get('provider')}/{active_llm.get('model_name') if active_llm else 'NOT SET'}")
+    logger.info(f"🔊 ACTIVE TTS: {active_tts.get('provider')}/{active_tts.get('voice_name') if active_tts else 'NOT SET'}")
+    
+    # Determine TTS mode: custom voices need plugin, standard voices use LiveKit Inference
+    is_custom_voice = active_tts.get("is_custom", False) if active_tts else False
+    if is_custom_voice:
+        logger.info(f"✨ Using ElevenLabs PLUGIN for custom voice (requires API key)")
+    
+    # Build template from active components
+    template = {
+        "model_type": "pipeline",
+        "stt_provider": active_stt.get("provider") if active_stt else "deepgram",
+        "stt_model": active_stt.get("model_name") if active_stt else "nova-2",
+        "stt_language": "en",
+        "tts_provider": active_tts.get("provider") if active_tts else "elevenlabs",
+        "tts_model": active_tts.get("model") if active_tts else "eleven_turbo_v2_5",
+        "tts_voice_id": active_tts.get("voice_id") if active_tts else "EXAVITQu4vr4xnSDxMaL",
+        "tts_use_plugin": is_custom_voice, # If TRUE, use elevenlabs plugin instead of LiveKit Inference
+        "llm_provider": active_llm.get("provider") if active_llm else "openai",
+        "llm_model": active_llm.get("model_name") if active_llm else "gpt-4o",
+        "llm_temperature": 0.7,
+        "llm_max_tokens": 4096,
+        "vad_silence_duration_ms": 500,
+        "use_turn_detector": True,
+        "turn_detector_model": "fast",
+        "turn_detector_threshold": 0.25,
+        "min_endpointing_delay": 0.1,
+        "max_endpointing_delay": 3.0,
+        "allow_interruptions": True,
+        "preemptive_generation": True,
+        "enable_web_search": True,
+        "web_search_max_results": 5
+    }
+    
+    instructions = "You are Barbara, a warm voice assistant. Be friendly and helpful."
+    
+    logger.info(f"✅ ENTRYPOINT: Active components loaded")
     
     # Get VAD settings FIRST (used by both STT and AgentSession)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
@@ -692,77 +727,39 @@ async def entrypoint(ctx: JobContext):
         
     else:
         # === LIVEKIT INFERENCE MODE (Pipeline) ===
-        # Build model strings for LiveKit Inference (unified billing + lower latency)
-        # Format: "provider/model-name"
+        # Use model_id_full from database directly (per LiveKit docs)
+        # Format is already correct in DB: "provider/model:voice_id", "provider/model:lang", "provider/model"
         
-        # STT model string - LiveKit Inference format: "provider/model:language"
-        stt_provider = template.get("stt_provider", "deepgram")
-        stt_model = template.get("stt_model", "nova-2")
-        stt_language = template.get("stt_language", "en-US")
-    
-        # Convert language codes to LiveKit Inference format (e.g., "en-US" -> "en")
-        lang_code = stt_language.split("-")[0] if stt_language else "en"
-        
-        if stt_provider == "deepgram":
-            stt_string = f"deepgram/{stt_model}:{lang_code}"
-        elif stt_provider == "assemblyai":
-            stt_string = f"assemblyai/universal-streaming:{lang_code}"
-        elif stt_provider == "cartesia":
-            stt_string = f"cartesia/ink-whisper:{lang_code}"
-        elif stt_provider == "openai":
-            stt_string = "openai/whisper-1"  # OpenAI doesn't need language suffix
+        # STT model string - use model_id_full from database
+        if active_stt and active_stt.get("model_id_full"):
+            stt_string = active_stt["model_id_full"]  # e.g., "deepgram/nova-3:en"
+            logger.info(f"🎙️ ENTRYPOINT: STT initialized - {stt_string} (LiveKit Inference)")
         else:
-            stt_string = f"deepgram/nova-2:{lang_code}"  # fallback
+            stt_string = "deepgram/nova-3:en"  # fallback
+            logger.warning(f"⚠️ No active STT found, using fallback: {stt_string}")
         
-        logger.info(f"🎙️ ENTRYPOINT: STT initialized - {stt_string} (LiveKit Inference)")
-        
-        # LLM model string - LiveKit Inference supports multiple providers
-        llm_provider = template.get("llm_provider", "openai")
-        llm_model = template.get("llm_model", "gpt-4o")
-        
-        if llm_provider == "openrouter":
-            # OpenRouter models - use direct model name (will still go through OpenRouter)
-            llm_string = llm_model  # e.g., "gpt-4o", "anthropic/claude-3-5-sonnet"
-        elif llm_provider == "openai":
-            llm_string = f"openai/{llm_model}"
-        elif llm_provider == "anthropic":
-            llm_string = f"anthropic/{llm_model}"
-        elif llm_provider == "google":
-            llm_string = f"google/{llm_model}"
-        elif llm_provider == "deepseek":
-            llm_string = f"deepseek/{llm_model}"
-        elif llm_provider == "qwen":
-            llm_string = f"qwen/{llm_model}"
-        elif llm_provider == "kimi":
-            llm_string = f"kimi/{llm_model}"
+        # LLM model string - use model_id_full from database
+        if active_llm and active_llm.get("model_id_full"):
+            llm_string = active_llm["model_id_full"]  # e.g., "openai/gpt-5"
+            logger.info(f"🧠 ENTRYPOINT: LLM initialized - {llm_string} (LiveKit Inference)")
         else:
-            llm_string = f"{llm_provider}/{llm_model}"
+            llm_string = "openai/gpt-4o-mini"  # fallback
+            logger.warning(f"⚠️ No active LLM found, using fallback: {llm_string}")
         
-        logger.info(f"🧠 ENTRYPOINT: LLM initialized - {llm_string} (LiveKit Inference)")
+        # TTS model string - Check if we need plugin for custom voices
+        tts_use_plugin = is_custom_voice
         
-        # TTS model string - LiveKit Inference supports custom voice IDs
-        # Format: "provider/model:voice_id"
-        tts_provider = template.get("tts_provider", "elevenlabs")
-        # Default to Sarah voice (EXAVITQu4vr4xnSDxMaL) - young American female, soft tone
-        # LiveKit Inference only supports ElevenLabs default voices, not custom/premium voices
-        tts_voice_id = template.get("tts_voice_id", "EXAVITQu4vr4xnSDxMaL")
-        tts_model = template.get("tts_model", "eleven_turbo_v2_5")
-        
-        if tts_provider == "elevenlabs":
-            tts_string = f"elevenlabs/{tts_model}:{tts_voice_id}"
+        if tts_use_plugin and active_tts:
+            # Custom voice - use plugin with API key (not LiveKit Inference)
+            logger.info(f"✨ ENTRYPOINT: TTS via PLUGIN - {active_tts.get('provider')}/{active_tts.get('model')}:{active_tts.get('voice_id')} (custom voice)")
+            tts_string = None  # Will use build_tts_plugin() instead
+        elif active_tts and active_tts.get("voice_id_full"):
+            # Standard voice - use model_id_full from database
+            tts_string = active_tts["voice_id_full"]  # e.g., "elevenlabs/eleven_turbo_v2_5:Xb7hH8MSUJpSbSDYk0k2"
             logger.info(f"🔊 ENTRYPOINT: TTS initialized - {tts_string} (LiveKit Inference)")
-        elif tts_provider == "cartesia":
-            tts_string = f"cartesia/{tts_model}:{tts_voice_id}"
-            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
-        elif tts_provider == "openai":
-            tts_string = f"openai/tts-1"
-            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
-        elif tts_provider == "google":
-            tts_string = f"google/neural2"
-            logger.info(f"🔊 TTS: {tts_string} (LiveKit Inference)")
         else:
-            tts_string = f"elevenlabs/eleven_turbo_v2_5:{tts_voice_id}"
-            logger.info(f"🔊 TTS: {tts_string} fallback (LiveKit Inference)")
+            tts_string = "elevenlabs/eleven_turbo_v2_5:EXAVITQu4vr4xnSDxMaL"  # fallback
+            logger.warning(f"⚠️ No active TTS found, using fallback: {tts_string}")
         
         llm_instance = None  # Will use llm_string for pipeline mode
     
@@ -858,10 +855,17 @@ async def entrypoint(ctx: JobContext):
         )
     else:
         # Pipeline mode - separate STT, LLM, TTS
+        # Handle custom voice case
+        tts_for_session = tts_string
+        if tts_string is None:
+            # Custom voice - use plugin with active_tts data
+            tts_for_session = build_tts_plugin(active_tts)
+            logger.info(f"✨ Using TTS PLUGIN for custom voice")
+        
         session = AgentSession(
             stt=stt_string,  # LiveKit Inference string format
             llm=llm_string,  # LiveKit Inference string format
-            tts=tts_string,  # LiveKit Inference string format with voice ID
+            tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
             userdata={},  # Initialize userdata as empty dict for per-turn instruction persistence
             turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
@@ -1089,17 +1093,17 @@ def build_llm_plugin(template: dict):
 
 
 
-def build_tts_plugin(template: dict):
-    """Build TTS plugin instance from template with provider-specific settings"""
+def build_tts_plugin(active_tts: dict):
+    """Build TTS plugin instance from active_tts database row for custom voices"""
     from livekit.agents.types import NOT_GIVEN
     
-    provider = template.get("tts_provider", "elevenlabs")
-    model = template.get("tts_model", "eleven_turbo_v2_5")
-    voice_id = template.get("tts_voice_id", "21m00Tcm4TlvDq8ikWAM")
+    provider = active_tts.get("provider", "elevenlabs")
+    model = active_tts.get("model", "eleven_turbo_v2_5")
+    voice_id = active_tts.get("voice_id", "21m00Tcm4TlvDq8ikWAM")
     
-    # Get TTS parameters from template
-    tts_speed = template.get("tts_speed", 1.0)
-    tts_stability = template.get("tts_stability", 0.5)
+    # Default TTS parameters (could be added to DB in future)
+    tts_speed = 1.0
+    tts_stability = 0.5
     
     if provider == "elevenlabs":
         # ElevenLabs supports stability and other voice settings
@@ -1113,17 +1117,14 @@ def build_tts_plugin(template: dict):
             voice_settings=voice_settings
         )
     elif provider == "openai":
-        voice = template.get("tts_voice", "alloy")
         return openai.TTS(
-            voice=voice,
+            voice=voice_id,
             speed=tts_speed
         )
     elif provider == "google":
-        voice_name = template.get("tts_voice_id", "en-US-Neural2-A")
-        language = template.get("stt_language", "en-US")
         return google.TTS(
-            voice_name=voice_name, 
-            language=language,
+            voice_name=voice_id, 
+            language="en-US",  # Default language
             speaking_rate=tts_speed
         )
     else:

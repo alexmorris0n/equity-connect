@@ -65,8 +65,16 @@
         <div v-if="activeTab === 'theme'" class="tab-content">
           <div class="theme-editor-section">
             <div class="theme-header">
-              <h2>Theme Content</h2>
+              <h2>Theme</h2>
               <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <button 
+                  class="btn-save-all" 
+                  @click="saveAll" 
+                  :disabled="loading || !hasAnyChanges"
+                  :title="hasAnyChanges ? `Save ${changeCount} change(s) as draft` : 'No changes to save'"
+                >
+                  💾 Save All{{ hasAnyChanges ? ` (${changeCount})` : '' }}
+                </button>
                 <button 
                   class="btn-publish" 
                   @click="publishDraft" 
@@ -83,18 +91,107 @@
                 </button>
               </div>
             </div>
-            <div class="editor-wrapper">
-              <textarea
-                v-model="themeContent"
-                class="theme-editor"
-                placeholder="Enter theme content here..."
-                @input="themeHasChanges = true"
-              ></textarea>
+            
+            <!-- Structured Theme Editor (5 sections) -->
+            <div class="structured-theme-editor">
+              <!-- Section 1: Identity -->
+              <div class="theme-section" :class="{ active: selectedThemeSection === 'identity' }">
+                <div class="theme-section-header" @click="toggleThemeSection('identity')">
+                  <span class="section-label">
+                    Identity
+                    <span class="tooltip-indicator" title="Who is Barbara? One sentence defining her role.">*</span>
+                  </span>
+                  <span class="section-toggle">{{ expandedThemeSections.identity ? '−' : '+' }}</span>
+                </div>
+                <div v-if="expandedThemeSections.identity" class="theme-section-content">
+                  <textarea
+                    v-model="themeStructured.identity"
+                    class="theme-field theme-field-auto"
+                    placeholder="You are Barbara, a warm and professional voice assistant helping homeowners..."
+                    @input="themeHasChanges = true"
+                  ></textarea>
+                </div>
+              </div>
+
+              <!-- Section 2: Output Rules -->
+              <div class="theme-section" :class="{ active: selectedThemeSection === 'output_rules' }">
+                <div class="theme-section-header" @click="toggleThemeSection('output_rules')">
+                  <span class="section-label">
+                    Output Rules
+                    <span class="tooltip-indicator" title="TTS formatting rules: numbers, brevity, no markdown, etc.">*</span>
+                  </span>
+                  <span class="section-toggle">{{ expandedThemeSections.output_rules ? '−' : '+' }}</span>
+                </div>
+                <div v-if="expandedThemeSections.output_rules" class="theme-section-content">
+                  <textarea
+                    v-model="themeStructured.output_rules"
+                    class="theme-field theme-field-auto"
+                    placeholder="- Respond in plain text only. Never use JSON, markdown, lists...&#10;- Keep replies brief: one to three sentences...&#10;- Spell out numbers..."
+                    @input="themeHasChanges = true"
+                  ></textarea>
+                </div>
+              </div>
+
+              <!-- Section 3: Conversational Flow -->
+              <div class="theme-section" :class="{ active: selectedThemeSection === 'conversational_flow' }">
+                <div class="theme-section-header" @click="toggleThemeSection('conversational_flow')">
+                  <span class="section-label">
+                    Conversational Flow
+                    <span class="tooltip-indicator" title="How should Barbara guide the conversation?">*</span>
+                  </span>
+                  <span class="section-toggle">{{ expandedThemeSections.conversational_flow ? '−' : '+' }}</span>
+                </div>
+                <div v-if="expandedThemeSections.conversational_flow" class="theme-section-content">
+                  <textarea
+                    v-model="themeStructured.conversational_flow"
+                    class="theme-field theme-field-auto"
+                    placeholder="- Help the caller accomplish their objective efficiently...&#10;- Provide guidance in small steps...&#10;- Summarize key results..."
+                    @input="themeHasChanges = true"
+                  ></textarea>
+                </div>
+              </div>
+
+              <!-- Section 4: Tools -->
+              <div class="theme-section" :class="{ active: selectedThemeSection === 'tools' }">
+                <div class="theme-section-header" @click="toggleThemeSection('tools')">
+                  <span class="section-label">
+                    Tools
+                    <span class="tooltip-indicator" title="General tool usage guidelines (not specific tool definitions).">*</span>
+                  </span>
+                  <span class="section-toggle">{{ expandedThemeSections.tools ? '−' : '+' }}</span>
+                </div>
+                <div v-if="expandedThemeSections.tools" class="theme-section-content">
+                  <textarea
+                    v-model="themeStructured.tools"
+                    class="theme-field theme-field-auto"
+                    placeholder="- Use available tools as needed, or upon user request...&#10;- Collect required information first...&#10;- Speak outcomes clearly..."
+                    @input="themeHasChanges = true"
+                  ></textarea>
+                </div>
+              </div>
+
+              <!-- Section 5: Guardrails -->
+              <div class="theme-section" :class="{ active: selectedThemeSection === 'guardrails' }">
+                <div class="theme-section-header" @click="toggleThemeSection('guardrails')">
+                  <span class="section-label">
+                    Guardrails
+                    <span class="tooltip-indicator" title="Safety limits, scope boundaries, privacy rules.">*</span>
+                  </span>
+                  <span class="section-toggle">{{ expandedThemeSections.guardrails ? '−' : '+' }}</span>
+                </div>
+                <div v-if="expandedThemeSections.guardrails" class="theme-section-content">
+                  <textarea
+                    v-model="themeStructured.guardrails"
+                    class="theme-field theme-field-auto"
+                    placeholder="- Stay within safe, lawful, and appropriate use...&#10;- For medical, legal, or financial topics, provide general info only...&#10;- Protect privacy..."
+                    @input="themeHasChanges = true"
+                  ></textarea>
+                </div>
+              </div>
             </div>
+
             <div class="editor-actions">
-              <button class="btn-save" @click="saveTheme" :disabled="loading || !themeHasChanges">
-                Save Theme
-              </button>
+              <!-- Individual save buttons removed - use "Save All" at top -->
             </div>
           </div>
         </div>
@@ -124,52 +221,80 @@
 
             <!-- SignalWire Configuration -->
             <div v-if="selectedPlatform === 'signalwire'" class="platform-config">
-              <h3>SignalWire Voice Configuration</h3>
-              <small class="form-hint">SignalWire bundles STT and LLM automatically. Only TTS voice is configurable.</small>
+              <h3>SignalWire AI Configuration</h3>
+              <small class="form-hint">Configure LLM, STT, and TTS models for SignalWire AI. Select from available models and save to mark as active.</small>
               
-              <div class="form-group">
-                <label>TTS Engine</label>
-                <select v-model="signalwireConfig.tts_engine" @change="onSignalWireTTSChange">
-                  <option value="elevenlabs">ElevenLabs</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="google">Google Cloud</option>
-                  <option value="amazon">Amazon Polly</option>
-                  <option value="azure">Microsoft Azure</option>
-                  <option value="cartesia">Cartesia</option>
-                  <option value="rime">Rime</option>
-                  <option value="speechify">Speechify</option>
-                </select>
+              <!-- LLM Configuration -->
+              <div class="config-section">
+                <h4>Language Model (LLM)</h4>
+                <div class="form-group">
+                  <label>LLM Model</label>
+                  <select v-model="signalwireConfig.llm_model">
+                    <option value="">-- Select LLM Model --</option>
+                    <option v-for="model in availableSignalWireLLMModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                  <small class="form-hint">Select the LLM model for conversation intelligence</small>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label>Voice Name</label>
-                <select v-model="signalwireConfig.voice_name" :disabled="availableSignalWireVoices.length === 0">
-                  <option v-if="availableSignalWireVoices.length === 0" value="">Select TTS Engine first</option>
-                  <option v-for="voice in availableSignalWireVoices" :key="voice.value" :value="voice.value">
-                    {{ voice.label }}
-                  </option>
-                </select>
-                <small class="form-hint">Format: provider.voice_name (e.g., elevenlabs.rachel)</small>
+              <!-- STT Configuration -->
+              <div class="config-section">
+                <h4>Speech-to-Text (STT)</h4>
+                <div class="form-group">
+                  <label>STT Model</label>
+                  <select v-model="signalwireConfig.stt_model">
+                    <option value="">-- Select STT Model --</option>
+                    <option v-for="model in availableSignalWireSTTModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                  <small class="form-hint">Select the speech recognition model</small>
+                </div>
               </div>
 
-              <div class="form-group">
-                <label>Model Override (Optional)</label>
-                <input type="text" v-model="signalwireConfig.model" placeholder="e.g., eleven_turbo_v2_5" />
-                <small class="form-hint">Only needed for providers that require model specification (Rime Arcana, Amazon Neural, etc.)</small>
-              </div>
+              <!-- TTS Configuration -->
+              <div class="config-section">
+                <h4>Text-to-Speech (TTS)</h4>
+                <div class="form-group">
+                  <label>TTS Engine</label>
+                  <select v-model="signalwireConfig.tts_engine" @change="onSignalWireTTSChange">
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="gcloud">Google Cloud</option>
+                    <option value="amazon">Amazon Polly</option>
+                    <option value="cartesia">Cartesia</option>
+                    <option value="rime">Rime</option>
+                    <option value="deepgram">Deepgram</option>
+                  </select>
+                  <small class="form-hint">Select the TTS provider for voice synthesis</small>
+                </div>
 
-              <div class="form-group">
-                <label>Language</label>
-                <select v-model="signalwireConfig.language_code">
-                  <option value="en-US">English (US)</option>
-                  <option value="es-US">Spanish (US)</option>
-                  <option value="es-MX">Spanish (Mexico)</option>
-                </select>
+                <div class="form-group">
+                  <label>Voice Name</label>
+                  <select v-model="signalwireConfig.voice_name" :disabled="availableSignalWireVoices.length === 0">
+                    <option v-if="availableSignalWireVoices.length === 0" value="">Select TTS Engine first</option>
+                    <option v-for="voice in availableSignalWireVoices" :key="voice.value" :value="voice.value">
+                      {{ voice.label }}
+                    </option>
+                  </select>
+                  <small class="form-hint">Format: provider.voice_name (e.g., elevenlabs.rachel)</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Language</label>
+                  <select v-model="signalwireConfig.language_code">
+                    <option value="en-US">English (US)</option>
+                    <option value="es-US">Spanish (US)</option>
+                    <option value="es-MX">Spanish (Mexico)</option>
+                  </select>
+                </div>
               </div>
 
               <div class="form-actions">
                 <button class="btn-save" @click="saveSignalWireConfig" :disabled="loading">
-                  Save SignalWire Settings
+                  Save SignalWire Configuration
                 </button>
               </div>
             </div>
@@ -343,89 +468,8 @@
                 </div>
               </div>
 
-              <!-- STT Configuration (only for pipeline mode) -->
+              <!-- Pipeline Configuration (only for pipeline mode) -->
               <div v-if="livekitConfig.model_type === 'pipeline'">
-              <!-- STT Configuration -->
-              <div class="config-section">
-                <h4>Speech-to-Text (STT)</h4>
-                <div class="form-group">
-                  <label>STT Provider</label>
-                  <select v-model="livekitConfig.stt_provider" @change="onLiveKitSTTChange">
-                    <option value="deepgram">Deepgram</option>
-                    <option value="assemblyai">AssemblyAI</option>
-                    <option value="cartesia">Cartesia</option>
-                  </select>
-                  <small class="form-hint">LiveKit Inference supports these providers. For OpenAI, Google Cloud, and others, use plugins with your own API keys.</small>
-                </div>
-
-                <div class="form-group">
-                  <label>STT Model</label>
-                  <select v-model="livekitConfig.stt_model" :disabled="availableLiveKitSTTModels.length === 0">
-                    <option v-if="availableLiveKitSTTModels.length === 0" value="">Select STT Provider first</option>
-                    <option v-for="model in availableLiveKitSTTModels" :key="model.value" :value="model.value">
-                      {{ model.label }}
-                    </option>
-                  </select>
-                </div>
-
-                <div class="form-group">
-                  <label>STT Language</label>
-                  <select v-model="livekitConfig.stt_language">
-                    <option value="en-US">English (US)</option>
-                    <option value="es-US">Spanish (US)</option>
-                    <option value="es-MX">Spanish (Mexico)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- TTS Configuration -->
-              <div class="config-section">
-                <h4>Text-to-Speech (TTS)</h4>
-                <div class="form-group">
-                  <label>TTS Provider</label>
-                  <select v-model="livekitConfig.tts_provider" @change="onLiveKitTTSChange">
-                    <option value="elevenlabs">ElevenLabs</option>
-                    <option value="cartesia">Cartesia</option>
-                    <option value="inworld">Inworld</option>
-                    <option value="rime">Rime</option>
-                  </select>
-                  <small class="form-hint">LiveKit Inference supports these providers. For OpenAI, Google Cloud, Speechify, and others, use plugins with your own API keys.</small>
-                </div>
-
-                <div class="form-group">
-                  <label>TTS Model</label>
-                  <select v-model="livekitConfig.tts_model" :disabled="availableLiveKitTTSModels.length === 0">
-                    <option v-if="availableLiveKitTTSModels.length === 0" value="">Select TTS Provider first</option>
-                    <option v-for="model in availableLiveKitTTSModels" :key="model.value" :value="model.value">
-                      {{ model.label }}
-                    </option>
-                  </select>
-                </div>
-
-                <div class="form-group">
-                  <label>TTS Voice ID</label>
-                  <select v-model="livekitConfig.tts_voice_id" :disabled="availableLiveKitTTSVoices.length === 0">
-                    <option v-if="availableLiveKitTTSVoices.length === 0" value="">Select TTS Model first</option>
-                    <option v-for="voice in availableLiveKitTTSVoices" :key="voice.value" :value="voice.value">
-                      {{ voice.label }}
-                    </option>
-                  </select>
-                  <small class="form-hint">Shows suggested voices from LiveKit docs. Each provider has many more voices available - check provider documentation for full list.</small>
-                </div>
-
-                <div class="form-group">
-                  <label>TTS Speed</label>
-                  <input type="number" v-model.number="livekitConfig.tts_speed" min="0.5" max="2.0" step="0.1" />
-                  <small class="form-hint">1.0 = normal speed</small>
-                </div>
-
-                <div class="form-group">
-                  <label>TTS Stability</label>
-                  <input type="number" v-model.number="livekitConfig.tts_stability" min="0" max="1" step="0.1" />
-                  <small class="form-hint">0.0 = more variation, 1.0 = more consistent</small>
-                </div>
-              </div>
-
               <!-- LLM Configuration -->
               <div class="config-section">
                 <h4>Language Model (LLM)</h4>
@@ -433,12 +477,12 @@
                   <label>LLM Provider</label>
                   <select v-model="livekitConfig.llm_provider" @change="onLiveKitLLMChange">
                     <option value="openai">OpenAI</option>
-                    <option value="gemini">Gemini (Google)</option>
+                    <option value="google">Google (Gemini)</option>
                     <option value="qwen">Qwen</option>
-                    <option value="kimi">Kimi</option>
-                    <option value="deepseek">DeepSeek</option>
+                    <option value="moonshotai">Kimi (Moonshot AI)</option>
+                    <option value="deepseek-ai">DeepSeek</option>
                   </select>
-                  <small class="form-hint">LiveKit Inference supports these providers. For Anthropic, Google (non-Gemini), and others, use plugins with your own API keys.</small>
+                  <small class="form-hint">LiveKit Inference supports these providers. For Anthropic and others, use plugins with your own API keys.</small>
                 </div>
 
                 <div class="form-group">
@@ -478,28 +522,157 @@
                 </div>
               </div>
 
-              <!-- VAD Configuration -->
+              <!-- STT Configuration -->
               <div class="config-section">
-                <h4>Voice Activity Detection (VAD)</h4>
+                <h4>Speech-to-Text (STT)</h4>
                 <div class="form-group">
-                  <label>VAD Enabled</label>
+                  <label>STT Provider</label>
+                  <select v-model="livekitConfig.stt_provider" @change="onLiveKitSTTChange">
+                    <option value="deepgram">Deepgram</option>
+                    <option value="assemblyai">AssemblyAI</option>
+                    <option value="cartesia">Cartesia</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="google">Google Cloud</option>
+                  </select>
+                  <small class="form-hint">LiveKit Inference STT providers</small>
+                </div>
+
+                <div class="form-group">
+                  <label>STT Model</label>
+                  <select v-model="livekitConfig.stt_model" :disabled="availableLiveKitSTTModels.length === 0">
+                    <option v-if="availableLiveKitSTTModels.length === 0" value="">Select STT Provider first</option>
+                    <option v-for="model in availableLiveKitSTTModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>STT Language</label>
+                  <select v-model="livekitConfig.stt_language">
+                    <option value="en-US">English (US)</option>
+                    <option value="es-US">Spanish (US)</option>
+                    <option value="es-MX">Spanish (Mexico)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- TTS Configuration -->
+              <div class="config-section">
+                <h4>Text-to-Speech (TTS)</h4>
+                <div class="form-group">
+                  <label>TTS Provider</label>
+                  <select v-model="livekitConfig.tts_provider" @change="onLiveKitTTSChange">
+                    <option value="elevenlabs">ElevenLabs</option>
+                    <option value="cartesia">Cartesia</option>
+                    <option value="inworld">Inworld</option>
+                    <option value="rime">Rime</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="google">Google Cloud</option>
+                    <option value="amazon">Amazon Polly</option>
+                    <option value="azure">Microsoft Azure</option>
+                  </select>
+                  <small class="form-hint">LiveKit Inference TTS providers</small>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Model</label>
+                  <select v-model="livekitConfig.tts_model" :disabled="availableLiveKitTTSModels.length === 0">
+                    <option v-if="availableLiveKitTTSModels.length === 0" value="">Select TTS Provider first</option>
+                    <option v-for="model in availableLiveKitTTSModels" :key="model.value" :value="model.value">
+                      {{ model.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Voice ID</label>
+                  <select v-model="livekitConfig.tts_voice_id" :disabled="availableLiveKitTTSVoices.length === 0">
+                    <option v-if="availableLiveKitTTSVoices.length === 0" value="">Select TTS Model first</option>
+                    <option v-for="voice in availableLiveKitTTSVoices" :key="voice.value" :value="voice.value">
+                      {{ voice.label }}
+                    </option>
+                  </select>
+                  <small class="form-hint">Standard voices or select "Custom Voice ID" to use your own cloned/professional voice.</small>
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.tts_voice_id === 'custom'">
+                  <label>Custom Voice ID</label>
+                  <input 
+                    type="text" 
+                    v-model="livekitConfig.tts_custom_voice_id" 
+                    placeholder="Enter your ElevenLabs voice ID (e.g., 6aDn1KB0hjpdcocrUkmq)"
+                  />
+                  <small class="form-hint">Enter the voice ID from your ElevenLabs dashboard. Supports cloned voices, professional voices, and custom voices.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Speed</label>
+                  <input type="number" v-model.number="livekitConfig.tts_speed" min="0.5" max="2.0" step="0.1" />
+                  <small class="form-hint">1.0 = normal speed</small>
+                </div>
+
+                <div class="form-group">
+                  <label>TTS Stability</label>
+                  <input type="number" v-model.number="livekitConfig.tts_stability" min="0" max="1" step="0.1" />
+                  <small class="form-hint">0.0 = more variation, 1.0 = more consistent</small>
+                </div>
+              </div>
+
+              <!-- VAD & Turn Detection Configuration -->
+              <div class="config-section">
+                <h4>Voice Activity & Turn Detection</h4>
+                <small class="form-hint">Silero VAD detects speech vs silence. Turn Detector uses VAD + language context for intelligent end-of-turn detection. Both enabled by default for best performance.</small>
+                
+                <div class="form-group">
+                  <label>Enable VAD (Voice Activity Detection)</label>
                   <input type="checkbox" v-model="livekitConfig.vad_enabled" />
+                  <small class="form-hint">Recommended: ON. Detects when user is speaking vs silent.</small>
                 </div>
 
                 <div class="form-group" v-if="livekitConfig.vad_enabled">
                   <label>VAD Threshold</label>
-                  <input type="number" v-model.number="livekitConfig.vad_threshold" min="0" max="1" step="0.1" />
-                  <small class="form-hint">Higher = less sensitive to background noise</small>
+                  <input type="number" v-model.number="livekitConfig.vad_threshold" min="0" max="1" step="0.05" />
+                  <small class="form-hint">Default: 0.5. Higher = less sensitive to background noise.</small>
                 </div>
 
                 <div class="form-group" v-if="livekitConfig.vad_enabled">
                   <label>VAD Prefix Padding (ms)</label>
-                  <input type="number" v-model.number="livekitConfig.vad_prefix_padding_ms" min="0" max="1000" />
+                  <input type="number" v-model.number="livekitConfig.vad_prefix_padding_ms" min="0" max="1000" step="50" />
+                  <small class="form-hint">Default: 300ms. Audio padding before speech starts.</small>
                 </div>
 
                 <div class="form-group" v-if="livekitConfig.vad_enabled">
                   <label>VAD Silence Duration (ms)</label>
-                  <input type="number" v-model.number="livekitConfig.vad_silence_duration_ms" min="0" max="5000" />
+                  <input type="number" v-model.number="livekitConfig.vad_silence_duration_ms" min="0" max="5000" step="100" />
+                  <small class="form-hint">Default: 550ms. How long to wait after speech ends.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Enable Turn Detector</label>
+                  <input type="checkbox" v-model="livekitConfig.turn_detector_enabled" />
+                  <small class="form-hint">Recommended: ON. Uses language context to improve end-of-turn detection.</small>
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.turn_detector_enabled">
+                  <label>Turn Detector Model</label>
+                  <select v-model="livekitConfig.turn_detector_model">
+                    <option value="english">English-only (faster, 66MB)</option>
+                    <option value="multilingual">Multilingual (14 languages, 281MB)</option>
+                  </select>
+                  <small class="form-hint">English-only is faster. Multilingual supports ES, FR, DE, IT, PT, NL, ZH, JA, KO, ID, TR, RU, HI.</small>
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.turn_detector_enabled">
+                  <label>Min Endpointing Delay (ms)</label>
+                  <input type="number" v-model.number="livekitConfig.min_endpointing_delay" min="100" max="2000" step="100" />
+                  <small class="form-hint">Default: 500ms. Time to wait before considering turn complete.</small>
+                </div>
+
+                <div class="form-group" v-if="livekitConfig.turn_detector_enabled">
+                  <label>Max Endpointing Delay (ms)</label>
+                  <input type="number" v-model.number="livekitConfig.max_endpointing_delay" min="1000" max="10000" step="500" />
+                  <small class="form-hint">Default: 6000ms. Max time to wait when model indicates user will continue.</small>
                 </div>
               </div>
 
@@ -531,8 +704,8 @@
               </div>
 
               <div class="form-actions">
-                <button class="btn-save" @click="saveLiveKitConfig" :disabled="loading">
-                  Save LiveKit Template
+                <button class="btn-save" @click="saveActiveComponents" :disabled="loading">
+                  💾 Save Configuration
                 </button>
                 <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
                   🎯 Test Full Vertical
@@ -542,59 +715,68 @@
           </div>
         </div>
 
-        <!-- Telephony Tab -->
-        <div v-if="activeTab === 'telephony'" class="tab-content">
+        <!-- Phone Numbers Tab -->
+        <div v-if="activeTab === 'phone-numbers'" class="tab-content">
           <div class="settings-form">
-            <h2>Telephony Settings</h2>
-            
-            <div class="form-group">
-              <label>Auto Answer</label>
-              <input type="checkbox" v-model="config.telephony.auto_answer" />
-            </div>
+            <h2>Phone Number Routing</h2>
+            <p class="section-hint">
+              📞 Manage how your SignalWire numbers route calls. Toggle between SignalWire (webhook) and LiveKit (SWML script) for each number.
+            </p>
 
-            <div class="form-group">
-              <label>Ring Delay (ms)</label>
-              <input type="number" v-model.number="config.telephony.ring_delay_ms" />
+            <div class="phone-numbers-list">
+              <div v-if="phoneNumbers.length === 0" class="empty-state">
+                <p>No phone numbers found. Run the database migration to add your numbers.</p>
+              </div>
+
+              <div 
+                v-for="phone in phoneNumbers" 
+                :key="phone.id" 
+                class="phone-number-card"
+              >
+                <div class="phone-info">
+                  <div class="phone-label">{{ phone.label }}</div>
+                  <div class="phone-number">{{ formatPhoneNumber(phone.phone_number) }}</div>
+                  <div v-if="phone.vertical" class="phone-vertical">{{ phone.vertical }}</div>
+                </div>
+
+                <div class="phone-routing">
+                  <div class="routing-toggle">
+                    <button 
+                      class="route-option" 
+                      :class="{ active: phone.current_route === 'signalwire' }"
+                      @click="() => updateRouting(phone.id, 'signalwire')"
+                      :disabled="routingLoading[phone.id]"
+                    >
+                      <span class="route-icon">🔵</span>
+                      <span>SignalWire</span>
+                      <small>Webhook</small>
+                    </button>
+
+                    <button 
+                      class="route-option" 
+                      :class="{ active: phone.current_route === 'livekit' }"
+                      @click="() => updateRouting(phone.id, 'livekit')"
+                      :disabled="routingLoading[phone.id]"
+                    >
+                      <span class="route-icon">🟣</span>
+                      <span>LiveKit</span>
+                      <small>SWML Script</small>
+                    </button>
+                  </div>
+
+                  <div v-if="phone.last_synced_at" class="last-synced">
+                    Last synced: {{ formatDate(phone.last_synced_at) }}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="form-actions">
-              <button class="btn-save" @click="saveConfig" :disabled="loading">
-                Save Settings
+              <button class="btn-save" @click="syncPhoneNumbers" :disabled="loading">
+                🔄 Sync from SignalWire
               </button>
             </div>
           </div>
-        </div>
-
-        <!-- Safety Tab -->
-        <div v-if="activeTab === 'safety'" class="tab-content">
-          <div class="settings-form">
-            <h2>Safety Settings</h2>
-            
-            <div class="form-group">
-              <label>Blocked Phrases (one per line)</label>
-              <textarea
-                v-model="blockedPhrasesText"
-                placeholder="Enter blocked phrases, one per line"
-                rows="5"
-              ></textarea>
-            </div>
-
-            <div class="form-group">
-              <label>Max Tool Depth</label>
-              <input type="number" v-model.number="config.safety.max_tool_depth" min="1" max="5" />
-            </div>
-
-            <div class="form-actions">
-              <button class="btn-save" @click="saveConfig" :disabled="loading">
-                Save Settings
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Agent Settings Tab -->
-        <div v-if="activeTab === 'agent-settings'" class="tab-content">
-          <AgentSettings :vertical="selectedVertical" language="en-US" />
         </div>
 
         <!-- Nodes Tab (visible when vertical selected, hidden on Models & Voice, Telephony, Safety tabs) -->
@@ -845,13 +1027,7 @@
                   </div>
                   
                   <div class="node-actions">
-                    <button
-                      class="btn-save"
-                      @click="saveNode(node)"
-                      :disabled="loading || !nodeHasChanges[node]"
-                    >
-                      Save Node
-                    </button>
+                    <!-- Individual save button removed - use "Save All" at top -->
                     <button class="btn-preview" @click="showPreview(node)">
                       Preview
                     </button>
@@ -1094,8 +1270,8 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { supabase } from '@/lib/supabase'
 import * as Diff from 'diff'
-import AgentSettings from '@/components/AgentSettings.vue'
 import TestCallModal from '@/components/TestCallModal.vue'
+import { listPhoneNumbers, updatePhoneRouting, syncPhoneNumbersFromSignalWire } from '@/api/phoneRouting'
 
 // Constants
 const nodeKeys = ['greet', 'verify', 'qualify', 'quote', 'answer', 'objections', 'book', 'goodbye']
@@ -1207,14 +1383,124 @@ const selectedNode = ref(null)
 const loading = ref(false)
 const isMobile = ref(window.innerWidth < 768)
 
+// Phone Numbers state
+const phoneNumbers = ref([])
+const routingLoading = ref({})
+
 // Theme state
-const themeContent = ref('')
+// Theme state - structured (5 sections matching LiveKit guide)
+const themeStructured = ref({
+  identity: '',
+  output_rules: '',
+  conversational_flow: '',
+  tools: '',
+  guardrails: ''
+})
 const themeHasChanges = ref(false)
 const themeId = ref(null)
+
+// Theme section expansion state (all collapsed by default)
+const expandedThemeSections = ref({
+  identity: false,
+  output_rules: false,
+  conversational_flow: false,
+  tools: false,
+  guardrails: false
+})
+
+// Track last selected theme section (stays highlighted even when collapsed)
+const selectedThemeSection = ref(null)
+
+// Toggle theme section expansion
+function toggleThemeSection(section) {
+  // Close all other theme sections
+  Object.keys(expandedThemeSections.value).forEach(key => {
+    expandedThemeSections.value[key] = (key === section) ? !expandedThemeSections.value[key] : false
+  })
+  
+  // Set this as the selected section (keeps purple border when collapsed)
+  selectedThemeSection.value = section
+  
+  // Close all nodes
+  Object.keys(expandedNodes.value).forEach(key => {
+    expandedNodes.value[key] = false
+  })
+  
+  // Auto-resize textareas after expanding
+  if (expandedThemeSections.value[section]) {
+    nextTick(() => {
+      autoResizeThemeTextareas()
+    })
+  }
+}
+
+// Helper: Assemble structured theme into single text block (for AI helper and preview)
+const assembledTheme = computed(() => {
+  const sections = []
+  if (themeStructured.value.identity) sections.push(themeStructured.value.identity)
+  if (themeStructured.value.output_rules) sections.push(`# Output rules\n\n${themeStructured.value.output_rules}`)
+  if (themeStructured.value.conversational_flow) sections.push(`# Conversational flow\n\n${themeStructured.value.conversational_flow}`)
+  if (themeStructured.value.tools) sections.push(`# Tools\n\n${themeStructured.value.tools}`)
+  if (themeStructured.value.guardrails) sections.push(`# Guardrails\n\n${themeStructured.value.guardrails}`)
+  return sections.join('\n\n')
+})
+
+// Computed: Check if there are any unsaved changes (theme or nodes)
+const hasAnyChanges = computed(() => {
+  // Check theme changes
+  if (themeHasChanges.value) return true
+  
+  // Check node changes
+  for (const node of nodeKeys) {
+    if (nodeHasChanges.value[node]) return true
+  }
+  
+  return false
+})
+
+// Computed: Count how many things have changed
+const changeCount = computed(() => {
+  let count = 0
+  if (themeHasChanges.value) count++
+  
+  for (const node of nodeKeys) {
+    if (nodeHasChanges.value[node]) count++
+  }
+  
+  return count
+})
+
+// Save all changes (theme + nodes) as draft
+async function saveAll() {
+  if (!hasAnyChanges.value) return
+  
+  loading.value = true
+  try {
+    // Save theme if it has changes
+    if (themeHasChanges.value) {
+      await saveTheme()
+    }
+    
+    // Save each node that has changes
+    for (const node of nodeKeys) {
+      if (nodeHasChanges.value[node]) {
+        await saveNode(node)
+      }
+    }
+    
+    window.$message?.success(`Saved ${changeCount.value} change(s) as draft. Click "Publish" to activate.`)
+  } catch (error) {
+    console.error('Error saving all:', error)
+    window.$message?.error('Failed to save changes: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
 
 // LLM Provider to Models mapping (SignalWire available models)
 const LLM_MODELS = {
   openai: [
+    { value: 'gpt-5', label: 'GPT-5' },
     { value: 'gpt-4o', label: 'GPT-4o' },
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini' }
   ],
@@ -1302,9 +1588,10 @@ const selectedPlatform = ref('signalwire') // 'signalwire' or 'livekit'
 const signalwireConfig = ref({
   vertical: 'reverse_mortgage',
   language_code: 'en-US',
+  llm_model: '',
+  stt_model: '',
   tts_engine: 'elevenlabs',
   voice_name: 'rachel',
-  model: null,
   is_active: true
 })
 
@@ -1320,7 +1607,8 @@ const livekitConfig = ref({
   stt_language: 'en-US',
   tts_provider: 'elevenlabs',
   tts_model: 'eleven_turbo_v2_5',
-  tts_voice_id: 'iP95p4xoKVk53GoZ742B', // Chris (suggested voice from docs)
+  tts_voice_id: 'EXAVITQu4vr4xnSDxMaL', // Sarah
+  tts_custom_voice_id: '', // Used when tts_voice_id is 'custom'
   tts_speed: 1.0,
   tts_stability: 0.5,
   llm_provider: 'openai',
@@ -1333,7 +1621,14 @@ const livekitConfig = ref({
   vad_enabled: true,
   vad_threshold: 0.5,
   vad_prefix_padding_ms: 300,
-  vad_silence_duration_ms: 500,
+  vad_silence_duration_ms: 550,
+  
+  // Turn Detector (recommended for best performance)
+  turn_detector_enabled: true,
+  turn_detector_model: 'english', // 'english' or 'multilingual'
+  min_endpointing_delay: 500, // milliseconds
+  max_endpointing_delay: 6000, // milliseconds
+  
   turn_detection_type: 'server_vad',
   audio_input_transcription: true,
   audio_sample_rate: 24000,
@@ -1362,6 +1657,8 @@ const livekitConfig = ref({
 
 // Available options for dropdowns
 const availableSignalWireVoices = ref([])
+const availableSignalWireLLMModels = ref([])
+const availableSignalWireSTTModels = ref([])
 const availableLiveKitSTTModels = ref([])
 const availableLiveKitTTSModels = ref([])
 const availableLiveKitTTSVoices = ref([])
@@ -1672,13 +1969,6 @@ const availableTTSVoices = computed(() => {
   return TTS_VOICES[provider] || []
 })
 
-const blockedPhrasesText = computed({
-  get: () => config.value.safety.blocked_phrases.join('\n'),
-  set: (val) => {
-    config.value.safety.blocked_phrases = val.split('\n').filter(p => p.trim())
-  }
-})
-
 // Node state
 const nodeContent = ref({})
 const nodeHasChanges = ref({})
@@ -1710,9 +2000,7 @@ const testStartNode = ref('greet')
 const settingsTabs = [
   { key: 'theme', label: 'Theme' },
   { key: 'models', label: 'Models & Voice' },
-  { key: 'telephony', label: 'Telephony' },
-  { key: 'safety', label: 'Safety' },
-  { key: 'agent-settings', label: 'Agent Settings' }
+  { key: 'phone-numbers', label: 'Phone Numbers' }
 ]
 
 // Initialize node content structure
@@ -1746,7 +2034,7 @@ async function loadTheme() {
     // Load theme - prefer draft if exists, otherwise active
     let { data: draftData, error: draftError } = await supabase
       .from('theme_prompts')
-      .select('id, content, config, version')
+      .select('id, content_structured, content, config, version')
       .eq('vertical', selectedVertical.value)
       .eq('is_active', false)
       .maybeSingle()
@@ -1760,7 +2048,7 @@ async function loadTheme() {
       // Load active theme
       const result = await supabase
         .from('theme_prompts')
-        .select('id, content, config, version')
+        .select('id, content_structured, content, config, version')
         .eq('vertical', selectedVertical.value)
         .eq('is_active', true)
         .maybeSingle()
@@ -1768,12 +2056,12 @@ async function loadTheme() {
       error = result.error
     }
     
-    // If config or version column doesn't exist, try without them
+    // If content_structured column doesn't exist, try without it (backward compatibility)
     if (error && error.code === '42703') {
-      console.log('Config or version column not found, loading without them')
+      console.log('content_structured column not found, loading old format')
       const result = await supabase
         .from('theme_prompts')
-        .select('id, content')
+        .select('id, content, config, version')
         .eq('vertical', selectedVertical.value)
         .eq('is_active', true)
         .maybeSingle()
@@ -1790,8 +2078,38 @@ async function loadTheme() {
     
     if (data) {
       themeId.value = data.id
-      themeContent.value = data.content || ''
-      console.log('Theme content set:', themeContent.value ? `${themeContent.value.length} chars` : 'empty')
+      
+      // PREFER: Structured format (content_structured JSONB)
+      if (data.content_structured) {
+        themeStructured.value = {
+          identity: data.content_structured.identity || '',
+          output_rules: data.content_structured.output_rules || '',
+          conversational_flow: data.content_structured.conversational_flow || '',
+          tools: data.content_structured.tools || '',
+          guardrails: data.content_structured.guardrails || ''
+        }
+        console.log('Loaded structured theme:', Object.keys(themeStructured.value))
+      } 
+      // FALLBACK: Old format (content TEXT) - leave empty for user to fill in
+      else if (data.content) {
+        console.log('Legacy theme format detected. Please migrate using database migration.')
+        themeStructured.value = {
+          identity: '',
+          output_rules: '',
+          conversational_flow: '',
+          tools: '',
+          guardrails: ''
+        }
+      } else {
+        themeStructured.value = {
+          identity: '',
+          output_rules: '',
+          conversational_flow: '',
+          tools: '',
+          guardrails: ''
+        }
+      }
+      
       if (data.config) {
         config.value = { ...config.value, ...data.config }
       }
@@ -1808,9 +2126,20 @@ async function loadTheme() {
       themeHasChanges.value = false
     } else {
       console.log('No theme found for vertical:', selectedVertical.value)
-      themeContent.value = ''
+      themeStructured.value = {
+        identity: '',
+        output_rules: '',
+        conversational_flow: '',
+        tools: '',
+        guardrails: ''
+      }
       themeId.value = null
     }
+    
+    // Auto-resize textareas after loading
+    nextTick(() => {
+      autoResizeThemeTextareas()
+    })
   } catch (error) {
     console.error('Error loading theme:', error)
     console.error('Error details:', JSON.stringify(error, null, 2))
@@ -1886,7 +2215,13 @@ async function saveTheme() {
     if (draftThemeError && draftThemeError.code !== 'PGRST116') throw draftThemeError
 
     const draftThemeData = {
-      content: themeContent.value,
+      content_structured: {
+        identity: themeStructured.value.identity || '',
+        output_rules: themeStructured.value.output_rules || '',
+        conversational_flow: themeStructured.value.conversational_flow || '',
+        tools: themeStructured.value.tools || '',
+        guardrails: themeStructured.value.guardrails || ''
+      },
       config: config.value,
       version: draftVersionNumber,
       updated_at: new Date().toISOString(),
@@ -2257,12 +2592,76 @@ async function loadSignalWireConfig() {
 async function saveSignalWireConfig() {
   loading.value = true
   try {
+    console.log('💾 Saving SignalWire configuration...')
+    console.log('Selected LLM:', signalwireConfig.value.llm_model)
+    console.log('Selected STT:', signalwireConfig.value.stt_model)
+    console.log('Selected TTS:', signalwireConfig.value.tts_engine, signalwireConfig.value.voice_name)
+
+    // 1. Mark selected LLM as active
+    if (signalwireConfig.value.llm_model) {
+      // Clear all active LLMs
+      await supabase
+        .from('signalwire_available_llm_models')
+        .update({ is_active: false })
+        .eq('is_active', true)
+
+      // Set selected LLM as active
+      const { error: llmError } = await supabase
+        .from('signalwire_available_llm_models')
+        .update({ is_active: true })
+        .eq('model_id_full', signalwireConfig.value.llm_model)
+
+      if (llmError) throw new Error(`LLM update failed: ${llmError.message}`)
+      console.log('✅ LLM marked as active:', signalwireConfig.value.llm_model)
+    }
+
+    // 2. Mark selected STT as active
+    if (signalwireConfig.value.stt_model) {
+      // Clear all active STTs
+      await supabase
+        .from('signalwire_available_stt_models')
+        .update({ is_active: false })
+        .eq('is_active', true)
+
+      // Set selected STT as active
+      const { error: sttError } = await supabase
+        .from('signalwire_available_stt_models')
+        .update({ is_active: true })
+        .eq('model_id_full', signalwireConfig.value.stt_model)
+
+      if (sttError) throw new Error(`STT update failed: ${sttError.message}`)
+      console.log('✅ STT marked as active:', signalwireConfig.value.stt_model)
+    }
+
+    // 3. Mark selected TTS voice as active
+    if (signalwireConfig.value.tts_engine && signalwireConfig.value.voice_name) {
+      // Build the voice_id_full based on provider format from SignalWire docs
+      const provider = signalwireConfig.value.tts_engine
+      const voiceName = signalwireConfig.value.voice_name
+      
+      // Clear all active voices
+      await supabase
+        .from('signalwire_available_voices')
+        .update({ is_active: false })
+        .eq('is_active', true)
+
+      // Set selected voice as active (match by provider and voice_name)
+      const { error: ttsError } = await supabase
+        .from('signalwire_available_voices')
+        .update({ is_active: true })
+        .eq('provider', provider)
+        .eq('voice_name', voiceName)
+
+      if (ttsError) throw new Error(`TTS update failed: ${ttsError.message}`)
+      console.log('✅ TTS voice marked as active:', provider, voiceName)
+    }
+
+    // 4. Also save to agent_voice_config for backwards compatibility
     const configData = {
       vertical: selectedVertical.value,
       language_code: signalwireConfig.value.language_code,
       tts_engine: signalwireConfig.value.tts_engine,
       voice_name: signalwireConfig.value.voice_name,
-      model: signalwireConfig.value.model || null,
       is_active: true,
       updated_at: new Date().toISOString()
     }
@@ -2278,7 +2677,8 @@ async function saveSignalWireConfig() {
     if (error) throw error
 
     signalwireConfig.value = { ...signalwireConfig.value, ...data }
-    window.$message?.success('SignalWire configuration saved successfully!')
+    window.$message?.success('✅ SignalWire configuration saved successfully!')
+    console.log('💾 SignalWire configuration saved successfully')
   } catch (error) {
     console.error('Failed to save SignalWire config:', error)
     window.$message?.error('Failed to save SignalWire configuration: ' + error.message)
@@ -2287,46 +2687,264 @@ async function saveSignalWireConfig() {
   }
 }
 
-// Load available SignalWire voices based on TTS engine
+// Load available SignalWire voices based on TTS engine from database
 async function loadSignalWireVoices() {
-  // For SignalWire, voices are in format: provider.voice_name
-  // We'll use the constants from voices.ts or load from database
-  const voiceMap = {
-    elevenlabs: [
-      { value: 'rachel', label: 'Rachel' },
-      { value: 'domi', label: 'Domi' },
-      { value: 'bella', label: 'Bella' },
-      { value: 'antoni', label: 'Antoni' },
-      { value: 'elli', label: 'Elli' },
-      { value: 'josh', label: 'Josh' },
-      { value: 'arnold', label: 'Arnold' },
-      { value: 'adam', label: 'Adam' },
-      { value: 'sam', label: 'Sam' }
-    ],
-    openai: [
-      { value: 'alloy', label: 'Alloy' },
-      { value: 'echo', label: 'Echo' },
-      { value: 'fable', label: 'Fable' },
-      { value: 'onyx', label: 'Onyx' },
-      { value: 'nova', label: 'Nova' },
-      { value: 'shimmer', label: 'Shimmer' }
-    ],
-    google: [
-      { value: 'en-US-Neural2-A', label: 'Neural2-A (Female)' },
-      { value: 'en-US-Neural2-B', label: 'Neural2-B (Male)' },
-      { value: 'en-US-Neural2-C', label: 'Neural2-C (Female)' },
-      { value: 'en-US-Neural2-D', label: 'Neural2-D (Male)' }
-    ]
+  const provider = signalwireConfig.value.tts_engine
+  if (!provider) {
+    availableSignalWireVoices.value = []
+    return
   }
 
-  const engine = signalwireConfig.value.tts_engine
-  availableSignalWireVoices.value = voiceMap[engine] || []
+  try {
+    const { data, error } = await supabase
+      .from('signalwire_available_voices')
+      .select('voice_name, display_name')
+      .eq('provider', provider)
+      .eq('is_available', true)
+      .order('display_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load SignalWire voices:', error)
+      availableSignalWireVoices.value = []
+      return
+    }
+
+    availableSignalWireVoices.value = (data || []).map(voice => ({
+      value: voice.voice_name,
+      label: voice.display_name
+    }))
+
+    console.log(`✅ Loaded ${availableSignalWireVoices.value.length} SignalWire voices for provider: ${provider}`)
+  } catch (err) {
+    console.error('Error loading SignalWire voices:', err)
+    availableSignalWireVoices.value = []
+  }
 }
 
 // Handle SignalWire TTS engine change
 function onSignalWireTTSChange() {
   signalwireConfig.value.voice_name = ''
   loadSignalWireVoices()
+}
+
+// Load available SignalWire LLM models from database
+async function loadSignalWireLLMModels() {
+  try {
+    const { data, error } = await supabase
+      .from('signalwire_available_llm_models')
+      .select('model_id_full, display_name')
+      .eq('is_available', true)
+      .order('display_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load SignalWire LLM models:', error)
+      availableSignalWireLLMModels.value = []
+      return
+    }
+
+    availableSignalWireLLMModels.value = (data || []).map(model => ({
+      value: model.model_id_full,
+      label: model.display_name
+    }))
+
+    console.log(`✅ Loaded ${availableSignalWireLLMModels.value.length} SignalWire LLM models`)
+  } catch (err) {
+    console.error('Error loading SignalWire LLM models:', err)
+    availableSignalWireLLMModels.value = []
+  }
+}
+
+// Load available SignalWire STT models from database
+async function loadSignalWireSTTModels() {
+  try {
+    const { data, error } = await supabase
+      .from('signalwire_available_stt_models')
+      .select('model_id_full, display_name')
+      .eq('is_available', true)
+      .order('display_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load SignalWire STT models:', error)
+      availableSignalWireSTTModels.value = []
+      return
+    }
+
+    availableSignalWireSTTModels.value = (data || []).map(model => ({
+      value: model.model_id_full,
+      label: model.display_name
+    }))
+
+    console.log(`✅ Loaded ${availableSignalWireSTTModels.value.length} SignalWire STT models`)
+  } catch (err) {
+    console.error('Error loading SignalWire STT models:', err)
+    availableSignalWireSTTModels.value = []
+  }
+}
+
+// ==================== Active Component Management ====================
+
+// Save all active components (STT, LLM, TTS, custom voice)
+async function saveActiveComponents() {
+  console.log('💾 saveActiveComponents called')
+  console.log('livekitConfig:', livekitConfig.value)
+  loading.value = true
+  try {
+    // Find and activate selected STT model
+    if (livekitConfig.value.stt_provider && livekitConfig.value.stt_model) {
+      const { data: sttModels } = await supabase
+        .from('livekit_available_stt_models')
+        .select('id')
+        .eq('provider', livekitConfig.value.stt_provider)
+        .eq('model_name', livekitConfig.value.stt_model)
+        .limit(1)
+      
+      if (sttModels && sttModels.length > 0) {
+        console.log('Saving STT:', sttModels[0].id)
+        await setActiveSTT(sttModels[0].id)
+      }
+    }
+    
+    // Find and activate selected LLM model
+    if (livekitConfig.value.llm_provider && livekitConfig.value.llm_model) {
+      const { data: llmModels } = await supabase
+        .from('livekit_available_llm_models')
+        .select('id')
+        .eq('provider', livekitConfig.value.llm_provider)
+        .eq('model_name', livekitConfig.value.llm_model)
+        .limit(1)
+      
+      if (llmModels && llmModels.length > 0) {
+        console.log('Saving LLM:', llmModels[0].id)
+        await setActiveLLM(llmModels[0].id)
+      }
+    }
+    
+    // Find and activate selected TTS voice
+    if (livekitConfig.value.tts_provider && livekitConfig.value.tts_voice_id) {
+      const { data: voices } = await supabase
+        .from('livekit_available_voices')
+        .select('id')
+        .eq('provider', livekitConfig.value.tts_provider)
+        .eq('voice_id', livekitConfig.value.tts_voice_id)
+        .limit(1)
+      
+      if (voices && voices.length > 0) {
+        console.log('Saving TTS:', voices[0].id)
+        await setActiveTTS(voices[0].id)
+      }
+    }
+    
+    // If custom voice ID entered in text field, save it
+    if (livekitConfig.value.custom_voice_id) {
+      console.log('Saving custom voice:', livekitConfig.value.custom_voice_id)
+      
+      // First, clear all active voices
+      await supabase
+        .from('livekit_available_voices')
+        .update({ is_active: false })
+        .eq('is_active', true)
+
+      // Then upsert and activate the custom voice
+      const { data: customVoice } = await supabase
+        .from('livekit_available_voices')
+        .upsert({
+          provider: 'elevenlabs',
+          voice_id: livekitConfig.value.custom_voice_id,
+          voice_name: 'Custom',
+          display_name: 'Custom Voice',
+          is_custom: true,
+          is_available: true,
+          is_active: true, // ✅ Mark as active
+          model: 'eleven_multilingual_v2'
+        }, { onConflict: 'provider,voice_name' })
+        .select()
+        .single()
+      
+      console.log('Custom voice saved and activated:', customVoice)
+    }
+    
+    console.log('✅ Configuration saved successfully')
+    alert('✅ Configuration saved! Next call will use these settings.')
+    window.$message?.success('✅ Configuration saved! Next call will use these settings.')
+  } catch (error) {
+    console.error('❌ Failed to save configuration:', error)
+    alert('❌ Failed to save: ' + error.message)
+    window.$message?.error('Failed to save configuration: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Set active STT model
+async function setActiveSTT(modelId) {
+  try {
+    // Clear all active
+    await supabase
+      .from('livekit_available_stt_models')
+      .update({ is_active: false })
+      .eq('is_active', true)
+
+    // Set this one active
+    const { error } = await supabase
+      .from('livekit_available_stt_models')
+      .update({ is_active: true })
+      .eq('id', modelId)
+    
+    if (error) throw error
+    window.$message?.success('STT model activated!')
+    await loadSTTModelsFromDB()
+  } catch (error) {
+    console.error('Failed to set active STT:', error)
+    window.$message?.error('Failed to activate STT model')
+  }
+}
+
+// Set active LLM model
+async function setActiveLLM(modelId) {
+  try {
+    // Clear all active
+    await supabase
+      .from('livekit_available_llm_models')
+      .update({ is_active: false })
+      .eq('is_active', true)
+
+    // Set this one active
+    const { error } = await supabase
+      .from('livekit_available_llm_models')
+      .update({ is_active: true })
+      .eq('id', modelId)
+    
+    if (error) throw error
+    window.$message?.success('LLM model activated!')
+    await loadLLMModelsFromDB()
+  } catch (error) {
+    console.error('Failed to set active LLM:', error)
+    window.$message?.error('Failed to activate LLM model')
+  }
+}
+
+// Set active TTS voice
+async function setActiveTTS(voiceId) {
+  try {
+    // Clear all active
+    await supabase
+      .from('livekit_available_voices')
+      .update({ is_active: false })
+      .eq('is_active', true)
+
+    // Set this one active
+    const { error } = await supabase
+      .from('livekit_available_voices')
+      .update({ is_active: true })
+      .eq('id', voiceId)
+    
+    if (error) throw error
+    window.$message?.success('TTS voice activated!')
+    await loadTTSVoicesFromDB()
+  } catch (error) {
+    console.error('Failed to set active TTS:', error)
+    window.$message?.error('Failed to activate TTS voice')
+  }
 }
 
 // ==================== LiveKit Configuration ====================
@@ -2353,6 +2971,14 @@ async function loadLiveKitConfig() {
         ...livekitConfig.value,
         ...data
       }
+      
+      // Ensure defaults are set for pipeline mode if missing
+      if (livekitConfig.value.model_type === 'pipeline') {
+        if (!livekitConfig.value.stt_provider) livekitConfig.value.stt_provider = 'deepgram'
+        if (!livekitConfig.value.llm_provider) livekitConfig.value.llm_provider = 'openai'
+        if (!livekitConfig.value.tts_provider) livekitConfig.value.tts_provider = 'elevenlabs'
+      }
+      
       // Load available options for selected providers
       await loadLiveKitSTTModels()
       await loadLiveKitTTSModels()
@@ -2427,38 +3053,45 @@ async function saveLiveKitConfig() {
         gemini_vertexai: livekitConfig.value.gemini_vertexai,
       } : {}),
       
-      is_system_default: true, // For now, save as system default
-      is_active: true
+      is_system_default: true, // Mark as THE system default
+      broker_id: null // System templates have null broker_id
     }
 
-    // Check if system default exists
+    // Try to update ONE system default template (use first one found)
     const { data: existing } = await supabase
       .from('ai_templates')
       .select('id')
       .eq('is_system_default', true)
-      .eq('is_active', true)
       .limit(1)
-      .single()
+      .maybeSingle()
 
     let result
     if (existing) {
-      // Update existing
+      // Update the existing system default (requires admin or service role)
+      // First, unset ALL other system defaults
+      await supabase
+        .from('ai_templates')
+        .update({ is_system_default: false })
+        .eq('is_system_default', true)
+        .neq('id', existing.id)
+      
+      // Then update this one
       const { data, error } = await supabase
         .from('ai_templates')
         .update(templateData)
         .eq('id', existing.id)
         .select()
-        .single()
+        .maybeSingle()
       
       if (error) throw error
       result = data
     } else {
-      // Create new
+      // Create new system default
       const { data, error } = await supabase
         .from('ai_templates')
         .insert(templateData)
         .select()
-        .single()
+        .maybeSingle()
       
       if (error) throw error
       result = data
@@ -2474,125 +3107,168 @@ async function saveLiveKitConfig() {
   }
 }
 
-// Load available STT models for selected provider (LiveKit Inference)
+// Load available STT models for selected provider (LiveKit Inference) - FROM DATABASE
 async function loadLiveKitSTTModels() {
-  const modelMap = {
-    deepgram: [
-      { value: 'nova-3', label: 'Nova-3 (Multilingual, 8 languages)' },
-      { value: 'nova-3-medical', label: 'Nova-3 Medical (English only)' },
-      { value: 'nova-2', label: 'Nova-2 (Multilingual, 33 languages)' },
-      { value: 'nova-2-medical', label: 'Nova-2 Medical (English only)' },
-      { value: 'nova-2-conversational-ai', label: 'Nova-2 Conversational AI (English only)' },
-      { value: 'nova-2-phonecall', label: 'Nova-2 Phonecall (English only)' }
-    ],
-    assemblyai: [
-      { value: 'universal-streaming', label: 'Universal-Streaming (English only)' }
-    ],
-    cartesia: [
-      { value: 'ink-whisper', label: 'Ink Whisper (98 languages)' }
-    ]
-  }
-
   const provider = livekitConfig.value.stt_provider
-  availableLiveKitSTTModels.value = modelMap[provider] || []
-}
-
-// Load available TTS models for selected provider (LiveKit Inference)
-async function loadLiveKitTTSModels() {
-  const modelMap = {
-    elevenlabs: [
-      { value: 'eleven_turbo_v2_5', label: 'Eleven Turbo v2.5' },
-      { value: 'eleven_multilingual_v2', label: 'Eleven Multilingual v2' }
-    ],
-    cartesia: [
-      { value: 'sonic-3', label: 'Sonic-3' }
-    ],
-    inworld: [
-      { value: 'inworld-tts-1', label: 'Inworld TTS-1' }
-    ],
-    rime: [
-      { value: 'arcana', label: 'Arcana' }
-    ]
+  if (!provider) {
+    availableLiveKitSTTModels.value = []
+    return
   }
 
-  const provider = livekitConfig.value.tts_provider
-  availableLiveKitTTSModels.value = modelMap[provider] || []
-  // Also load voices for the selected model
-  await loadLiveKitTTSVoices()
+  try {
+    const { data, error } = await supabase
+      .from('livekit_available_stt_models')
+      .select('model_name, display_name, model_id_full, language_codes')
+      .eq('provider', provider)
+      .eq('is_available', true)
+      .order('display_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load STT models from database:', error)
+      availableLiveKitSTTModels.value = []
+      return
+    }
+
+    availableLiveKitSTTModels.value = (data || []).map(model => ({
+      value: model.model_id_full, // Full ID for agent.py
+      label: `${model.display_name} (${model.language_codes?.join(', ') || 'multi'})`
+    }))
+
+    console.log(`✅ Loaded ${availableLiveKitSTTModels.value.length} STT models for provider: ${provider}`)
+  } catch (err) {
+    console.error('Error loading STT models:', err)
+    availableLiveKitSTTModels.value = []
+  }
 }
 
-// Load available TTS voices for selected model (LiveKit Inference suggested voices)
+// Load available TTS models for selected provider (LiveKit Inference) - FROM DATABASE
+async function loadLiveKitTTSModels() {
+  const provider = livekitConfig.value.tts_provider
+  if (!provider) {
+    availableLiveKitTTSModels.value = []
+    return
+  }
+
+  try {
+    // Get unique models for this provider
+    const { data, error } = await supabase
+      .from('livekit_available_voices')
+      .select('model')
+      .eq('provider', provider)
+      .eq('is_available', true)
+      .eq('is_custom', false) // Only standard voices, not custom
+      .order('model', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load TTS models from database:', error)
+      availableLiveKitTTSModels.value = []
+      return
+    }
+
+    // Get unique model names
+    const uniqueModels = [...new Set((data || []).map(v => v.model))]
+    availableLiveKitTTSModels.value = uniqueModels.map(model => ({
+      value: model,
+      label: model
+    }))
+
+    console.log(`✅ Loaded ${availableLiveKitTTSModels.value.length} TTS models for provider: ${provider}`)
+    
+    // Also load voices for the selected model if one is already selected
+    if (livekitConfig.value.tts_model) {
+      await loadLiveKitTTSVoices()
+    }
+  } catch (err) {
+    console.error('Error loading TTS models:', err)
+    availableLiveKitTTSModels.value = []
+  }
+}
+
+// Load available TTS voices for selected model (LiveKit Inference) - FROM DATABASE
 async function loadLiveKitTTSVoices() {
   const provider = livekitConfig.value.tts_provider
   const model = livekitConfig.value.tts_model
 
-  if (provider === 'elevenlabs' && model === 'eleven_turbo_v2_5') {
-    availableLiveKitTTSVoices.value = [
-      { value: 'Xb7hH8MSUJpSbSDYk0k2', label: 'Alice (Clear, friendly British woman, en-GB)' },
-      { value: 'iP95p4xoKVk53GoZ742B', label: 'Chris (Natural American male, en-US)' },
-      { value: 'cjVigY5qzO86Huf0OWal', label: 'Eric (Smooth tenor Mexican male, es-MX)' },
-      { value: 'cgSgspJ2msm6clMCkdW9', label: 'Jessica (Young, playful American female, en-US)' }
-    ]
-  } else if (provider === 'cartesia' && model === 'sonic-3') {
-    availableLiveKitTTSVoices.value = [
-      { value: 'a167e0f3-df7e-4d52-a9c3-f949145efdab', label: 'Blake (Energetic American male, en-US)' },
-      { value: '5c5ad5e7-1020-476b-8b91-fdcbe9cc313c', label: 'Daniela (Calm Mexican female, es-MX)' },
-      { value: '9626c31c-bec5-4cca-baa8-f8ba9e84c8bc', label: 'Jacqueline (Confident American female, en-US)' },
-      { value: 'f31cc6a7-c1e8-4764-980c-60a361443dd1', label: 'Robyn (Neutral Australian female, en-AU)' }
-    ]
-  } else if (provider === 'rime' && model === 'arcana') {
-    availableLiveKitTTSVoices.value = [
-      { value: 'astra', label: 'Astra (Chipper, upbeat American female, en-US)' },
-      { value: 'celeste', label: 'Celeste (Chill Gen-Z American female, en-US)' },
-      { value: 'luna', label: 'Luna (Chill but excitable American female, en-US)' },
-      { value: 'ursa', label: 'Ursa (Young, emo American male, en-US)' }
-    ]
-  } else if (provider === 'inworld' && model === 'inworld-tts-1') {
-    availableLiveKitTTSVoices.value = [
-      { value: 'Ashley', label: 'Ashley (Warm, natural American female, en-US)' },
-      { value: 'Diego', label: 'Diego (Soothing Mexican male, es-MX)' },
-      { value: 'Edward', label: 'Edward (Fast-talking American male, en-US)' },
-      { value: 'Olivia', label: 'Olivia (Upbeat British female, en-GB)' }
-    ]
-  } else {
+  if (!provider || !model) {
+    availableLiveKitTTSVoices.value = []
+    return
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('livekit_available_voices')
+      .select('voice_id, voice_name, display_name, voice_id_full, language_codes, is_custom')
+      .eq('provider', provider)
+      .eq('model', model)
+      .eq('is_available', true)
+      .eq('is_custom', false) // Only standard voices
+      .order('display_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load TTS voices from database:', error)
+      availableLiveKitTTSVoices.value = []
+      return
+    }
+
+    availableLiveKitTTSVoices.value = (data || []).map(voice => ({
+      value: voice.voice_id_full, // Full ID for agent.py
+      label: `${voice.display_name} (${voice.language_codes?.join(', ') || 'multi'})`
+    }))
+
+    // Add custom voice option for ElevenLabs
+    if (provider === 'elevenlabs') {
+      availableLiveKitTTSVoices.value.push({
+        value: 'custom',
+        label: '✨ Custom Voice ID'
+      })
+    }
+
+    console.log(`✅ Loaded ${availableLiveKitTTSVoices.value.length} TTS voices for ${provider}/${model}`)
+  } catch (err) {
+    console.error('Error loading TTS voices:', err)
     availableLiveKitTTSVoices.value = []
   }
 }
 
-// Load available LLM models for selected provider (LiveKit Inference)
+// Load available LLM models for selected provider (LiveKit Inference) - FROM DATABASE
 async function loadLiveKitLLMModels() {
-  const modelMap = {
-    openai: [
-      { value: 'gpt-4o', label: 'GPT-4o' },
-      { value: 'gpt-4o-mini', label: 'GPT-4o mini' },
-      { value: 'gpt-4.1', label: 'GPT-4.1' },
-      { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
-      { value: 'gpt-4.1-nano', label: 'GPT-4.1 nano' },
-      { value: 'gpt-5', label: 'GPT-5' },
-      { value: 'gpt-5-mini', label: 'GPT-5 mini' },
-      { value: 'gpt-5-nano', label: 'GPT-5 nano' },
-      { value: 'gpt-oss-120b', label: 'GPT OSS 120B' }
-    ],
-    gemini: [
-      { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-      { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-      { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-      { value: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' }
-    ],
-    qwen: [
-      { value: 'qwen3-235b-a22b-instruct', label: 'Qwen3 235B A22B Instruct' }
-    ],
-    kimi: [
-      { value: 'kimi-k2-instruct', label: 'Kimi K2 Instruct' }
-    ],
-    deepseek: [
-      { value: 'deepseek-v3', label: 'DeepSeek V3' }
-    ]
+  const provider = livekitConfig.value.llm_provider
+  if (!provider) {
+    availableLiveKitLLMModels.value = []
+    return
   }
 
-  const provider = livekitConfig.value.llm_provider
-  availableLiveKitLLMModels.value = modelMap[provider] || []
+  try {
+    const { data, error } = await supabase
+      .from('livekit_available_llm_models')
+      .select('model_name, display_name, model_id_full, context_window, notes')
+      .eq('provider', provider)
+      .eq('is_available', true)
+      .order('display_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load LLM models from database:', error)
+      availableLiveKitLLMModels.value = []
+      return
+    }
+
+    availableLiveKitLLMModels.value = (data || []).map(model => {
+      let label = model.display_name
+      // Add badge for realtime models
+      if (model.notes && model.notes.includes('Realtime')) {
+        label += ' 🔴 (Realtime Plugin)'
+      }
+      return {
+        value: model.model_id_full, // Full ID for agent.py
+        label: label
+      }
+    })
+
+    console.log(`✅ Loaded ${availableLiveKitLLMModels.value.length} LLM models for provider: ${provider}`)
+  } catch (err) {
+    console.error('Error loading LLM models:', err)
+    availableLiveKitLLMModels.value = []
+  }
 }
 
 // Handle model type change
@@ -2603,6 +3279,11 @@ function onModelTypeChange() {
     if (!livekitConfig.value.stt_provider) livekitConfig.value.stt_provider = 'deepgram'
     if (!livekitConfig.value.llm_provider) livekitConfig.value.llm_provider = 'openai'
     if (!livekitConfig.value.tts_provider) livekitConfig.value.tts_provider = 'elevenlabs'
+    
+    // Load models for the initialized providers
+    loadLiveKitSTTModels()
+    loadLiveKitLLMModels()
+    loadLiveKitTTSModels()
   } else if (livekitConfig.value.model_type === 'openai_realtime') {
     // Initialize OpenAI Realtime defaults
     if (!livekitConfig.value.realtime_model) livekitConfig.value.realtime_model = 'gpt-realtime'
@@ -3582,7 +4263,17 @@ async function deleteVersion(versionId) {
 
 // Toggle node expansion
 async function toggleNode(node) {
-  expandedNodes.value[node] = !expandedNodes.value[node]
+  // Close all other nodes
+  Object.keys(expandedNodes.value).forEach(key => {
+    expandedNodes.value[key] = (key === node) ? !expandedNodes.value[key] : false
+  })
+  
+  // Close all theme sections and clear selected theme
+  Object.keys(expandedThemeSections.value).forEach(key => {
+    expandedThemeSections.value[key] = false
+  })
+  selectedThemeSection.value = null
+  
   if (expandedNodes.value[node]) {
     selectedNode.value = node
     
@@ -4220,8 +4911,8 @@ FORMAT:
     aiHelperSuggestion.value = data.choices[0].message.content
     
     // Generate diff
-    if (themeContent.value) {
-      aiHelperDiff.value = Diff.diffWords(themeContent.value, aiHelperSuggestion.value)
+    if (assembledTheme.value) {
+      aiHelperDiff.value = Diff.diffWords(assembledTheme.value, aiHelperSuggestion.value)
     }
     
   } catch (error) {
@@ -4233,7 +4924,9 @@ FORMAT:
 }
 
 function acceptThemeSuggestion() {
-  themeContent.value = aiHelperSuggestion.value
+  // For now, just set identity field with the AI suggestion
+  // TODO: Parse AI suggestion into structured sections
+  themeStructured.value.identity = aiHelperSuggestion.value
   themeHasChanges.value = true
   closeThemeHelper()
 }
@@ -4352,7 +5045,7 @@ async function generateNodePrompt() {
 **Transitions:** ${nodeHelperAnswers.value.transitions || 'Determine from scenarios'}
 
 **CURRENT THEME:**
-${themeContent.value || '(No theme - use professional tone)'}
+${assembledTheme.value || '(No theme - use professional tone)'}
 
 **AVAILABLE TOOLS (select 2-5 relevant ones):**
 ${toolsList}
@@ -4469,7 +5162,7 @@ function acceptNodeSuggestion() {
 
 function showPreview(node) {
   const nodeData = nodeContent.value[node]
-  const theme = themeContent.value || '[Theme not loaded]'
+  const theme = assembledTheme.value || '[Theme not loaded]'
   
   const preview = `${theme}
 
@@ -4562,6 +5255,22 @@ watch(selectedNode, (newNode) => {
   }
 })
 
+// Watch theme fields and auto-resize textareas
+watch(themeStructured, () => {
+  nextTick(() => {
+    autoResizeThemeTextareas()
+  })
+}, { deep: true })
+
+// Auto-resize theme textareas to fit content
+function autoResizeThemeTextareas() {
+  const textareas = document.querySelectorAll('.theme-field-auto')
+  textareas.forEach(textarea => {
+    textarea.style.height = 'auto'
+    textarea.style.height = textarea.scrollHeight + 'px'
+  })
+}
+
 // Lifecycle
 // Close dropdowns when clicking outside
 function handleClickOutside(event) {
@@ -4598,6 +5307,69 @@ function handleClickOutside(event) {
   }
 }
 
+// ==================== Phone Number Routing ====================
+
+// Load phone numbers
+async function loadPhoneNumbers() {
+  try {
+    phoneNumbers.value = await listPhoneNumbers()
+  } catch (error) {
+    console.error('Failed to load phone numbers:', error)
+  }
+}
+
+// Update phone number routing
+async function updateRouting(phoneNumberId, newRoute) {
+  routingLoading.value[phoneNumberId] = true
+  
+  try {
+    const result = await updatePhoneRouting(phoneNumberId, newRoute)
+    
+    if (result.success) {
+      // Reload phone numbers to get updated state
+      await loadPhoneNumbers()
+      alert(result.message)
+    } else {
+      alert('Error: ' + result.message)
+    }
+  } catch (error) {
+    alert('Failed to update routing: ' + error.message)
+  } finally {
+    routingLoading.value[phoneNumberId] = false
+  }
+}
+
+// Sync phone numbers from SignalWire
+async function syncPhoneNumbers() {
+  loading.value = true
+  
+  try {
+    const result = await syncPhoneNumbersFromSignalWire()
+    
+    if (result.success) {
+      await loadPhoneNumbers()
+      alert(`Synced ${result.synced} phone numbers from SignalWire`)
+    } else {
+      alert('Sync failed: ' + result.message)
+    }
+  } catch (error) {
+    alert('Failed to sync: ' + error.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Format phone number for display
+function formatPhoneNumber(phone) {
+  // +14155551234 → +1 (415) 555-1234
+  const match = phone.match(/^\+1(\d{3})(\d{3})(\d{4})$/)
+  if (match) {
+    return `+1 (${match[1]}) ${match[2]}-${match[3]}`
+  }
+  return phone
+}
+
+
 onMounted(async () => {
   window.addEventListener('resize', handleResize)
   handleResize()
@@ -4610,9 +5382,23 @@ onMounted(async () => {
   await loadSTTModelsFromDB()
   await loadLLMModelsFromDB()
   await loadTTSVoicesFromDB()
+  // Load SignalWire models from database
+  await loadSignalWireLLMModels()
+  await loadSignalWireSTTModels()
   // Load platform-specific configurations
   await loadSignalWireConfig()
-  await loadLiveKitConfig()
+  // await loadLiveKitConfig() // Disabled - ai_templates table doesn't exist
+  
+  // Load phone numbers
+  await loadPhoneNumbers()
+  
+  // Ensure LiveKit dropdowns are populated even if no config in DB yet
+  if (livekitConfig.value.model_type === 'pipeline') {
+    await loadLiveKitSTTModels()
+    await loadLiveKitLLMModels()
+    await loadLiveKitTTSModels()
+  }
+  
   // Auto-load Reverse Mortgage on mount
   await onVerticalChange()
 })
@@ -4629,6 +5415,27 @@ watch(selectedVertical, async () => {
 watch(() => livekitConfig.value.tts_model, async () => {
   if (livekitConfig.value.tts_model && livekitConfig.value.tts_provider) {
     await loadLiveKitTTSVoices()
+  }
+})
+
+// Watch for STT provider changes to reload models
+watch(() => livekitConfig.value.stt_provider, async () => {
+  if (livekitConfig.value.stt_provider && livekitConfig.value.model_type === 'pipeline') {
+    await loadLiveKitSTTModels()
+  }
+})
+
+// Watch for TTS provider changes to reload models
+watch(() => livekitConfig.value.tts_provider, async () => {
+  if (livekitConfig.value.tts_provider && livekitConfig.value.model_type === 'pipeline') {
+    await loadLiveKitTTSModels()
+  }
+})
+
+// Watch for LLM provider changes to reload models
+watch(() => livekitConfig.value.llm_provider, async () => {
+  if (livekitConfig.value.llm_provider && livekitConfig.value.model_type === 'pipeline') {
+    await loadLiveKitLLMModels()
   }
 })
 
@@ -4830,7 +5637,7 @@ onUnmounted(() => {
 .versions-bar {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 0.5rem;
-  padding: 1rem;
+  padding: 0.6rem;
   position: sticky;
   top: 2rem;
   height: fit-content;
@@ -4845,11 +5652,11 @@ onUnmounted(() => {
 }
 
 .versions-header {
-  margin-bottom: 1rem;
+  margin-bottom: 0.6rem;
 }
 
 .versions-header h3 {
-  font-size: 1rem;
+  font-size: 0.875rem;
   margin: 0;
   color: #fff !important;
 }
@@ -4857,7 +5664,7 @@ onUnmounted(() => {
 .versions-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
   align-items: flex-start;
 }
 
@@ -4871,7 +5678,7 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.5rem;
-  padding: 0.75rem;
+  padding: 0.5rem;
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
@@ -4911,13 +5718,14 @@ onUnmounted(() => {
 .version-number {
   display: block;
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
   color: #fff !important;
+  font-size: 0.875rem;
 }
 
 .version-date {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.8) !important;
   text-align: left;
 }
@@ -5106,6 +5914,11 @@ onUnmounted(() => {
   margin-top: 1.5rem;
 }
 
+.editor-actions:empty {
+  margin-top: 0;
+  display: none;
+}
+
 .btn-save,
 .btn-test {
   padding: 0.5rem 1rem;
@@ -5137,6 +5950,28 @@ onUnmounted(() => {
   background: #059669;
 }
 
+.btn-save-all {
+  padding: 0.5rem 1rem;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.btn-save-all:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.btn-save-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn-publish {
   padding: 0.5rem 1rem;
   background: #f59e0b;
@@ -5159,7 +5994,7 @@ onUnmounted(() => {
 }
 
 .nodes-section {
-  margin-top: 2rem;
+  margin-top: 0.75rem;
   width: 100%;
   overflow-x: visible;
   overflow-y: visible;
@@ -5168,7 +6003,7 @@ onUnmounted(() => {
 
 .nodes-header h2 {
   font-size: 1.5rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.75rem;
   color: #fff !important;
 }
 
@@ -6080,5 +6915,263 @@ onUnmounted(() => {
   background: rgba(138, 43, 226, 0.3);
   border-color: rgba(138, 43, 226, 0.6);
 }
+
+/* Structured Theme Editor */
+.structured-theme-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.theme-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.theme-section:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.theme-section.active {
+  border-color: #8a2be2;
+}
+
+.theme-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  user-select: none;
+}
+
+.theme-section-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.section-toggle {
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.2s ease;
+}
+
+.theme-section-header:hover .section-toggle {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.theme-section-content {
+  padding: 0 1rem 1rem 1rem;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.95rem;
+}
+
+.section-hint {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid rgba(75, 0, 130, 0.6);
+  border-radius: 4px;
+}
+
+.section-hint a {
+  color: rgba(138, 43, 226, 1);
+  text-decoration: underline;
+}
+
+.theme-field,
+.structured-theme-editor textarea {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #fff !important;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: all 0.2s ease;
+  min-height: 60px;
+}
+
+.theme-field-auto {
+  overflow-y: hidden;
+  resize: none;
+}
+
+.theme-field:focus,
+.structured-theme-editor textarea:focus {
+  outline: none;
+  border-color: rgba(138, 43, 226, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff !important;
+}
+
+.theme-field::placeholder,
+.structured-theme-editor textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+/* ==================== Phone Numbers Tab ==================== */
+
+.phone-numbers-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.phone-number-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.phone-number-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.phone-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.phone-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.phone-number {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.phone-vertical {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: capitalize;
+}
+
+.phone-routing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.routing-toggle {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.route-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 100px;
+  font-size: 0.85rem;
+}
+
+.route-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.route-option.active {
+  background: rgba(138, 43, 226, 0.2);
+  border-color: rgba(138, 43, 226, 0.6);
+  color: #fff;
+}
+
+.route-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.route-option .route-icon {
+  font-size: 1.5rem;
+}
+
+.route-option span:nth-child(2) {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.route-option small {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.route-option.active small {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.last-synced {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .phone-number-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .phone-routing {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .routing-toggle {
+    flex-direction: column;
+  }
+
+  .route-option {
+    width: 100%;
+  }
+}
+
 </style>
+
 
