@@ -132,17 +132,23 @@ async def barbara_agent(request: Request):
             starting_node=current_node
         )
         
-        # Load voice configuration from database
-        from services.database import get_voice_config
-        voice_config = await get_voice_config(vertical="reverse_mortgage", language_code="en-US")
-        voice_string = voice_config.get("voice_string", "elevenlabs.rachel")
+        # Load active models from database (component-based configuration)
+        from services.database import get_active_signalwire_models
+        active_models = await get_active_signalwire_models()
+        
+        llm_model = active_models.get("llm_model", "gpt-4o-mini")
+        stt_model = active_models.get("stt_model", "deepgram:nova-3")
+        voice_string = active_models.get("tts_voice_string", "elevenlabs.rachel")
         
         # Validate voice_string is not None/empty
         if not voice_string or voice_string == "None":
             logger.error(f"[AGENT] Invalid voice_string: {voice_string}, using fallback")
             voice_string = "elevenlabs.rachel"
         
-        logger.info(f"[AGENT] Voice loaded: {voice_string} (engine: {voice_config.get('engine')}, voice: {voice_config.get('voice_name')})")
+        logger.info(f"[AGENT] Active models loaded:")
+        logger.info(f"[AGENT]   LLM: {llm_model}")
+        logger.info(f"[AGENT]   STT: {stt_model}")
+        logger.info(f"[AGENT]   TTS: {voice_string}")
         logger.info(f"[AGENT] Built {len(contexts)} contexts with native SignalWire context switching")
         
         # Build SWML response (per SignalWire official docs)
@@ -164,10 +170,12 @@ async def barbara_agent(request: Request):
                                 "contexts": contexts
                             },
                             "params": {
-                                # LLM Configuration (OpenAI)
-                                "ai_model": "gpt-4o-mini",
-                                # STT Configuration (Deepgram via OpenAI ASR engine)
-                                "openai_asr_engine": "deepgram:nova-3",
+                                # LLM Configuration (OpenAI) - Loaded from database
+                                # Per SignalWire docs: gpt-4o-mini, gpt-4.1-mini, gpt-4.1-nano
+                                "ai_model": llm_model,
+                                # STT Configuration (Deepgram via OpenAI ASR engine) - Loaded from database
+                                # Per SignalWire docs: deepgram:nova-2, deepgram:nova-3
+                                "openai_asr_engine": stt_model,
                                 # Call behavior settings
                                 "end_of_speech_timeout": 700,
                                 "attention_timeout": 5000,

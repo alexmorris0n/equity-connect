@@ -245,9 +245,80 @@ async def get_theme_prompt(vertical: str = "reverse_mortgage") -> Optional[str]:
         return None
 
 
+async def get_active_signalwire_models() -> Dict[str, Any]:
+    """
+    Get active SignalWire models from component tables
+    Returns: {llm_model, stt_model, tts_voice_string}
+    
+    Per SignalWire docs:
+    - ai_model: Just model name (e.g., "gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1-nano")
+    - openai_asr_engine: Colon format (e.g., "deepgram:nova-2", "deepgram:nova-3")
+    - voice: Dot format (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
+    """
+    try:
+        # Load active LLM model
+        # Per SignalWire docs: ai_model should be just model name (e.g., "gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1-nano")
+        llm_result = supabase.table('signalwire_available_llm_models')\
+            .select('model_id_full')\
+            .eq('is_active', True)\
+            .maybe_single()\
+            .execute()
+        
+        llm_model = "gpt-4o-mini"  # Default per SignalWire docs
+        if llm_result.data:
+            llm_model = llm_result.data.get('model_id_full', llm_model)
+            logger.info(f"[DB] ✅ Loaded active LLM: {llm_model}")
+        else:
+            logger.warning(f"[DB] ⚠️ No active LLM found, using default: {llm_model}")
+        
+        # Load active STT model
+        # Per SignalWire docs: openai_asr_engine should be colon format (e.g., "deepgram:nova-2", "deepgram:nova-3")
+        stt_result = supabase.table('signalwire_available_stt_models')\
+            .select('model_id_full')\
+            .eq('is_active', True)\
+            .maybe_single()\
+            .execute()
+        
+        stt_model = "deepgram:nova-3"  # Default per SignalWire docs
+        if stt_result.data:
+            stt_model = stt_result.data.get('model_id_full', stt_model)
+            logger.info(f"[DB] ✅ Loaded active STT: {stt_model}")
+        else:
+            logger.warning(f"[DB] ⚠️ No active STT found, using default: {stt_model}")
+        
+        # Load active TTS voice
+        # Per SignalWire docs: voice should be dot format (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
+        tts_result = supabase.table('signalwire_available_voices')\
+            .select('voice_id_full')\
+            .eq('is_active', True)\
+            .maybe_single()\
+            .execute()
+        
+        tts_voice_string = "elevenlabs.rachel"  # Default
+        if tts_result.data:
+            tts_voice_string = tts_result.data.get('voice_id_full', tts_voice_string)
+            logger.info(f"[DB] ✅ Loaded active TTS: {tts_voice_string}")
+        else:
+            logger.warning(f"[DB] ⚠️ No active TTS found, using default: {tts_voice_string}")
+        
+        return {
+            "llm_model": llm_model,
+            "stt_model": stt_model,
+            "tts_voice_string": tts_voice_string
+        }
+        
+    except Exception as e:
+        logger.error(f"[DB] Failed to load active SignalWire models: {e}, using fallbacks", exc_info=True)
+        return {
+            "llm_model": "gpt-4o-mini",
+            "stt_model": "deepgram:nova-3",
+            "tts_voice_string": "elevenlabs.rachel"
+        }
+
+
 async def get_voice_config(vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
     """
-    Get voice configuration from database
+    Get voice configuration from database (DEPRECATED - use get_active_signalwire_models)
     Returns: {engine, voice_name, model, voice_string}
     """
     try:

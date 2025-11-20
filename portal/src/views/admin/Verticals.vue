@@ -260,9 +260,14 @@
                 <div class="form-group">
                   <label>TTS Engine</label>
                   <select v-model="signalwireConfig.tts_engine" @change="onSignalWireTTSChange">
+                    <option value="amazon">Amazon Polly</option>
+                    <option value="azure">Microsoft Azure</option>
+                    <option value="cartesia">Cartesia</option>
+                    <option value="deepgram">Deepgram</option>
                     <option value="elevenlabs">ElevenLabs</option>
-                    <option value="openai">OpenAI</option>
                     <option value="gcloud">Google Cloud</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="rime">Rime</option>
                     <option value="amazon">Amazon Polly</option>
                     <option value="cartesia">Cartesia</option>
                     <option value="rime">Rime</option>
@@ -323,8 +328,10 @@
                 <div class="form-group">
                   <label>Model</label>
                   <select v-model="livekitConfig.realtime_model">
-                    <option value="gpt-realtime">gpt-realtime (Default)</option>
-                    <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
+                    <option value="">Select a model...</option>
+                    <option v-for="model in openaiRealtimeModels" :key="model.model_id_full" :value="model.model_id_full">
+                      {{ model.display_name }} ({{ model.model_name }})
+                    </option>
                   </select>
                 </div>
 
@@ -411,8 +418,10 @@
                 <div class="form-group">
                   <label>Model</label>
                   <select v-model="livekitConfig.gemini_model">
-                    <option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp (Default)</option>
-                    <option value="gemini-2.5-flash-native-audio-preview-09-2025">gemini-2.5-flash-native-audio-preview-09-2025</option>
+                    <option value="">Select a model...</option>
+                    <option v-for="model in geminiRealtimeModels" :key="model.model_id_full" :value="model.model_id_full">
+                      {{ model.display_name }} ({{ model.model_name }})
+                    </option>
                   </select>
                 </div>
 
@@ -531,10 +540,8 @@
                     <option value="deepgram">Deepgram</option>
                     <option value="assemblyai">AssemblyAI</option>
                     <option value="cartesia">Cartesia</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="google">Google Cloud</option>
                   </select>
-                  <small class="form-hint">LiveKit Inference STT providers</small>
+                  <small class="form-hint">LiveKit Inference STT providers. For OpenAI and Google Cloud, use plugins with your own API keys.</small>
                 </div>
 
                 <div class="form-group">
@@ -567,12 +574,8 @@
                     <option value="cartesia">Cartesia</option>
                     <option value="inworld">Inworld</option>
                     <option value="rime">Rime</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="google">Google Cloud</option>
-                    <option value="amazon">Amazon Polly</option>
-                    <option value="azure">Microsoft Azure</option>
                   </select>
-                  <small class="form-hint">LiveKit Inference TTS providers</small>
+                  <small class="form-hint">LiveKit Inference TTS providers. For OpenAI, Google Cloud, Amazon Polly, and Azure, use plugins with your own API keys.</small>
                 </div>
 
                 <div class="form-group">
@@ -1663,6 +1666,9 @@ const availableLiveKitSTTModels = ref([])
 const availableLiveKitTTSModels = ref([])
 const availableLiveKitTTSVoices = ref([])
 const availableLiveKitLLMModels = ref([])
+// Available realtime models - FROM DATABASE
+const openaiRealtimeModels = ref([])
+const geminiRealtimeModels = ref([])
 
 // LLM models loaded from database (will be populated on mount)
 const llmModelsFromDB = ref({})
@@ -1929,7 +1935,7 @@ async function loadTTSVoicesFromDB() {
   try {
     const { data, error } = await supabase
       .from('signalwire_available_voices')
-      .select('provider, voice_name, display_name, gender, accent')
+      .select('provider, voice_name, display_name, gender')
       .eq('is_available', true)
       .order('provider', { ascending: true })
       .order('display_name', { ascending: true })
@@ -2558,6 +2564,57 @@ async function saveConfig() {
 // ==================== SignalWire Configuration ====================
 
 // Load SignalWire config from database
+// Load active SignalWire models from component tables
+async function loadActiveSignalWireModels() {
+  try {
+    // Load active LLM model
+    const { data: activeLLM } = await supabase
+      .from('signalwire_available_llm_models')
+      .select('provider, model_name, model_id_full')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeLLM) {
+      signalwireConfig.value.llm_model = activeLLM.model_id_full
+      console.log('✅ Loaded active SignalWire LLM:', activeLLM.model_id_full)
+    }
+    
+    // Load active STT model
+    const { data: activeSTT } = await supabase
+      .from('signalwire_available_stt_models')
+      .select('provider, model_name, model_id_full')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeSTT) {
+      signalwireConfig.value.stt_model = activeSTT.model_id_full
+      console.log('✅ Loaded active SignalWire STT:', activeSTT.model_id_full)
+    }
+    
+    // Load active TTS voice
+    const { data: activeTTS } = await supabase
+      .from('signalwire_available_voices')
+      .select('provider, voice_name, voice_id, voice_id_full')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeTTS) {
+      signalwireConfig.value.tts_engine = activeTTS.provider
+      signalwireConfig.value.voice_name = activeTTS.voice_id_full
+      console.log('✅ Loaded active SignalWire TTS:', activeTTS.provider, activeTTS.voice_id_full)
+    }
+    
+    // Now load the dropdowns with the active values set
+    await loadSignalWireLLMModels()
+    await loadSignalWireSTTModels()
+    if (signalwireConfig.value.tts_engine) {
+      await loadSignalWireVoices()
+    }
+  } catch (error) {
+    console.error('❌ Failed to load active SignalWire models:', error)
+  }
+}
+
 async function loadSignalWireConfig() {
   try {
     const { data, error } = await supabase
@@ -2635,9 +2692,8 @@ async function saveSignalWireConfig() {
 
     // 3. Mark selected TTS voice as active
     if (signalwireConfig.value.tts_engine && signalwireConfig.value.voice_name) {
-      // Build the voice_id_full based on provider format from SignalWire docs
-      const provider = signalwireConfig.value.tts_engine
-      const voiceName = signalwireConfig.value.voice_name
+      // voice_name contains voice_id_full (e.g., "elevenlabs.rachel")
+      const voiceIdFull = signalwireConfig.value.voice_name
       
       // Clear all active voices
       await supabase
@@ -2645,15 +2701,14 @@ async function saveSignalWireConfig() {
         .update({ is_active: false })
         .eq('is_active', true)
 
-      // Set selected voice as active (match by provider and voice_name)
+      // Set selected voice as active (match by voice_id_full)
       const { error: ttsError } = await supabase
         .from('signalwire_available_voices')
         .update({ is_active: true })
-        .eq('provider', provider)
-        .eq('voice_name', voiceName)
+        .eq('voice_id_full', voiceIdFull)
 
       if (ttsError) throw new Error(`TTS update failed: ${ttsError.message}`)
-      console.log('✅ TTS voice marked as active:', provider, voiceName)
+      console.log('✅ TTS voice marked as active:', voiceIdFull)
     }
 
     // 4. Also save to agent_voice_config for backwards compatibility
@@ -2698,7 +2753,7 @@ async function loadSignalWireVoices() {
   try {
     const { data, error } = await supabase
       .from('signalwire_available_voices')
-      .select('voice_name, display_name')
+      .select('voice_name, voice_id_full, display_name')
       .eq('provider', provider)
       .eq('is_available', true)
       .order('display_name', { ascending: true })
@@ -2710,7 +2765,7 @@ async function loadSignalWireVoices() {
     }
 
     availableSignalWireVoices.value = (data || []).map(voice => ({
-      value: voice.voice_name,
+      value: voice.voice_id_full, // Use voice_id_full (e.g., "elevenlabs.rachel") for dropdown
       label: voice.display_name
     }))
 
@@ -2789,48 +2844,54 @@ async function saveActiveComponents() {
   console.log('livekitConfig:', livekitConfig.value)
   loading.value = true
   try {
-    // Find and activate selected STT model
+    // Find and activate selected STT model - match by model_id_full (what dropdown stores)
     if (livekitConfig.value.stt_provider && livekitConfig.value.stt_model) {
       const { data: sttModels } = await supabase
         .from('livekit_available_stt_models')
         .select('id')
         .eq('provider', livekitConfig.value.stt_provider)
-        .eq('model_name', livekitConfig.value.stt_model)
+        .eq('model_id_full', livekitConfig.value.stt_model)
         .limit(1)
       
       if (sttModels && sttModels.length > 0) {
-        console.log('Saving STT:', sttModels[0].id)
+        console.log('Saving STT:', sttModels[0].id, 'model_id_full:', livekitConfig.value.stt_model)
         await setActiveSTT(sttModels[0].id)
+      } else {
+        console.warn('⚠️ STT model not found:', livekitConfig.value.stt_provider, livekitConfig.value.stt_model)
       }
     }
     
-    // Find and activate selected LLM model
+    // Find and activate selected LLM model - match by model_id_full (what dropdown stores)
     if (livekitConfig.value.llm_provider && livekitConfig.value.llm_model) {
       const { data: llmModels } = await supabase
         .from('livekit_available_llm_models')
         .select('id')
         .eq('provider', livekitConfig.value.llm_provider)
-        .eq('model_name', livekitConfig.value.llm_model)
+        .eq('model_id_full', livekitConfig.value.llm_model)
         .limit(1)
       
       if (llmModels && llmModels.length > 0) {
-        console.log('Saving LLM:', llmModels[0].id)
+        console.log('Saving LLM:', llmModels[0].id, 'model_id_full:', livekitConfig.value.llm_model)
         await setActiveLLM(llmModels[0].id)
+      } else {
+        console.warn('⚠️ LLM model not found:', livekitConfig.value.llm_provider, livekitConfig.value.llm_model)
       }
     }
     
-    // Find and activate selected TTS voice
-    if (livekitConfig.value.tts_provider && livekitConfig.value.tts_voice_id) {
+    // Find and activate selected TTS voice - match by voice_id_full (what dropdown stores)
+    if (livekitConfig.value.tts_provider && livekitConfig.value.tts_voice_id && livekitConfig.value.tts_voice_id !== 'custom') {
       const { data: voices } = await supabase
         .from('livekit_available_voices')
         .select('id')
         .eq('provider', livekitConfig.value.tts_provider)
-        .eq('voice_id', livekitConfig.value.tts_voice_id)
+        .eq('voice_id_full', livekitConfig.value.tts_voice_id)
         .limit(1)
       
       if (voices && voices.length > 0) {
-        console.log('Saving TTS:', voices[0].id)
+        console.log('Saving TTS:', voices[0].id, 'voice_id_full:', livekitConfig.value.tts_voice_id)
         await setActiveTTS(voices[0].id)
+      } else {
+        console.warn('⚠️ TTS voice not found:', livekitConfig.value.tts_provider, livekitConfig.value.tts_voice_id)
       }
     }
     
@@ -2861,6 +2922,49 @@ async function saveActiveComponents() {
         .single()
       
       console.log('Custom voice saved and activated:', customVoice)
+    }
+    
+    // Handle realtime models - mark selected one as active
+    if (livekitConfig.value.model_type === 'openai_realtime' && livekitConfig.value.realtime_model) {
+      console.log('Saving OpenAI Realtime model:', livekitConfig.value.realtime_model)
+      
+      // Find and activate selected OpenAI Realtime model
+      const { data: realtimeModels } = await supabase
+        .from('livekit_available_realtime_models')
+        .select('id')
+        .eq('provider', 'openai-realtime')
+        .eq('model_id_full', livekitConfig.value.realtime_model)
+        .limit(1)
+      
+      if (realtimeModels && realtimeModels.length > 0) {
+        console.log('Activating OpenAI Realtime:', realtimeModels[0].id, 'model_id_full:', livekitConfig.value.realtime_model)
+        await setActiveRealtime(realtimeModels[0].id)
+      } else {
+        console.warn('⚠️ OpenAI Realtime model not found:', livekitConfig.value.realtime_model)
+      }
+    } else if (livekitConfig.value.model_type === 'gemini_live' && livekitConfig.value.gemini_model) {
+      console.log('Saving Gemini Live model:', livekitConfig.value.gemini_model)
+      
+      // Find and activate selected Gemini Live model
+      const { data: realtimeModels } = await supabase
+        .from('livekit_available_realtime_models')
+        .select('id')
+        .eq('provider', 'google-realtime')
+        .eq('model_id_full', livekitConfig.value.gemini_model)
+        .limit(1)
+      
+      if (realtimeModels && realtimeModels.length > 0) {
+        console.log('Activating Gemini Live:', realtimeModels[0].id, 'model_id_full:', livekitConfig.value.gemini_model)
+        await setActiveRealtime(realtimeModels[0].id)
+      } else {
+        console.warn('⚠️ Gemini Live model not found:', livekitConfig.value.gemini_model)
+      }
+    } else if (livekitConfig.value.model_type === 'pipeline') {
+      // If switching to pipeline mode, deactivate all realtime models
+      await supabase
+        .from('livekit_available_realtime_models')
+        .update({ is_active: false })
+        .eq('is_active', true)
     }
     
     console.log('✅ Configuration saved successfully')
@@ -2947,7 +3051,115 @@ async function setActiveTTS(voiceId) {
   }
 }
 
+// Set active Realtime model
+async function setActiveRealtime(modelId) {
+  try {
+    // Clear all active realtime models
+    await supabase
+      .from('livekit_available_realtime_models')
+      .update({ is_active: false })
+      .eq('is_active', true)
+
+    // Set this one active
+    const { error } = await supabase
+      .from('livekit_available_realtime_models')
+      .update({ is_active: true })
+      .eq('id', modelId)
+    
+    if (error) throw error
+    console.log('✅ Realtime model activated:', modelId)
+  } catch (error) {
+    console.error('Failed to set active Realtime:', error)
+    throw error
+  }
+}
+
 // ==================== LiveKit Configuration ====================
+
+// Load active LiveKit models from database and populate dropdowns
+async function loadActiveLiveKitModels() {
+  try {
+    // Load active STT model
+    const { data: activeSTT } = await supabase
+      .from('livekit_available_stt_models')
+      .select('provider, model_name, model_id_full')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeSTT) {
+      livekitConfig.value.stt_provider = activeSTT.provider
+      livekitConfig.value.stt_model = activeSTT.model_id_full
+      console.log('✅ Loaded active STT:', activeSTT.provider, activeSTT.model_id_full)
+    }
+    
+    // Load active LLM model
+    const { data: activeLLM } = await supabase
+      .from('livekit_available_llm_models')
+      .select('provider, model_name, model_id_full')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeLLM) {
+      livekitConfig.value.llm_provider = activeLLM.provider
+      livekitConfig.value.llm_model = activeLLM.model_id_full
+      console.log('✅ Loaded active LLM:', activeLLM.provider, activeLLM.model_id_full)
+    }
+    
+    // Load active TTS voice
+    const { data: activeTTS } = await supabase
+      .from('livekit_available_voices')
+      .select('provider, model, voice_id, voice_id_full, is_custom')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeTTS) {
+      livekitConfig.value.tts_provider = activeTTS.provider
+      livekitConfig.value.tts_model = activeTTS.model
+      livekitConfig.value.tts_voice_id = activeTTS.voice_id_full
+      if (activeTTS.is_custom) {
+        livekitConfig.value.custom_voice_id = activeTTS.voice_id
+      }
+      console.log('✅ Loaded active TTS:', activeTTS.provider, activeTTS.voice_id_full)
+    }
+    
+    // Load active realtime model (if any)
+    const { data: activeRealtime } = await supabase
+      .from('livekit_available_realtime_models')
+      .select('provider, model_name, model_id_full')
+      .eq('is_active', true)
+      .maybeSingle()
+    
+    if (activeRealtime) {
+      if (activeRealtime.provider === 'openai-realtime') {
+        livekitConfig.value.model_type = 'openai_realtime'
+        livekitConfig.value.realtime_model = activeRealtime.model_id_full
+      } else if (activeRealtime.provider === 'google-realtime') {
+        livekitConfig.value.model_type = 'gemini_live'
+        livekitConfig.value.gemini_model = activeRealtime.model_id_full
+      }
+      console.log('✅ Loaded active Realtime:', activeRealtime.provider, activeRealtime.model_id_full)
+    } else {
+      // No active realtime model, default to pipeline
+      livekitConfig.value.model_type = 'pipeline'
+    }
+    
+    // Now load the dropdowns with the active values set
+    if (livekitConfig.value.model_type === 'pipeline') {
+      await loadLiveKitSTTModels()
+      await loadLiveKitLLMModels()
+      await loadLiveKitTTSModels()
+      if (livekitConfig.value.tts_model) {
+        await loadLiveKitTTSVoices()
+      }
+    } else if (livekitConfig.value.model_type === 'openai_realtime') {
+      await loadOpenAIRealtimeModels()
+    } else if (livekitConfig.value.model_type === 'gemini_live') {
+      await loadGeminiRealtimeModels()
+    }
+  } catch (error) {
+    console.error('❌ Failed to load active LiveKit models:', error)
+  }
+}
 
 // Load LiveKit config from database (loads system default or broker-specific template)
 async function loadLiveKitConfig() {
@@ -3272,7 +3484,7 @@ async function loadLiveKitLLMModels() {
 }
 
 // Handle model type change
-function onModelTypeChange() {
+async function onModelTypeChange() {
   // Reset relevant fields when switching model types
   if (livekitConfig.value.model_type === 'pipeline') {
     // Ensure pipeline fields are initialized
@@ -3285,14 +3497,22 @@ function onModelTypeChange() {
     loadLiveKitLLMModels()
     loadLiveKitTTSModels()
   } else if (livekitConfig.value.model_type === 'openai_realtime') {
+    // Load OpenAI Realtime models from database
+    await loadOpenAIRealtimeModels()
     // Initialize OpenAI Realtime defaults
-    if (!livekitConfig.value.realtime_model) livekitConfig.value.realtime_model = 'gpt-realtime'
+    if (!livekitConfig.value.realtime_model && openaiRealtimeModels.value.length > 0) {
+      livekitConfig.value.realtime_model = openaiRealtimeModels.value[0].model_id_full
+    }
     if (!livekitConfig.value.realtime_voice) livekitConfig.value.realtime_voice = 'alloy'
     if (!livekitConfig.value.realtime_temperature) livekitConfig.value.realtime_temperature = 0.8
     if (!livekitConfig.value.realtime_modalities) livekitConfig.value.realtime_modalities = ['text', 'audio']
   } else if (livekitConfig.value.model_type === 'gemini_live') {
+    // Load Gemini Live models from database
+    await loadGeminiRealtimeModels()
     // Initialize Gemini Live defaults
-    if (!livekitConfig.value.gemini_model) livekitConfig.value.gemini_model = 'gemini-2.0-flash-exp'
+    if (!livekitConfig.value.gemini_model && geminiRealtimeModels.value.length > 0) {
+      livekitConfig.value.gemini_model = geminiRealtimeModels.value[0].model_id_full
+    }
     if (!livekitConfig.value.gemini_voice) livekitConfig.value.gemini_voice = 'Puck'
     if (!livekitConfig.value.gemini_temperature) livekitConfig.value.gemini_temperature = 0.8
     if (!livekitConfig.value.gemini_modalities) livekitConfig.value.gemini_modalities = ['AUDIO']
@@ -3314,6 +3534,54 @@ function onLiveKitTTSChange() {
 function onLiveKitLLMChange() {
   livekitConfig.value.llm_model = ''
   loadLiveKitLLMModels()
+}
+
+// Load OpenAI Realtime models from database
+async function loadOpenAIRealtimeModels() {
+  try {
+    const { data, error } = await supabase
+      .from('livekit_available_realtime_models')
+      .select('*')
+      .eq('provider', 'openai-realtime')
+      .eq('is_available', true)
+      .order('model_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load OpenAI Realtime models:', error)
+      openaiRealtimeModels.value = []
+      return
+    }
+
+    openaiRealtimeModels.value = data || []
+    console.log(`✅ Loaded ${openaiRealtimeModels.value.length} OpenAI Realtime models`)
+  } catch (err) {
+    console.error('Error loading OpenAI Realtime models:', err)
+    openaiRealtimeModels.value = []
+  }
+}
+
+// Load Gemini Live models from database
+async function loadGeminiRealtimeModels() {
+  try {
+    const { data, error } = await supabase
+      .from('livekit_available_realtime_models')
+      .select('*')
+      .eq('provider', 'google-realtime')
+      .eq('is_available', true)
+      .order('model_name', { ascending: true })
+
+    if (error) {
+      console.error('Failed to load Gemini Live models:', error)
+      geminiRealtimeModels.value = []
+      return
+    }
+
+    geminiRealtimeModels.value = data || []
+    console.log(`✅ Loaded ${geminiRealtimeModels.value.length} Gemini Live models`)
+  } catch (err) {
+    console.error('Error loading Gemini Live models:', err)
+    geminiRealtimeModels.value = []
+  }
 }
 
 // Handle LLM provider change - reset model to first available
@@ -5383,21 +5651,14 @@ onMounted(async () => {
   await loadLLMModelsFromDB()
   await loadTTSVoicesFromDB()
   // Load SignalWire models from database
-  await loadSignalWireLLMModels()
-  await loadSignalWireSTTModels()
-  // Load platform-specific configurations
-  await loadSignalWireConfig()
+  await loadActiveSignalWireModels()
   // await loadLiveKitConfig() // Disabled - ai_templates table doesn't exist
   
   // Load phone numbers
   await loadPhoneNumbers()
   
-  // Ensure LiveKit dropdowns are populated even if no config in DB yet
-  if (livekitConfig.value.model_type === 'pipeline') {
-    await loadLiveKitSTTModels()
-    await loadLiveKitLLMModels()
-    await loadLiveKitTTSModels()
-  }
+  // Load active LiveKit models from database and populate dropdowns
+  await loadActiveLiveKitModels()
   
   // Auto-load Reverse Mortgage on mount
   await onVerticalChange()
