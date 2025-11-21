@@ -67,3 +67,5 @@ COMMENT ON COLUMN ai_templates.preemptive_generation IS 'Start generating respon
 COMMENT ON COLUMN ai_templates.enable_web_search IS 'Enable web search tool for real-time information lookup';
 
 
+
+

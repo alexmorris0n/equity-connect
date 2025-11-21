@@ -137,3 +137,5 @@ availableLiveKitLLMModels.value = (data || []).map(model => ({
 
 🎯 **Mission Accomplished**: No more hardcoded bullshit! All 200+ models load from the database, giving you full control to switch between any STT/LLM/TTS combination on the fly.
 
+
+

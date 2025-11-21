@@ -232,3 +232,5 @@ INSERT INTO signalwire_available_voices (provider, voice_name, voice_id, voice_i
 ('deepgram', 'aura-asteria-en', 'aura-asteria-en', 'deepgram.aura-asteria-en', 'Aura Asteria', 'female', ARRAY['en-US'], 'aura', true, 'Deepgram Aura')
 ON CONFLICT (voice_id_full) DO NOTHING;
 
+
+
