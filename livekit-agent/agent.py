@@ -297,23 +297,31 @@ async def entrypoint(ctx: JobContext):
     
     # Get active STT (from LiveKit tables)
     stt_result = supabase.table("livekit_available_stt_models").select("*").eq("is_active", True).maybe_single().execute()
-    active_stt = stt_result.data if stt_result.data else None
+    active_stt = getattr(stt_result, "data", None) if stt_result else None
     
     # Get active LLM (from LiveKit tables)
     llm_result = supabase.table("livekit_available_llm_models").select("*").eq("is_active", True).maybe_single().execute()
-    active_llm = llm_result.data if llm_result.data else None
+    active_llm = getattr(llm_result, "data", None) if llm_result else None
     
     # Get active TTS (from LiveKit tables)
     tts_result = supabase.table("livekit_available_voices").select("*").eq("is_active", True).maybe_single().execute()
-    active_tts = tts_result.data if tts_result.data else None
+    active_tts = getattr(tts_result, "data", None) if tts_result else None
     
-    logger.info(f"🎙️ ACTIVE STT: {active_stt.get('provider')}/{active_stt.get('model_name') if active_stt else 'NOT SET'}")
-    logger.info(f"🧠 ACTIVE LLM: {active_llm.get('provider')}/{active_llm.get('model_name') if active_llm else 'NOT SET'}")
-    logger.info(f"🔊 ACTIVE TTS: {active_tts.get('provider')}/{active_tts.get('voice_name') if active_tts else 'NOT SET'}")
+    stt_provider = active_stt.get("provider") if active_stt else "NOT SET"
+    stt_model = active_stt.get("model_name") if active_stt else "NOT SET"
+    logger.info(f"🎙️ ACTIVE STT: {stt_provider}/{stt_model}")
+    
+    llm_provider = active_llm.get("provider") if active_llm else "NOT SET"
+    llm_model = active_llm.get("model_name") if active_llm else "NOT SET"
+    logger.info(f"🧠 ACTIVE LLM: {llm_provider}/{llm_model}")
+    
+    tts_provider = active_tts.get("provider") if active_tts else "NOT SET"
+    tts_voice = active_tts.get("voice_name") if active_tts else "NOT SET"
+    logger.info(f"🔊 ACTIVE TTS: {tts_provider}/{tts_voice}")
     
     # Check for active realtime model (takes precedence over pipeline)
     realtime_result = supabase.table("livekit_available_realtime_models").select("*").eq("is_active", True).maybe_single().execute()
-    active_realtime = realtime_result.data if realtime_result.data else None
+    active_realtime = getattr(realtime_result, "data", None) if realtime_result else None
     
     if active_realtime:
         logger.info(f"🚀 ACTIVE REALTIME: {active_realtime.get('provider')}/{active_realtime.get('model_name')} (takes precedence over pipeline)")

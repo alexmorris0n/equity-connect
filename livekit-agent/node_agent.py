@@ -136,10 +136,14 @@ class BarbaraNodeAgent(Agent):
             chat_ctx=chat_ctx  # Preserves conversation history across handoffs
         )
         
-        # ✅ NO custom attributes stored on self - matches docs pattern
-        # State is accessed via self.session.userdata instead
+        # Store coordinator reference (LiveKit docs: pass agent references directly during handoffs)
+        self.coordinator = coordinator
+        self.node_name = node_name
         
-        logger.info(f"✅ BarbaraNodeAgent created: node='{node_name}', tools={len(tools)}, has_history={chat_ctx is not None}, has_coordinator={coordinator is not None}")
+        logger.info(
+            f"✅ BarbaraNodeAgent created: node='{node_name}', tools={len(tools)}, "
+            f"has_history={chat_ctx is not None}, has_coordinator={coordinator is not None}"
+        )
         
     async def on_enter(self) -> None:
         """Called when this agent becomes the active agent in the session.
@@ -191,15 +195,16 @@ class BarbaraNodeAgent(Agent):
             "if self.session.userdata.user_name and self.session.userdata.age:
                  return CustomerServiceAgent()"
         """
-        if self.session.userdata.coordinator:
-            logger.debug(f"🔄 on_user_turn_completed: Delegating to coordinator for routing check")
+        coordinator = self.coordinator or getattr(self.session.userdata, "coordinator", None)
+        if coordinator:
+            logger.debug("🔄 on_user_turn_completed: Delegating to coordinator for routing check")
             try:
-                await self.session.userdata.coordinator.check_and_route(self, self.session)
+                await coordinator.check_and_route(self, self.session)
             except Exception as e:
                 logger.warning(f"⚠️ Routing check failed in on_user_turn_completed: {e}")
                 # Don't block agent reply if routing check fails
         else:
-            logger.debug(f"🔄 on_user_turn_completed: No coordinator attached, skipping routing check")
+            logger.debug("🔄 on_user_turn_completed: No coordinator attached, skipping routing check")
 
 
 # Export the agent class
