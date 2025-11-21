@@ -707,16 +707,9 @@ async def entrypoint(ctx: JobContext):
             tts_for_session = build_tts_plugin(active_tts)
             logger.info(f"✨ Using TTS PLUGIN for custom voice")
         
-        # Create STT object following docs pattern for multilingual support
-        # Per docs: inference.STT(model="provider/model", language="multi") for auto-detect
-        # This ensures LiveKit Inference passes detected language to turn detector correctly
-        from livekit.agents import inference
-        stt_for_session = inference.STT(model=stt_model, language=stt_language)
-        logger.info(f"🎙️ Created inference.STT(model='{stt_model}', language='{stt_language}')")
-        
         # ✅ Pass userdata with type annotation (matches docs pattern)
         session = AgentSession[BarbaraSessionData](
-            stt=stt_for_session,  # inference.STT object (not string)
+            stt=stt_string,  # LiveKit Inference string format (e.g., "deepgram/nova-3:en")
             llm=llm_string,  # LiveKit Inference string format
             tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
