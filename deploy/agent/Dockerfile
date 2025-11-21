@@ -25,6 +25,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY livekit-agent/config.py config.py
 COPY livekit-agent/agent.py agent.py
 COPY livekit-agent/api_server.py api_server.py
+COPY livekit-agent/routing_coordinator.py routing_coordinator.py
+COPY livekit-agent/node_agent.py node_agent.py
+COPY livekit-agent/session_data.py session_data.py
+COPY livekit-agent/tool_loader.py tool_loader.py
+COPY livekit-agent/tool_registry.py tool_registry.py
 COPY livekit-agent/services services
 COPY livekit-agent/providers providers
 COPY livekit-agent/tools tools
