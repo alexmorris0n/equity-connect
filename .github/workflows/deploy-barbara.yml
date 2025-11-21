@@ -1,14 +1,10 @@
 name: Deploy Barbara Agent to Fly.io (DEPRECATED - Use deploy-livekit-agent.yml)
 
-on:
-  # Disabled - this workflow is deprecated in favor of the native LiveKit agent
-  workflow_dispatch:  # Only allow manual triggers if absolutely needed
-  # push:
-  #   branches:
-  #     - master
-  #   paths:
-  #     - 'equity_connect/**'
-  #     - '.github/workflows/deploy-barbara.yml'
+# This workflow is DISABLED - it will never run automatically
+# If you need to manually trigger it, uncomment workflow_dispatch below
+on: []
+# on:
+#   workflow_dispatch:  # Uncomment to allow manual triggers
 
 jobs:
   deploy:
