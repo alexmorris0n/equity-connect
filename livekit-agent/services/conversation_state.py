@@ -175,8 +175,10 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			"call_ended_at": None,
 			"exit_reason": None,
 		}
-		resp = supabase.table(TABLE_NAME).insert(payload).select("*").execute()
-		return resp.data[0]
+		resp = supabase.table(TABLE_NAME).insert(payload).execute()
+		if resp.data:
+			return resp.data[0]
+		return _fetch_by_phone(phone_value)
 
 	# If an active call exists, mark as completed (interrupted) before reuse
 	if existing.get("call_status") == "active":
@@ -186,7 +188,6 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 				"call_ended_at": datetime.now(timezone.utc).isoformat(),
 				"exit_reason": "interrupted_or_replaced",
 			})
-			.select("*")
 			.eq("id", existing["id"])
 			.execute())
 		# Re-read
@@ -220,10 +221,11 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 	# Update and return the updated row
 	resp = (supabase.table(TABLE_NAME)
 	        .update(update_payload)
-	        .select("*")
 	        .eq("id", existing["id"])
 	        .execute())
-	return resp.data[0] if resp.data else existing
+	if resp.data:
+		return resp.data[0]
+	return _fetch_by_phone(phone_value)
 
 
 def get_conversation_state(phone: str) -> Optional[Dict[str, Any]]:
@@ -253,7 +255,6 @@ def update_conversation_state(phone: str, updates: Dict[str, Any]) -> Optional[D
 
 	resp = (supabase.table(TABLE_NAME)
 	        .update(payload)
-	        .select("*")
 	        .eq("id", row["id"])
 	        .execute())
 	return resp.data[0] if resp.data else None
@@ -279,7 +280,6 @@ def mark_call_completed(phone: str, exit_reason: Optional[str] = None) -> Option
 	}
 	resp = (supabase.table(TABLE_NAME)
 	        .update(payload)
-	        .select("*")
 	        .eq("id", row["id"])
 	        .execute())
 	return resp.data[0] if resp.data else None

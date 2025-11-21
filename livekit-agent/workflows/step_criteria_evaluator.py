@@ -50,8 +50,7 @@ def evaluate_step_criteria(expression: str, state: Dict[str, Any]) -> bool:
         # Parse and evaluate expression
         tokens = _tokenize(expr)
         if not tokens:
-            logger.warning(f"Failed to tokenize expression: {expr}")
-            return False
+            raise ValueError(f"Failed to tokenize expression: {expr}")
         
         result = _evaluate_expression(tokens, state)
         logger.debug(f"Evaluated '{expr}' against state {list(state.keys())[:5]}... → {result}")
