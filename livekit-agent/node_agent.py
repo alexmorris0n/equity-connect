@@ -105,6 +105,11 @@ class BarbaraNodeAgent(Agent):
             Exception: If node config cannot be loaded from database
         """
         # Load configuration from database
+        # Store basic attributes up front so they exist if config loading references them
+        self.node_name = node_name
+        self.lead_context = lead_context
+        self.phone_number = phone_number
+
         try:
             config = load_node_config(node_name, vertical)
             base_instructions = config.get('instructions', '')
@@ -172,9 +177,7 @@ class BarbaraNodeAgent(Agent):
         
         # Store coordinator reference (LiveKit docs: pass agent references directly during handoffs)
         self.coordinator = coordinator
-        self.node_name = node_name
-        self.lead_context = lead_context
-        self.phone_number = phone_number
+            # self.node_name etc already set above
         
         logger.info(
             f"✅ BarbaraNodeAgent created: node='{node_name}', tools={len(tools)}, "
