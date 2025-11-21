@@ -25,75 +25,28 @@ from livekit.plugins.turn_detector import english  # noqa: F401
 from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
 from livekit.plugins import noise_cancellation
 
-# Import your custom tools
-from tools import all_tools
-
-# Import workflow components for event-based routing
-from workflows.routers import (
-    route_after_greet,
-    route_after_verify,
-    route_after_qualify,
-    route_after_quote,
-    route_after_answer,
-    route_after_objections,
-    route_after_book,
-    route_after_exit,
-)
-from workflows.node_completion import is_node_complete
-from services.conversation_state import get_conversation_state
-from services.conversation_state import update_conversation_state
-from services.prompt_loader import load_node_prompt
-from langgraph.graph import END
+# Import agent handoff components
+from routing_coordinator import RoutingCoordinator
+from node_agent import BarbaraNodeAgent
+from session_data import BarbaraSessionData
 
 
-class BarbaraAgent(Agent):
-    """Voice agent with event-based node routing"""
+def prewarm(proc: JobProcess):
+    """Load models before first call"""
+    proc.userdata["vad"] = silero.VAD.load()
+    logger.info("✅ Silero VAD loaded (speech gate only)")
+    # Turn detector modules imported at top level to register in main worker process
+
+
+async def entrypoint(ctx: JobContext):
+    """Main entrypoint - handles each call"""
+    logger.info("🚀 ENTRYPOINT: Starting call handler")
+    await ctx.connect()
+    logger.info("✅ ENTRYPOINT: Connected to LiveKit room")
     
-    def __init__(
-        self, 
-        instructions: str, 
-        phone_number: str, 
-        vertical: str = "reverse_mortgage",
-        call_type: str = "inbound-unknown",
-        lead_context: dict = None
-    ):
-        super().__init__(
-            instructions=instructions,
-            tools=all_tools,
-        )
-        self.phone = phone_number
-        self.vertical = vertical  # Business vertical for prompt loading
-        self.call_type = call_type  # For context injection
-        self.lead_context = lead_context or {}  # For context injection
-        self.current_node = "greet"
-        self._instructions = instructions  # Store instructions (base class instructions is read-only)
-        # Note: self.session is a property from Agent base class, set automatically
-    
-    async def on_enter(self):
-        """Agent joins - start with greet node"""
-        logger.info("🎤 ON_ENTER: Agent joined - loading greet node")
-        logger.info(f"🎤 ON_ENTER: Phone={self.phone}, Vertical={self.vertical}, CallType={self.call_type}")
-        await self.load_node("greet", speak_now=True)
-        logger.info("✅ ON_ENTER: Greet node loaded")
-    
-    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
-        """IMPROVEMENT #3: Routing Timing
-        Called when user's turn ends, before agent's reply.
-        This allows earlier routing checks for smoother transitions.
-        
-        Per LiveKit docs: This hook receives:
-        - turn_ctx: Full ChatContext up to but not including user's latest message
-        - new_message: User's latest message representing their current turn
-        """
-        # Check routing after user turn completes (earlier than waiting for agent speech)
-        # This provides faster node transitions
-        try:
-            await self.check_and_route()
-        except Exception as e:
-            logger.warning(f"⚠️ Routing check failed in on_user_turn_completed: {e}")
-            # Don't block agent reply if routing check fails
-    
-    async def load_node(self, node_name: str, speak_now: bool = False):
+    room = ctx.room
+    room_name = room.name
+    logger.info(f"📞 ENTRYPOINT: Room name: {room_name}")
         """Load node prompt and optionally trigger immediate speech
         
         IMPROVEMENT #1: Instructions Persistence
@@ -169,6 +122,15 @@ class BarbaraAgent(Agent):
         else:
             full_prompt = f"{context}\n\n{node_prompt}"
         
+        # Reset turn count if re-entering a node (handles spouse handoff scenario)
+        # This ensures turn count starts fresh when node is re-entered
+        if self.current_node == node_name:
+            logger.debug(f"Re-entering node {node_name}, turn count will continue incrementing")
+        else:
+            # New node - reset turn count for this node (if it exists)
+            # Note: We don't delete it, just let it start fresh on first increment
+            logger.debug(f"Entering new node {node_name} from {self.current_node}")
+        
         self.current_node = node_name
         
         # Store instructions in userdata for persistence across turns
@@ -202,10 +164,29 @@ class BarbaraAgent(Agent):
             logger.warning("No state found in DB")
             return
         
+        # Extract conversation_data (contains flags)
+        cd = state_row.get("conversation_data") or {}
+        
+        # Increment turn count for current node (supports step_criteria with turn counting)
+        # This happens BEFORE checking completion, so turn count is accurate for current turn
+        try:
+            node_turn_key = f"{self.current_node}_turn_count"
+            current_count = cd.get(node_turn_key, 0)
+            new_count = current_count + 1
+            
+            # Update turn count in conversation_data
+            updated_cd = cd.copy()
+            updated_cd[node_turn_key] = new_count
+            update_conversation_state(self.phone, {
+                "conversation_data": updated_cd
+            })
+            logger.debug(f"📊 Incremented {node_turn_key}: {current_count} → {new_count}")
+        except Exception as e:
+            logger.warning(f"Failed to increment turn count for {self.current_node}: {e}")
+        
         # Increment node visit count for ANSWER and VERIFY nodes to enable loop cap logic
         try:
             if self.current_node in ["answer", "verify"]:
-                cd = state_row.get("conversation_data") or {}
                 node_visits = cd.get("node_visits") or {}
                 visits = (node_visits.get(self.current_node) or 0) + 1
                 node_visits[self.current_node] = visits
@@ -218,8 +199,9 @@ class BarbaraAgent(Agent):
         except Exception as e:
             logger.warning(f"Failed to increment node visits: {e}")
         
-        # Extract conversation_data (contains flags)
-        state = state_row.get("conversation_data", {})
+        # Get updated state after turn count increment
+        state_row = get_conversation_state(self.phone)
+        state = state_row.get("conversation_data", {}) if state_row else {}
         
         # DEBUG: Log state for verify node
         if self.current_node == "verify":
@@ -234,10 +216,14 @@ class BarbaraAgent(Agent):
         # Route to next node using existing router logic
         next_node = self.route_next(state_row, state)
         
-        # Validate transition against database valid_contexts (safety check)
+        # Validate transition against database valid_contexts (enforce like SignalWire)
         from workflows.routers import validate_transition
-        if next_node != END and not validate_transition(self.current_node, next_node, vertical=self.vertical):
-            logger.warning(f"⚠️ Router suggested invalid transition {self.current_node} → {next_node}, but allowing it (router logic takes precedence)")
+        is_valid, valid_contexts = validate_transition(self.current_node, next_node, vertical=self.vertical)
+        
+        if not is_valid:
+            logger.error(f"❌ BLOCKED: Invalid transition {self.current_node} → {next_node} (valid: {valid_contexts})")
+            logger.info(f"⏸️  Staying in current node '{self.current_node}' - router suggested invalid transition")
+            return  # Don't transition - stay in current node (fail closed, like SignalWire)
         
         logger.info(f"🧭 Router: {self.current_node} → {next_node}")
         
@@ -580,6 +566,24 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🧠 ACTIVE LLM: {active_llm.get('provider')}/{active_llm.get('model_name') if active_llm else 'NOT SET'}")
     logger.info(f"🔊 ACTIVE TTS: {active_tts.get('provider')}/{active_tts.get('voice_name') if active_tts else 'NOT SET'}")
     
+    # Check for active realtime model (takes precedence over pipeline)
+    realtime_result = supabase.table("livekit_available_realtime_models").select("*").eq("is_active", True).maybe_single().execute()
+    active_realtime = realtime_result.data if realtime_result.data else None
+    
+    if active_realtime:
+        logger.info(f"🚀 ACTIVE REALTIME: {active_realtime.get('provider')}/{active_realtime.get('model_name')} (takes precedence over pipeline)")
+        provider = active_realtime.get("provider")
+        if provider == "openai-realtime":
+            model_type = "openai_realtime"
+        elif provider == "google-realtime":
+            model_type = "gemini_live"
+        else:
+            model_type = "pipeline"
+            logger.warning(f"⚠️ Unknown realtime provider: {provider}, falling back to pipeline")
+    else:
+        model_type = "pipeline"
+        logger.info("📊 No active realtime model, using pipeline mode")
+    
     # Determine TTS mode: custom voices need plugin, standard voices use LiveKit Inference
     is_custom_voice = active_tts.get("is_custom", False) if active_tts else False
     if is_custom_voice:
@@ -587,7 +591,7 @@ async def entrypoint(ctx: JobContext):
     
     # Build template from active components
     template = {
-        "model_type": "pipeline",
+        "model_type": model_type,
         "stt_provider": active_stt.get("provider") if active_stt else "deepgram",
         "stt_model": active_stt.get("model_name") if active_stt else "nova-2",
         "stt_language": "en",
@@ -618,8 +622,7 @@ async def entrypoint(ctx: JobContext):
     # Get VAD settings FIRST (used by both STT and AgentSession)
     vad_silence_duration_ms = template.get("vad_silence_duration_ms", 500)
     
-    # Check if using realtime model (bundled STT+LLM+TTS)
-    model_type = template.get("model_type", "pipeline")
+    # model_type is already set above based on active_realtime or defaults to "pipeline"
     logger.info(f"🔧 ENTRYPOINT: Model type: {model_type}")
     
     # === REALTIME MODEL MODE ===
@@ -629,6 +632,9 @@ async def entrypoint(ctx: JobContext):
         
         from livekit.plugins.openai import realtime
         from openai.types.beta.realtime.session import TurnDetection
+        
+        # Get model name from active_realtime (database) or fallback to template/default
+        realtime_model_name = active_realtime.get("model_id_full") if active_realtime else template.get("realtime_model", "gpt-realtime")
         
         # Build turn detection config - use OpenAI's built-in turn detection (optimized for realtime)
         turn_detection_type = template.get("realtime_turn_detection_type", "server_vad")
@@ -659,16 +665,16 @@ async def entrypoint(ctx: JobContext):
         if isinstance(modalities, str):
             modalities = [m.strip() for m in modalities.split(",")]
         
-        # Create realtime model
+        # Create realtime model - use model_id_full from database (just the model name, no provider prefix)
         realtime_model = realtime.RealtimeModel(
-            model=template.get("realtime_model", "gpt-realtime"),
+            model=realtime_model_name,  # e.g., "gpt-4o-realtime-preview" or "gpt-realtime"
             voice=template.get("realtime_voice", "alloy"),
             temperature=template.get("realtime_temperature", 0.8),
             modalities=modalities,
             turn_detection=turn_detection_config,
         )
         
-        logger.info(f"🎙️ OpenAI Realtime: model={template.get('realtime_model', 'gpt-realtime')}, voice={template.get('realtime_voice', 'alloy')}, temp={template.get('realtime_temperature', 0.8)}")
+        logger.info(f"🎙️ OpenAI Realtime: model={realtime_model_name}, voice={template.get('realtime_voice', 'alloy')}, temp={template.get('realtime_temperature', 0.8)}")
         
         # Use realtime model as LLM (it handles STT and TTS internally)
         llm_instance = realtime_model
@@ -680,6 +686,9 @@ async def entrypoint(ctx: JobContext):
         
         from livekit.plugins import google
         from google.genai.types import Modality
+        
+        # Get model name from active_realtime (database) or fallback to template/default
+        gemini_model_name = active_realtime.get("model_id_full") if active_realtime else template.get("gemini_model", "gemini-2.0-flash-exp")
         
         # Parse modalities (can be string or array)
         modalities = template.get("gemini_modalities", ["AUDIO"])
@@ -697,7 +706,7 @@ async def entrypoint(ctx: JobContext):
         # Note: Gemini Live has built-in VAD-based turn detection (enabled by default)
         # We use that instead of LiveKit's TurnDetector for optimal performance
         realtime_kwargs = {
-            "model": template.get("gemini_model", "gemini-2.0-flash-exp"),
+            "model": gemini_model_name,  # e.g., "gemini-2.0-flash-exp" or "gemini-2.5-flash-native-audio-preview-09-2025"
             "voice": template.get("gemini_voice", "Puck"),
             "temperature": template.get("gemini_temperature", 0.8),
             "modalities": modality_enums if modality_enums else [Modality.AUDIO],
@@ -718,7 +727,7 @@ async def entrypoint(ctx: JobContext):
         # Create realtime model
         realtime_model = google.realtime.RealtimeModel(**realtime_kwargs)
         
-        logger.info(f"🎙️ Gemini Live: model={template.get('gemini_model', 'gemini-2.0-flash-exp')}, voice={template.get('gemini_voice', 'Puck')}, temp={template.get('gemini_temperature', 0.8)}")
+        logger.info(f"🎙️ Gemini Live: model={gemini_model_name}, voice={template.get('gemini_voice', 'Puck')}, temp={template.get('gemini_temperature', 0.8)}")
         
         # Use realtime model as LLM (it handles STT and TTS internally)
         llm_instance = realtime_model
@@ -732,11 +741,19 @@ async def entrypoint(ctx: JobContext):
         
         # STT model string - use model_id_full from database
         if active_stt and active_stt.get("model_id_full"):
-            stt_string = active_stt["model_id_full"]  # e.g., "deepgram/nova-3:en"
+            stt_string = active_stt["model_id_full"]  # e.g., "deepgram/nova-3:en" or "deepgram/nova-3:multi"
             logger.info(f"🎙️ ENTRYPOINT: STT initialized - {stt_string} (LiveKit Inference)")
         else:
             stt_string = "deepgram/nova-3:en"  # fallback
             logger.warning(f"⚠️ No active STT found, using fallback: {stt_string}")
+        
+        # Extract STT language from model_id_full for turn detector selection
+        # Format: "provider/model:language" (e.g., "deepgram/nova-3:multi" → "multi")
+        stt_language = None
+        if ":" in stt_string:
+            stt_language = stt_string.split(":")[-1]
+        else:
+            stt_language = "en"  # Default if no language specified
         
         # LLM model string - use model_id_full from database
         if active_llm and active_llm.get("model_id_full"):
@@ -754,7 +771,7 @@ async def entrypoint(ctx: JobContext):
             logger.info(f"✨ ENTRYPOINT: TTS via PLUGIN - {active_tts.get('provider')}/{active_tts.get('model')}:{active_tts.get('voice_id')} (custom voice)")
             tts_string = None  # Will use build_tts_plugin() instead
         elif active_tts and active_tts.get("voice_id_full"):
-            # Standard voice - use model_id_full from database
+            # Standard voice - use voice_id_full from database (format: provider/model:voice_id)
             tts_string = active_tts["voice_id_full"]  # e.g., "elevenlabs/eleven_turbo_v2_5:Xb7hH8MSUJpSbSDYk0k2"
             logger.info(f"🔊 ENTRYPOINT: TTS initialized - {tts_string} (LiveKit Inference)")
         else:
@@ -787,7 +804,28 @@ async def entrypoint(ctx: JobContext):
         # Load TurnDetector with EOU built-in (only for pipeline mode)
         # EnglishModel and MultilingualModel have EOU integrated (no separate class needed)
         # unlikely_threshold: Lower = faster turn detection, Higher = more cautious
-        turn_detector_model = template.get("turn_detector_model", "english")
+        # 
+        # Auto-select turn detector based on STT language (per LiveKit docs):
+        # - EnglishModel: Only supports "en", faster and more accurate for English (98.8% accuracy)
+        # - MultilingualModel: Supports "multi" and 14 languages (en, es, fr, de, it, pt, nl, zh, ja, ko, id, tr, ru, hi)
+        #   Can work with STT language="multi" because it relies on STT to report detected language
+        # 
+        # Template override takes precedence if explicitly set, otherwise auto-detect from STT
+        template_turn_detector = template.get("turn_detector_model")
+        if template_turn_detector:
+            # Explicit template override
+            turn_detector_model = template_turn_detector
+            logger.info(f"🎯 Using template-specified turn detector: {turn_detector_model}")
+        else:
+            # Auto-detect based on STT language
+            # stt_language was extracted above from model_id_full
+            if stt_language == "multi" or (stt_language and stt_language != "en"):
+                turn_detector_model = "multilingual"
+                logger.info(f"🌍 Auto-selected MultilingualModel (STT language: {stt_language})")
+            else:
+                turn_detector_model = "english"
+                logger.info(f"🇺🇸 Auto-selected EnglishModel (STT language: {stt_language or 'en'})")
+        
         unlikely_threshold = 0.25  # Aggressive for faster turn detection
         
         try:
@@ -826,14 +864,34 @@ async def entrypoint(ctx: JobContext):
     vertical = metadata.get("vertical", "reverse_mortgage")
     logger.info(f"🏢 ENTRYPOINT: Vertical: {vertical}")
     
-    logger.info(f"🤖 ENTRYPOINT: Creating BarbaraAgent - phone={caller_phone}, vertical={vertical}, call_type={call_type}")
-    # Create agent with phone number, vertical, call_type, and lead context for event-based routing
-    agent = BarbaraAgent(
-        instructions=instructions,
+    # ✅ Create userdata instance (matches docs pattern)
+    # From docs: "session = AgentSession[MySessionInfo](userdata=MySessionInfo(), ...)"
+    userdata = BarbaraSessionData(
         phone_number=caller_phone,
         vertical=vertical,
-        call_type=call_type,
-        lead_context=lead_context or {}
+        current_node="greet"
+    )
+    logger.debug(f"📝 Created BarbaraSessionData: current_node='greet'")
+    
+    # Create routing coordinator
+    coordinator = RoutingCoordinator(
+        phone=caller_phone,
+        vertical=vertical
+    )
+    
+    # ✅ Store coordinator in userdata (matches docs pattern)
+    # From docs: "context.userdata.user_name = name"
+    userdata.coordinator = coordinator
+    logger.debug(f"📝 Stored coordinator in userdata")
+    
+    logger.info(f"🤖 ENTRYPOINT: Creating BarbaraNodeAgent for 'greet' node - phone={caller_phone}, vertical={vertical}")
+    # Create initial greet agent (database-driven, no need for explicit instructions)
+    agent = BarbaraNodeAgent(
+        node_name="greet",
+        vertical=vertical,
+        phone_number=caller_phone,
+        chat_ctx=None,  # Fresh conversation
+        coordinator=coordinator
     )
     logger.info(f"✅ ENTRYPOINT: BarbaraAgent created")
     
@@ -841,10 +899,11 @@ async def entrypoint(ctx: JobContext):
     if model_type in ["openai_realtime", "gemini_live"]:
         # Realtime model mode - use realtime model as LLM (handles STT+TTS internally)
         # Realtime models use their built-in turn detection (optimized for their architecture)
-        session = AgentSession(
+        # ✅ Pass userdata with type annotation (matches docs pattern)
+        session = AgentSession[BarbaraSessionData](
             llm=llm_instance,  # RealtimeModel instance (has built-in turn detection)
             vad=ctx.proc.userdata["vad"],
-            userdata={},  # Initialize userdata as empty dict for per-turn instruction persistence
+            userdata=userdata,  # ✅ Pass BarbaraSessionData instance
             # Interruption settings from template
             allow_interruptions=allow_interruptions,
             min_interruption_duration=min_interruption_duration,
@@ -862,12 +921,13 @@ async def entrypoint(ctx: JobContext):
             tts_for_session = build_tts_plugin(active_tts)
             logger.info(f"✨ Using TTS PLUGIN for custom voice")
         
-        session = AgentSession(
+        # ✅ Pass userdata with type annotation (matches docs pattern)
+        session = AgentSession[BarbaraSessionData](
             stt=stt_string,  # LiveKit Inference string format
             llm=llm_string,  # LiveKit Inference string format
             tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
-            userdata={},  # Initialize userdata as empty dict for per-turn instruction persistence
+            userdata=userdata,  # ✅ Pass BarbaraSessionData instance
             turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
             # Endpointing timing - faster response
             min_endpointing_delay=min_endpointing_delay,
@@ -881,14 +941,6 @@ async def entrypoint(ctx: JobContext):
             preemptive_generation=preemptive_generation,
         )
     
-    # Hook routing checks after each agent turn
-    # Note: .on() requires sync callback, so we wrap async function
-    def on_agent_finished_speaking():
-        """Agent finished speaking - check if we should route"""
-        import asyncio
-        asyncio.create_task(agent.check_and_route())
-    
-    session.on("agent_speech_committed", on_agent_finished_speaking)
     
     # Start the session with custom BarbaraAgent that auto-greets on entry
     # The session property is set automatically when session.start() is called

@@ -1,0 +1,1551 @@
+# Standard voices - Amazon Polly
+
+# 
+
+Standard voices
+
+[PDF](/pdfs/polly/latest/dg/polly-dg.pdf#standard-voices)
+
+[RSS](doc-history.rss)
+
+Focus mode
+
+Standard voices - Amazon Polly
+
+[](/pdfs/polly/latest/dg/polly-dg.pdf#standard-voices "Open PDF")
+
+[Documentation](/index.html)[Amazon Polly](/polly/index.html)[Developer Guide](what-is.html)
+
+[Available Standard voices](#standard-voicelist)[Feature and region compatibility](#standard-regions)
+
+Amazon Polly has a **standard** engine that use concatenative synthesis. The standard engine concatenates phonemes of recorded speech, producing very natural-sounding synthesized speech.
+
+## Available Standard voices
+
+Amazon Polly currently offers 40 female and 20 male standard voices in 29 language and language variants.
+
+Language
+
+Language code
+
+Name/ID
+
+Gender
+
+1
+
+**Arabic**
+
+arb
+
+Zeina
+
+Female
+
+2
+
+**Chinese (Mandarin)**
+
+cmn-CN
+
+Zhiyu
+
+Female
+
+3
+
+**Danish**
+
+da-DK
+
+Naja
+
+Mads
+
+Female
+
+Male
+
+4
+
+**Dutch**
+
+nl-NL
+
+Lotte
+
+Ruben
+
+Female
+
+Male
+
+5
+
+**English (Australian)**
+
+en-AU
+
+Nicole
+
+Russell
+
+Female
+
+Male
+
+6
+
+**English (British)**
+
+en-GB
+
+Amy
+
+Emma
+
+Brian
+
+Female
+
+Female
+
+Male
+
+7
+
+**English (Indian)**
+
+en-IN
+
+Aditi
+
+Raveena
+
+Female
+
+Female
+
+8
+
+**English (US)**
+
+en-US
+
+Ivy
+
+Joanna
+
+Kendra
+
+Kimberly
+
+Salli
+
+Joey
+
+Kevin
+
+Female
+
+Female
+
+Female
+
+Female
+
+Female
+
+Male
+
+Male
+
+9
+
+**English (Welsh)**
+
+en-GB-WLS
+
+Geraint
+
+Male
+
+10
+
+**French**
+
+fr-FR
+
+Céline/Celine
+
+Léa
+
+Mathieu
+
+Female
+
+Female
+
+Male
+
+11
+
+**French (Canadian)**
+
+fr-CA
+
+Chantal
+
+Female
+
+12
+
+**German**
+
+de-DE
+
+Marlene
+
+Vicki
+
+Hans
+
+Female
+
+Female
+
+Male
+
+13
+
+**Hindi**
+
+hi-IN
+
+Aditi
+
+Female
+
+14
+
+**Icelandic**
+
+is-IS
+
+Dóra/Dora
+
+Karl
+
+Female
+
+Male
+
+15
+
+**Italian**
+
+it-IT
+
+Carla
+
+Bianca
+
+Giorgio
+
+Female
+
+Female
+
+Male
+
+16
+
+**Japanese**
+
+ja-JP
+
+Mizuki
+
+Takumi
+
+Female
+
+Male
+
+17
+
+**Korean**
+
+ko-KR
+
+Seoyeon
+
+Female
+
+18
+
+**Norwegian**
+
+nb-NO
+
+Liv
+
+Female
+
+19
+
+**Polish**
+
+pl-PL
+
+Ewa
+
+Maja
+
+Jacek
+
+Jan
+
+Female
+
+Female
+
+Male
+
+Male
+
+20
+
+**Portuguese (Brazilian)**
+
+pt-BR
+
+Camila
+
+Vitória/Vitoria
+
+Ricardo
+
+Female
+
+Female
+
+Male
+
+21
+
+**Portuguese (European)**
+
+pt-PT
+
+Inês/Ines
+
+Cristiano
+
+Female
+
+Male
+
+22
+
+**Romanian**
+
+ro-RO
+
+Carmen
+
+Female
+
+23
+
+**Russian**
+
+ru-RU
+
+Tatyana
+
+Maxim
+
+Female
+
+Male
+
+24
+
+**Spanish (Spain)**
+
+es-ES
+
+Conchita
+
+Lucia
+
+Enrique
+
+Female
+
+Female
+
+Male
+
+25
+
+**Spanish (Mexican)**
+
+es-MX
+
+Mia
+
+Female
+
+26
+
+**Spanish (US)**
+
+es-US
+
+Lupe
+
+Penélope/Penelope
+
+Miguel
+
+Female
+
+Female
+
+Male
+
+27
+
+**Swedish**
+
+sv-SE
+
+Astrid
+
+Female
+
+28
+
+**Turkish**
+
+tr-TR
+
+Filiz
+
+Male
+
+29
+
+**Welsh**
+
+cy-GB
+
+Gwyneth
+
+Female
+
+## Feature and region compatibility
+
+Amazon Polly standard voices are available in the following Amazon Polly regions:
+
+-   US East (N. Virginia): us-east-1
+    
+-   US East (Ohio): us-east-2
+    
+-   US West (N. California): us-west-1
+    
+-   US West (Oregon): us-west-2
+    
+-   Africa (Cape Town): af-south-1
+    
+-   Asia Pacific (Hong Kong): ap-east-1
+    
+-   Asia Pacific (Tokyo): ap-northeast-1
+    
+-   Asia Pacific (Seoul): ap-northeast-2
+    
+-   Asia Pacific (Osaka): ap-northeast-3
+    
+-   Asia Pacific (Mumbai): ap-south-1
+    
+-   Asia Pacific (Singapore): ap-southeast-1
+    
+-   Asia Pacific (Sydney): ap-southeast-2
+    
+-   Asia Pacific (Malaysia): ap-southeast-5
+    
+-   China (Ningxia): cn-northwest-1;
+    
+-   Canada (Central): ca-central-1
+    
+-   Europe (Frankfurt): eu-central-1
+    
+-   Europe (Ireland): eu-west-1
+    
+-   Europe (London): eu-west-2
+    
+-   Europe (Paris): eu-west-3
+    
+-   Europe (Spain): eu-south-2
+    
+-   Europe (Stockholm): eu-north-1
+    
+-   Middle East (Bahrain): me-south-1
+    
+-   South America (São Paulo): sa-east-1
+    
+-   AWS GovCloud (US-West): us-gov-west-1
+    
+
+Endpoints and protocols for these Regions are identical to those used for Neural voices. For more information, see [Amazon Polly endpoints and quotas](https://docs.aws.amazon.com/general/latest/gr/pol.html).
+
+**The Amazon Polly standard engine supports the following features (TBD):**
+
+-   Real-time and asynchronous speech synthesis operations.
+    
+-   All [speech marks](https://docs.aws.amazon.com/polly/latest/dg/speechmarks.html).
+    
+-   Many (but not all) SSML tags are supported by Amazon Polly. For more information about NTTS-supported SSML tags, see [Supported SSML tags](https://docs.aws.amazon.com/polly/latest/dg/supportedtags.html).
+    
+-   You can choose from various sampling rates to optimize the bandwidth and audio quality for your application. The default sampling rates for standard voices are 22 kHz. Amazon Polly supports MP3, OGG (Vorbis), and raw PCM audio stream formats.
+    
+
+###### Note
+
+Standard voices cost is specified on the [Amazon Polly pricing information page](https://aws.amazon.com/polly/pricing/).
+
+<div><div><div><div id="js\_error\_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div>
+
+[Document Conventions](/general/latest/gr/docconventions.html)
+
+Neural engine
+
+Choosing a voice engine
+
+Did this page help you? - Yes
+
+Thanks for letting us know we're doing a good job!
+
+If you've got a moment, please tell us what we did right so we can do more of it.
+
+Did this page help you? - No
+
+Thanks for letting us know this page needs work. We're sorry we let you down.
+
+If you've got a moment, please tell us how we can make the documentation better.
+
+-   ### On this page
+    
+-   ### Adjust text size
+    
+    1420
+    
+
+#### Next topic:
+
+[Choosing a voice engine](./using-voices.html)
+
+#### Previous topic:
+
+[Neural engine](./neural-voices.html)
+
+#### Need help?
+
+-   [Try AWS re:Post](https://repost.aws/tags/TAkMF5YGJLQgqSnTawlqoSsQ) 
+
+[Privacy](https://aws.amazon.com/privacy)[Site terms](https://aws.amazon.com/terms)[Cookie preferences](#)
+
+© 2025, Amazon Web Services, Inc. or its affiliates. All rights reserved.
+
+# Neural voices - Amazon Polly
+
+# 
+
+Neural voices
+
+[PDF](/pdfs/polly/latest/dg/polly-dg.pdf#neural-voices)
+
+[RSS](doc-history.rss)
+
+Focus mode
+
+Neural voices - Amazon Polly
+
+[](/pdfs/polly/latest/dg/polly-dg.pdf#neural-voices "Open PDF")
+
+[Documentation](/index.html)[Amazon Polly](/polly/index.html)[Developer Guide](what-is.html)
+
+[Available neural voices](#neural-voicelist)[Feature and region compatibility](#ntts-regions)
+
+Amazon Polly has a **Neural text-to-speech (NTTS) engine** that can produce even higher quality voices than its standard voices. Standard TTS voices use concatenative synthesis. The standard engine concatenates phonemes of recorded speech, producing very natural-sounding synthesized speech. However, the inevitable variations in speech and the techniques used to segment the waveforms limits the quality of speech. The Amazon Polly NTTS engine doesn't use standard concatenative synthesis to produce speech. It has two parts:
+
+-   A neural network — that converts a sequence of phonemes (the most basic units of language) into a sequence of _spectrograms_. (Spectograms are snapshots of the energy levels in different frequency bands.)
+    
+-   A vocoder — that converts spectrograms into a nearly continuous audio signal.
+    
+
+The first component of the neural TTS system is a sequence-to-sequence model. This model doesn’t create its results solely from the corresponding input but also considers how the sequence of the elements of the input work together. The model chooses the spectrograms that it outputs so that their frequency bands emphasize acoustic features that the human brain uses when processing speech.
+
+The output of this model then passes to a neural vocoder. This converts the spectrograms into speech waveforms. When trained on the large datasets used to build general-purpose concatenative-synthesis systems, this sequence-to-sequence approach will yield higher-quality, more natural-sounding voices.
+
+## Available neural voices
+
+Neural voices are available in 36 languages and language variants. The following table lists the voices.
+
+Language and language variants
+
+Language code
+
+Name/ID
+
+Gender
+
+1
+
+**Arabic (Gulf)**
+
+ar-AE
+
+Hala
+
+Zayd
+
+Female
+
+Male
+
+2
+
+**Belgian Dutch (Flemish)**
+
+nl-BE
+
+Lisa
+
+Female
+
+3
+
+**Catalan**
+
+ca-ES
+
+Arlet
+
+Female
+
+4
+
+**Czech**
+
+cs-CZ
+
+Jitka
+
+Female
+
+5
+
+**Chinese (Cantonese)**
+
+yue-CN
+
+Hiujin
+
+Female
+
+6
+
+**Chinese (Mandarin)**
+
+cmn-CN
+
+Zhiyu
+
+Female
+
+7
+
+**Danish**
+
+da-DK
+
+Sofie
+
+Female
+
+8
+
+**Dutch**
+
+nl-NL
+
+Laura
+
+Female
+
+9
+
+**English (Australian)**
+
+en-AU
+
+Olivia
+
+Female
+
+10
+
+**English (British)**
+
+en-GB
+
+Amy\*
+
+Emma
+
+Brian
+
+Arthur
+
+Female
+
+Female
+
+Male
+
+Male
+
+11
+
+**English (Indian)**
+
+en-IN
+
+Kajal
+
+Female
+
+12
+
+**English (Irish)**
+
+en-IE
+
+Niamh
+
+Female
+
+13
+
+**English (New Zealand)**
+
+en-NZ
+
+Aria
+
+Female
+
+14
+
+**English (Singaporean)**
+
+en-SG
+
+Jasmine
+
+Female
+
+15
+
+**English (South African)**
+
+en-ZA
+
+Ayanda
+
+Female
+
+16
+
+**English (US)**
+
+en-US
+
+Danielle
+
+Gregory
+
+Ivy
+
+Joanna\*
+
+Kendra
+
+Kimberly
+
+Salli
+
+Joey
+
+Justin
+
+Kevin
+
+Matthew\*
+
+Ruth
+
+Stephen
+
+Female
+
+Male
+
+Female (child)
+
+Female
+
+Female
+
+Female
+
+Female
+
+Male
+
+Male (child)
+
+Male (child)
+
+Male
+
+Female
+
+Male
+
+17
+
+**Finnish**
+
+fi-FI
+
+Suvi
+
+Female
+
+18
+
+**French (Belgian)**
+
+fr-BE
+
+Isabelle
+
+Female
+
+19
+
+**French (Canadian)**
+
+fr-CA
+
+Gabrielle
+
+Liam
+
+Female
+
+Male
+
+20
+
+**French**
+
+fr-FR
+
+Léa
+
+Rémi
+
+Female
+
+Male
+
+21
+
+**German**
+
+de-DE
+
+Vicki
+
+Daniel
+
+Female
+
+Male
+
+22
+
+**German (Austrian)**
+
+de-AT
+
+Hannah
+
+Female
+
+23
+
+**German (Swiss)**
+
+de-CH
+
+Sabrina
+
+Female
+
+24
+
+**Hindi**
+
+hi-IN
+
+Kajal
+
+Female
+
+25
+
+**Italian**
+
+it-IT
+
+Bianca
+
+Adriano
+
+Female
+
+Male
+
+26
+
+**Japanese**
+
+ja-JP
+
+Takumi
+
+Kazuha
+
+Tomoko
+
+Male
+
+Female
+
+Female
+
+27
+
+**Korean**
+
+ko-KR
+
+Seoyeon
+
+Jihye
+
+Female
+
+Female
+
+28
+
+**Norwegian**
+
+nb-NO
+
+Ida
+
+Female
+
+29
+
+**Polish**
+
+pl-PL
+
+Ola
+
+Female
+
+30
+
+**Portuguese (Brazilian)**
+
+pt-BR
+
+Camila
+
+Vitória/Vitoria
+
+Thiago
+
+Female
+
+Female
+
+Male
+
+31
+
+**Portuguese (European)**
+
+pt-PT
+
+Inês/Ines
+
+Female
+
+32
+
+**Spanish (Spain)**
+
+es-ES
+
+Lucia
+
+Sergio
+
+Female
+
+Male
+
+33
+
+**Spanish (Mexican)**
+
+es-MX
+
+Mia
+
+Andrés
+
+Female
+
+Male
+
+34
+
+**Spanish (US)**
+
+es-US
+
+Lupe\*
+
+Pedro
+
+Female
+
+Male
+
+35
+
+**Swedish**
+
+sv-SE
+
+Elin
+
+Female
+
+36
+
+**Turkish**
+
+tr-TR
+
+Burcu
+
+Female
+
+\*The Amy, Joanna, Lupe, and Matthew voices can be used with the Newscaster speaking style. For more information, see [Applying the newscaster voice](./newscaster-voices.html).
+
+## Feature and region compatibility
+
+Neural voices aren't available in all AWS Regions, nor do they support all Amazon Polly features.
+
+Neural voices are supported in the following regions:
+
+-   US East (N. Virginia): us-east-1
+    
+-   US West (Oregon): us-west-2
+    
+-   Africa (Cape Town): af-south-1
+    
+-   Asia Pacific (Tokyo): ap-northeast-1
+    
+-   Asia Pacific (Seoul): ap-northeast-2
+    
+-   Asia Pacific (Osaka): ap-northeast-3
+    
+-   Asia Pacific (Mumbai): ap-south-1
+    
+-   Asia Pacific (Singapore): ap-southeast-1
+    
+-   Asia Pacific (Sydney): ap-southeast-2
+    
+-   Asia Pacific (Malaysia): ap-southeast-5
+    
+-   Canada (Central): ca-central-1
+    
+-   Europe (Frankfurt): eu-central-1
+    
+-   Europe (Ireland): eu-west-1
+    
+-   Europe (London): eu-west-2
+    
+-   Europe (Paris): eu-west-3
+    
+-   Europe (Spain): eu-south-2
+    
+-   Europe (Zurich): eu-central-2
+    
+-   AWS GovCloud (US-West): us-gov-west-1
+    
+
+Endpoints and protocols for these Regions are identical to those used for standard voices. For more information, see [Amazon Polly endpoints and quotas](https://docs.aws.amazon.com/general/latest/gr/pol.html).
+
+The following features are supported for neural voices:
+
+-   Real-time and asynchronous speech synthesis operations.
+    
+-   Newscaster speaking style. For more information about the speaking styles, see [Applying the newscaster voice](./newscaster-voices.html).
+    
+-   All speech marks.
+    
+-   Many (but not all) of the SSML tags that are supported by Amazon Polly. For more information about NTTS-supported SSML tags, see Supported Tags.
+    
+
+As with standard voices, you can choose from various sampling rates to optimize the bandwidth and audio quality for your application. Valid sampling rates for standard and neural voices are 8 kHz, 16 kHz, 22 kHz, or 24 kHz. The default for standard voices is 22 kHz. The default for neural voices is 24 kHz. Amazon Polly supports MP3, OGG (Vorbis), and raw PCM audio stream formats.
+
+<div><div><div><div id="js\_error\_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div>
+
+[Document Conventions](/general/latest/gr/docconventions.html)
+
+Long-form engine
+
+Standard engine
+
+Did this page help you? - Yes
+
+Thanks for letting us know we're doing a good job!
+
+If you've got a moment, please tell us what we did right so we can do more of it.
+
+Did this page help you? - No
+
+Thanks for letting us know this page needs work. We're sorry we let you down.
+
+If you've got a moment, please tell us how we can make the documentation better.
+
+-   ### On this page
+    
+-   ### Adjust text size
+    
+    1420
+    
+
+#### Next topic:
+
+[Standard engine](./standard-voices.html)
+
+#### Previous topic:
+
+[Long-form engine](./long-form-voices.html)
+
+#### Need help?
+
+-   [Try AWS re:Post](https://repost.aws/tags/TAkMF5YGJLQgqSnTawlqoSsQ) 
+
+[Privacy](https://aws.amazon.com/privacy)[Site terms](https://aws.amazon.com/terms)[Cookie preferences](#)
+
+© 2025, Amazon Web Services, Inc. or its affiliates. All rights reserved.
+
+# Generative voices - Amazon Polly
+
+# 
+
+Generative voices
+
+[PDF](/pdfs/polly/latest/dg/polly-dg.pdf#generative-voices)
+
+[RSS](doc-history.rss)
+
+Focus mode
+
+Generative voices - Amazon Polly
+
+[](/pdfs/polly/latest/dg/polly-dg.pdf#generative-voices "Open PDF")
+
+[Documentation](/index.html)[Amazon Polly](/polly/index.html)[Developer Guide](what-is.html)
+
+[Available generative voices](#generative-voicelist)[Feature and region compatibility](#generative-regions)
+
+Amazon Polly's **generative** text-to-speech (TTS) engine offers the most human-like, emotionally engaged, and adaptive conversational voices available for the use via the Amazon Polly console.
+
+The **Generative engine** is the largest Amazon Polly TTS model to-date. It deploys a billion-parameter transformer that converts raw text into speech codes, followed by a convolution-based decoder that converts these speech codes into waveforms in an incremental, streamable manner. This method shows the widely-reported emergent abilities of Large Language Models (LLMs) when trained on increasing volumes of publicly available and proprietary data comprising a variety of voices, languages, and styles.
+
+The Generative engine creates synthetic speech which is emotionally engaged, assertive, and highly colloquial in a way that is remarkably similar to a human voice. You can use these voices as a knowledgeable customer assistant, a virtual trainer, or an advertiser with a near-human synthetic speech.
+
+###### Note
+
+The state-of-the-art technology underlying these voices falls within the paradigm of generative AI for language and voice modelling. A side effect of the technology is that any updates to the training data and the model could result in slight variations to the way the voices sound, even in case when their overall quality improves with model updates. This could have an impact on use cases with different content parts synthesized over a long time period – for example, a season of podcasts.
+
+## Available generative voices
+
+Amazon Polly currently offers 33 voices in a generative variant. These generative voices are also available in a conversational NTTS variant.
+
+Language
+
+Language code
+
+Name/ID
+
+Gender
+
+1
+
+**English (Australian)**
+
+en-AU
+
+Olivia
+
+Female
+
+2
+
+**English (Indian)**
+
+en-IN
+
+Kajal
+
+Female
+
+3
+
+**English (Ireland)**
+
+en-IE
+
+Niamh
+
+Female
+
+4
+
+**English (South African)**
+
+en-ZA
+
+Ayanda
+
+Female
+
+5
+
+**English (UK)**
+
+en-GB
+
+Amy
+
+Female
+
+6
+
+**English (US)**
+
+en-US
+
+Danielle
+
+Joanna
+
+Matthew
+
+Ruth
+
+Salli
+
+Stephen
+
+Female
+
+Female
+
+Male
+
+Female
+
+Female
+
+Male
+
+7
+
+**Dutch (Belgium)**
+
+nl-BE
+
+Lisa
+
+Female
+
+8
+
+**Dutch (Netherlands)**
+
+nl-NL
+
+Laura
+
+Female
+
+9
+
+**French (Belgian)**
+
+fr-BE
+
+Isabelle
+
+Female
+
+10
+
+**French (Canadian)**
+
+fr-CA
+
+Gabrielle
+
+Liam
+
+Female
+
+Male
+
+11
+
+**French (France)**
+
+fr-FR
+
+Céline
+
+Léa
+
+Rémi
+
+Female
+
+Female
+
+Male
+
+12
+
+**German (Austria)**
+
+de-AT
+
+Hannah
+
+Female
+
+13
+
+**German (Germany)**
+
+de-DE
+
+Daniel
+
+Vicki
+
+Male
+
+Female
+
+14
+
+**Italian (Italy)**
+
+it-IT
+
+Bianca
+
+Female
+
+15
+
+**Korean (Korea)**
+
+ko-KR
+
+Seoyeon
+
+Female
+
+16
+
+**Polish (Poland)**
+
+pl-PL
+
+Ewa
+
+Ola
+
+Female
+
+Female
+
+17
+
+**Portuguese (Brazilian)**
+
+pt-BR
+
+Camila
+
+Female
+
+18
+
+**Spanish (Mexican)**
+
+es-MX
+
+Andrés
+
+Mía
+
+Male
+
+Female
+
+19
+
+**Spanish (Spain)**
+
+es-ES
+
+Lucia
+
+Sergio
+
+Female
+
+Male
+
+20
+
+**Spanish (US)**
+
+es-US
+
+Lupe
+
+Pedro
+
+Female
+
+Male
+
+###### Note
+
+Generative voices cost is specified on the [Amazon Polly pricing information page](https://aws.amazon.com/polly/pricing/).
+
+## Feature and region compatibility
+
+Amazon Polly generative voices are available in the following regions:
+
+-   US East (N. Virginia): us-east-1
+    
+-   Europe (Frankfurt): eu-central-1
+    
+-   US West (Oregon): us-west-2
+    
+-   Other Regions are not available
+    
+
+**The following features are supported for generative voices:**
+
+-   Real-time and asynchronous speech synthesis operations.
+    
+-   Newscaster speaking style is not supported in the **Generative** engine.
+    
+-   Many (but not all) SSML tags are supported by Amazon Polly. For more information about NTTS-supported SSML tags, see [Supported SSML tags](https://docs.aws.amazon.com/polly/latest/dg/supportedtags.html)
+    
+-   As with standard voices, you can choose from various sampling rates to optimize the bandwidth and audio quality for your application. Valid sampling rates for standard and neural voices are 8 kHz, 16 kHz, 22 kHz, or 24 kHz. The default for standard voices is 22 kHz. The default for generative voices is 24 kHz. Amazon Polly supports MP3, OGG (Vorbis), and raw PCM audio stream formats.
+    
+
+_Support for generating speech marks is currently not available._
+
+###### Note
+
+In the unlikely event of model hallucination, (and with the Generative engine's model behavior of rendering the speech token by token) an imposed emergency stop mechanism is in place. The built-in mechanism stops the model from rendering speech any further. This safety feature is based on data analysis where the model has the potential to hallucinate, usually at the end of the sentence.
+
+There could be cases where the model thinks it is going to hallucinate and then might end up cutting a word during a generation step, thus rendering half the word. This could potentially generate inappropriate results.
+
+<div><div><div><div id="js\_error\_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div>
+
+[Document Conventions](/general/latest/gr/docconventions.html)
+
+Voice engines
+
+Long-form engine
+
+Did this page help you? - Yes
+
+Thanks for letting us know we're doing a good job!
+
+If you've got a moment, please tell us what we did right so we can do more of it.
+
+Did this page help you? - No
+
+Thanks for letting us know this page needs work. We're sorry we let you down.
+
+If you've got a moment, please tell us how we can make the documentation better.
+
+-   ### On this page
+    
+-   ### Adjust text size
+    
+    1420
+    
+
+#### Next topic:
+
+[Long-form engine](./long-form-voices.html)
+
+#### Previous topic:
+
+[Voice engines](./voice-engines-polly.html)
+
+#### Need help?
+
+-   [Try AWS re:Post](https://repost.aws/tags/TAkMF5YGJLQgqSnTawlqoSsQ) 
+
+[Privacy](https://aws.amazon.com/privacy)[Site terms](https://aws.amazon.com/terms)[Cookie preferences](#)
+
+© 2025, Amazon Web Services, Inc. or its affiliates. All rights reserved.

@@ -80,6 +80,9 @@ def deep_merge_json(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, 
 
 def _fetch_by_phone(phone: str) -> Optional[Dict[str, Any]]:
 	"""Fetch the single conversation_state row for a phone number (various normalizations)."""
+	if not phone:
+		logger.debug("🛈 _fetch_by_phone called with empty phone; skipping lookup")
+		return None
 	supabase = get_supabase_client()
 	normalized = normalize_phone(phone)
 	candidates = [phone]
@@ -88,9 +91,14 @@ def _fetch_by_phone(phone: str) -> Optional[Dict[str, Any]]:
 		candidates.append(normalized)
 	
 	# Build OR filter - try each candidate phone number
-	# Supabase Python client: .or_() comes after .select()
-	or_conditions = ",".join([f"phone_number.eq.{c}" for c in candidates])
-	resp = supabase.table(TABLE_NAME).select("*").or_(or_conditions).limit(1).execute()
+	# Supabase Python client: .select() must come FIRST, then .or_() filter
+	# Use parentheses to ensure proper method chaining
+	or_filter = ",".join([f"phone_number.eq.{c}" for c in candidates])
+	resp = (supabase.table(TABLE_NAME)
+	        .select("*")
+	        .or_(or_filter)
+	        .limit(1)
+	        .execute())
 	if resp.data:
 		return resp.data[0]
 	return None
@@ -176,7 +184,7 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 			"call_status": "completed",
 			"call_ended_at": datetime.now(timezone.utc).isoformat(),
 			"exit_reason": "interrupted_or_replaced",
-		}).eq("id", existing["id"]).execute()
+		}).eq("id", existing["id"]).select("*").execute()
 		# Re-read
 		existing = _fetch_by_phone(phone_value) or existing
 
@@ -189,6 +197,11 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 	}
 	if metadata and "qualified" in metadata:
 		update_payload["qualified"] = bool(metadata["qualified"])
+	
+	# CRITICAL: Preserve lead_id from metadata if provided
+	if metadata and "lead_id" in metadata:
+		update_payload["lead_id"] = metadata["lead_id"]
+	
 	# Merge conversation_data resets if present
 	if "conversation_data" in reset_updates:
 		# Apply deletions by re-merge with None semantics
@@ -201,10 +214,8 @@ def start_call(phone: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[st
 		update_payload[k] = v
 
 	# Update and return the updated row
-	supabase.table(TABLE_NAME).update(update_payload).eq("id", existing["id"]).execute()
-	# Re-fetch to get updated row
-	updated = _fetch_by_phone(phone_value)
-	return updated if updated else existing
+	resp = supabase.table(TABLE_NAME).update(update_payload).eq("id", existing["id"]).select("*").execute()
+	return resp.data[0] if resp.data else existing
 
 
 def get_conversation_state(phone: str) -> Optional[Dict[str, Any]]:

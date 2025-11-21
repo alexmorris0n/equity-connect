@@ -8,7 +8,7 @@ from services.conversation_state import get_conversation_state, extract_phone_fr
 logger = logging.getLogger(__name__)
 
 
-def validate_transition(from_node: str, to_node: str, vertical: str = "reverse_mortgage") -> bool:
+def validate_transition(from_node: str, to_node: str, vertical: str = "reverse_mortgage") -> tuple[bool, list[str]]:
     """Validate that transition is allowed according to database valid_contexts
     
     Args:
@@ -17,7 +17,13 @@ def validate_transition(from_node: str, to_node: str, vertical: str = "reverse_m
         vertical: Business vertical
         
     Returns:
-        True if transition is valid (or if valid_contexts not found, assume valid)
+        Tuple of (is_valid: bool, valid_contexts: list[str])
+        - is_valid: True if transition is allowed, False if blocked
+        - valid_contexts: List of valid transitions from database (empty if not found)
+        
+    Note:
+        - "exit" and END are NOT automatically allowed - they must be in valid_contexts
+        - If valid_contexts is empty, returns (True, []) for backward compatibility
     """
     try:
         from services.prompt_loader import load_node_config
@@ -25,17 +31,26 @@ def validate_transition(from_node: str, to_node: str, vertical: str = "reverse_m
         valid_contexts = config.get('valid_contexts', [])
         
         if valid_contexts:
-            # Check if to_node is in valid_contexts
-            is_valid = to_node in valid_contexts or to_node == "exit" or to_node == END
+            # Normalize node names for comparison
+            # Router functions use "exit" but database has "goodbye"
+            to_node_normalized = "exit" if to_node == END else to_node
+            
+            # Map router's "exit" to database's "goodbye" (database uses "goodbye", not "exit")
+            if to_node_normalized == "exit":
+                to_node_normalized = "goodbye"
+            
+            is_valid = to_node_normalized in valid_contexts
+            
             if not is_valid:
                 logger.warning(f"⚠️ Invalid transition: {from_node} → {to_node} (valid: {valid_contexts})")
-            return is_valid
+            
+            return (is_valid, valid_contexts)
         else:
             # No valid_contexts defined - allow all transitions (backward compatible)
-            return True
+            return (True, [])
     except Exception as e:
         logger.debug(f"Could not validate transition: {e}, allowing it")
-        return True  # Fail open - allow transition if validation fails
+        return (True, [])  # Fail open for backward compatibility if validation fails
 
 
 def _db(state: ConversationState) -> Optional[Dict[str, Any]]:

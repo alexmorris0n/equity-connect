@@ -29,7 +29,11 @@
 >    - Deployed to Fly.io (`barbara-livekit.fly.dev`)
 >
 > **Database Schema (Shared):**
-> - `prompts` / `prompt_versions` - Instructions, tools, valid_contexts, step_criteria
+> - `prompts` / `prompt_versions` - Instructions, tools, valid_contexts, step_criteria fields:
+>   - `step_criteria_source`: Human-readable natural language (shown in Vue UI)
+>   - `step_criteria_sw`: SignalWire-optimized natural language (auto-generated)
+>   - `step_criteria_lk`: LiveKit-optimized boolean expressions (auto-generated, used by LiveKit agent)
+>   - `step_criteria`: Legacy field (fallback for backward compatibility)
 > - `theme_prompts` - Core personality per vertical
 > - `conversation_state` - Multi-call persistence, conversation_data JSONB flags
 > - `agent_voice_config` - SignalWire voice configuration
@@ -144,7 +148,10 @@ Think of it like a GPS for conversations:
 - **State:** Data about the conversation stored in the database (e.g., "Has the caller been verified?")
 - **Router:** Decision-making logic that determines which node comes next
 - **valid_contexts:** Database array defining which nodes a node can route to
-- **step_criteria:** Database text explaining when a node is complete
+- **step_criteria:** Database field system for node completion logic. Three variants exist:
+  - `step_criteria_source`: Human-readable natural language (displayed in Vue UI)
+  - `step_criteria_sw`: SignalWire-optimized natural language (auto-generated)
+  - `step_criteria_lk`: LiveKit-optimized boolean expressions (e.g., "greet_turn_count >= 2 OR greeted == True") - **Primary field used by LiveKit agent**. Evaluated safely by step_criteria_evaluator.py. See STEP_CRITERIA_EXPRESSION_FORMAT.md for syntax. The agent automatically falls back to legacy `step_criteria` field if `step_criteria_lk` is not populated (backward compatibility).
 - **Platform:** The AI voice system executing the routing (SignalWire or LiveKit)
 
 ### Dual Platform Implementation
@@ -1009,35 +1016,89 @@ Assigned Broker: Walter White (ABC Mortgage)
 
 #### Component 3.3: Node Completion Checker
 
-**File:** `equity_connect/workflows/node_completion.py`
+**File:** `livekit-agent/workflows/node_completion.py`
 
-**Purpose:** Determine if a node's goals have been met based on DB state.
+**Purpose:** Determine if a node's goals have been met based on DB state using database-driven `step_criteria_lk` boolean expressions.
+
+**How It Works:**
+1. Loads `step_criteria_lk` (LiveKit-optimized boolean expression) from database for the current node
+2. Falls back to legacy `step_criteria` field if `step_criteria_lk` is not populated (backward compatibility)
+3. Evaluates expression against `conversation_data` using safe expression evaluator
+4. Falls back to hardcoded logic if evaluation fails or no database criteria available (safety)
+5. Supports turn counting, tool-based completion, and intent detection
 
 **Code Snippet:**
 
 ```python
-def is_node_complete(node_name: str, state: dict) -> bool:
-    """Check if current node goals are met based on DB state"""
+def is_node_complete(node_name: str, state: dict, vertical: str = "reverse_mortgage", use_db_criteria: bool = True, state_row: Optional[dict] = None) -> bool:
+    """Check if current node goals are met based on DB state
     
-    completion_criteria = {
-        "greet": lambda s: s.get("greeted") == True,
-        "verify": lambda s: s.get("verified") == True,
-        "qualify": lambda s: s.get("qualified") != None,
-        "quote": lambda s: s.get("quote_presented") == True,
-        "answer": lambda s: s.get("questions_answered") or s.get("ready_to_book"),
-        "objections": lambda s: s.get("objection_handled") == True,
-        "book": lambda s: s.get("appointment_booked") == True,
-        "exit": lambda s: True,  # Exit always completes immediately
-    }
+    Now supports database-driven step_criteria_lk (LiveKit-optimized) evaluation 
+    with fallback to legacy step_criteria and then hardcoded logic.
+    """
     
-    checker = completion_criteria.get(node_name)
-    return checker(state) if checker else False
+    # Try to use database step_criteria_lk if available
+    if use_db_criteria:
+        try:
+            from services.prompt_loader import load_node_config
+            from workflows.step_criteria_evaluator import evaluate_step_criteria
+            
+            config = load_node_config(node_name, vertical)
+            
+            # Try LiveKit-optimized field first (new system)
+            step_criteria_lk = config.get('step_criteria_lk', '').strip()
+            
+            # Fallback to legacy field if new one is empty (backward compatibility)
+            if not step_criteria_lk:
+                step_criteria_lk = config.get('step_criteria', '').strip()
+                if step_criteria_lk:
+                    logger.info(f"ℹ️ Node '{node_name}' using legacy 'step_criteria' field")
+            
+            if step_criteria_lk:
+                # Evaluate step_criteria expression against conversation state
+                result = evaluate_step_criteria(step_criteria_lk, state)
+                logger.info(f"✅ Evaluated step_criteria for {node_name}: '{step_criteria_lk}' → {result}")
+                evaluated_result = result
+            else:
+                evaluated_result = None
+        except Exception as e:
+            logger.warning(f"⚠️ step_criteria evaluation failed: {e}, using fallback")
+            evaluated_result = None
+    else:
+        evaluated_result = None
+    
+    # Use evaluated result if available, otherwise fall back to hardcoded logic
+    if evaluated_result is not None:
+        result = evaluated_result
+    else:
+        # Fallback to hardcoded flag-based completion (existing behavior)
+        completion_criteria = {
+            "greet": lambda s: True,  # Fallback (should use step_criteria_lk)
+            "verify": lambda s: s.get("verified") == True,
+            "qualify": lambda s: s.get("qualified") != None,
+            # ... etc
+        }
+        checker = completion_criteria.get(node_name)
+        result = checker(state) if checker else False
+    
+    return result
 ```
 
-**How It Works:**
-- Each node has a lambda function that checks specific flags in `conversation_data`
-- These flags are set by tools when the LLM accomplishes a goal
-- Agent calls this after each turn to decide if routing should happen
+**Step Criteria Expression Format:**
+
+Expressions are stored in the database as text and evaluated safely. See `livekit-agent/workflows/STEP_CRITERIA_EXPRESSION_FORMAT.md` for full syntax reference.
+
+**Examples:**
+- `"greet_turn_count >= 2 OR greeted == True"` - GREET node requires 2+ turns
+- `"verified == True"` - VERIFY node completes when verified flag set
+- `"qualified != None OR has_objection == True"` - QUALIFY completes when qualified OR objection detected
+- `"quote_presented == True OR has_objection == True"` - QUOTE completes when presented OR objection
+
+**Benefits:**
+- Database-driven: Change completion logic without code deployment
+- Flexible: Supports turn counting, tool flags, complex conditions
+- Safe: No code injection risk (custom parser, not eval())
+- Fallback: Hardcoded logic ensures system never breaks
 
 ---
 
@@ -1558,7 +1619,9 @@ Same agent code, different prompts loaded via vertical selector
 | **LiveKit Agent** |
 | `livekit-agent/agent.py` | BarbaraAgent class + routing hooks |
 | `livekit-agent/services/prompt_loader.py` | DB query + context injection |
-| `livekit-agent/workflows/node_completion.py` | Completion criteria checkers |
+| `livekit-agent/workflows/node_completion.py` | Completion criteria checkers (now uses step_criteria from DB) |
+| `livekit-agent/workflows/step_criteria_evaluator.py` | Safe expression evaluator for step_criteria |
+| `livekit-agent/workflows/STEP_CRITERIA_EXPRESSION_FORMAT.md` | Expression syntax reference |
 | `livekit-agent/workflows/routers.py` | 8 dynamic routing functions |
 | `livekit-agent/tools/flags.py` | State flag tools (@function_tool) |
 | `livekit-agent/tools/lead.py` | Lead lookup + verification |

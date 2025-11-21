@@ -142,7 +142,9 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
             
             return {
                 'instructions': content.get('instructions', ''),
-                'step_criteria': content.get('step_criteria', ''),
+                'step_criteria': content.get('step_criteria', ''),        # Legacy field (fallback)
+                'step_criteria_lk': content.get('step_criteria_lk', ''),  # LiveKit-optimized boolean expressions
+                'step_criteria_sw': content.get('step_criteria_sw', ''),  # SignalWire-optimized natural language
                 'valid_contexts': content.get('valid_contexts', []),
                 'tools': content.get('tools') or content.get('functions', []),  # Support both fields
                 'role': content.get('role', '')  # Optional
