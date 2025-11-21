@@ -40,6 +40,7 @@ from tools.interaction import (
     verify_appointment_confirmation
 )
 from tools.conversation_flags import (
+    mark_greeted,
     mark_ready_to_book,
     mark_has_objection,
     mark_objection_handled,
@@ -75,7 +76,8 @@ TOOL_REGISTRY = {
     "send_appointment_confirmation": send_appointment_confirmation,
     "verify_appointment_confirmation": verify_appointment_confirmation,
     
-    # Conversation flow flags (8 tools)
+    # Conversation flow flags (9 tools)
+    "mark_greeted": mark_greeted,
     "mark_ready_to_book": mark_ready_to_book,
     "mark_has_objection": mark_has_objection,
     "mark_objection_handled": mark_objection_handled,

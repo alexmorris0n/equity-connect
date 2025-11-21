@@ -109,9 +109,9 @@ async def main():
 		for node in nodes
 	]
 
-openai_key = os.getenv("OPENAI_API_KEY")
-if not openai_key or openai_key.startswith("your_"):
-	raise RuntimeError("OPENAI_API_KEY is not set to a valid value")
+	openai_key = os.getenv("OPENAI_API_KEY")
+	if not openai_key or openai_key.startswith("your_"):
+		raise RuntimeError("OPENAI_API_KEY is not set to a valid value")
 
 	openai_client = OpenAI(api_key=openai_key)
 

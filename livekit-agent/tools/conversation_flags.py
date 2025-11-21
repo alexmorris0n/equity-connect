@@ -13,6 +13,46 @@ logger = logging.getLogger(__name__)
 
 
 @function_tool
+async def mark_greeted(phone: str) -> str:
+    """Mark that greeting and initial rapport building is complete.
+    
+    Use this when you've had a proper greeting exchange with the caller. This means:
+    - There has been some back-and-forth conversation (at least 2-3 exchanges)
+    - You've engaged in small talk (e.g., "How are you?", "How's your day?")
+    - Initial rapport has been established - the caller feels comfortable and engaged
+    - There's been natural conversation flow, not just a single question/answer
+    
+    DO NOT use this after just one exchange like "Hi, how are you?" → "I'm fine, how about you?"
+    That's only one back-and-forth. Wait for more natural conversation before marking greeted.
+    
+    Examples of when to use:
+    - After 2-3 exchanges where you've both shared pleasantries
+    - When there's been some small talk and the conversation feels comfortable
+    - When the caller seems engaged and ready to move forward
+    
+    Examples of when NOT to use:
+    - After just the initial greeting ("Hi, I'm Barbara" → "Hi")
+    - After a single question/answer exchange
+    - If the conversation feels rushed or the caller seems uncomfortable
+    
+    Args:
+        phone: Caller's phone number
+    
+    Returns:
+        Confirmation message
+    """
+    logger.info(f"👋 Marking greeting complete for: {phone}")
+    
+    update_conversation_state(phone, {
+        "conversation_data": {
+            "greeted": True,
+        }
+    })
+    
+    return "Greeting marked as complete. Ready to transition to next conversation phase."
+
+
+@function_tool
 async def mark_ready_to_book(phone: str) -> str:
     """Mark that the caller is ready to schedule an appointment.
     
