@@ -26,6 +26,8 @@ from livekit.plugins.turn_detector import english  # noqa: F401
 # Import ALL plugins at TOP LEVEL (required for plugin registration on main thread)
 from livekit.plugins import deepgram, openai, assemblyai, elevenlabs, google
 from livekit.plugins import noise_cancellation
+from livekit.plugins.turn_detector.english import EnglishModel
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 # Import agent handoff components
 from routing_coordinator import RoutingCoordinator
