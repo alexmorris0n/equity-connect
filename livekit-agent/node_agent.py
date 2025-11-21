@@ -245,6 +245,20 @@ class BarbaraNodeAgent(Agent):
             "if self.session.userdata.user_name and self.session.userdata.age:
                  return CustomerServiceAgent()"
         """
+        message_preview = ""
+        try:
+            if hasattr(new_message, "text_content"):
+                message_preview = new_message.text_content() or ""
+            elif hasattr(new_message, "content"):
+                message_preview = str(new_message.content)
+        except Exception as preview_error:
+            logger.debug(f"Failed to read user message content: {preview_error}")
+            message_preview = "<unavailable>"
+        message_preview = (message_preview or "").strip()
+        if len(message_preview) > 160:
+            message_preview = f"{message_preview[:157]}..."
+        logger.info(f"🗒️ on_user_turn_completed → node='{self.node_name}', user='{message_preview}'")
+        
         if self.node_name == "greet":
             outbound_handled = await self._maybe_handle_outbound_confirmation()
             if outbound_handled:

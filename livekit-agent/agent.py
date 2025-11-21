@@ -7,11 +7,13 @@ from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
     AgentSession,
+    AgentStateChangedEvent,
     JobContext,
     RoomInputOptions,
     RoomOutputOptions,
     JobExecutorType,
     JobProcess,
+    UserStateChangedEvent,
     WorkerOptions,
     cli,
 )
@@ -711,6 +713,26 @@ async def entrypoint(ctx: JobContext):
             preemptive_generation=preemptive_generation,
         )
     
+    def _install_session_state_observers():
+        @session.on("user_state_changed")
+        def _log_user_state(ev: UserStateChangedEvent):
+            new_state = getattr(ev, "new_state", None)
+            old_state = getattr(ev, "old_state", None)
+            reason = getattr(ev, "reason", None)
+            logger.info(
+                f"👂 USER STATE: {old_state} -> {new_state} (reason={reason})"
+            )
+        
+        @session.on("agent_state_changed")
+        def _log_agent_state(ev: AgentStateChangedEvent):
+            new_state = getattr(ev, "new_state", None)
+            old_state = getattr(ev, "old_state", None)
+            phase = getattr(ev, "phase", None)
+            logger.info(
+                f"🤖 AGENT STATE: {old_state} -> {new_state} (phase={phase})"
+            )
+    
+    _install_session_state_observers()
     
     # Start the session with custom BarbaraAgent that auto-greets on entry
     # The session property is set automatically when session.start() is called
