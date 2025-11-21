@@ -13,28 +13,32 @@ logger = logging.getLogger(__name__)
 
 
 @function_tool
-async def mark_greeted(phone: str) -> str:
+async def mark_greeted(phone: str, reason_summary: str) -> str:
     """Mark that greeting + rapport + call reason have all been covered.
     
     Only call this after BOTH of these conditions are true:
     1. Rapport is established (2-3 exchanges, genuine small talk, caller sounds comfortable)
     2. You clearly understand why they are on the line (they told you their goal, question, concern,
-       or you asked and confirmed the purpose of the call)
-    
-    Do NOT call this tool if you're still guessing why they called or if you've only traded pleasantries.
-    The whole point of this flag is to signal: "We're done greeting, we know their reason, we can route."
+       or you asked and confirmed the purpose of the call) AND you can summarize it in natural language.
     
     Args:
         phone: Caller's phone number
+        reason_summary: One-sentence summary of why they called ("She's checking equity to pay medical bills")
     
     Returns:
         Confirmation message
     """
-    logger.info(f"👋 Marking greeting + intent captured for: {phone}")
+    summary = (reason_summary or "").strip()
+    if len(summary) < 8:
+        raise ValueError("Reason summary is too short. Confirm their purpose and pass a clear sentence.")
+    
+    logger.info(f"👋 Marking greeting + intent captured for: {phone} ({summary})")
     
     update_conversation_state(phone, {
         "conversation_data": {
             "greeted": True,
+            "reason_captured": True,
+            "call_reason_summary": summary,
         }
     })
     

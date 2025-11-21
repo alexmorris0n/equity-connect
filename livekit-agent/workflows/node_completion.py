@@ -78,7 +78,7 @@ def is_node_complete(node_name: str, state: dict, vertical: str = "reverse_mortg
     # Fallback to hardcoded flag-based completion (existing behavior)
     # NOTE: greet uses turn counting to prevent immediate routing
     completion_criteria = {
-        "greet": lambda s: s.get("greet_turn_count", 0) >= 2 or s.get("greeted") == True,  # ✅ FIXED: Turn counting fallback
+        "greet": lambda s: s.get("reason_captured") == True,
         "verify": lambda s: s.get("verified") == True,
         "qualify": lambda s: s.get("qualified") != None,
         "quote": lambda s: s.get("quote_presented") == True,
