@@ -124,19 +124,23 @@ def _reset_transient_fields(existing: Dict[str, Any]) -> Dict[str, Any]:
 	# Preserve topics_discussed (durable)
 	# Conversation data resets (remove transient flags)
 	existing_cd = (existing or {}).get("conversation_data") or {}
-	transient_keys = {
-		"verified",
-		"wrong_person",
-		"right_person_available",
-		"ready_to_book",
-		"has_objections",
-		"appointment_booked",
-		"appointment_datetime",
-		"node_visits",
-		"kb_sources_count",
-		"kb_latency_ms",
-		"exit_reason",  # if previously stored in conversation_data
-	}
+    transient_keys = {
+        "greeted",
+        "reason_captured",
+        "call_reason_summary",
+        "greet_turn_count",
+        "verified",
+        "wrong_person",
+        "right_person_available",
+        "ready_to_book",
+        "has_objections",
+        "appointment_booked",
+        "appointment_datetime",
+        "node_visits",
+        "kb_sources_count",
+        "kb_latency_ms",
+        "exit_reason",  # if previously stored in conversation_data
+    }
 	cd_resets = {k: None for k in transient_keys if k in existing_cd}
 	if cd_resets:
 		next_values["conversation_data"] = cd_resets
