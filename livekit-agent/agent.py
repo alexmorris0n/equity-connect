@@ -628,7 +628,8 @@ async def entrypoint(ctx: JobContext):
     userdata = BarbaraSessionData(
         phone_number=caller_phone,
         vertical=vertical,
-        current_node="greet"
+        current_node="greet",
+        lead_context=lead_context
     )
     logger.debug(f"📝 Created BarbaraSessionData: current_node='greet'")
     
@@ -650,7 +651,8 @@ async def entrypoint(ctx: JobContext):
         vertical=vertical,
         phone_number=caller_phone,
         chat_ctx=None,  # Fresh conversation
-        coordinator=coordinator
+        coordinator=coordinator,
+        lead_context=lead_context
     )
     logger.info(f"✅ ENTRYPOINT: BarbaraAgent created")
     

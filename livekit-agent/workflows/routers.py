@@ -55,6 +55,13 @@ def validate_transition(from_node: str, to_node: str, vertical: str = "reverse_m
 
 def _db(state: ConversationState) -> Optional[Dict[str, Any]]:
 	"""Fetch DB row based on state phone_number or messages fallback."""
+	if state is None:
+		return None
+
+	cached_row = state.get("_state_row")  # Pre-fetched row (e.g., from LiveKit coordinator)
+	if cached_row:
+		return cached_row
+
 	phone = state.get("phone_number")  # Preferred if present in graph state
 	if not phone:
 		phone = extract_phone_from_messages(state.get("messages", []))  # Best-effort

@@ -174,7 +174,9 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
                 'step_criteria_sw': content.get('step_criteria_sw', ''),  # SignalWire-optimized natural language
                 'valid_contexts': content.get('valid_contexts', []),
                 'tools': content.get('tools') or content.get('functions', []),  # Support both fields
-                'role': content.get('role', '')  # Node-specific role (for reference)
+                'role': content.get('role', ''),  # Node-specific role (for reference)
+                'theme': theme,
+                'node_prompt': node_instructions
             }
     except Exception as e:
         # 🚨 LOUD FALLBACK for exception
@@ -182,7 +184,17 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
         log_node_config_fallback(node_name, vertical, f"{type(e).__name__}: {str(e)}", is_exception=True, has_fallback=node_name in ["greet", "verify", "qualify", "quote", "answer", "objections", "book", "goodbye", "end"])
         fallback = get_fallback_node_config(node_name)
         if fallback:
-            return fallback
+            return {
+                'instructions': fallback.get('instructions', ''),
+                'step_criteria': fallback.get('step_criteria', ''),
+                'step_criteria_lk': fallback.get('step_criteria_lk', ''),
+                'step_criteria_sw': fallback.get('step_criteria_sw', ''),
+                'valid_contexts': fallback.get('valid_contexts', []),
+                'tools': fallback.get('tools', []),
+                'role': fallback.get('role', ''),
+                'theme': fallback.get('theme', ''),
+                'node_prompt': fallback.get('node_prompt', fallback.get('instructions', ''))
+            }
         else:
             # No fallback available for this node
             return {
@@ -192,7 +204,9 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
                 'step_criteria_sw': '',
                 'valid_contexts': [],
                 'tools': [],
-                'role': ''
+                'role': '',
+                'theme': '',
+                'node_prompt': ''
             }
     
     # 🚨 LOUD FALLBACK for missing data
@@ -201,7 +215,17 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
     
     fallback = get_fallback_node_config(node_name)
     if fallback:
-        return fallback
+        return {
+            'instructions': fallback.get('instructions', ''),
+            'step_criteria': fallback.get('step_criteria', ''),
+            'step_criteria_lk': fallback.get('step_criteria_lk', ''),
+            'step_criteria_sw': fallback.get('step_criteria_sw', ''),
+            'valid_contexts': fallback.get('valid_contexts', []),
+            'tools': fallback.get('tools', []),
+            'role': fallback.get('role', ''),
+            'theme': fallback.get('theme', ''),
+            'node_prompt': fallback.get('node_prompt', fallback.get('instructions', ''))
+        }
     else:
         # No fallback available for this node
         return {
@@ -211,7 +235,9 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
             'step_criteria_sw': '',
             'valid_contexts': [],
             'tools': [],
-            'role': ''
+            'role': '',
+            'theme': '',
+            'node_prompt': ''
         }
 
 

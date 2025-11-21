@@ -6,7 +6,7 @@ Documentation: https://docs.livekit.io/agents/build/agents-handoffs#passing-stat
 """
 
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
     from routing_coordinator import RoutingCoordinator
@@ -31,4 +31,5 @@ class BarbaraSessionData:
     phone_number: Optional[str] = None
     vertical: str = "reverse_mortgage"
     current_node: Optional[str] = None
+    lead_context: Optional[Dict[str, Any]] = None
 

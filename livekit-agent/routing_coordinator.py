@@ -174,7 +174,7 @@ class RoutingCoordinator:
         
         return None
     
-    def route_next(self, current_node: str, state_row: dict, conversation_data: dict) -> str:
+    def route_next(self, current_node: str, state_row: dict | None, conversation_data: dict | None) -> str:
         """Use router functions to determine next node.
         
         Args:
@@ -191,7 +191,13 @@ class RoutingCoordinator:
             return END
         
         try:
-            next_node = router_func(state_row, conversation_data)
+            state_payload = {
+                "phone_number": self.phone,
+                "_state_row": state_row,
+            }
+            if conversation_data is not None:
+                state_payload["_conversation_data"] = conversation_data
+            next_node = router_func(state_payload)
             logger.info(f"📍 Router '{current_node}' suggests: {next_node}")
             return next_node
         except Exception as e:
@@ -239,7 +245,8 @@ class RoutingCoordinator:
                 vertical=self.vertical,
                 phone_number=self.phone,
                 chat_ctx=chat_ctx,  # Preserve conversation history (or None if invalid)
-                coordinator=self  # Pass coordinator reference for automatic routing
+                coordinator=self,  # Pass coordinator reference for automatic routing
+                lead_context=getattr(session.userdata, "lead_context", None)
             )
             
             # Perform handoff (triggers new_agent.on_enter())

@@ -38,10 +38,11 @@ Documentation Reference:
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from livekit.agents import Agent
 from livekit.agents.llm import ChatContext, ChatMessage
 from services.prompt_loader import load_node_config
+from services.caller_context import build_caller_context_block
 from tool_loader import load_tools_for_node
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,8 @@ class BarbaraNodeAgent(Agent):
         vertical: str = "reverse_mortgage",
         phone_number: Optional[str] = None,
         chat_ctx: Optional[ChatContext] = None,
-        coordinator: Optional[any] = None
+        coordinator: Optional[any] = None,
+        lead_context: Optional[Dict[str, Any]] = None
     ):
         """Initialize a node-specific agent with database configuration.
         
@@ -105,7 +107,23 @@ class BarbaraNodeAgent(Agent):
         # Load configuration from database
         try:
             config = load_node_config(node_name, vertical)
-            instructions = config.get('instructions', '')
+            base_instructions = config.get('instructions', '')
+            theme_block = config.get('theme')
+            node_block = config.get('node_prompt')
+            caller_context_block = build_caller_context_block(
+                lead_context,
+                phone_number=phone_number
+            )
+
+            instruction_segments = [
+                segment for segment in [theme_block, caller_context_block, node_block]
+                if segment
+            ]
+
+            if instruction_segments:
+                instructions = "\n\n---\n\n".join(instruction_segments)
+            else:
+                instructions = base_instructions
             
             if not instructions:
                 logger.warning(f"⚠️ Node '{node_name}' has no instructions in database")
@@ -139,6 +157,8 @@ class BarbaraNodeAgent(Agent):
         # Store coordinator reference (LiveKit docs: pass agent references directly during handoffs)
         self.coordinator = coordinator
         self.node_name = node_name
+        self.lead_context = lead_context
+        self.phone_number = phone_number
         
         logger.info(
             f"✅ BarbaraNodeAgent created: node='{node_name}', tools={len(tools)}, "
