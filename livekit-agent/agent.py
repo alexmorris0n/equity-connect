@@ -131,7 +131,12 @@ async def entrypoint(ctx: JobContext):
     is_test = metadata.get("is_test", False)
     template_id = metadata.get("template_id")  # Config: STT/TTS/LLM/voice
     call_type = metadata.get("call_type", "test-demo")  # Prompt: instructions
-    logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}, call_type={call_type}")
+    raw_direction = metadata.get("call_direction") or metadata.get("direction")
+    if raw_direction:
+        call_direction = str(raw_direction).lower()
+    else:
+        call_direction = "outbound" if str(call_type).startswith("outbound") else "inbound"
+    logger.info(f"🔍 Final: is_test={is_test}, template_id={template_id}, call_type={call_type}, call_direction={call_direction}")
     
     # Extract phone metadata for conversation state
     # OFFICIAL LIVEKIT SIP PATTERN: participant.attributes['sip.phoneNumber']
@@ -625,11 +630,15 @@ async def entrypoint(ctx: JobContext):
     
     # ✅ Create userdata instance (matches docs pattern)
     # From docs: "session = AgentSession[MySessionInfo](userdata=MySessionInfo(), ...)"
+    lead_has_name = bool(lead_context and (lead_context.get("name") or lead_context.get("first_name")))
     userdata = BarbaraSessionData(
         phone_number=caller_phone,
         vertical=vertical,
         current_node="greet",
-        lead_context=lead_context
+        lead_context=lead_context,
+        call_type=call_type,
+        call_direction=call_direction,
+        outbound_intro_pending=(call_direction == "outbound" and lead_has_name)
     )
     logger.debug(f"📝 Created BarbaraSessionData: current_node='greet'")
     

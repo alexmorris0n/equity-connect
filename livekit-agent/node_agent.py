@@ -187,6 +187,12 @@ class BarbaraNodeAgent(Agent):
         """
         logger.info(f"🎯 ON_ENTER: BarbaraNodeAgent entered node '{self.session.userdata.current_node}'")
         
+        if self.node_name == "greet":
+            handled = await self._handle_greet_on_enter()
+            if handled:
+                logger.info("✅ ON_ENTER complete for node 'greet' (scripted greeting delivered)")
+                return
+        
         # Generate agent speech based on node instructions
         # This ensures the agent immediately acts according to the new node's purpose
         await self.session.generate_reply(
@@ -215,6 +221,12 @@ class BarbaraNodeAgent(Agent):
             "if self.session.userdata.user_name and self.session.userdata.age:
                  return CustomerServiceAgent()"
         """
+        if self.node_name == "greet":
+            outbound_handled = await self._maybe_handle_outbound_confirmation()
+            if outbound_handled:
+                logger.debug("✅ Outbound introduction follow-up delivered; skipping routing check this turn")
+                return
+        
         coordinator = self.coordinator or getattr(self.session.userdata, "coordinator", None)
         if coordinator:
             logger.debug("🔄 on_user_turn_completed: Delegating to coordinator for routing check")
@@ -225,6 +237,66 @@ class BarbaraNodeAgent(Agent):
                 # Don't block agent reply if routing check fails
         else:
             logger.debug("🔄 on_user_turn_completed: No coordinator attached, skipping routing check")
+
+    async def _handle_greet_on_enter(self) -> bool:
+        """Deliver deterministic greeting variants for professional tone."""
+        userdata = getattr(self.session, "userdata", None)
+        if not userdata:
+            return False
+        
+        direction = getattr(userdata, "call_direction", "inbound") or "inbound"
+        lead_context = getattr(userdata, "lead_context", None) or self.lead_context or {}
+        lead_name = self._extract_lead_name(lead_context)
+        
+        if direction == "outbound":
+            opener = f"Hi, may I speak with {lead_name}?" if lead_name else "Hi, may I speak with the homeowner?"
+            await self.session.generate_reply(instructions=opener)
+            userdata.outbound_intro_pending = True
+            return True
+        
+        if lead_name:
+            greeting = f"Hi {lead_name}, this is Barbara from Equity Connect. How are you?"
+        else:
+            greeting = "Hi, this is Barbara from Equity Connect. How are you?"
+        
+        await self.session.generate_reply(instructions=greeting)
+        return True
+
+    async def _maybe_handle_outbound_confirmation(self) -> bool:
+        """After outbound caller responds, deliver the follow-up introduction."""
+        userdata = getattr(self.session, "userdata", None)
+        if not userdata:
+            return False
+        
+        if getattr(userdata, "call_direction", "inbound") != "outbound":
+            return False
+        
+        if not getattr(userdata, "outbound_intro_pending", False):
+            return False
+        
+        lead_context = getattr(userdata, "lead_context", None) or self.lead_context or {}
+        lead_name = self._extract_lead_name(lead_context)
+        if not lead_name:
+            # Without a name, fall back to a generic introduction
+            follow_up = "Hi, this is Barbara from Equity Connect calling about a reverse mortgage."
+        else:
+            follow_up = f"Hi {lead_name}, this is Barbara from Equity Connect calling about a reverse mortgage."
+        
+        await self.session.generate_reply(instructions=follow_up)
+        userdata.outbound_intro_pending = False
+        return True
+
+    def _extract_lead_name(self, lead_context: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Prefer full name, fall back to first name."""
+        if not lead_context:
+            return None
+        if lead_context.get("name"):
+            return lead_context["name"]
+        first = lead_context.get("first_name")
+        last = lead_context.get("last_name")
+        if first and last:
+            return f"{first} {last}".strip()
+        return first or last
 
 
 # Export the agent class

@@ -32,4 +32,7 @@ class BarbaraSessionData:
     vertical: str = "reverse_mortgage"
     current_node: Optional[str] = None
     lead_context: Optional[Dict[str, Any]] = None
+    call_type: Optional[str] = None
+    call_direction: str = "inbound"
+    outbound_intro_pending: bool = False
 
