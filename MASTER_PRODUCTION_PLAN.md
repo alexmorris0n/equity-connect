@@ -89,10 +89,11 @@ equity-connect/ (Git Monorepo)
 ```
 
 **Why Dual Platform:**
-- ✅ A/B testing - Compare SignalWire vs LiveKit performance with identical routing logic
+- ✅ A/B testing - Compare SignalWire vs LiveKit performance with database-informed routing
 - ✅ Cost optimization - Test which platform offers better economics per call
 - ✅ Provider flexibility - SignalWire native plugins vs LiveKit Inference
 - ✅ Risk mitigation - One platform down, other continues serving calls
+- ✅ Single source of truth - Database-driven prompts, tools, and routing rules (platform-specific implementation)
 - ✅ Single source of truth - Database-driven prompts, tools, and routing work on both
 
 **Deployment Triggers:**
@@ -206,13 +207,14 @@ equity-connect/ (Git Monorepo)
 - ✅ **Realtime (`model_id_full`)**: Just model name (e.g., `"gpt-4o-realtime-preview"`, `"gemini-2.0-flash-exp"`)
 
 **Impact:**
-- ✅ LiveKit agent now loads active models from database (no hardcoded fallbacks)
+- ✅ LiveKit agent loads active models from database (with safety fallbacks for DB failures)
 - ✅ Vue portal displays active configuration on page load/refresh
 - ✅ All model formats match LiveKit Inference documentation exactly
 - ✅ Realtime models (OpenAI Realtime, Gemini Live) fully supported
 - ✅ Custom ElevenLabs voices work via plugin with user's API key
 - ✅ Safer database queries with `.maybe_single()` (prevents crashes)
 - ✅ Complete separation of SignalWire and LiveKit models in database
+- ⚠️ **Safety Fallbacks:** Default models (gpt-4o-mini, deepgram/nova-3, elevenlabs/eleven_turbo_v2_5:Sarah) used if no active models set
 
 **Status:** ✅ **COMPLETE - LiveKit Component-Based Configuration Active (November 20, 2025)**
 
@@ -268,11 +270,12 @@ equity-connect/ (Git Monorepo)
 - ✅ **TTS (`voice`)**: Dot format (e.g., `"elevenlabs.rachel"`, `"amazon.Joanna:neural:en-US"`)
 
 **Impact:**
-- ✅ SignalWire agent now loads active models from database (no hardcoded fallbacks)
+- ✅ SignalWire agent loads active models from database (with safety fallbacks for DB failures)
 - ✅ Vue portal displays active configuration on page load/refresh
 - ✅ All model formats match SignalWire documentation exactly
 - ✅ Azure TTS voices now available in SignalWire configuration
 - ✅ Safer database queries with `.maybe_single()` (prevents crashes)
+- ⚠️ **Safety Fallbacks:** Default models (gpt-4o-mini, deepgram:nova-3, elevenlabs.rachel) used if no active models set
 
 **Status:** ✅ **COMPLETE - SignalWire Component-Based Configuration Active (November 20, 2025)**
 
@@ -335,9 +338,11 @@ equity-connect/ (Git Monorepo)
 - **LiveKit:** `livekit-agent/tools/` - Returns `str` or `None` for LiveKit function calling
 - **Same Business Logic:** Both call same Supabase queries, Nylas API, knowledge search
 
-**Routing Logic (Platform-Specific Implementation, Same Rules):**
-- **SignalWire:** Uses `valid_contexts` arrays from database, SignalWire handles transitions natively
-- **LiveKit:** Uses Python routers (`route_after_greet()`, `route_after_verify()`, etc.) that check same database flags and valid_contexts
+**Routing Logic (Database-Informed, Platform-Specific Implementation):**
+- **SignalWire:** Uses `valid_contexts` arrays from database. SignalWire's LLM determines which transition to take based on conversation context. Natural language `step_criteria` guide completion.
+- **LiveKit:** Uses Python router functions (`route_after_greet()`, etc.) that check database flags and `valid_contexts` for allowed transitions. Boolean expression `step_criteria_lk` evaluated by custom parser.
+- **Key Difference:** SignalWire = LLM-driven routing within allowed contexts. LiveKit = Code-driven routing with database validation.
+- **Same Rules, Different Execution:** Both platforms use same database tables (`valid_contexts`, flags, prompts) but implement routing logic differently.
 
 **Prompt Loading (Identical):**
 - Both load from `prompt_versions` table
@@ -472,7 +477,7 @@ equity-connect/ (Git Monorepo)
 2. Agent __init__ runs (one-time setup)
    - Defines FALLBACK contexts (hardcoded in Python - only used if DB fails)
    - Sets voice config, hints, pronunciations
-   - Registers 21 tools
+   - Registers 22 tools (3 deprecated: mark_questions_answered, clear_conversation_flags, find_broker_by_territory)
 
 3. configure_per_call() fires (per-call dynamic loading)
    - Queries database for contexts (prompt_versions table)
@@ -611,7 +616,7 @@ equity-connect/ (Git Monorepo)
 3. **Auto-Toggle:** Tool toggles itself off after first execution (success OR error) to save tokens
 4. **Cache Restoration:** Properly restores nested structure for tool compatibility
 
-**All 21 Tools:**
+**All 22 Tools (3 deprecated):**
 - ✅ Error handling added to all tools (prevents call hangups)
 - ✅ Consistent `SwaigFunctionResult` usage for tool toggling
 - ✅ 7 one-time-use tools auto-disable after execution
@@ -1106,9 +1111,9 @@ POST /api/validate-routing
 
 ## 🎙️ SignalWire Agent SDK Migration ⚠️ **ABANDONED (NOV 18, 2025)**
 
-**Status:** ⚠️ **ABANDONED - Replaced by SWML Bridge (Nov 18, 2025)**
-
-**Why Abandoned:** Critical bug in SignalWire Agent SDK prevented tools from being available to the LLM. After 12+ hours of debugging and multiple failed workarounds, decision made to pivot to SWML bridge approach (see Nov 18-19 section above).
+**Status:** ⚠️ **ABANDONED - Replaced by SWML Bridge**  
+**Why:** Critical SDK bug prevented tools from being available to LLM. Pivoted to SWML bridge (see Nov 18-19 section above).  
+**Note:** This 200-line historical section preserved for reference. Skip to "Nov 18-19: SWML Bridge + LiveKit Dual Platform" for current architecture.
 
 ### Why SignalWire Over LiveKit
 
@@ -1153,7 +1158,7 @@ SignalWire SIP → SignalWire Agent SDK → Fly.io Agent Worker (SignalWire SDK)
 **✅ Phase 2: Core Migration (COMPLETE)**
 - ✅ Converted `EquityConnectAgent` → `BarbaraAgent` (inherits from `AgentBase`)
 - ✅ Integrated BarbGraph routing (all 8 routers unchanged, pure Python)
-- ✅ Ported all 21 tools (converted `@function_tool` → `agent.define_tool()`)
+- ✅ Ported all 22 tools (converted `@function_tool` → `agent.define_tool()`; 3 deprecated)
 - ✅ Preserved state management (conversation_state table logic unchanged)
 - ✅ Fixed 3 theme duplication bugs in prompt loading
 
@@ -1191,7 +1196,7 @@ SignalWire SIP → SignalWire Agent SDK → Fly.io Agent Worker (SignalWire SDK)
 - ✅ Verified against live Supabase schema via MCP
 
 **✅ Tools - Business Logic UNCHANGED**
-- ✅ All 21 tools: function signatures, parameters, return types identical
+- ✅ All 22 tools: function signatures, parameters, return types identical (3 marked deprecated)
 - ✅ Only decorator changed: `@function_tool` → `agent.define_tool()` registration
 - ✅ Lead Management (5), Calendar (4), Knowledge (1), Interaction (4), Flags (7)
 
@@ -1276,7 +1281,7 @@ SignalWire SIP → SignalWire Agent SDK → Fly.io Agent Worker (SignalWire SDK)
 - [ ] Conversation history preserved 100%
 - [ ] Multi-call persistence working
 - [ ] Zero schema drift
-- [ ] All 21 tools functional with identical output
+- [ ] All 22 tools functional with identical output (3 deprecated but still functional)
 
 **Status:** ✅ **SIGNALWIRE CONTEXTS MIGRATION COMPLETE (November 13, 2025)**
 
@@ -1304,9 +1309,8 @@ SignalWire SIP → SignalWire Agent SDK → Fly.io Agent Worker (SignalWire SDK)
 
 ## 🎙️ LiveKit Cloud Voice System (DEPRECATED) ⚠️
 
-**Status:** ⚠️ **DEPRECATED - Being Replaced by SignalWire Agent SDK**
-
-This section preserved for reference during migration. The LiveKit system was production-ready but is being replaced by SignalWire for better cost control and simpler architecture.
+**Status:** ⚠️ **DEPRECATED - Historical Reference Only**  
+**Note:** This 160-line section describes the old architecture before dual-platform implementation. Skip to "Nov 18-19: SWML Bridge + LiveKit Dual Platform" for current system.
 
 <details>
 <summary>Click to view LiveKit architecture (reference only)</summary>
@@ -1326,7 +1330,7 @@ This section preserved for reference during migration. The LiveKit system was pr
 - Connects to LiveKit Cloud via WebSocket
 - Loads AI templates from Supabase `ai_templates` table
 - Executes BarbGraph event-based routing (8 nodes)
-- Tools: 21 tools (lead lookup, calendar booking, knowledge search, state flags)
+- Tools: 22 tools (lead lookup, calendar booking, knowledge search, state flags; 3 deprecated)
 
 ### AI Provider Architecture (LiveKit Inference)
 
@@ -1397,7 +1401,7 @@ Northflank Agent Worker picks up job
     ↓
 BarbGraph Event-Based Conversation Flow
     ├─ User speaks → STT transcribes → LLM processes → TTS synthesizes → Agent responds
-    ├─ 21 tools available: lead lookup, knowledge search, calendar booking, state flags
+    ├─ 22 tools available: lead lookup, knowledge search, calendar booking, state flags (3 deprecated)
     ├─ agent_speech_committed event fires after each turn
     ├─ Routing check: is_node_complete(current_node, state)?
     ├─ Dynamic routing: route_after_*(state) decides next node
@@ -1479,9 +1483,9 @@ Call ends, metadata saved to interactions table
 BarbGraph is a database-driven conversation routing system with 8 nodes and dynamic routing. It works identically on both SignalWire SWML and LiveKit Agents platforms.
 
 **Why Database-Driven Routing?**
-- ✅ Platform-agnostic (same logic works on SignalWire and LiveKit)
-- ✅ A/B testing (compare platforms with identical routing)
-- ✅ Easy updates (change routing without code deploys)
+- ✅ Database-informed (routing rules stored in DB, implementations platform-specific)
+- ✅ A/B testing (compare platforms with same rules, different execution)
+- ✅ Easy updates (change prompts/valid_contexts without code deploy for SignalWire, requires deploy for LiveKit routers)
 - ✅ Single source of truth (one set of prompts, tools, routing rules)
 - ✅ Competitive advantage (edit prompts in Vue Portal without engineer)
 
@@ -1710,7 +1714,7 @@ CREATE TABLE conversation_state (
 - `pending_birthday` - Close to 62nd birthday (< 3 months), pre-qualify
 - `manual_booking_required` - Booking tool failed, broker needs to follow up
 
-### 21 Tools Verified (Implemented on Both Platforms)
+### 22 Tools Verified (3 Deprecated - Implemented on Both Platforms)
 
 **Implementation Notes:**
 - **SignalWire:** Returns `{response: str, action: []}` for SWAIG format
@@ -1751,7 +1755,7 @@ CREATE TABLE conversation_state (
 
 ### System Verification Results
 
-**✅ All 21 Tools Verified:**
+**✅ All 22 Tools Verified (3 Deprecated):**
 - Every tool referenced in prompts EXISTS in code
 - All tools EXPORTED in `tools/__init__.py`
 - All tools DECORATED with `@function_tool`
@@ -1836,7 +1840,7 @@ CREATE TABLE conversation_state (
 **Backend:**
 - `equity_connect/agent/barbara_agent.py` - SignalWire contexts integration (deleted ~514 lines, added ~180 lines)
 - `equity_connect/services/contexts_builder.py` - NEW: Builds SignalWire contexts from database (~233 lines)
-- `equity_connect/tools/*.py` - All 21 tools unchanged (still use `@AgentBase.tool` decorators)
+- `equity_connect/tools/*.py` - All 22 tools unchanged (still use `@AgentBase.tool` decorators; 3 deprecated)
 
 **Frontend:**
 - `portal/src/views/admin/Verticals.vue` - Complete rewrite with contexts system, AI Helper, vertical versioning
@@ -2128,7 +2132,7 @@ CREATE TABLE conversation_state (
 ### Core Documentation
 - **`BARBGRAPH_COMPREHENSIVE_GUIDE.md`** - Complete system guide (non-technical + technical)
 - **`BARBGRAPH_CURRENT_PROMPTS.md`** - All 8 node prompts documented
-- **`BARBGRAPH_SYSTEM_VERIFICATION.md`** - System verification results (21 tools, field names, data flow)
+- **`BARBGRAPH_SYSTEM_VERIFICATION.md`** - System verification results (22 tools, field names, data flow)
 - **`THEME_AND_QUOTE_IMPLEMENTATION_COMPLETE.md`** - Theme system + QUOTE node implementation
 - **`MASTER_PRODUCTION_PLAN.md`** - This file (complete system overview)
 
@@ -2161,7 +2165,7 @@ CREATE TABLE conversation_state (
 ### BarbGraph Routing System
 - [x] 8 nodes implemented (greet, verify, qualify, quote, answer, objections, book, goodbye)
 - [x] Theme prompt system active (universal personality per vertical)
-- [x] 21 tools verified and working on both platforms
+- [x] 22 tools verified and working on both platforms (3 deprecated but functional)
 - [x] Database-driven routing (`valid_contexts`, `step_criteria`)
 - [x] Platform-agnostic design (same DB schema for SignalWire + LiveKit)
 - [x] Vue Portal UI complete (Verticals.vue with dual platform tabs)
@@ -2215,7 +2219,7 @@ CREATE TABLE conversation_state (
 - [x] Vue portal configuration for both platforms
 
 ### Testing & Validation
-- [x] All 21 tools verified (no missing tools)
+- [x] All 22 tools verified (no missing tools; 3 marked deprecated)
 - [x] Field names consistent (primary_phone, primary_phone_e164)
 - [x] SIP data flow verified for both platforms
 - [x] Conversation history preserved across node transitions

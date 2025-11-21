@@ -4,9 +4,9 @@
 **Last Updated:** November 19, 2025  
 **Status:** ✅ **PRODUCTION READY - Dual Platform (SignalWire SWML + LiveKit Agents)**
 
-> **✅ CURRENT SYSTEM:** BarbGraph is a platform-agnostic routing system that works identically on both SignalWire SWML and LiveKit Agents. Single source of truth in database enables A/B testing and cost comparison.
+> **✅ CURRENT SYSTEM:** BarbGraph is a database-informed routing system that works on both SignalWire SWML and LiveKit Agents. Single source of truth in database (prompts, tools, routing rules) with platform-specific implementations. Enables A/B testing and cost comparison.
 > 
-> **Key Innovation:** Same routing logic, prompts, tools, and flags stored in database, implemented on two platforms for comparison and redundancy.
+> **Key Innovation:** Routing rules, prompts, tools, and flags stored in database with platform-specific implementations (LLM-driven for SignalWire, code-driven for LiveKit).
 > 
 > **🎯 Nov 18-19, 2025 - HOW THE SYSTEM ACTUALLY WORKS:**
 >
@@ -48,11 +48,11 @@
 > - Edit in Vue Portal (Verticals.vue) → Saves to database → Next call loads from database → Changes are live on BOTH platforms
 >
 > **Why Dual Platform:**
-> - ✅ A/B testing - Compare SignalWire vs LiveKit with identical routing
+> - ✅ A/B testing - Compare SignalWire vs LiveKit with database-informed routing
 > - ✅ Cost optimization - Real-world data on which is cheaper
 > - ✅ Risk mitigation - One platform down, other continues
 > - ✅ Provider flexibility - SignalWire native plugins vs LiveKit Inference
-> - ✅ Single source of truth - One set of prompts, tools, routing
+> - ✅ Single source of truth - Database prompts/tools/rules, platform-specific execution
 >
 > **Key Changes (Nov 18-19):**
 > - SignalWire Agent SDK abandoned (tool availability bug)
@@ -158,18 +158,23 @@ Think of it like a GPS for conversations:
 
 **SignalWire SWML:**
 - FastAPI bridge generates SWML responses with contexts
-- SignalWire handles transitions natively based on `valid_contexts`
+- SignalWire's LLM chooses transitions within allowed `valid_contexts` (LLM-driven routing)
+- Natural language `step_criteria` guide LLM completion decisions
 - Tools declared as SWAIG functions
+- **Fallback:** Hardcoded valid_contexts/functions if database missing (safety)
 
 **LiveKit Agents:**
-- Python routers check flags and `valid_contexts` from database
-- Manual transitions via `session.generate_reply()`
+- Python router functions check flags and `valid_contexts` from database (code-driven routing)
+- Boolean expression `step_criteria_lk` evaluated by custom parser
+- Manual transitions via `session.update_agent()`
 - Tools decorated with `@function_tool`
+- **Fallback:** Hardcoded theme/instructions if database fails (safety)
 
 **Both platforms:**
 - Load same prompts, tools, routing rules from database
 - Use same business logic (Supabase queries, API calls)
 - Update same conversation_state flags
+- **Key Difference:** Same rules, different execution (LLM-driven vs code-driven)
 
 ---
 
@@ -1644,9 +1649,10 @@ Same agent code, different prompts loaded via vertical selector
 - **Easier Maintenance:** Edit one node without breaking the entire system
 - **Multi-Call Support:** Pick up where you left off, no matter when you call back
 - **Scalability:** Same architecture works across all business verticals
-- **Platform Flexibility:** Works on both SignalWire SWML and LiveKit Agents
-- **A/B Testing:** Compare platforms with identical routing logic for cost/performance optimization
+- **Platform Flexibility:** Works on both SignalWire SWML and LiveKit Agents (different implementations)
+- **A/B Testing:** Compare platforms with database-informed routing for cost/performance optimization
 - **Risk Mitigation:** One platform down, the other continues serving calls
+- **Safety Fallbacks:** Hardcoded defaults prevent system failure if database unavailable
 
 Whether you're a business owner looking to improve call quality or a developer building conversational AI, BarbGraph provides the foundation for world-class voice agent experiences with the flexibility to choose or switch platforms as needed.
 
