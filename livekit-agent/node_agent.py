@@ -120,6 +120,22 @@ class BarbaraNodeAgent(Agent):
                 if segment
             ]
 
+            reason_block = None
+            if self.node_name == "answer":
+                session_userdata = getattr(getattr(self, "session", None), "userdata", None)  # type: ignore[attr-defined]
+                summary = getattr(session_userdata, "call_reason_summary", None) if session_userdata else None
+                if summary:
+                    reason_block = (
+                        "## Caller Goal\n"
+                        f"The caller said: \"{summary}\".\n"
+                        "Acknowledge this before answering and ask what specifics they want to cover."
+                    )
+
+            instruction_segments = [
+                segment for segment in [theme_block, caller_context_block, reason_block, node_block]
+                if segment
+            ]
+
             if instruction_segments:
                 instructions = "\n\n---\n\n".join(instruction_segments)
             else:
@@ -192,6 +208,11 @@ class BarbaraNodeAgent(Agent):
             if handled:
                 logger.info("✅ ON_ENTER complete for node 'greet' (scripted greeting delivered)")
                 return
+        elif self.node_name == "answer":
+            handled = await self._handle_answer_on_enter()
+            if handled:
+                logger.info("✅ ON_ENTER complete for node 'answer' (intent acknowledged)")
+                return
         
         # Generate agent speech based on node instructions
         # This ensures the agent immediately acts according to the new node's purpose
@@ -260,6 +281,20 @@ class BarbaraNodeAgent(Agent):
             greeting = "Hi, this is Barbara from Equity Connect. How are you?"
         
         await self.session.generate_reply(instructions=greeting)
+        return True
+
+    async def _handle_answer_on_enter(self) -> bool:
+        """Acknowledge the caller's intent and ask for specifics."""
+        session_userdata = getattr(getattr(self, "session", None), "userdata", None)  # type: ignore[attr-defined]
+        summary = getattr(session_userdata, "call_reason_summary", None) if session_userdata else None
+        if summary:
+            opener = (
+                f"Thanks for letting me know you're looking to {summary.lower()}. "
+                "What questions should we tackle first?"
+            )
+        else:
+            opener = "Happy to help. What questions would you like to dig into first?"
+        await self.session.generate_reply(instructions=opener)
         return True
 
     async def _maybe_handle_outbound_confirmation(self) -> bool:

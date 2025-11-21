@@ -141,6 +141,10 @@ class RoutingCoordinator:
         # Get updated state after turn count increment
         state_row = get_conversation_state(self.phone)
         state = state_row.get("conversation_data", {}) if state_row else {}
+        try:
+            session.userdata.call_reason_summary = state.get("call_reason_summary")
+        except Exception as userdata_error:
+            logger.debug(f"Failed to copy call_reason_summary into session userdata: {userdata_error}")
         
         # Check if current node is complete (supports database step_criteria_lk boolean expressions)
         if not is_node_complete(current_node, state, vertical=self.vertical, state_row=state_row):
@@ -226,6 +230,12 @@ class RoutingCoordinator:
             # From docs: "context.userdata.user_name = name" then handoff
             session.userdata.current_node = next_node
             logger.debug(f"📝 Updated session.userdata.current_node = '{next_node}'")
+
+            # Optional filler speech so user isn't left in silence during handoff.
+            filler = self._handoff_filler_for(next_node, session)
+            if filler:
+                logger.debug(f"🗣️ Sending filler before handoff: {filler}")
+                await session.generate_reply(instructions=filler)
             
             # Safely extract chat_ctx (validate structure)
             chat_ctx = None
@@ -264,6 +274,19 @@ class RoutingCoordinator:
                 )
             except Exception as recovery_error:
                 logger.error(f"❌ Failed to generate recovery message: {recovery_error}")
+
+    def _handoff_filler_for(self, next_node: str, session) -> Optional[str]:
+        """Return a short filler utterance to cover agent swap latency."""
+        reason = getattr(session.userdata, "call_reason_summary", None)
+        if next_node == "answer":
+            if reason:
+                return f"Great, give me a second to pull up some details about {reason.lower()}."
+            return "Great question—let me pull up the best information for you."
+        if next_node == "verify":
+            return "Let me double-check a couple of details with you."
+        if next_node == "quote":
+            return "Let me crunch the numbers for you."
+        return None
 
 
 # Export the coordinator class

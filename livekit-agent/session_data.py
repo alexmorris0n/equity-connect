@@ -35,4 +35,5 @@ class BarbaraSessionData:
     call_type: Optional[str] = None
     call_direction: str = "inbound"
     outbound_intro_pending: bool = False
+    call_reason_summary: Optional[str] = None
 
