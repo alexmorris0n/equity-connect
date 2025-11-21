@@ -132,9 +132,9 @@ is_available = EXCLUDED.is_available;
 
 -- Deepgram STT Models
 INSERT INTO signalwire_available_stt_models (provider, model_name, model_id_full, display_name, language_codes, is_available) VALUES
-('deepgram', 'nova-3', 'deepgram/nova-3:multi', 'Nova-3', ARRAY['en', 'en-US', 'en-AU', 'en-GB', 'en-IN', 'en-NZ', 'de', 'nl', 'sv', 'da', 'es', 'fr', 'pt', 'multi'], true),
+('deepgram', 'nova-3', 'deepgram/nova-3:en', 'Nova-3', ARRAY['en', 'en-US', 'en-AU', 'en-GB', 'en-IN', 'en-NZ'], true),
 ('deepgram', 'nova-3-medical', 'deepgram/nova-3-medical:en', 'Nova-3 Medical', ARRAY['en'], true),
-('deepgram', 'nova-2', 'deepgram/nova-2:multi', 'Nova-2', ARRAY['multi', 'bg', 'ca', 'zh', 'cs', 'da', 'nl', 'en', 'et', 'fi', 'fr', 'de', 'el', 'hi', 'hu', 'id', 'it', 'ja', 'ko', 'lv', 'lt', 'ms', 'no', 'pl', 'pt', 'ro', 'ru', 'sk', 'es', 'sv', 'th', 'tr', 'uk', 'vi'], true),
+('deepgram', 'nova-2', 'deepgram/nova-2:en', 'Nova-2', ARRAY['en'], true),
 ('deepgram', 'nova-2-medical', 'deepgram/nova-2-medical:en', 'Nova-2 Medical', ARRAY['en'], true),
 ('deepgram', 'nova-2-conversationalai', 'deepgram/nova-2-conversationalai:en', 'Nova-2 Conversational AI', ARRAY['en'], true),
 ('deepgram', 'nova-2-phonecall', 'deepgram/nova-2-phonecall:en', 'Nova-2 Phonecall', ARRAY['en'], true)
