@@ -50,15 +50,9 @@ async def search_knowledge(question: str) -> str:
         vector_search_duration_ms = int((time.time() - vector_search_start_time) * 1000)
         logger.info(f"✅ Vector search completed in {vector_search_duration_ms}ms")
         
-        if response.error:
-            logger.error(f'Vector search error: {response.error}')
-            return json.dumps({
-                "found": False,
-                "error": str(response.error),
-                "message": "I'm having trouble accessing that information. Let me connect you with one of our specialists."
-            })
-        
-        data = response.data or []
+        # Supabase Python client v2 RPC responses don't have .error attribute
+        # Errors are handled via exceptions or empty data
+        data = getattr(response, 'data', None) or []
         
         if len(data) == 0:
             logger.info('⚠️  No matching knowledge base content found')
