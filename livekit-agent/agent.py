@@ -365,7 +365,6 @@ async def entrypoint(ctx: JobContext):
         "llm_max_tokens": 4096,
         "vad_silence_duration_ms": 500,
         "use_turn_detector": True,
-        "turn_detector_model": "fast",
         "turn_detector_threshold": 0.25,
         "min_endpointing_delay": 0.1,
         "max_endpointing_delay": 3.0,
@@ -578,10 +577,14 @@ async def entrypoint(ctx: JobContext):
         # 
         # Template override takes precedence if explicitly set, otherwise auto-detect from STT
         template_turn_detector = template.get("turn_detector_model")
-        if template_turn_detector:
-            # Explicit template override
+        if template_turn_detector in ("english", "multilingual"):
             turn_detector_model = template_turn_detector
             logger.info(f"🎯 Using template-specified turn detector: {turn_detector_model}")
+        elif template_turn_detector:
+            logger.warning(
+                f"⚠️ Deprecated turnDetector value '{template_turn_detector}' ignored. "
+                "Valid values: 'english' or 'multilingual'. Falling back to auto-select."
+            )
         else:
             # Auto-detect based on STT language
             # stt_language was extracted above from model_id_full
