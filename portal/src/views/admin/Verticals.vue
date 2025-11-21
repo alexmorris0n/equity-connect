@@ -805,6 +805,18 @@
               
               <div v-if="expandedNodes[node]" class="node-card-content">
                 <div class="node-editor">
+                  <!-- Role & Objective Field -->
+                  <div class="editor-field">
+                    <label>Role & Objective</label>
+                    <textarea
+                      :value="nodeContent[node]?.role || ''"
+                      @input="(e) => { updateRole(node, e.target.value); }"
+                      placeholder="You are Barbara, a [role description] assistant..."
+                      rows="3"
+                    ></textarea>
+                    <small class="field-hint">Define the AI's identity and primary goal for this conversation phase. Be specific to this node's purpose.</small>
+                  </div>
+                  
                   <div class="editor-field">
                     <div class="field-header">
                       <label>Instructions</label>
@@ -4673,6 +4685,15 @@ function updateInstructions(node, value) {
   markNodeChanged(node)
 }
 
+// Update role
+function updateRole(node, value) {
+  if (!nodeContent.value[node]) {
+    nodeContent.value[node] = { role: '', instructions: '', tools: [] }
+  }
+  nodeContent.value[node].role = value
+  markNodeChanged(node)
+}
+
 function updateStepCriteria(node, value) {
   if (!nodeContent.value[node]) {
     nodeContent.value[node] = { instructions: '', step_criteria: '', valid_contexts: [], tools: [], skip_user_turn: false }
@@ -6411,6 +6432,13 @@ onUnmounted(() => {
   font-weight: 500;
   font-size: 0.875rem;
   color: #fff !important;
+}
+
+.editor-field .field-hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: -0.25rem;
+  font-style: italic;
 }
 
 .field-header {

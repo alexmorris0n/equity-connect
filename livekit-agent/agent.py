@@ -744,8 +744,10 @@ async def entrypoint(ctx: JobContext):
             stt_string = active_stt["model_id_full"]  # e.g., "deepgram/nova-3:en" or "deepgram/nova-3:multi"
             logger.info(f"🎙️ ENTRYPOINT: STT initialized - {stt_string} (LiveKit Inference)")
         else:
-            stt_string = "deepgram/nova-3:en"  # fallback
-            logger.warning(f"⚠️ No active STT found, using fallback: {stt_string}")
+            # 🚨 LOUD FALLBACK
+            from services.fallbacks import log_model_fallback, get_fallback_model
+            stt_string = get_fallback_model("livekit", "stt")
+            log_model_fallback("livekit", "stt", "No active STT model found in database (is_active=true)", stt_string)
         
         # Extract STT language from model_id_full for turn detector selection
         # Format: "provider/model:language" (e.g., "deepgram/nova-3:multi" → "multi")
@@ -760,8 +762,10 @@ async def entrypoint(ctx: JobContext):
             llm_string = active_llm["model_id_full"]  # e.g., "openai/gpt-5"
             logger.info(f"🧠 ENTRYPOINT: LLM initialized - {llm_string} (LiveKit Inference)")
         else:
-            llm_string = "openai/gpt-4o-mini"  # fallback
-            logger.warning(f"⚠️ No active LLM found, using fallback: {llm_string}")
+            # 🚨 LOUD FALLBACK
+            from services.fallbacks import log_model_fallback, get_fallback_model
+            llm_string = get_fallback_model("livekit", "llm")
+            log_model_fallback("livekit", "llm", "No active LLM model found in database (is_active=true)", llm_string)
         
         # TTS model string - Check if we need plugin for custom voices
         tts_use_plugin = is_custom_voice
@@ -775,8 +779,10 @@ async def entrypoint(ctx: JobContext):
             tts_string = active_tts["voice_id_full"]  # e.g., "elevenlabs/eleven_turbo_v2_5:Xb7hH8MSUJpSbSDYk0k2"
             logger.info(f"🔊 ENTRYPOINT: TTS initialized - {tts_string} (LiveKit Inference)")
         else:
-            tts_string = "elevenlabs/eleven_turbo_v2_5:EXAVITQu4vr4xnSDxMaL"  # fallback
-            logger.warning(f"⚠️ No active TTS found, using fallback: {tts_string}")
+            # 🚨 LOUD FALLBACK
+            from services.fallbacks import log_model_fallback, get_fallback_model
+            tts_string = get_fallback_model("livekit", "tts")
+            log_model_fallback("livekit", "tts", "No active TTS voice found in database (is_active=true)", tts_string)
         
         llm_instance = None  # Will use llm_string for pipeline mode
     

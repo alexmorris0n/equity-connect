@@ -110,24 +110,10 @@ def _convert_prompt_internal(prompt_content: Dict[str, Any], variables: Dict[str
     # 1. Core role (non-negotiable, first)
     if prompt_content.get("role"):
         parts.append(prompt_content["role"].strip())
-    else:
-        parts.append(
-            "You are Barbara, a warm, professional voice assistant. "
-            "You help seniors understand reverse mortgage options, verify their information, "
-            "answer questions accurately, and schedule time with their assigned broker."
-        )
     
     # 2. Personality & style (critical for voice behavior)
     if prompt_content.get("personality"):
         parts.append(f"PERSONALITY & STYLE:\n{prompt_content['personality'].strip()}")
-    else:
-        parts.append(
-            "PERSONALITY & STYLE:\n"
-            "- Warm, calm, patient, never pushy.\n"
-            "- Short turns (1–2 concise sentences).\n"
-            "- Stop speaking immediately if the caller starts talking.\n"
-            "- Use the caller's first name only in the greeting, not repeatedly."
-        )
     
     # 3. Realtime-specific behavior (hardcoded runtime rules)
     parts.append(
@@ -165,24 +151,10 @@ def _convert_prompt_internal(prompt_content: Dict[str, Any], variables: Dict[str
     # 9. Output format
     if prompt_content.get("output_format"):
         parts.append(f"OUTPUT FORMAT:\n{prompt_content['output_format'].strip()}")
-    else:
-        parts.append(
-            "OUTPUT FORMAT:\n"
-            "- Natural spoken language only.\n"
-            "- 1–2 sentences per turn unless more detail is requested.\n"
-            "- Use words instead of numerals for key numbers and dollar amounts.\n"
-            "- Do not read internal labels (like CONTEXT, TOOLS) aloud."
-        )
     
     # 10. Pronunciation guide
     if prompt_content.get("pronunciation"):
         parts.append(f"PRONUNCIATION:\n{prompt_content['pronunciation'].strip()}")
-    else:
-        parts.append(
-            "PRONUNCIATION:\n"
-            "- \"NMLS\" → say \"N-M-L-S\".\n"
-            "- \"Equity\" → say \"EH-kwi-tee\"."
-        )
     
     return "\n\n".join(parts).strip()
 

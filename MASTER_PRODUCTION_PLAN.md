@@ -1,8 +1,8 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 20, 2025  
+**Last Updated:** November 21, 2025  
 **Status:** ✅ Production Ready - SWML Bridge (Fly.io) + LiveKit Agent (Fly.io) - Dual Platform  
-**Current Phase:** SignalWire Component-Based Model Loading Complete + Database Format Fixes Applied
+**Current Phase:** Production-Grade Fallback System Implemented
 
 ---
 
@@ -207,14 +207,14 @@ equity-connect/ (Git Monorepo)
 - ✅ **Realtime (`model_id_full`)**: Just model name (e.g., `"gpt-4o-realtime-preview"`, `"gemini-2.0-flash-exp"`)
 
 **Impact:**
-- ✅ LiveKit agent loads active models from database (with safety fallbacks for DB failures)
+- ✅ LiveKit agent loads active models from database
 - ✅ Vue portal displays active configuration on page load/refresh
 - ✅ All model formats match LiveKit Inference documentation exactly
 - ✅ Realtime models (OpenAI Realtime, Gemini Live) fully supported
 - ✅ Custom ElevenLabs voices work via plugin with user's API key
 - ✅ Safer database queries with `.maybe_single()` (prevents crashes)
 - ✅ Complete separation of SignalWire and LiveKit models in database
-- ⚠️ **Safety Fallbacks:** Default models (gpt-4o-mini, deepgram/nova-3, elevenlabs/eleven_turbo_v2_5:Sarah) used if no active models set
+- ✅ **Production-Grade Fallbacks:** Actual DB snapshot (2025-11-21) used if database fails, with LOUD ERROR logging
 
 **Status:** ✅ **COMPLETE - LiveKit Component-Based Configuration Active (November 20, 2025)**
 
@@ -270,14 +270,97 @@ equity-connect/ (Git Monorepo)
 - ✅ **TTS (`voice`)**: Dot format (e.g., `"elevenlabs.rachel"`, `"amazon.Joanna:neural:en-US"`)
 
 **Impact:**
-- ✅ SignalWire agent loads active models from database (with safety fallbacks for DB failures)
+- ✅ SignalWire agent loads active models from database
 - ✅ Vue portal displays active configuration on page load/refresh
 - ✅ All model formats match SignalWire documentation exactly
 - ✅ Azure TTS voices now available in SignalWire configuration
 - ✅ Safer database queries with `.maybe_single()` (prevents crashes)
-- ⚠️ **Safety Fallbacks:** Default models (gpt-4o-mini, deepgram:nova-3, elevenlabs.rachel) used if no active models set
+- ✅ **Production-Grade Fallbacks:** Actual DB snapshot (2025-11-21) used if database fails, with LOUD ERROR logging
 
 **Status:** ✅ **COMPLETE - SignalWire Component-Based Configuration Active (November 20, 2025)**
+
+---
+
+## 🛡️ Nov 21: Production-Grade Fallback System with LOUD Error Logging
+
+**Date:** November 21, 2025  
+**Status:** ✅ **COMPLETE - Production-Grade Resilience Active**
+
+### The Problem: Silent Failures and Generic Fallbacks
+
+**Before:**
+- Database failures resulted in quiet warnings: `⚠️ No active STT found, using fallback: deepgram/nova-3:en`
+- Easy to miss critical issues in Fly.io logs
+- Generic fallback content (low quality, not brand-aligned)
+- Inconsistent fallback coverage between LiveKit and SignalWire
+
+### The Solution: LOUD Logging + Production-Quality Fallbacks
+
+**Implemented:**
+1. ✅ **Fallback Constants from Actual Database Snapshot (2025-11-21)**
+   - `livekit-agent/services/fallbacks.py` (465 lines)
+   - `swaig-agent/services/fallbacks.py` (438 lines)
+   - Theme: 1,936 chars of actual production theme (identity, output_rules, conversational_flow, tools, guardrails)
+   - Node Configs: All 9 nodes with actual prompts, tools, valid_contexts, step_criteria
+   - Models: Actual active models from database (not generic defaults)
+
+2. ✅ **LOUD ERROR LOGGING** (Impossible to Miss)
+   - ERROR level (not warning) - shows RED in log viewers
+   - Triple emojis (`🚨🚨🚨`) for critical alerts
+   - Visual separation (`=` * 80 lines)
+   - Full context: what/why/impact/action
+   - Stack traces for exceptions
+
+3. ✅ **Comprehensive Coverage**
+   - **LiveKit:** Theme, 9 node configs, STT/LLM/TTS models
+   - **SignalWire:** Theme, 9 node configs, LLM/STT/TTS models
+   - Updated `prompt_loader.py`, `agent.py`, `database.py`
+
+**Example LOUD Log Output:**
+```
+================================================================================
+🚨🚨🚨 DATABASE FAILURE: STT MODEL 🚨🚨🚨
+Platform: livekit
+Model Type: stt
+Table: livekit_available_stt_models
+Reason: No active STT model found in database (is_active=true)
+Impact: Using FALLBACK_MODELS['livekit']['stt'] = 'deepgram/nova-3:multi'
+⚠️  Using hardcoded model from 2025-11-21 snapshot
+⚠️  If you changed the active model in Vue, it will NOT be used
+Action: Check livekit_available_stt_models table
+        Ensure at least ONE model has is_active=true
+        Verify Supabase connection
+================================================================================
+```
+
+**Impact:**
+- ✅ **System Resilience:** Agents never crash from DB failures, calls proceed with known-good content
+- ✅ **Problem Visibility:** Impossible to miss DB issues in logs, clear debugging context
+- ✅ **Production Quality:** Uses actual production data (not generic), maintains brand voice during degradation
+- ✅ **Operational Excellence:** Follows Circuit Breaker pattern, graceful degradation
+
+**Rationale (Why Fallbacks Are Critical):**
+- Real-time voice is revenue-critical (each failed call = lost revenue)
+- Database maintenance windows and transient Supabase issues happen
+- Industry-standard resilience pattern for distributed systems
+- 99% uptime with fallbacks > 95% uptime without
+
+**Files Created:**
+- `livekit-agent/services/fallbacks.py` - LiveKit fallback constants + LOUD logging
+- `swaig-agent/services/fallbacks.py` - SignalWire fallback constants + LOUD logging
+- `FALLBACK_SYSTEM_IMPLEMENTATION.md` - Complete documentation
+
+**Files Modified:**
+- `livekit-agent/services/prompt_loader.py` - Updated `load_theme()` and `load_node_config()`
+- `livekit-agent/agent.py` - Updated STT/LLM/TTS model loading
+- `swaig-agent/services/database.py` - Updated `get_theme_prompt()`, `get_node_config()`, `get_active_signalwire_models()`
+
+**Maintenance:**
+- Update fallbacks when making major theme/prompt/model changes
+- Check fallback accuracy quarterly
+- DO NOT update for minor tweaks (these are emergency backups)
+
+**Status:** ✅ **COMPLETE - Production-Grade Fallback System Active (November 21, 2025)**
 
 ---
 

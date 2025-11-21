@@ -52,34 +52,20 @@ def load_theme(vertical: str = "reverse_mortgage") -> str:
             logger.warning(f"No theme found in database for {vertical}, using fallback")
     
     except Exception as e:
-        logger.warning(f"Failed to load theme from database: {e}, using fallback")
+        # 🚨 LOUD FALLBACK for exception
+        from services.fallbacks import log_theme_fallback, get_fallback_theme
+        log_theme_fallback(vertical, f"{type(e).__name__}: {str(e)}", is_exception=True)
+        return get_fallback_theme()
     
-    # FALLBACK: Basic theme if database fails
-    fallback_theme = """You are Barbara, a warm and professional voice assistant.
-
-# Output rules
-
-- Respond in plain text only. Keep replies brief.
-- Spell out numbers and phone numbers.
-- Avoid complex formatting.
-
-# Conversational flow
-
-- Help the caller efficiently. Be patient.
-- Provide guidance in small steps.
-
-# Tools
-
-- Use available tools as needed.
-- Speak outcomes clearly.
-
-# Guardrails
-
-- Stay within safe, lawful use.
-- Protect privacy.
-"""
-    logger.info(f"Using fallback theme for {vertical}: {len(fallback_theme)} chars")
-    return fallback_theme
+    # 🚨 LOUD FALLBACK for missing data
+    from services.fallbacks import log_theme_fallback, get_fallback_theme
+    
+    if not result.data:
+        log_theme_fallback(vertical, "No rows returned from theme_prompts query", is_exception=False)
+    else:
+        log_theme_fallback(vertical, "Database returned row but content fields are empty", is_exception=False)
+    
+    return get_fallback_theme()
 
 
 def _assemble_theme(theme_data: dict) -> str:
@@ -122,11 +108,36 @@ def _assemble_theme(theme_data: dict) -> str:
 def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict:
     """Load full node configuration from database (instructions, step_criteria, valid_contexts, tools)
     
+    IMPORTANT: The 'instructions' field returned by this function contains COMBINED content:
+        1. Universal theme (identity, output_rules, conversational_flow, tools, guardrails)
+        2. Node-specific instructions (role + instructions from prompt_versions.content)
+    
+    This matches LiveKit's documented workflow pattern where "the main prompt contains 
+    general guidelines and an overarching goal, but each individual agent or task holds 
+    a more specific and immediate goal within the workflow."
+    
+    Pattern: Theme → Node Role → Node Instructions
+    Example:
+        # Identity
+        You are Barbara, a warm voice assistant...
+        
+        # Output rules
+        - Large amounts: "1.5 million" not "one million five hundred..."
+        
+        ---
+        
+        ## Role
+        You are Barbara, a scheduler who books appointments...
+        
+        ## Instructions
+        Check broker availability and schedule appointment...
+    
     Returns dict with:
-    - instructions: str (prompt text)
-    - step_criteria: str (when node is complete)
-    - valid_contexts: list (allowed transitions)
-    - tools: list (available function names)
+    - instructions: str (COMBINED: theme + node prompt - ready to pass to Agent.__init__)
+    - step_criteria: str (when node is complete - for routing logic)
+    - valid_contexts: list (allowed transitions - for routing validation)
+    - tools: list (available function names - for tool loading)
+    - role: str (node-specific role - for reference/debugging)
     """
     try:
         from services.supabase import get_supabase_client
@@ -140,25 +151,68 @@ def load_node_config(node_name: str, vertical: str = "reverse_mortgage") -> dict
         if result.data and len(result.data) > 0:
             content = result.data[0].get('content', {})
             
+            # Build node-specific prompt (role + instructions)
+            node_prompt_parts = []
+            if content.get('role'):
+                node_prompt_parts.append(f"## Role\n{content['role']}\n")
+            if content.get('instructions'):
+                node_prompt_parts.append(f"## Instructions\n{content['instructions']}")
+            
+            node_instructions = "\n".join(node_prompt_parts) if node_prompt_parts else ''
+            
+            # Load universal theme and combine with node instructions
+            # This ensures ALL agents get output_rules, conversational_flow, guardrails, etc.
+            theme = load_theme(vertical)
+            combined_instructions = f"{theme}\n\n---\n\n{node_instructions}" if theme and node_instructions else (theme or node_instructions)
+            
+            logger.info(f"✅ Loaded config for '{node_name}': theme ({len(theme)} chars) + node ({len(node_instructions)} chars) = {len(combined_instructions)} chars total")
+            
             return {
-                'instructions': content.get('instructions', ''),
+                'instructions': combined_instructions,  # ← COMBINED: theme + node (ready for Agent.__init__)
                 'step_criteria': content.get('step_criteria', ''),        # Legacy field (fallback)
                 'step_criteria_lk': content.get('step_criteria_lk', ''),  # LiveKit-optimized boolean expressions
                 'step_criteria_sw': content.get('step_criteria_sw', ''),  # SignalWire-optimized natural language
                 'valid_contexts': content.get('valid_contexts', []),
                 'tools': content.get('tools') or content.get('functions', []),  # Support both fields
-                'role': content.get('role', '')  # Optional
+                'role': content.get('role', '')  # Node-specific role (for reference)
             }
     except Exception as e:
-        logger.warning(f"Failed to load node config from database: {e}")
+        # 🚨 LOUD FALLBACK for exception
+        from services.fallbacks import log_node_config_fallback, get_fallback_node_config
+        log_node_config_fallback(node_name, vertical, f"{type(e).__name__}: {str(e)}", is_exception=True, has_fallback=node_name in ["greet", "verify", "qualify", "quote", "answer", "objections", "book", "goodbye", "end"])
+        fallback = get_fallback_node_config(node_name)
+        if fallback:
+            return fallback
+        else:
+            # No fallback available for this node
+            return {
+                'instructions': '',
+                'step_criteria': '',
+                'step_criteria_lk': '',
+                'step_criteria_sw': '',
+                'valid_contexts': [],
+                'tools': [],
+                'role': ''
+            }
     
-    return {
-        'instructions': '',
-        'step_criteria': '',
-        'valid_contexts': [],
-        'tools': [],
-        'role': ''
-    }
+    # 🚨 LOUD FALLBACK for missing data
+    from services.fallbacks import log_node_config_fallback, get_fallback_node_config
+    log_node_config_fallback(node_name, vertical, "No active prompt_version found in database", is_exception=False, has_fallback=node_name in ["greet", "verify", "qualify", "quote", "answer", "objections", "book", "goodbye", "end"])
+    
+    fallback = get_fallback_node_config(node_name)
+    if fallback:
+        return fallback
+    else:
+        # No fallback available for this node
+        return {
+            'instructions': '',
+            'step_criteria': '',
+            'step_criteria_lk': '',
+            'step_criteria_sw': '',
+            'valid_contexts': [],
+            'tools': [],
+            'role': ''
+        }
 
 
 def load_node_prompt(node_name: str, vertical: str = "reverse_mortgage") -> str:

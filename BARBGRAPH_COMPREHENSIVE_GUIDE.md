@@ -1,8 +1,8 @@
 # BarbGraph: Database-Driven Conversation Routing System
 
 **Version:** 3.0  
-**Last Updated:** November 19, 2025  
-**Status:** ✅ **PRODUCTION READY - Dual Platform (SignalWire SWML + LiveKit Agents)**
+**Last Updated:** November 21, 2025  
+**Status:** ✅ **PRODUCTION READY - Dual Platform (SignalWire SWML + LiveKit Agents) + Production-Grade Fallbacks**
 
 > **✅ CURRENT SYSTEM:** BarbGraph is a database-informed routing system that works on both SignalWire SWML and LiveKit Agents. Single source of truth in database (prompts, tools, routing rules) with platform-specific implementations. Enables A/B testing and cost comparison.
 > 
@@ -161,14 +161,14 @@ Think of it like a GPS for conversations:
 - SignalWire's LLM chooses transitions within allowed `valid_contexts` (LLM-driven routing)
 - Natural language `step_criteria` guide LLM completion decisions
 - Tools declared as SWAIG functions
-- **Fallback:** Hardcoded valid_contexts/functions if database missing (safety)
+- **Fallbacks:** Production-quality theme, node configs, and models from actual DB snapshot (2025-11-21) with LOUD ERROR logging if database fails
 
 **LiveKit Agents:**
 - Python router functions check flags and `valid_contexts` from database (code-driven routing)
 - Boolean expression `step_criteria_lk` evaluated by custom parser
 - Manual transitions via `session.update_agent()`
 - Tools decorated with `@function_tool`
-- **Fallback:** Hardcoded theme/instructions if database fails (safety)
+- **Fallbacks:** Production-quality theme, node configs, and models from actual DB snapshot (2025-11-21) with LOUD ERROR logging if database fails
 
 **Both platforms:**
 - Load same prompts, tools, routing rules from database
@@ -1103,7 +1103,7 @@ Expressions are stored in the database as text and evaluated safely. See `liveki
 - Database-driven: Change completion logic without code deployment
 - Flexible: Supports turn counting, tool flags, complex conditions
 - Safe: No code injection risk (custom parser, not eval())
-- Fallback: Hardcoded logic ensures system never breaks
+- Resilient: Production-quality fallbacks ensure system never breaks (actual DB snapshot with LOUD ERROR logging)
 
 ---
 
@@ -1652,7 +1652,7 @@ Same agent code, different prompts loaded via vertical selector
 - **Platform Flexibility:** Works on both SignalWire SWML and LiveKit Agents (different implementations)
 - **A/B Testing:** Compare platforms with database-informed routing for cost/performance optimization
 - **Risk Mitigation:** One platform down, the other continues serving calls
-- **Safety Fallbacks:** Hardcoded defaults prevent system failure if database unavailable
+- **Production-Grade Resilience:** Fallbacks use actual DB snapshot (2025-11-21) with LOUD ERROR logging to ensure system never crashes and problems are impossible to miss
 
 Whether you're a business owner looking to improve call quality or a developer building conversational AI, BarbGraph provides the foundation for world-class voice agent experiences with the flexibility to choose or switch platforms as needed.
 

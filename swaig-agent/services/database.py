@@ -217,32 +217,62 @@ async def get_node_config(node_name: str, vertical: str = "reverse_mortgage") ->
                 logger.warning(f"[DB]   ⚠️  Instructions for '{node_name}' don't mention calling functions! Preview: {instructions_preview[:200]}...")
             return config
         
-        logger.warning(f"[DB] No active version found for prompt_id: {prompt_id}")
-        return None
+        # 🚨 LOUD FALLBACK for missing data
+        from services.fallbacks import log_node_config_fallback, get_fallback_node_config
+        log_node_config_fallback(node_name, vertical, "No active version found for prompt_id", is_exception=False, has_fallback=node_name in ["greet", "verify", "qualify", "quote", "answer", "objections", "book", "goodbye", "end"])
+        return get_fallback_node_config(node_name)
         
     except Exception as e:
-        logger.error(f"[DB] Error fetching node config: {e}")
-        return None
+        # 🚨 LOUD FALLBACK for exception
+        from services.fallbacks import log_node_config_fallback, get_fallback_node_config
+        log_node_config_fallback(node_name, vertical, f"{type(e).__name__}: {str(e)}", is_exception=True, has_fallback=node_name in ["greet", "verify", "qualify", "quote", "answer", "objections", "book", "goodbye", "end"])
+        return get_fallback_node_config(node_name)
 
 
 async def get_theme_prompt(vertical: str = "reverse_mortgage") -> Optional[str]:
     """Get theme prompt (universal personality)"""
     try:
         response = supabase.table('theme_prompts')\
-            .select('content')\
+            .select('content_structured, content')\
             .eq('vertical', vertical)\
             .eq('is_active', True)\
             .limit(1)\
             .execute()
         
         if response.data:
-            return response.data[0].get('content', '')
+            row = response.data[0]
+            
+            # PREFER: Structured format (content_structured JSONB)
+            if row.get('content_structured'):
+                # Assemble theme from structured sections (identity, output_rules, conversational_flow, tools, guardrails)
+                theme_data = row['content_structured']
+                sections = []
+                if theme_data.get('identity'):
+                    sections.append(theme_data['identity'])
+                if theme_data.get('output_rules'):
+                    sections.append(f"# Output rules\n\n{theme_data['output_rules']}")
+                if theme_data.get('conversational_flow'):
+                    sections.append(f"# Conversational flow\n\n{theme_data['conversational_flow']}")
+                if theme_data.get('tools'):
+                    sections.append(f"# Tools\n\n{theme_data['tools']}")
+                if theme_data.get('guardrails'):
+                    sections.append(f"# Guardrails\n\n{theme_data['guardrails']}")
+                return '\n\n'.join(sections)
+            
+            # FALLBACK: Old format (content TEXT) for backward compatibility
+            if row.get('content'):
+                return row['content']
         
-        return None
+        # 🚨 LOUD FALLBACK for missing data
+        from services.fallbacks import log_theme_fallback, get_fallback_theme
+        log_theme_fallback(vertical, "No rows returned from theme_prompts query", is_exception=False)
+        return get_fallback_theme()
         
     except Exception as e:
-        logger.error(f"[DB] Error fetching theme prompt: {e}")
-        return None
+        # 🚨 LOUD FALLBACK for exception
+        from services.fallbacks import log_theme_fallback, get_fallback_theme
+        log_theme_fallback(vertical, f"{type(e).__name__}: {str(e)}", is_exception=True)
+        return get_fallback_theme()
 
 
 async def get_active_signalwire_models() -> Dict[str, Any]:
@@ -264,12 +294,22 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             .maybe_single()\
             .execute()
         
-        llm_model = "gpt-4o-mini"  # Default per SignalWire docs
         if llm_result.data:
-            llm_model = llm_result.data.get('model_id_full', llm_model)
-            logger.info(f"[DB] ✅ Loaded active LLM: {llm_model}")
+            llm_model = llm_result.data.get('model_id_full', None)
+            if llm_model:
+                logger.info(f"[DB] ✅ Loaded active LLM: {llm_model}")
+            else:
+                # 🚨 LOUD FALLBACK
+                from services.fallbacks import log_model_fallback, get_fallback_models
+                fallbacks = get_fallback_models()
+                llm_model = fallbacks['llm_model']
+                log_model_fallback("llm", "Active LLM row returned but model_id_full is empty", llm_model)
         else:
-            logger.warning(f"[DB] ⚠️ No active LLM found, using default: {llm_model}")
+            # 🚨 LOUD FALLBACK
+            from services.fallbacks import log_model_fallback, get_fallback_models
+            fallbacks = get_fallback_models()
+            llm_model = fallbacks['llm_model']
+            log_model_fallback("llm", "No active LLM model found in database (is_active=true)", llm_model)
         
         # Load active STT model
         # Per SignalWire docs: openai_asr_engine should be colon format (e.g., "deepgram:nova-2", "deepgram:nova-3")
@@ -279,12 +319,22 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             .maybe_single()\
             .execute()
         
-        stt_model = "deepgram:nova-3"  # Default per SignalWire docs
         if stt_result.data:
-            stt_model = stt_result.data.get('model_id_full', stt_model)
-            logger.info(f"[DB] ✅ Loaded active STT: {stt_model}")
+            stt_model = stt_result.data.get('model_id_full', None)
+            if stt_model:
+                logger.info(f"[DB] ✅ Loaded active STT: {stt_model}")
+            else:
+                # 🚨 LOUD FALLBACK
+                from services.fallbacks import log_model_fallback, get_fallback_models
+                fallbacks = get_fallback_models()
+                stt_model = fallbacks['stt_model']
+                log_model_fallback("stt", "Active STT row returned but model_id_full is empty", stt_model)
         else:
-            logger.warning(f"[DB] ⚠️ No active STT found, using default: {stt_model}")
+            # 🚨 LOUD FALLBACK
+            from services.fallbacks import log_model_fallback, get_fallback_models
+            fallbacks = get_fallback_models()
+            stt_model = fallbacks['stt_model']
+            log_model_fallback("stt", "No active STT model found in database (is_active=true)", stt_model)
         
         # Load active TTS voice
         # Per SignalWire docs: voice should be dot format (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
@@ -294,12 +344,22 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             .maybe_single()\
             .execute()
         
-        tts_voice_string = "elevenlabs.rachel"  # Default
         if tts_result.data:
-            tts_voice_string = tts_result.data.get('voice_id_full', tts_voice_string)
-            logger.info(f"[DB] ✅ Loaded active TTS: {tts_voice_string}")
+            tts_voice_string = tts_result.data.get('voice_id_full', None)
+            if tts_voice_string:
+                logger.info(f"[DB] ✅ Loaded active TTS: {tts_voice_string}")
+            else:
+                # 🚨 LOUD FALLBACK
+                from services.fallbacks import log_model_fallback, get_fallback_models
+                fallbacks = get_fallback_models()
+                tts_voice_string = fallbacks['tts_voice_string']
+                log_model_fallback("tts", "Active TTS row returned but voice_id_full is empty", tts_voice_string)
         else:
-            logger.warning(f"[DB] ⚠️ No active TTS found, using default: {tts_voice_string}")
+            # 🚨 LOUD FALLBACK
+            from services.fallbacks import log_model_fallback, get_fallback_models
+            fallbacks = get_fallback_models()
+            tts_voice_string = fallbacks['tts_voice_string']
+            log_model_fallback("tts", "No active TTS voice found in database (is_active=true)", tts_voice_string)
         
         return {
             "llm_model": llm_model,
@@ -308,12 +368,14 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
         }
         
     except Exception as e:
+        # 🚨 LOUD FALLBACK for exception
+        from services.fallbacks import log_model_fallback, get_fallback_models
         logger.error(f"[DB] Failed to load active SignalWire models: {e}, using fallbacks", exc_info=True)
-        return {
-            "llm_model": "gpt-4o-mini",
-            "stt_model": "deepgram:nova-3",
-            "tts_voice_string": "elevenlabs.rachel"
-        }
+        fallbacks = get_fallback_models()
+        log_model_fallback("llm", f"Exception while loading models: {type(e).__name__}", fallbacks['llm_model'])
+        log_model_fallback("stt", f"Exception while loading models: {type(e).__name__}", fallbacks['stt_model'])
+        log_model_fallback("tts", f"Exception while loading models: {type(e).__name__}", fallbacks['tts_voice_string'])
+        return fallbacks
 
 
 async def get_voice_config(vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:

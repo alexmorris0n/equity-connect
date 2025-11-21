@@ -371,9 +371,11 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
     supabase = get_supabase_client()
     
     # Load theme content (draft or active)
+    # PREFER: content_structured JSONB (new format)
+    # FALLBACK: content TEXT (legacy format)
     if use_draft:
         draft_response = supabase.table('theme_prompts') \
-            .select('content') \
+            .select('content_structured, content') \
             .eq('vertical', vertical) \
             .eq('is_draft', True) \
             .order('updated_at', desc=True) \
@@ -384,10 +386,20 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
             logger.error(f"❌ No draft theme found for vertical: {vertical}")
             raise ValueError(f"No draft theme found for vertical: {vertical}")
     
-        theme_content = draft_response.data[0]['content']
+        row = draft_response.data[0]
+        
+        # Try structured format first
+        if row.get('content_structured'):
+            theme_content = _assemble_theme_from_structured(row['content_structured'])
+            logger.info(f"✅ Loaded draft structured theme for {vertical}")
+        elif row.get('content'):
+            theme_content = row['content']
+            logger.info(f"⚠️  Loaded draft legacy theme for {vertical} (consider migrating to structured format)")
+        else:
+            raise ValueError(f"Draft theme for {vertical} is empty")
     else:
         response = supabase.table('theme_prompts') \
-            .select('content') \
+            .select('content_structured, content') \
             .eq('vertical', vertical) \
             .eq('is_active', True) \
             .single() \
@@ -397,7 +409,17 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
             logger.error(f"❌ No theme found for vertical: {vertical}")
             raise ValueError(f"No theme found for vertical: {vertical}")
         
-        theme_content = response.data['content']
+        row = response.data
+        
+        # Try structured format first
+        if row.get('content_structured'):
+            theme_content = _assemble_theme_from_structured(row['content_structured'])
+            logger.info(f"✅ Loaded structured theme for {vertical}")
+        elif row.get('content'):
+            theme_content = row['content']
+            logger.info(f"⚠️  Loaded legacy theme for {vertical} (consider migrating to structured format)")
+        else:
+            raise ValueError(f"Theme for {vertical} is empty")
     
     # Substitute variables if lead_context provided
     if lead_context:
@@ -440,5 +462,44 @@ def load_theme(vertical: str, use_draft: bool = False, lead_context: Optional[di
         # No lead context - return template as-is
         logger.info(f"[OK] Loaded theme for {vertical} with $variables intact")
         return theme_content
+
+
+def _assemble_theme_from_structured(theme_data: dict) -> str:
+    """Assemble structured theme JSONB into single text block
+    
+    Matches LiveKit's format: combines identity, output_rules, conversational_flow, 
+    tools, and guardrails into one formatted prompt.
+    
+    Args:
+        theme_data: Dict with keys: identity, output_rules, conversational_flow, tools, guardrails
+    
+    Returns:
+        Assembled theme as single text block
+    """
+    sections = []
+    
+    # Section 1: Identity (no header, just the statement)
+    if theme_data.get('identity'):
+        sections.append(theme_data['identity'])
+    
+    # Section 2: Output rules
+    if theme_data.get('output_rules'):
+        sections.append(f"# Output rules\n\n{theme_data['output_rules']}")
+    
+    # Section 3: Conversational flow
+    if theme_data.get('conversational_flow'):
+        sections.append(f"# Conversational flow\n\n{theme_data['conversational_flow']}")
+    
+    # Section 4: Tools
+    if theme_data.get('tools'):
+        sections.append(f"# Tools\n\n{theme_data['tools']}")
+    
+    # Section 5: Guardrails
+    if theme_data.get('guardrails'):
+        sections.append(f"# Guardrails\n\n{theme_data['guardrails']}")
+    
+    assembled = '\n\n'.join(sections)
+    logger.info(f"✅ Assembled structured theme: {len(assembled)} chars from {len(sections)} sections")
+    return assembled
 
 
