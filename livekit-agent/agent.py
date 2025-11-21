@@ -1,4 +1,7 @@
-"""LiveKit Voice Agent - Clean rebuild with native plugins"""
+"""LiveKit Voice Agent - Clean rebuild with native plugins
+
+Latest: Force English turn detector due to LiveKit Inference multilingual bug
+"""
 import logging
 import os
 from typing import Optional
