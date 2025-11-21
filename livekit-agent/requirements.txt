@@ -21,10 +21,9 @@ google-cloud-aiplatform>=1.38.0
 google-auth>=2.23.0
 nylas>=6.0.0
 fastapi>=0.104.0
+boto3>=1.28.0  # Let livekit-plugins-aws dictate aioboto3 version
 # Pin versions to resolve dependency conflicts (2025-11-21)
-# Compatible trio: aioboto3 + boto3 + botocore must align
-aioboto3==13.1.1  # Uses aiobotocore 2.13.1 (compatible with boto3 1.34.*)
-boto3>=1.34.0,<1.35.0  # Compatible with aiobotocore 2.13.1
+# These packages caused 4+ hour backtracking - pinning prevents it
 uvicorn[standard]==0.32.0
 python-dotenv==1.2.1
 pydantic==2.12.4
