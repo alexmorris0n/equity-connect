@@ -522,6 +522,21 @@ async def entrypoint(ctx: JobContext):
         else:
             stt_language = "en"  # Default if no language specified
         
+        # 🧪 TEMPORARY: Test Deepgram plugin instead of LiveKit Inference for STT
+        # This bypasses LiveKit Inference and uses your own Deepgram API key
+        USE_DEEPGRAM_PLUGIN = True  # Set to False to revert to LiveKit Inference
+        if USE_DEEPGRAM_PLUGIN and Config.DEEPGRAM_API_KEY:
+            from livekit.plugins import deepgram
+            stt_plugin = deepgram.STT(
+                api_key=Config.DEEPGRAM_API_KEY,
+                model="nova-3",  # Extract from stt_model if needed
+                language=stt_language if stt_language else "en"
+            )
+            logger.info(f"🧪 TEMPORARY: Using Deepgram PLUGIN for STT (bypassing LiveKit Inference)")
+            stt_string = None  # Signal to use plugin instead of Inference string
+        else:
+            stt_plugin = None
+        
         # LLM model string - use model_id_full from database
         if active_llm and active_llm.get("model_id_full"):
             llm_string = active_llm["model_id_full"]  # e.g., "openai/gpt-5"
@@ -707,9 +722,12 @@ async def entrypoint(ctx: JobContext):
             tts_for_session = build_tts_plugin(active_tts)
             logger.info(f"✨ Using TTS PLUGIN for custom voice")
         
+        # Use Deepgram plugin if enabled, otherwise use LiveKit Inference string
+        stt_for_session = stt_plugin if stt_plugin else stt_string
+        
         # ✅ Pass userdata with type annotation (matches docs pattern)
         session = AgentSession[BarbaraSessionData](
-            stt=stt_string,  # LiveKit Inference string format (e.g., "deepgram/nova-3:en")
+            stt=stt_for_session,  # Plugin instance OR LiveKit Inference string format
             llm=llm_string,  # LiveKit Inference string format
             tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
