@@ -74,14 +74,17 @@ def _cd(row: Dict[str, Any]) -> Dict[str, Any]:
 	return (row or {}).get("conversation_data") or {}
 
 
-def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", "answer", "exit", "greet"]:
+def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", "answer", "quote", "book", "exit", "greet"]:
 	"""
-	DB-driven routing after greet.
-	- If wrong_person and right_person_available → greet (re-greet spouse)
-	- If wrong_person only → exit
-	- If lead_id && qualified → answer
-	- If lead_id only → qualify
-	- Else → verify
+	Intent-based routing after greet using call_reason_summary.
+	Valid targets (from DB): ["answer", "verify", "quote"]
+	
+	Route based on captured intent:
+	- "quote"/"numbers"/"how much" → quote
+	- "book"/"appointment"/"schedule" → book  
+	- "question"/"help"/"wondering" → answer
+	- No lead_id yet → verify
+	- Special cases (wrong_person) → greet/exit
 	"""
 	row = _db(state)
 	if not row:
@@ -89,6 +92,7 @@ def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", 
 		return "verify"
 	cd = _cd(row)
 
+	# Special case: wrong person scenarios
 	if cd.get("wrong_person") and cd.get("right_person_available"):
 		logger.info("🔁 Re-greet right person now available → GREET")
 		return "greet"
@@ -96,15 +100,26 @@ def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", 
 		logger.info("🚪 Wrong person → EXIT")
 		return "exit"
 
-	if row.get("lead_id") and row.get("qualified"):
-		logger.info("⚡ Known + qualified → ANSWER")
-		return "answer"
-	if row.get("lead_id"):
-		logger.info("🔎 Known lead → QUALIFY")
-		return "qualify"
-
-	logger.info("🔍 Unknown → VERIFY")
-	return "verify"
+	# Get the reason summary from mark_greeted
+	reason = (cd.get("call_reason_summary") or "").lower()
+	
+	# Intent-based routing using keywords
+	if any(word in reason for word in ["quote", "number", "how much", "equity", "amount", "value", "estimate"]):
+		logger.info(f"💰 Intent: Quote request → QUOTE (reason: {reason})")
+		return "quote"
+	
+	if any(word in reason for word in ["book", "appointment", "schedule", "meeting", "consultation", "call back"]):
+		logger.info(f"📅 Intent: Booking → BOOK (reason: {reason})")
+		return "book"
+	
+	# If we don't have lead_id yet, need to verify first
+	if not row.get("lead_id"):
+		logger.info(f"🔍 No lead_id → VERIFY (reason: {reason})")
+		return "verify"
+	
+	# Default: general questions → answer
+	logger.info(f"❓ Intent: General questions → ANSWER (reason: {reason})")
+	return "answer"
 
 
 def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "greet"]:
