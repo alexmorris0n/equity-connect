@@ -510,11 +510,12 @@ async def entrypoint(ctx: JobContext):
             stt_string = get_fallback_model("livekit", "stt")
             log_model_fallback("livekit", "stt", "No active STT model found in database (is_active=true)", stt_string)
         
-        # Extract STT language from model_id_full for turn detector selection
-        # Format: "provider/model:language" (e.g., "deepgram/nova-3:multi" → "multi")
+        # Extract STT model and language from model_id_full
+        # Format: "provider/model:language" (e.g., "deepgram/nova-3:multi" → model="deepgram/nova-3", lang="multi")
+        stt_model = stt_string
         stt_language = None
         if ":" in stt_string:
-            stt_language = stt_string.split(":")[-1]
+            stt_model, stt_language = stt_string.rsplit(":", 1)
         else:
             stt_language = "en"  # Default if no language specified
         
@@ -589,8 +590,13 @@ async def entrypoint(ctx: JobContext):
             )
         else:
             # Auto-detect based on STT language
-            # stt_language was extracted above from model_id_full
-            if stt_language == "multi" or (stt_language and stt_language != "en"):
+            # Per LiveKit docs: Use MultilingualModel when language="multi" for automatic language detection
+            # Docs example: MultilingualModel() + inference.STT(language="multi")
+            # "LiveKit Inference performs automatic language detection and passes that value to the turn detector"
+            if stt_language == "multi":
+                turn_detector_model = "multilingual"
+                logger.info(f"🌍 Auto-selected MultilingualModel (STT will auto-detect language)")
+            elif stt_language and stt_language != "en":
                 turn_detector_model = "multilingual"
                 logger.info(f"🌍 Auto-selected MultilingualModel (STT language: {stt_language})")
             else:
@@ -698,9 +704,16 @@ async def entrypoint(ctx: JobContext):
             tts_for_session = build_tts_plugin(active_tts)
             logger.info(f"✨ Using TTS PLUGIN for custom voice")
         
+        # Create STT object following docs pattern for multilingual support
+        # Per docs: inference.STT(model="provider/model", language="multi") for auto-detect
+        # This ensures LiveKit Inference passes detected language to turn detector correctly
+        from livekit.agents import inference
+        stt_for_session = inference.STT(model=stt_model, language=stt_language)
+        logger.info(f"🎙️ Created inference.STT(model='{stt_model}', language='{stt_language}')")
+        
         # ✅ Pass userdata with type annotation (matches docs pattern)
         session = AgentSession[BarbaraSessionData](
-            stt=stt_string,  # LiveKit Inference string format
+            stt=stt_for_session,  # inference.STT object (not string)
             llm=llm_string,  # LiveKit Inference string format
             tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
