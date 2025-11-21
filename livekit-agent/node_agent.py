@@ -248,7 +248,7 @@ class BarbaraNodeAgent(Agent):
         message_preview = ""
         try:
             if hasattr(new_message, "text_content"):
-                message_preview = new_message.text_content() or ""
+                message_preview = new_message.text_content or ""
             elif hasattr(new_message, "content"):
                 message_preview = str(new_message.content)
         except Exception as preview_error:
