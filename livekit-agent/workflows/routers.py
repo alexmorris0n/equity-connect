@@ -74,6 +74,73 @@ def _cd(row: Dict[str, Any]) -> Dict[str, Any]:
 	return (row or {}).get("conversation_data") or {}
 
 
+def _get_valid_contexts(from_node: str, vertical: str = "reverse_mortgage") -> list[str]:
+	"""Load valid_contexts from database for a node"""
+	try:
+		from services.prompt_loader import load_node_config
+		config = load_node_config(from_node, vertical)
+		return config.get('valid_contexts', [])
+	except Exception as e:
+		logger.warning(f"Could not load valid_contexts for {from_node}: {e}")
+		return []
+
+
+def _pick_route(from_node: str, valid_contexts: list[str], state_row: dict, intent_keywords: dict[str, list[str]] = None) -> str:
+	"""Pick best route from valid_contexts based on conversation state
+	
+	Args:
+		from_node: Current node name
+		valid_contexts: List of allowed next nodes from DB
+		state_row: Full conversation state row
+		intent_keywords: Optional dict mapping node names to keywords to check in call_reason_summary
+		
+	Returns:
+		Best matching node from valid_contexts
+	"""
+	if not valid_contexts:
+		logger.warning(f"No valid_contexts for {from_node}, cannot route")
+		return "goodbye"
+	
+	cd = _cd(state_row)
+	
+	# Check intent keywords if provided (for greet routing)
+	if intent_keywords:
+		reason = (cd.get("call_reason_summary") or "").lower()
+		for node, keywords in intent_keywords.items():
+			if node in valid_contexts and any(word in reason for word in keywords):
+				logger.info(f"🎯 Intent match: '{reason}' → {node.upper()}")
+				return node
+	
+	# Check common state flags and pick first valid match
+	# Priority order: ready_to_book → has_objections → needs quote → default
+	
+	if cd.get("ready_to_book") and "book" in valid_contexts:
+		return "book"
+	
+	if cd.get("has_objections") and "objections" in valid_contexts:
+		return "objections"
+	
+	if cd.get("needs_quote") and "quote" in valid_contexts:
+		return "quote"
+	
+	if cd.get("questions_answered") and "goodbye" in valid_contexts:
+		return "goodbye"
+	
+	# Default routing preferences
+	if "answer" in valid_contexts:
+		return "answer"
+	if "quote" in valid_contexts:
+		return "quote"
+	if "verify" in valid_contexts:
+		return "verify"
+	if "qualify" in valid_contexts:
+		return "qualify"
+	
+	# Fallback to first valid context
+	logger.info(f"Using fallback route: {valid_contexts[0]}")
+	return valid_contexts[0]
+
+
 def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", "answer", "quote", "book", "exit", "greet"]:
 	"""
 	Intent-based routing after greet using call_reason_summary.
@@ -122,20 +189,22 @@ def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", 
 	return "answer"
 
 
-def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "greet"]:
+def route_after_verify(state: ConversationState) -> Literal["qualify", "answer", "quote", "objections", "exit", "greet"]:
 	"""
-	DB-driven routing after verify.
-	- If wrong_person and right_person_available → greet
-	- If wrong_person → exit
-	- If verified → qualify
-	- Else → verify (cap handled in node)
+	Route after verify using DB valid_contexts.
+	Valid targets: ["qualify", "answer", "quote", "objections"]
+	
+	Special cases:
+	- wrong_person scenarios (greet/exit)
+	- Default flow to qualify or answer
 	"""
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → VERIFY (implicit)")
-		return "verify"  # continue verification until flags are persisted
+		return "verify"
 	cd = _cd(row)
 
+	# Special cases
 	if cd.get("wrong_person") and cd.get("right_person_available"):
 		logger.info("🔁 Re-greet right person now available → GREET")
 		return "greet"
@@ -143,149 +212,141 @@ def route_after_verify(state: ConversationState) -> Literal["qualify", "exit", "
 		logger.info("🚪 Wrong person → EXIT")
 		return "exit"
 
+	# Load valid contexts from DB
+	valid_contexts = _get_valid_contexts("verify")
+	
+	# If verified or lead_id exists, route based on intent
 	if cd.get("verified") or row.get("lead_id"):
-		logger.info("✅ Verified → QUALIFY")
-		return "qualify"
-
-	# Fallback: continue verification loop (node will apply visit cap)
+		next_node = _pick_route("verify", valid_contexts, row)
+		logger.info(f"✅ Verified → {next_node.upper()}")
+		return next_node
+	
+	# Continue verification loop (node will apply visit cap)
 	logger.info("🔁 Continue VERIFY")
 	return "verify"
 
 
-def route_after_qualify(state: ConversationState) -> Literal["quote", "exit"]:
+def route_after_qualify(state: ConversationState) -> Literal["quote", "objections", "goodbye", "exit"]:
 	"""
-	DB-driven routing after qualification.
-	- If qualified → quote (present financial estimates)
-	- Else → exit
+	Route after qualify using DB valid_contexts.
+	Valid targets: ["goodbye", "quote", "objections"]
 	"""
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → EXIT (cannot determine qualification)")
 		return "exit"
 
-	if row.get("qualified"):
-		logger.info("✅ Qualified → QUOTE")
-		return "quote"
+	valid_contexts = _get_valid_contexts("qualify")
+	
+	# If not qualified, exit
+	if not row.get("qualified"):
+		logger.info("🚪 Not qualified → GOODBYE")
+		return "goodbye" if "goodbye" in valid_contexts else "exit"
+	
+	# If qualified, pick best route
+	next_node = _pick_route("qualify", valid_contexts, row)
+	logger.info(f"✅ Qualified → {next_node.upper()}")
+	return next_node
 
-	logger.info("🚪 Not qualified → EXIT")
-	return "exit"
 
-
-def route_after_quote(state: ConversationState) -> Literal["answer", "book", "exit"]:
+def route_after_quote(state: ConversationState) -> Literal["answer", "book", "goodbye", "exit"]:
 	"""
-	DB-driven routing after quote presentation.
-	- If quote_reaction == "not_interested" → exit
-	- If ready_to_book → book
-	- If has_questions → answer
-	- Default → answer
+	Route after quote using DB valid_contexts.
+	Valid targets: ["answer", "book", "goodbye"]
 	"""
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → ANSWER")
 		return "answer"
+	
 	cd = _cd(row)
+	valid_contexts = _get_valid_contexts("quote")
 
-	# Check if they're not interested (explicit exit)
+	# If not interested, exit
 	if cd.get("quote_reaction") == "not_interested":
-		logger.info("🚪 Not interested in quote → EXIT")
-		return "exit"
+		logger.info("🚪 Not interested in quote → GOODBYE")
+		return "goodbye" if "goodbye" in valid_contexts else "exit"
 
-	# Check if ready to book immediately
-	if cd.get("ready_to_book"):
-		logger.info("📅 Ready to book after quote → BOOK")
-		return "book"
-
-	# Default to answer node for questions or further discussion
-	logger.info("❓ Questions about quote → ANSWER")
-	return "answer"
+	# Pick best route based on state
+	next_node = _pick_route("quote", valid_contexts, row)
+	logger.info(f"After quote → {next_node.upper()}")
+	return next_node
 
 
-def route_after_answer(state: ConversationState) -> Literal["answer", "objections", "book", "exit"]:
+def route_after_answer(state: ConversationState) -> Literal["answer", "objections", "book", "quote", "goodbye", "exit"]:
 	"""
-	DB-driven routing after answer.
-	- If ready_to_book → book
-	- Elif has_objections → objections
-	- Elif node_visits.answer > 5 → exit
-	- Else → answer
+	Route after answer using DB valid_contexts.
+	Valid targets: ["goodbye", "book", "objections", "quote"]
 	"""
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → ANSWER")
 		return "answer"
+	
 	cd = _cd(row)
+	valid_contexts = _get_valid_contexts("answer")
 
-	if cd.get("ready_to_book"):
-		logger.info("📅 Ready to book → BOOK")
-		return "book"
-	if cd.get("has_objections"):
-		logger.info("⚠️ Objections → OBJECTIONS")
-		return "objections"
-
+	# Check for loop cap
 	visits = (cd.get("node_visits") or {}).get("answer", 0)
 	if visits and visits > 5:
-		logger.info("🔚 Answer loop cap reached → EXIT")
-		return "exit"
+		logger.info("🔚 Answer loop cap reached → GOODBYE")
+		return "goodbye" if "goodbye" in valid_contexts else "exit"
 
-	logger.info("🔄 Continue ANSWER")
-	return "answer"
+	# Pick best route based on state
+	next_node = _pick_route("answer", valid_contexts, row)
+	logger.info(f"After answer → {next_node.upper()}")
+	return next_node
 
 
-def route_after_objections(state: ConversationState) -> Literal["answer", "objections", "book", "exit", "verify", "qualify", "quote", "greet"]:
+def route_after_objections(state: ConversationState) -> Literal["answer", "objections", "book", "goodbye", "exit"]:
 	"""
-	DB-driven routing after objections.
-	- If ready_to_book → book
-	- If objection_handled → return to previous node (default: answer)
-	- If has_objections → stay in objections
-	- Else → answer
+	Route after objections using DB valid_contexts.
+	Valid targets: ["answer", "book", "goodbye"]
 	"""
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → ANSWER")
 		return "answer"
+	
 	cd = _cd(row)
+	valid_contexts = _get_valid_contexts("objections")
 
-	if cd.get("ready_to_book"):
-		logger.info("📅 Ready after objections → BOOK")
-		return "book"
-
-	# If objection resolved, resume previous node (default to answer)
+	# If objection resolved, pick best route
 	if cd.get("objection_handled"):
-		previous_node = cd.get("node_before_objection", "answer")
-		# Validate previous_node against allowed nodes to maintain type safety
-		allowed_nodes = {"answer", "objections", "book", "exit", "verify", "qualify", "quote", "greet"}
-		if previous_node not in allowed_nodes:
-			logger.warning(f"Unknown previous_node '{previous_node}', defaulting to ANSWER")
-			previous_node = "answer"
-		logger.info(f"✅ Objection handled → {previous_node.upper()}")
-		return previous_node
+		next_node = _pick_route("objections", valid_contexts, row)
+		logger.info(f"✅ Objection handled → {next_node.upper()}")
+		return next_node
 
 	# If objections remain, stay in objections
 	if cd.get("has_objections"):
 		logger.info("⏳ Objection not resolved → STAY IN OBJECTIONS")
 		return "objections"
 
-	logger.info("➡️ Continue ANSWER")
-	return "answer"
+	# Default to answer
+	logger.info("➡️ Default route → ANSWER")
+	return "answer" if "answer" in valid_contexts else valid_contexts[0]
 
 
-def route_after_book(state: ConversationState) -> Literal["exit", "answer"]:
+def route_after_book(state: ConversationState) -> Literal["goodbye", "exit", "answer"]:
 	"""
-	DB-driven routing after booking attempt.
-	- If appointment_booked → exit (success)
-	- Else → answer (booking failed, continue conversation)
+	Route after book using DB valid_contexts.
+	Valid targets: ["goodbye"]
 	"""
 	row = _db(state)
 	if not row:
 		logger.info("🔍 No DB row → EXIT")
 		return "exit"
-	cd = _cd(row)
 	
+	cd = _cd(row)
+	valid_contexts = _get_valid_contexts("book")
+
+	# If appointment booked, say goodbye
 	if cd.get("appointment_booked"):
-		logger.info("✅ Appointment booked → EXIT")
-		return "exit"
+		logger.info("✅ Appointment booked → GOODBYE")
+		return "goodbye" if "goodbye" in valid_contexts else "exit"
 	
 	logger.info("⚠️ Booking not completed → ANSWER")
-	return "answer"
+	return "answer" if "answer" in valid_contexts else "goodbye"
 
 
 def route_after_exit(state: ConversationState):
