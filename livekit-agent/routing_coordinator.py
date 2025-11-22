@@ -266,7 +266,7 @@ class RoutingCoordinator:
             # ✅ Prevent old agent from generating a reply after handoff
             # From LiveKit docs: "raise StopResponse() to stop the agent from generating a reply"
             # This prevents duplicate responses when routing in on_user_turn_completed
-            from livekit.agents.voice import StopResponse
+            from livekit.agents.llm import StopResponse
             raise StopResponse()
             
         except Exception as e:

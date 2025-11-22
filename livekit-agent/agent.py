@@ -287,7 +287,7 @@ async def entrypoint(ctx: JobContext):
     if caller_phone:
         try:
             cs_start_call(str(caller_phone), {"lead_id": lead_id, "qualified": bool(qualified)})
-            logger.info(f"📒 ENTRYPOINT: start_call recorded for {caller_phone}")
+            logger.info(f"📞 ENTRYPOINT: start_call recorded for {caller_phone}")
         except Exception as e:
             logger.warning(f"⚠️ ENTRYPOINT: Failed to start_call for {caller_phone}: {e}")
             # FALLBACK: If start_call fails but we have lead_id, manually update state
@@ -802,7 +802,7 @@ async def entrypoint(ctx: JobContext):
         if caller_phone:
             try:
                 cs_mark_call_completed(caller_phone, exit_reason="hangup")
-                logger.info(f"📒 mark_call_completed for {caller_phone} (hangup)")
+                logger.info(f"📞 mark_call_completed for {caller_phone} (hangup)")
             except Exception as e:
                 logger.warning(f"Failed to mark_call_completed for {caller_phone}: {e}")
     
