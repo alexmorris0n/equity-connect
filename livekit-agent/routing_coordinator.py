@@ -286,8 +286,7 @@ class RoutingCoordinator:
         """Return a short filler utterance to cover agent swap latency."""
         reason = getattr(session.userdata, "call_reason_summary", None)
         if next_node == "answer":
-            # Use filler to acknowledge we're routing to Q&A specialist
-            return "Perfect, let me get you to someone who can help with that."
+            return "Perfect, let me help you with that."
         if next_node == "verify":
             return "Let me just pull up your information real quick."
         if next_node == "qualify":
@@ -295,9 +294,11 @@ class RoutingCoordinator:
         if next_node == "quote":
             return "Perfect, let me run those numbers for you."
         if next_node == "book":
-            return "Excellent! Let me get you scheduled."
+            return "Excellent, let me get you scheduled."
+        if next_node == "objections":
+            return "Let me address that for you."
         if next_node == "goodbye":
-            return "I appreciate you calling today."
+            return None  # Let goodbye node handle its own farewell
         return None
 
 
