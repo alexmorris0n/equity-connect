@@ -352,14 +352,16 @@ class BarbaraNodeAgent(Agent):
         1. User said "I have questions" (generic intent) → ASK what they need
         2. User said "How much money can I get?" (specific question) → ANSWER directly
         
-        We check session.history to see if the last user message contains a question.
+        We check session.history.items to see if the last user message contains a question.
+        From docs: "ChatContext has been overhauled in 1.0... includes ChatMessage, FunctionCall, FunctionCallOutput"
         """
         from livekit.agents.llm import ChatMessage
         
         # Get the last user message from history
-        # session.history contains all ChatMessage, FunctionCall, FunctionCallOutput items
+        # session.history is a ChatContext, which has an .items property (list of chat items)
         last_user_message = None
-        for item in reversed(self.session.history):
+        history_items = list(self.session.history.items)  # Convert to list to iterate in reverse
+        for item in reversed(history_items):
             # Check if it's a ChatMessage with role="user"
             if isinstance(item, ChatMessage) and item.role == "user":
                 last_user_message = item
