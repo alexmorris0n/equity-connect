@@ -770,14 +770,28 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
     exit_reason: Optional[str] = None
     try:
-        await session.start(
-            agent=agent,  # Pass our pre-created agent with phone number
-            room=ctx.room,
-            room_options=RoomOptions(
-                noise_cancellation=noise_cancellation.BVC(),
-                audio_enabled=True,  # CRITICAL: Enable audio output for TTS
-            ),
-        )
+        # Use new RoomOptions if available, otherwise use deprecated API
+        if HAS_ROOM_OPTIONS:
+            await session.start(
+                agent=agent,
+                room=ctx.room,
+                room_options=RoomOptions(
+                    noise_cancellation=noise_cancellation.BVC(),
+                    audio_enabled=True,
+                ),
+            )
+        else:
+            # Fallback to deprecated API for older livekit-agents versions
+            await session.start(
+                agent=agent,
+                room=ctx.room,
+                room_input_options=RoomInputOptions(
+                    noise_cancellation=noise_cancellation.BVC()
+                ),
+                room_output_options=RoomOutputOptions(
+                    audio_enabled=True,
+                ),
+            )
         logger.info(f"✅ ENTRYPOINT: AgentSession started - agent.on_enter() should be called next")
         
         exit_reason = "hangup"
