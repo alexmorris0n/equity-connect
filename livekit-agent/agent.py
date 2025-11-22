@@ -778,20 +778,19 @@ async def entrypoint(ctx: JobContext):
     
     ctx.add_shutdown_callback(_on_shutdown)
     
-    # Start the session with initial agent and WAIT for it to complete
+    # Start the session with initial agent
     # LiveKit handles all handoffs automatically via tool returns
     logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
-    async with session:
-        await session.start(
-            agent=initial_agent,
-            room=ctx.room,
-            room_options=RoomOptions(
-                audio_input=AudioInputOptions(
-                    noise_cancellation=noise_cancellation.BVC(),
-                ),
+    await session.start(
+        agent=initial_agent,
+        room=ctx.room,
+        room_options=RoomOptions(
+            audio_input=AudioInputOptions(
+                noise_cancellation=noise_cancellation.BVC(),
             ),
-        )
-        logger.info(f"✅ ENTRYPOINT: AgentSession started - session will run until participant disconnect")
+        ),
+    )
+    logger.info(f"✅ ENTRYPOINT: AgentSession started - session will run until participant disconnect")
 
 
 async def load_template(template_id: str) -> Optional[dict]:
