@@ -335,7 +335,16 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
     is_inbound = call_type.startswith("inbound")
     is_qualified = lead_context.get("qualified", False)
     lead_id = lead_context.get("lead_id")
-    lead_name = lead_context.get("name", "Unknown")
+    
+    # Extract FIRST NAME ONLY for natural conversation
+    # Prefer first_name field, fallback to extracting from full name
+    lead_name = "Unknown"
+    if lead_context.get("first_name"):
+        lead_name = lead_context["first_name"]
+    elif lead_context.get("name"):
+        # Extract first word from full name
+        full_name = lead_context["name"]
+        lead_name = full_name.split()[0] if full_name else "Unknown"
     
     context_parts = [
         "=== CALL CONTEXT ===",
@@ -347,7 +356,7 @@ def build_context_injection(call_type: str, lead_context: dict, phone_number: st
     
     if lead_id:
         context_parts.append(f"Lead Status: Known (ID: {lead_id})")
-        context_parts.append(f"Lead Name: {lead_name}")
+        context_parts.append(f"Lead Name: {lead_name} (use FIRST NAME ONLY in conversation)")
         context_parts.append(f"Qualified: {'Yes' if is_qualified else 'No'}")
         
         # Add property context if available
