@@ -57,17 +57,18 @@ class BarbaraGreetAgent(Agent):
         logger.info(f"✅ Greeting generation triggered for {first_name}")
     
     @function_tool()
-    async def continue_to_verification(self, context: RunContext):
+    async def mark_greeted(self, context: RunContext, reason_summary: str):
         """
-        Continue to caller verification after greeting.
+        Mark caller as greeted and route to appropriate next step.
         
-        Call this when:
-        - User has responded to your greeting (any verbal response)
-        - User seems engaged and ready to continue
+        Call this after:
+        - Caller has responded to your greeting
+        - You've captured why they're calling (reason_summary)
         
-        Do NOT call if:
-        - User hasn't spoken yet
-        - Wrong person answered (use mark_wrong_person instead)
+        Args:
+            reason_summary: One-sentence description of why they called
+                Examples: "Caller has questions", "Wants to know how much they can access", 
+                         "Called back after receiving materials", "Ready to book appointment"
         
         This tool checks the database to determine if verification/qualification
         are already complete from a previous call, and routes accordingly.
@@ -79,22 +80,39 @@ class BarbaraGreetAgent(Agent):
         verified = conversation_data.get('verified', False)
         qualified = conversation_data.get('qualified', False)
         
-        # Mark greeted
+        # Mark greeted with reason
         update_conversation_state(
             self.caller_phone,
             {
                 "conversation_data": {
-                    "greeted": True
+                    "greeted": True,
+                    "greeting_reason": reason_summary
                 }
             }
         )
         
-        logger.info(f"Database status for {self.caller_phone}: verified={verified}, qualified={qualified}")
+        logger.info(f"Greeted: {self.caller_phone} - reason: {reason_summary}")
+        logger.info(f"Database status: verified={verified}, qualified={qualified}")
+        
+        # If asking to book explicitly, route to booking
+        if any(keyword in reason_summary.lower() for keyword in ['book', 'appointment', 'schedule', 'meeting']):
+            logger.info(f"Booking request detected in reason - routing to book")
+            update_conversation_state(
+                self.caller_phone,
+                {"conversation_data": {"ready_to_book": True}}
+            )
+            from .book import BarbaraBookAgent
+            return BarbaraBookAgent(
+                caller_phone=self.caller_phone,
+                lead_data=self.lead_data,
+                vertical=self.vertical,
+                chat_ctx=self.chat_ctx
+            )
         
         # Route based on CURRENT database state
         if verified and qualified:
             # Both complete - skip to main conversation
-            logger.info(f"Caller {self.caller_phone} already verified + qualified, skipping to main conversation")
+            logger.info(f"Caller already verified + qualified, skipping to answer")
             from .answer import BarbaraAnswerAgent
             
             return BarbaraAnswerAgent(
@@ -106,7 +124,7 @@ class BarbaraGreetAgent(Agent):
         
         elif verified and not qualified:
             # Verified but not qualified - skip verify, run qualify
-            logger.info(f"Caller {self.caller_phone} already verified, skipping to qualification")
+            logger.info(f"Caller already verified, skipping to qualification")
             from .qualify import BarbaraQualifyTask
             
             return BarbaraQualifyTask(
@@ -118,7 +136,7 @@ class BarbaraGreetAgent(Agent):
         
         else:
             # Not verified (or missing) - run verification
-            logger.info(f"Caller {self.caller_phone} needs verification")
+            logger.info(f"Caller needs verification")
             from .verify import BarbaraVerifyTask
             
             return BarbaraVerifyTask(
@@ -127,42 +145,6 @@ class BarbaraGreetAgent(Agent):
                 vertical=self.vertical,
                 chat_ctx=self.chat_ctx
             )
-    
-    @function_tool()
-    async def route_to_booking(self, context: RunContext):
-        """
-        Route directly to appointment booking.
-        
-        Call when user EXPLICITLY requests to book an appointment:
-        - "I want to book an appointment"
-        - "Can I schedule a call?"
-        - "I'd like to set up a meeting"
-        - "Let's book something"
-        
-        This is for returning callers who are ready to book immediately.
-        For new callers, use continue_to_verification instead.
-        """
-        from .book import BarbaraBookAgent
-        
-        logger.info(f"Routing directly to booking for {self.caller_phone}")
-        
-        # Mark greeted
-        update_conversation_state(
-            self.caller_phone,
-            {
-                "conversation_data": {
-                    "greeted": True,
-                    "ready_to_book": True
-                }
-            }
-        )
-        
-        return BarbaraBookAgent(
-            caller_phone=self.caller_phone,
-            lead_data=self.lead_data,
-            vertical=self.vertical,
-            chat_ctx=self.chat_ctx
-        )
     
     @function_tool()
     async def mark_wrong_person(

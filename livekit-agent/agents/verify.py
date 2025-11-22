@@ -54,23 +54,23 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         )
     
     @function_tool()
-    async def verify_caller_identity_tool(self, context: RunContext, first_name: str):
+    async def verify_caller_identity(self, context: RunContext):
         """
-        Mark caller identity as verified and route to next step.
+        Mark caller identity as verified after confirming their information.
         
         Call when:
         - You've confirmed their name, address, email, phone
         - All required contact information is collected
-        - Information matches lead record
+        - Information matches lead record or has been updated
         
         Do NOT call until:
         - You have verified all key details
-        
-        Args:
-            first_name: Caller's first name (required for verification)
         """
         # Use existing tool from tools/lead.py
-        result_str = await verify_caller_identity(first_name, self.caller_phone)
+        from tools.lead import verify_caller_identity as verify_tool
+        
+        first_name = self.lead_data.get('first_name', 'Unknown')
+        result_str = await verify_tool(first_name, self.caller_phone)
         
         import json
         result = json.loads(result_str)
@@ -79,12 +79,6 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             lead_id = result.get('lead_id')
             
             logger.info(f"Verification complete: confirmed=True, lead_id={lead_id}")
-            
-            # Complete task - returns result
-            self.complete(VerificationResult(
-                verified=True,
-                lead_id=lead_id
-            ))
             
             # After completion, route to next step based on database status
             # Check if qualified - if yes, go to answer, if no, go to qualify
@@ -120,7 +114,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             ))
     
     @function_tool()
-    async def update_lead_info_tool(
+    async def update_lead_info(
         self, 
         context: RunContext,
         **kwargs
@@ -132,7 +126,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         - Collecting missing information
         - Correcting outdated information
         
-        Common fields: email, address, city, state, zip, first_name, last_name
+        Common fields: email, property_address, city, state, zip, first_name, last_name
         
         Args:
             Any lead fields to update (first_name, last_name, email, property_address, etc.)
@@ -143,7 +137,8 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             return "No lead_id available. Cannot update lead info."
         
         # Use existing tool from tools/lead.py
-        result_str = await update_lead_info(lead_id=lead_id, **kwargs)
+        from tools.lead import update_lead_info as update_tool
+        result_str = await update_tool(lead_id=lead_id, **kwargs)
         
         logger.info(f"Updated lead {lead_id}: {kwargs}")
         
