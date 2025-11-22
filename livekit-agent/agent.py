@@ -710,6 +710,11 @@ async def entrypoint(ctx: JobContext):
         coordinator=coordinator,
         lead_context=lead_context
     )
+    
+    # ✅ Store agent in userdata for routing checks
+    userdata.current_agent = agent
+    logger.debug(f"📝 Stored current_agent in userdata")
+    
     logger.info(f"✅ ENTRYPOINT: BarbaraAgent created")
     
     # Create session - different config for realtime vs pipeline
