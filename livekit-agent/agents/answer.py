@@ -63,7 +63,7 @@ class BarbaraAnswerAgent(Agent):
             )
     
     @function_tool()
-    async def search_knowledge_tool(self, context: RunContext, question: str) -> str:
+    async def search_knowledge(self, context: RunContext, question: str) -> str:
         """
         Search knowledge base for answers to user's questions.
         
@@ -87,7 +87,8 @@ class BarbaraAnswerAgent(Agent):
             question: User's question (can be reformulated for better search results)
         """
         # Use existing tool from tools/knowledge.py
-        result = await search_knowledge(question)
+        from tools.knowledge import search_knowledge as search_tool
+        result = await search_tool(question)
         
         logger.info(f"Knowledge search completed for: {question[:50]}...")
         
@@ -127,7 +128,7 @@ class BarbaraAnswerAgent(Agent):
         )
     
     @function_tool()
-    async def route_to_booking(self, context: RunContext):
+    async def mark_ready_to_book(self, context: RunContext):
         """
         ROUTING TOOL: Transfer to appointment booking.
         
@@ -170,7 +171,7 @@ class BarbaraAnswerAgent(Agent):
         )
     
     @function_tool()
-    async def route_to_objections(self, context: RunContext):
+    async def mark_has_objection(self, context: RunContext, objection_type: str):
         """
         ROUTING TOOL: Transfer to objection handling.
         

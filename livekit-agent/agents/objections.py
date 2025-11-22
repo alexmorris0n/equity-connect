@@ -46,7 +46,7 @@ class BarbaraObjectionsAgent(Agent):
         )
     
     @function_tool()
-    async def search_knowledge_tool(self, context: RunContext, question: str) -> str:
+    async def search_knowledge(self, context: RunContext, question: str) -> str:
         """
         Search knowledge base for objection-specific information.
         
@@ -57,14 +57,15 @@ class BarbaraObjectionsAgent(Agent):
         Args:
             question: The objection or concern to search for (e.g., "family objections", "heirs inheritance", "fees concerns")
         """
-        result = await search_knowledge(question)
+        from tools.knowledge import search_knowledge as search_tool
+        result = await search_tool(question)
         
         logger.info(f"Knowledge search for objection: {question[:50]}...")
         
         return result
     
     @function_tool()
-    async def mark_has_objection_tool(
+    async def mark_has_objection(
         self, 
         context: RunContext, 
         objection_type: str
@@ -93,7 +94,7 @@ class BarbaraObjectionsAgent(Agent):
         return result
     
     @function_tool()
-    async def mark_objection_handled_tool(self, context: RunContext):
+    async def mark_objection_handled(self, context: RunContext):
         """
         Mark that objection has been addressed.
         

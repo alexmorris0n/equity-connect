@@ -46,7 +46,7 @@ class BarbaraQuoteAgent(Agent):
         )
     
     @function_tool()
-    async def mark_quote_presented_tool(self, context: RunContext, quote_reaction: str):
+    async def mark_quote_presented(self, context: RunContext, quote_reaction: str):
         """
         Mark that quote has been presented and record user's reaction.
         
@@ -66,7 +66,7 @@ class BarbaraQuoteAgent(Agent):
         return result
     
     @function_tool()
-    async def update_lead_info_tool(
+    async def update_lead_info(
         self, 
         context: RunContext,
         **kwargs
@@ -89,7 +89,8 @@ class BarbaraQuoteAgent(Agent):
             return "No lead_id available. Cannot update lead info."
         
         # Use existing tool from tools/lead.py
-        result_str = await update_lead_info(lead_id=lead_id, **kwargs)
+        from tools.lead import update_lead_info as update_tool
+        result_str = await update_tool(lead_id=lead_id, **kwargs)
         
         logger.info(f"Updated lead {lead_id} during quote: {kwargs}")
         

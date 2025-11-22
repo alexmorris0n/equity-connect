@@ -55,7 +55,7 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
         )
     
     @function_tool()
-    async def mark_qualification_result_tool(
+    async def mark_qualified(
         self, 
         context: RunContext, 
         qualified: bool, 
@@ -87,17 +87,11 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
         
         logger.info(f"Qualification complete: qualified={qualified}, reason={reason}")
         
-        # Complete task with result
-        self.complete(QualificationResult(
-            qualified=qualified,
-            reason=reason if not qualified else None
-        ))
-        
-        # After completion, route to next step
+        # After qualification, route to next step
         if qualified:
-            # Qualified - go to quote
-            from .quote import BarbaraQuoteAgent
-            return BarbaraQuoteAgent(
+            # Qualified - go to main conversation
+            from .answer import BarbaraAnswerAgent
+            return BarbaraAnswerAgent(
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,

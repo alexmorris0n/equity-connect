@@ -45,7 +45,7 @@ class BarbaraBookAgent(Agent):
         )
     
     @function_tool()
-    async def check_broker_availability_tool(
+    async def check_broker_availability(
         self, 
         context: RunContext,
         preferred_day: Optional[str] = None,
@@ -75,7 +75,8 @@ class BarbaraBookAgent(Agent):
             })
         
         # Use existing tool from tools/calendar.py
-        result = await check_broker_availability(
+        from tools.calendar import check_broker_availability as check_tool
+        result = await check_tool(
             broker_id=broker_id,
             preferred_day=preferred_day,
             preferred_time=preferred_time
@@ -86,7 +87,7 @@ class BarbaraBookAgent(Agent):
         return result
     
     @function_tool()
-    async def book_appointment_tool(
+    async def book_appointment(
         self, 
         context: RunContext,
         appointment_datetime: str,
@@ -126,7 +127,8 @@ class BarbaraBookAgent(Agent):
             })
         
         # Use existing tool from tools/calendar.py
-        result = await book_appointment(
+        from tools.calendar import book_appointment as book_tool
+        result = await book_tool(
             lead_id=lead_id,
             broker_id=broker_id,
             scheduled_for=appointment_datetime,
