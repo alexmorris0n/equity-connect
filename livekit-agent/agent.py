@@ -19,13 +19,8 @@ from livekit.agents import (
     cli,
 )
 
-# Try to import RoomOptions (added in newer versions), fallback to deprecated API
-try:
-    from livekit.agents import RoomOptions
-    HAS_ROOM_OPTIONS = True
-except ImportError:
-    from livekit.agents import RoomInputOptions, RoomOutputOptions
-    HAS_ROOM_OPTIONS = False
+# Import RoomOptions from the correct submodule (it exists but isn't re-exported at top level in 1.3.3)
+from livekit.agents.voice.room_io import RoomOptions, AudioInputOptions
 from livekit.agents.llm import ChatContext, ChatMessage
 from livekit.plugins import silero
 
@@ -777,28 +772,15 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
     exit_reason: Optional[str] = None
     try:
-        # Use new RoomOptions if available, otherwise use deprecated API
-        if HAS_ROOM_OPTIONS:
-            await session.start(
-                agent=agent,
-                room=ctx.room,
-                room_options=RoomOptions(
+        await session.start(
+            agent=agent,
+            room=ctx.room,
+            room_options=RoomOptions(
+                audio_input=AudioInputOptions(
                     noise_cancellation=noise_cancellation.BVC(),
-                    audio_enabled=True,
                 ),
-            )
-        else:
-            # Fallback to deprecated API for older livekit-agents versions
-            await session.start(
-                agent=agent,
-                room=ctx.room,
-                room_input_options=RoomInputOptions(
-                    noise_cancellation=noise_cancellation.BVC()
-                ),
-                room_output_options=RoomOutputOptions(
-                    audio_enabled=True,
-                ),
-            )
+            ),
+        )
         logger.info(f"✅ ENTRYPOINT: AgentSession started - agent.on_enter() should be called next")
         
         exit_reason = "hangup"
