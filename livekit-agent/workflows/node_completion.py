@@ -75,28 +75,18 @@ def is_node_complete(node_name: str, state: dict, vertical: str = "reverse_mortg
     else:
         evaluated_result = None
     
-    # Fallback to hardcoded flag-based completion (existing behavior)
-    # NOTE: greet uses turn counting to prevent immediate routing
-    completion_criteria = {
-        "greet": lambda s: s.get("reason_captured") == True,
-        "verify": lambda s: s.get("verified") == True,
-        "qualify": lambda s: s.get("qualified") != None,
-        "quote": lambda s: s.get("quote_presented") == True,
-        "answer": lambda s: s.get("questions_answered") or s.get("ready_to_book") or s.get("has_objections"),
-        "objections": lambda s: s.get("objection_handled") == True,
-        "book": lambda s: s.get("appointment_booked") == True,
-        "exit": lambda s: True,
-    }
-    
-    # Use evaluated step_criteria result if available, otherwise fall back to hardcoded logic
+    # If step_criteria evaluation succeeded, use that result
     if evaluated_result is not None:
         result = evaluated_result
-        logger.debug(f"Using step_criteria result for {node_name}: {result}")
+        logger.debug(f"✅ Using step_criteria_lk for {node_name}: {result}")
     else:
-        # Fallback to hardcoded flag-based completion (existing behavior)
-        checker = completion_criteria.get(node_name)
-        result = checker(state) if checker else False
-        logger.debug(f"Using hardcoded completion logic for {node_name}: {result}")
+        # No step_criteria defined - this is an error condition
+        # Log warning and default to False (node incomplete)
+        logger.warning(
+            f"⚠️ No step_criteria_lk defined for node '{node_name}' and evaluation failed. "
+            f"Node will not complete. Please add step_criteria_lk to database."
+        )
+        result = False
     
     # FALLBACK for verify node: If lead_id exists, consider it complete
     # This handles cases where get_lead_context was called but verified flag wasn't set
