@@ -295,8 +295,8 @@ class BarbaraNodeAgent(Agent):
         
         if direction == "outbound":
             opener = f"Hi, may I speak with {lead_name}?" if lead_name else "Hi, may I speak with the homeowner?"
-            # Use say() for scripted opener to skip LLM (faster)
-            await self.session.say(opener)
+            # Use ultra-short instruction to minimize LLM latency
+            await self.session.generate_reply(instructions=f"Say exactly: {opener}")
             userdata.outbound_intro_pending = True
             return True
         
@@ -305,9 +305,9 @@ class BarbaraNodeAgent(Agent):
         else:
             greeting = "Hi, this is Barbara from Equity Connect. How are you?"
         
-        # Use say() instead of generate_reply() for scripted greeting
-        # This skips the LLM call entirely, going straight to TTS (~2s instead of ~12s)
-        await self.session.say(greeting)
+        # Use ultra-short instruction to minimize LLM latency
+        # The LLM sees the full system prompt but this overrides for just this turn
+        await self.session.generate_reply(instructions=f"Say exactly: {greeting}")
         return True
 
     async def _handle_answer_on_enter(self) -> bool:
