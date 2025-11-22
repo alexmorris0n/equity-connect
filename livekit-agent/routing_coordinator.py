@@ -263,6 +263,12 @@ class RoutingCoordinator:
             session.update_agent(new_agent)
             logger.info(f"✅ Handoff complete: now in '{next_node}'")
             
+            # ✅ Prevent old agent from generating a reply after handoff
+            # From LiveKit docs: "raise StopResponse() to stop the agent from generating a reply"
+            # This prevents duplicate responses when routing in on_user_turn_completed
+            from livekit.agents.voice import StopResponse
+            raise StopResponse()
+            
         except Exception as e:
             logger.error(f"❌ Handoff FAILED: {session.userdata.current_node} → {next_node}: {e}", exc_info=True)
             # Stay in current agent - conversation continues
