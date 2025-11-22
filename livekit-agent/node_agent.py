@@ -278,6 +278,8 @@ class BarbaraNodeAgent(Agent):
 
     async def _handle_greet_on_enter(self) -> bool:
         """Deliver deterministic greeting variants for professional tone."""
+        import asyncio
+        
         userdata = getattr(self.session, "userdata", None)
         if not userdata:
             return False
@@ -285,6 +287,11 @@ class BarbaraNodeAgent(Agent):
         direction = getattr(userdata, "call_direction", "inbound") or "inbound"
         lead_context = getattr(userdata, "lead_context", None) or self.lead_context or {}
         lead_name = self._extract_lead_name(lead_context)
+        
+        # Wait 500ms to let SIP audio path establish before speaking
+        # This prevents one-way audio issues where greeting is generated but not heard
+        logger.info("⏳ Waiting 500ms for SIP audio path to establish...")
+        await asyncio.sleep(0.5)
         
         if direction == "outbound":
             opener = f"Hi, may I speak with {lead_name}?" if lead_name else "Hi, may I speak with the homeowner?"
