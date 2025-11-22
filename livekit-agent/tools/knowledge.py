@@ -1,10 +1,17 @@
-"""Knowledge base search tool"""
+"""Knowledge base search tool - Fast keyword search (no embeddings)
+
+This matches the SignalWire implementation which bypasses slow Vertex AI embeddings
+and uses direct SQL keyword search on the content column instead.
+
+Performance:
+- Old (Vertex + Vector): 5-13 seconds → frequent timeouts
+- New (Keyword search): <1 second → reliable
+"""
 from livekit.agents.llm import function_tool
 from services.supabase import get_supabase_client
-from services.vertex import generate_embedding
 import logging
 import json
-import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -20,41 +27,58 @@ async def search_knowledge(question: str) -> str:
     start_time = time.time()
     
     try:
-        logger.info(f"🔍 Starting knowledge search: \"{question}\"")
+        logger.info(f"🔍 Starting knowledge search (keyword): \"{question}\"")
         
-        # Check if Google credentials are available
-        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
-            logger.warn('⚠️  Google credentials not available - using fallback')
-            return json.dumps({
-                "found": False,
-                "fallback": True,
-                "message": "I'd be happy to connect you with one of our specialists who can answer that question in detail. They have all the latest information about reverse mortgages."
-            })
+        # Extract meaningful keywords (skip common words)
+        tokens = [tok.lower() for tok in re.split(r"[^A-Za-z0-9]+", question or "") if tok]
         
-        # Generate embedding for the question
-        embedding_start_time = time.time()
-        query_embedding = await generate_embedding(question)
-        embedding_duration_ms = int((time.time() - embedding_start_time) * 1000)
+        # Remove stop words
+        stop_words = {"a", "an", "the", "is", "are", "was", "were", "be", "been", "being", 
+                      "have", "has", "had", "do", "does", "did", "will", "would", "should", 
+                      "could", "may", "might", "can", "about", "if", "in", "on", "at", "to",
+                      "for", "of", "with", "by", "from", "up", "out", "as", "but", "or", "and",
+                      "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her"}
         
-        logger.info(f"✅ Embedding generated in {embedding_duration_ms}ms")
+        keywords = [tok for tok in tokens if tok not in stop_words and len(tok) > 2]
         
-        # Search vector store using Supabase function
-        vector_search_start_time = time.time()
-        response = sb.rpc('find_similar_content', {
-            "query_embedding": query_embedding,
-            "content_type_filter": "reverse_mortgage_kb",
-            "match_threshold": 0.7,
-            "match_count": 3
-        }).execute()
+        # Use the most specific keyword (prefer longer, domain-specific terms)
+        # Priority: reverse mortgage terms > general real estate terms > verbs
+        priority_terms = ["spouse", "mortgage", "equity", "hecm", "borrower", "lien", 
+                          "property", "house", "home", "die", "dies", "death", "airbnb", 
+                          "rent", "rental", "income", "foreclosure", "payoff", "grandson",
+                          "granddaughter", "family", "relative", "live", "living"]
         
-        vector_search_duration_ms = int((time.time() - vector_search_start_time) * 1000)
-        logger.info(f"✅ Vector search completed in {vector_search_duration_ms}ms")
+        pattern = None
+        for term in priority_terms:
+            if term in keywords:
+                pattern = term
+                break
         
-        # Supabase Python client v2 RPC responses don't have .error attribute
-        # Errors are handled via exceptions or empty data
-        data = getattr(response, 'data', None) or []
+        # If no priority term, use longest keyword
+        if not pattern and keywords:
+            pattern = max(keywords, key=len)
         
-        if len(data) == 0:
+        # Fallback to first token or default
+        if not pattern:
+            pattern = tokens[0] if tokens else "reverse mortgage"
+        
+        logger.info(f"🔑 KB search using keyword: '{pattern}' (from question: '{question[:50]}...')")
+        
+        # Direct SQL keyword search - MUCH faster than embeddings
+        search_start_time = time.time()
+        response = sb.table("vector_embeddings")\
+            .select("content, metadata")\
+            .eq("content_type", "reverse_mortgage_kb")\
+            .ilike("content", f"%{pattern}%")\
+            .limit(3)\
+            .execute()
+        
+        search_duration_ms = int((time.time() - search_start_time) * 1000)
+        logger.info(f"✅ Keyword search completed in {search_duration_ms}ms")
+        
+        results = response.data or []
+        
+        if len(results) == 0:
             logger.info('⚠️  No matching knowledge base content found')
             return json.dumps({
                 "found": False,
@@ -62,31 +86,21 @@ async def search_knowledge(question: str) -> str:
                 "message": "That's a great question. I'll make sure we cover all those specifics during your appointment with the broker - they can walk you through exactly how that works for your situation."
             })
         
-        # Format results for conversational use
-        formatted_results = []
-        for idx, item in enumerate(data):
-            formatted_results.append({
-                "rank": idx + 1,
-                "content": item.get("content", ""),
-                "similarity": f"{int(item.get('similarity', 0) * 100)}%"
-            })
-        
-        # Combine top results
-        combined_knowledge = "\n\n---\n\n".join([r["content"] for r in formatted_results])
+        # Format results
+        formatted_knowledge = "\n\n---\n\n".join([item.get("content", "") for item in results if item.get("content")])
         
         total_duration_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"✅ Knowledge search complete in {total_duration_ms}ms (embedding: {embedding_duration_ms}ms, search: {vector_search_duration_ms}ms)")
+        logger.info(f"✅ Knowledge search complete in {total_duration_ms}ms (keyword search: {search_duration_ms}ms)")
         
         return json.dumps({
             "found": True,
             "question": question,
-            "answer": combined_knowledge,
-            "sources_count": len(formatted_results),
+            "answer": formatted_knowledge,
+            "sources_count": len(results),
             "message": "Use this information to answer the lead's question conversationally in 2 sentences max.",
             "performance": {
                 "total_ms": total_duration_ms,
-                "embedding_ms": embedding_duration_ms,
-                "search_ms": vector_search_duration_ms
+                "search_ms": search_duration_ms
             }
         })
         
