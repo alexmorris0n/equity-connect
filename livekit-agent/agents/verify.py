@@ -117,7 +117,18 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
     async def update_lead_info(
         self, 
         context: RunContext,
-        **kwargs
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        property_address: Optional[str] = None,
+        property_city: Optional[str] = None,
+        property_state: Optional[str] = None,
+        property_zip: Optional[str] = None,
+        age: Optional[int] = None,
+        money_purpose: Optional[str] = None,
+        amount_needed: Optional[float] = None,
+        timeline: Optional[str] = None
     ):
         """
         Update lead information during verification.
@@ -126,10 +137,21 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         - Collecting missing information
         - Correcting outdated information
         
-        Common fields: email, property_address, city, state, zip, first_name, last_name
+        Common fields: email, property_address, property_city, property_state, property_zip, first_name, last_name
         
         Args:
-            Any lead fields to update (first_name, last_name, email, property_address, etc.)
+            first_name: First name
+            last_name: Last name
+            email: Email address
+            phone: Phone number
+            property_address: Property address
+            property_city: Property city
+            property_state: Property state
+            property_zip: Property ZIP code
+            age: Age
+            money_purpose: Purpose for the money
+            amount_needed: Amount needed
+            timeline: Timeline for needing the money
         """
         lead_id = self.lead_data.get('id')
         
@@ -138,9 +160,23 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         
         # Use existing tool from tools/lead.py
         from tools.lead import update_lead_info as update_tool
-        result_str = await update_tool(lead_id=lead_id, **kwargs)
+        result_str = await update_tool(
+            lead_id=lead_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=phone,
+            property_address=property_address,
+            property_city=property_city,
+            property_state=property_state,
+            property_zip=property_zip,
+            age=age,
+            money_purpose=money_purpose,
+            amount_needed=amount_needed,
+            timeline=timeline
+        )
         
-        logger.info(f"Updated lead {lead_id}: {kwargs}")
+        logger.info(f"Updated lead {lead_id}")
         
         return result_str
 

@@ -113,7 +113,18 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
     async def update_lead_info_tool(
         self, 
         context: RunContext,
-        **kwargs
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        property_address: Optional[str] = None,
+        property_city: Optional[str] = None,
+        property_state: Optional[str] = None,
+        property_zip: Optional[str] = None,
+        age: Optional[int] = None,
+        money_purpose: Optional[str] = None,
+        amount_needed: Optional[float] = None,
+        timeline: Optional[str] = None
     ):
         """
         Update lead information during qualification.
@@ -122,10 +133,21 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
         - Collecting qualification data (age, home value, mortgage balance, etc.)
         - Updating information as you check gates
         
-        Common fields: age, property_address, estimated_home_value, existing_mortgage_balance
+        Common fields: age, property_address, property_city, property_state, property_zip
         
         Args:
-            Any lead fields to update
+            first_name: First name
+            last_name: Last name
+            email: Email address
+            phone: Phone number
+            property_address: Property address
+            property_city: Property city
+            property_state: Property state
+            property_zip: Property ZIP code
+            age: Age
+            money_purpose: Purpose for the money
+            amount_needed: Amount needed
+            timeline: Timeline for needing the money
         """
         lead_id = self.lead_data.get('id')
         
@@ -133,9 +155,23 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
             return "No lead_id available. Cannot update lead info."
         
         # Use existing tool from tools/lead.py
-        result_str = await update_lead_info(lead_id=lead_id, **kwargs)
+        result_str = await update_lead_info(
+            lead_id=lead_id,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=phone,
+            property_address=property_address,
+            property_city=property_city,
+            property_state=property_state,
+            property_zip=property_zip,
+            age=age,
+            money_purpose=money_purpose,
+            amount_needed=amount_needed,
+            timeline=timeline
+        )
         
-        logger.info(f"Updated lead {lead_id} during qualification: {kwargs}")
+        logger.info(f"Updated lead {lead_id} during qualification")
         
         return result_str
 
