@@ -194,7 +194,8 @@ class BarbaraNodeAgent(Agent):
         We use this to:
         1. Log the node transition for debugging
         2. Trigger immediate speech ONLY for greet node (initial greeting)
-        3. For other nodes, let the LLM respond naturally based on context
+        3. For answer node, check if user already asked a specific question
+        4. For other nodes, let the LLM respond naturally based on context
         
         Documentation:
             From LiveKit docs (/agents/build/agents-handoffs/#defining-an-agent):
@@ -214,7 +215,13 @@ class BarbaraNodeAgent(Agent):
                 logger.info("✅ ON_ENTER complete for node 'greet' (scripted greeting delivered)")
                 return
         
-        # For all other nodes (answer, quote, etc), don't generate a reply here
+        # Answer node: Check if user already asked a specific question
+        if self.node_name == "answer":
+            await self._handle_answer_on_enter()
+            logger.info("✅ ON_ENTER complete for node 'answer'")
+            return
+        
+        # For all other nodes (quote, verify, etc), don't generate a reply here
         # Let the conversation flow naturally based on the chat history and node instructions
         logger.info(f"✅ ON_ENTER complete for node '{self.session.userdata.current_node}'")
     
@@ -337,6 +344,78 @@ class BarbaraNodeAgent(Agent):
         await self.session.generate_reply(instructions=follow_up)
         userdata.outbound_intro_pending = False
         return True
+
+    async def _handle_answer_on_enter(self) -> None:
+        """Check if user already asked a specific question, or needs prompting.
+        
+        Two scenarios after routing from greet → answer:
+        1. User said "I have questions" (generic intent) → ASK what they need
+        2. User said "How much money can I get?" (specific question) → ANSWER directly
+        
+        We check session.history to see if the last user message contains a question.
+        """
+        from livekit.agents.llm import ChatMessage
+        
+        # Get the last user message from history
+        # session.history contains all ChatMessage, FunctionCall, FunctionCallOutput items
+        last_user_message = None
+        for item in reversed(self.session.history):
+            # Check if it's a ChatMessage with role="user"
+            if isinstance(item, ChatMessage) and item.role == "user":
+                last_user_message = item
+                break
+        
+        if not last_user_message:
+            # No user message found (shouldn't happen, but handle gracefully)
+            logger.warning("⚠️ answer node: No user message in history, prompting for question")
+            await self.session.generate_reply(
+                instructions="Ask what they need help with. Keep it brief and open-ended."
+            )
+            return
+        
+        # Extract text content from the message
+        user_text = ""
+        try:
+            if hasattr(last_user_message, "text_content") and last_user_message.text_content:
+                user_text = last_user_message.text_content.strip().lower()
+            elif hasattr(last_user_message, "content"):
+                # content is a list of content items
+                for content_item in last_user_message.content:
+                    if hasattr(content_item, "text"):
+                        user_text = content_item.text.strip().lower()
+                        break
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to extract user message text: {e}")
+        
+        # Check if the user's message is a specific question or just generic intent
+        # Heuristics:
+        # - Contains "?" → Likely a specific question
+        # - Contains question words (how, what, when, where, why, can, will, is, are) → Likely a question
+        # - Just says "I have questions" / "I need help" → Generic intent
+        
+        is_specific_question = False
+        question_indicators = ["how much", "how do", "what is", "what are", "when can", "where", "why", "can i", "will i", "is it", "are there"]
+        
+        if "?" in user_text:
+            is_specific_question = True
+        elif any(indicator in user_text for indicator in question_indicators):
+            is_specific_question = True
+        elif user_text in ["i have questions", "i have a question", "i have some questions", "i need help", "i wanted to ask", "can you answer", "i wanted to know"]:
+            is_specific_question = False
+        
+        if is_specific_question:
+            # User already asked a specific question - let LLM answer it naturally
+            # No need to ask "what's your question?" - just let the agent respond based on context
+            logger.info("✅ answer node: User already asked specific question, letting LLM respond naturally")
+            # Don't generate a reply here - let the normal conversation flow handle it
+            return
+        else:
+            # User only stated generic intent - need to prompt for their question
+            logger.info("📝 answer node: User stated generic intent, prompting for specific question")
+            await self.session.generate_reply(
+                instructions="Ask what they need help with. Keep it brief and open-ended."
+            )
+            return
 
     def _extract_lead_name(self, lead_context: Optional[Dict[str, Any]]) -> Optional[str]:
         """Extract FIRST NAME ONLY for natural greeting."""
