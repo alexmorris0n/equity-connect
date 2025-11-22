@@ -563,12 +563,14 @@ async def entrypoint(ctx: JobContext):
             app_name="Barbara Voice Agent",
         )
         
-        # TTS model string - Check if we need plugin for custom voices
-        tts_use_plugin = is_custom_voice
+        # 🧪 TEMPORARY: Force TTS plugin to bypass LiveKit Inference rate limits (HTTP 429)
+        # This uses your own ElevenLabs API key directly, avoiding LiveKit Inference
+        USE_ELEVENLABS_PLUGIN = True  # Set to False to revert to LiveKit Inference
         
-        if tts_use_plugin and active_tts:
-            # Custom voice - use plugin with API key (not LiveKit Inference)
-            logger.info(f"✨ ENTRYPOINT: TTS via PLUGIN - {active_tts.get('provider')}/{active_tts.get('model')}:{active_tts.get('voice_id')} (custom voice)")
+        if USE_ELEVENLABS_PLUGIN and active_tts and active_tts.get("provider") == "elevenlabs":
+            # Use ElevenLabs plugin with your own API key (bypasses LiveKit Inference)
+            logger.info(f"🧪 TEMPORARY: Using ElevenLabs PLUGIN for TTS (bypassing LiveKit Inference)")
+            logger.info(f"✨ ENTRYPOINT: TTS via PLUGIN - {active_tts.get('provider')}/{active_tts.get('model')}:{active_tts.get('voice_id')}")
             tts_string = None  # Will use build_tts_plugin() instead
         elif active_tts and active_tts.get("voice_id_full"):
             # Standard voice - use voice_id_full from database (format: provider/model:voice_id)
