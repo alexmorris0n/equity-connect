@@ -783,36 +783,28 @@ async def entrypoint(ctx: JobContext):
     # Start the session with custom BarbaraAgent that auto-greets on entry
     # The session property is set automatically when session.start() is called
     logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
-    exit_reason: Optional[str] = None
-    try:
-        await session.start(
-            agent=agent,
-            room=ctx.room,
-            room_options=RoomOptions(
-                audio_input=AudioInputOptions(
-                    noise_cancellation=noise_cancellation.BVC(),
-                ),
+    await session.start(
+        agent=agent,
+        room=ctx.room,
+        room_options=RoomOptions(
+            audio_input=AudioInputOptions(
+                noise_cancellation=noise_cancellation.BVC(),
             ),
-        )
-        logger.info(f"✅ ENTRYPOINT: AgentSession started - agent.on_enter() should be called next")
-        
-        # Wait for the session to close (participant disconnect or shutdown)
-        # This prevents the finally block from executing immediately
-        logger.info(f"⏳ ENTRYPOINT: Waiting for session to close...")
-        await session.wait()
-        logger.info(f"✅ ENTRYPOINT: Session closed normally")
-        exit_reason = "hangup"
-    except Exception as e:
-        logger.error(f"Session error: {e}")
-        exit_reason = "error"
-        raise
-    finally:
+        ),
+    )
+    logger.info(f"✅ ENTRYPOINT: AgentSession started - session will run until participant disconnect")
+    
+    # Register cleanup callback for when session ends
+    # The @rtc_session decorator keeps this function alive until room closes
+    async def _on_shutdown(_reason: str):
         if caller_phone:
             try:
-                cs_mark_call_completed(caller_phone, exit_reason=exit_reason)
-                logger.info(f"📒 mark_call_completed for {caller_phone} ({exit_reason})")
+                cs_mark_call_completed(caller_phone, exit_reason="hangup")
+                logger.info(f"📒 mark_call_completed for {caller_phone} (hangup)")
             except Exception as e:
                 logger.warning(f"Failed to mark_call_completed for {caller_phone}: {e}")
+    
+    ctx.add_shutdown_callback(_on_shutdown)
 
 
 async def load_template(template_id: str) -> Optional[dict]:
