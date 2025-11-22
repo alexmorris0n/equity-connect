@@ -774,21 +774,16 @@ async def entrypoint(ctx: JobContext):
             
             userdata = getattr(session, "userdata", None)
             if not userdata:
-                logger.warning("🔄 _check_routing_after_speaking: No userdata found")
                 return
                 
             coordinator = getattr(userdata, "coordinator", None)
             current_agent = getattr(userdata, "current_agent", None)
             current_node = getattr(userdata, "current_node", None)
             
-            logger.info(f"🔄 _check_routing_after_speaking: node={current_node}, has_coordinator={coordinator is not None}, has_agent={current_agent is not None}")
-            
             # Only check routing for greet node (where silent routing happens)
             if current_node == "greet" and coordinator and current_agent:
                 logger.info("🔄 Agent finished speaking in greet - checking routing")
                 await coordinator.check_and_route(current_agent, session)
-            else:
-                logger.info(f"🔄 Skipping routing check: not in greet or missing components")
         except Exception as e:
             logger.warning(f"Failed to check routing after speaking: {e}")
     
