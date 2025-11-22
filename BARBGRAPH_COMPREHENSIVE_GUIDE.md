@@ -157,24 +157,31 @@ Think of it like a GPS for conversations:
 ### Dual Platform Implementation
 
 **SignalWire SWML:**
-- FastAPI bridge generates SWML responses with contexts
+- **File:** `swaig-agent/main.py` - FastAPI bridge that generates SWML responses
+- Contexts built from database and returned in SWML response (`swaig-agent/services/contexts.py`)
 - SignalWire's LLM chooses transitions within allowed `valid_contexts` (LLM-driven routing)
 - Natural language `step_criteria` guide LLM completion decisions
-- Tools declared as SWAIG functions
+- Tools declared as SWAIG functions (return `{response: str, action: []}` format)
+- SignalWire handles transitions automatically via native context system
 - **Fallbacks:** Production-quality theme, node configs, and models from actual DB snapshot (2025-11-21) with LOUD ERROR logging if database fails
 
 **LiveKit Agents:**
-- Python router functions check flags and `valid_contexts` from database (code-driven routing)
-- Boolean expression `step_criteria_lk` evaluated by custom parser
-- Manual transitions via `session.update_agent()`
-- Tools decorated with `@function_tool`
+- **Files:** `livekit-agent/agents/*.py` - 8 native Agent classes (BarbaraGreetAgent, BarbaraVerifyTask, etc.)
+- **Entrypoint:** `livekit-agent/agent.py` creates initial `BarbaraGreetAgent`
+- **Tool-Based Routing:** Tools decorated with `@function_tool` return other Agent/Task instances
+- **Automatic Handoffs:** LiveKit handles Agent handoffs automatically when tools return Agent instances
+- **Example:** `mark_greeted()` tool checks `conversation_data.verified` flag and returns `BarbaraVerifyTask` or `BarbaraAnswerAgent`
+- Tools check `valid_contexts` from database to validate allowed transitions before returning Agent
+- No manual transitions needed - LiveKit handles all handoffs automatically
 - **Fallbacks:** Production-quality theme, node configs, and models from actual DB snapshot (2025-11-21) with LOUD ERROR logging if database fails
 
 **Both platforms:**
 - Load same prompts, tools, routing rules from database
 - Use same business logic (Supabase queries, API calls)
 - Update same conversation_state flags
-- **Key Difference:** Same rules, different execution (LLM-driven vs code-driven)
+- **Key Difference:** 
+  - **SignalWire** = LLM-driven routing (SignalWire's LLM chooses from `valid_contexts` based on conversation)
+  - **LiveKit** = Tool-driven routing (LLM calls tool, tool returns next Agent instance, LiveKit handles handoff)
 
 ---
 
@@ -773,166 +780,126 @@ async def handle_function(function_name: str, request: Request):
 
 ---
 
-#### Component 3.1b: LiveKit Agent
+#### Component 3.1b: LiveKit Native Agents
 
-**File:** `livekit-agent/agent.py`
+**Files:** `livekit-agent/agents/*.py` (8 Agent classes), `livekit-agent/agent.py` (entrypoint)
 
-**Purpose:** LiveKit Agent class that implements event-based routing with BarbGraph.
+**Purpose:** LiveKit native Agent system with automatic handoffs via tool returns.
 
 **Key Features:**
-- Inherits from LiveKit's `Agent` base class
-- Stores: `phone_number`, `call_type`, `current_node`
-- Event hook: `on_agent_finished_speaking` triggers routing checks
-- Manual node transitions via `load_node()` + `session.generate_reply()`
+- Each conversation node is a separate Agent class (e.g., `BarbaraGreetAgent`, `BarbaraVerifyTask`)
+- Tools decorated with `@function_tool` return other Agent/Task instances for handoffs
+- LiveKit automatically handles Agent handoffs when tools return Agent instances
+- No manual routing code needed - LiveKit handles all transitions
 
-**Code Snippet: Agent Class (LiveKit)**
+**Code Snippet: Greet Agent (LiveKit)**
 
 ```python
-from livekit.agents import Agent, AgentSession
-from livekit.agents.llm import function_tool
+from livekit.agents import Agent, function_tool, RunContext
+from services.prompt_loader import load_node_config
+from services.conversation_state import update_conversation_state, get_conversation_state
 
-class BarbaraAgent(Agent):
-    """Barbara - Conversational AI agent for reverse mortgage lead qualification
+class BarbaraGreetAgent(Agent):
+    """Barbara's greeting agent - establishes rapport and determines next step"""
     
-    Uses BarbGraph 8-node routing with LiveKit Agents framework.
-    """
+    def __init__(self, caller_phone: str, lead_data: dict, vertical: str = "reverse_mortgage"):
+        # Load from database (same as SignalWire)
+        config = load_node_config("greet", vertical)
+        instructions = config['instructions']
+        
+        super().__init__(instructions=instructions)
+        self.caller_phone = caller_phone
+        self.lead_data = lead_data
+        self.vertical = vertical
     
-    def __init__(self):
-        super().__init__()
-        self.current_node = "greet"
-        self.phone_number = None
-        self.call_type = "inbound"
+    async def on_enter(self) -> None:
+        """Called when agent takes control - deliver scripted greeting"""
+        first_name = self.lead_data.get('first_name', 'there')
+        self.session.generate_reply(
+            instructions=f"Deliver your warm greeting to {first_name}."
+        )
     
-    async def on_enter(self, session: AgentSession):
-        """Called when agent joins room - initial setup"""
-        # Extract phone from room name or metadata
-        room_name = session.room.name
-        self.phone_number = self._extract_phone_from_room(room_name)
+    @function_tool()
+    async def mark_greeted(self, context: RunContext, reason_summary: str):
+        """Mark caller as greeted and route to appropriate next step.
         
-        # Load conversation state
-        state = get_conversation_state(self.phone_number)
+        Call this after caller has responded to your greeting.
+        This tool checks the database to determine if verification/qualification
+        are already complete from a previous call, and routes accordingly.
+        """
+        # Check database status
+        state = get_conversation_state(self.caller_phone)
+        conversation_data = (state.get('conversation_data', {}) if state else {})
+        verified = conversation_data.get('verified', False)
+        qualified = conversation_data.get('qualified', False)
         
-        # Determine starting node
-        if state and state.get("conversation_data"):
-            cd = state["conversation_data"]
-            if cd.get("appointment_booked"):
-                self.current_node = "goodbye"
-            elif cd.get("ready_to_book"):
-                self.current_node = "book"
-            elif cd.get("qualified") is not None:
-                self.current_node = "answer"
-        
-        # Load node prompt and start
-        await self.load_node(self.current_node, speak_now=True)
-        
-        # Register routing callback
-        session.on("agent_finished_speaking", self._on_agent_finished_speaking)
-    
-    async def load_node(self, node_name: str, speak_now: bool = False):
-        """Load a node's prompt from database and update session"""
-        # Load from database
-        node_config = load_node_config(node_name, "reverse_mortgage")
-        
-        # Build full prompt (theme + context + node)
-        full_prompt = build_instructions_for_node(
-            node_name=node_name,
-            call_type=self.call_type,
-            lead_context=self._get_lead_context(),
-            phone_number=self.phone_number,
-            vertical="reverse_mortgage"
+        # Mark greeted with reason
+        update_conversation_state(
+            self.caller_phone,
+            {"conversation_data": {"greeted": True, "greeting_reason": reason_summary}}
         )
         
-        self.current_node = node_name
-        
-        # Update session with new instructions
-        if speak_now:
-            await session.generate_reply(instructions=full_prompt, speak_now=True)
+        # Route based on CURRENT database state
+        if verified and qualified:
+            # Both complete - skip to main conversation
+            from .answer import BarbaraAnswerAgent
+            return BarbaraAnswerAgent(
+                caller_phone=self.caller_phone,
+                lead_data=self.lead_data,
+                vertical=self.vertical,
+                chat_ctx=self.chat_ctx
+            )
+        elif verified and not qualified:
+            # Verified but not qualified - skip verify, run qualify
+            from .qualify import BarbaraQualifyTask
+            return BarbaraQualifyTask(
+                caller_phone=self.caller_phone,
+                lead_data=self.lead_data,
+                vertical=self.vertical,
+                chat_ctx=self.chat_ctx
+            )
         else:
-            # Just update instructions for next turn
-            self._instructions = full_prompt
-    
-    async def _on_agent_finished_speaking(self, session: AgentSession):
-        """Called after Barbara finishes speaking - check for routing"""
-        await self.check_and_route()
-    
-    async def check_and_route(self):
-        """Check if we should transition to next node"""
-        state = get_conversation_state(self.phone_number)
-        if not state:
-            return
-        
-        conversation_data = state.get("conversation_data", {})
-        
-        # Check if current node is complete
-        if is_node_complete(self.current_node, conversation_data):
-            # Get next node using BarbGraph routers
-            next_node = self._get_next_node(state)
-            
-            if next_node and next_node != self.current_node:
-                logger.info(f"🔀 Routing: {self.current_node} → {next_node}")
-                await self.load_node(next_node, speak_now=True)
-    
-    def _get_next_node(self, state: dict) -> str:
-        """Use BarbGraph routers to determine next node"""
-        from workflows.routers import (
-            route_after_greet, route_after_verify, route_after_qualify,
-            route_after_quote, route_after_answer, route_after_objections,
-            route_after_book, route_after_goodbye
-        )
-        
-        routers = {
-            "greet": route_after_greet,
-            "verify": route_after_verify,
-            "qualify": route_after_qualify,
-            "quote": route_after_quote,
-            "answer": route_after_answer,
-            "objections": route_after_objections,
-            "book": route_after_book,
-            "goodbye": route_after_goodbye
-        }
-        
-        router = routers.get(self.current_node)
-        return router(state) if router else None
+            # Not verified - run verification
+            from .verify import BarbaraVerifyTask
+            return BarbaraVerifyTask(
+                caller_phone=self.caller_phone,
+                lead_data=self.lead_data,
+                vertical=self.vertical,
+                chat_ctx=self.chat_ctx
+            )
 ```
 
-**LiveKit Function Tools:**
+**Key Insight:** When `mark_greeted()` returns an Agent instance, LiveKit automatically hands off control to that Agent. No manual routing code needed!
+
+**LiveKit Entrypoint:**
 
 ```python
-# Tools decorated with @function_tool
-@function_tool
-async def mark_ready_to_book(phone: str) -> str:
-    """Mark that the caller is ready to schedule an appointment."""
-    logger.info(f"🎯 Marking caller ready to book: {phone}")
+# livekit-agent/agent.py
+async def entrypoint(ctx: JobContext):
+    """Main entrypoint - creates initial greet agent"""
+    # ... phone extraction, lead lookup, component loading ...
     
-    update_conversation_state(phone, {
-        "conversation_data": {
-            "ready_to_book": True,
-            "questions_answered": True
-        }
-    })
+    # Create initial greet agent
+    initial_agent = BarbaraGreetAgent(
+        caller_phone=caller_phone,
+        lead_data=lead_data,
+        vertical=vertical
+    )
     
-    return "Caller marked as ready to book."
-
-@function_tool
-async def book_appointment(
-    phone: str,
-    date_time: str,
-    duration_minutes: int = 30
-) -> str:
-    """Book an appointment with broker."""
-    # Nylas API integration
-    result = create_nylas_event(phone, date_time, duration_minutes)
+    # Create AgentSession
+    session = AgentSession(
+        stt=stt_instance,
+        llm=llm_instance,
+        tts=tts_instance,
+        vad=vad,
+        turn_detection=turn_detector
+    )
     
-    # Update conversation state
-    update_conversation_state(phone, {
-        "conversation_data": {
-            "appointment_booked": True,
-            "appointment_datetime": date_time,
-            "appointment_id": result["event_id"]
-        }
-    })
+    # Start with initial agent - LiveKit handles all handoffs automatically
+    await session.start(agent=initial_agent, room=ctx.room)
     
-    return f"Appointment booked for {date_time}."
+    # Session runs until participant disconnect
+    # All routing happens via tool returns
 ```
 
 ---
@@ -1107,13 +1074,21 @@ Expressions are stored in the database as text and evaluated safely. See `liveki
 
 ---
 
-#### Component 3.4: Dynamic Routers
+#### Component 3.4: Tool-Based Routing (LiveKit Only)
 
-**File:** `equity_connect/workflows/routers.py`
+**Note:** This section is historical - LiveKit now uses native Agent handoffs via tool returns instead of Python routers.
 
-**Purpose:** DB-driven routing logic for each node.
+**Old System (Refactored Away):**
+- Python routers (`route_after_greet()`, etc.) checked flags and returned node names
+- Completion checkers (`is_node_complete()`) evaluated flags and step_criteria
+- Manual transitions via `load_node()` + `session.generate_reply()`
 
-**Code Snippet: route_after_greet**
+**New System (Current):**
+- Tools decorated with `@function_tool` return Agent/Task instances
+- LiveKit automatically handles handoffs when tools return Agent instances
+- No manual routing code needed - routing logic is in tool implementations
+
+**Historical Reference: route_after_greet**
 
 ```python
 def route_after_greet(state: ConversationState) -> Literal["verify", "qualify", "answer", "exit", "greet"]:
@@ -1225,7 +1200,9 @@ def route_after_objections(state: ConversationState) -> Literal["answer", "objec
     return "objections"
 ```
 
-**Key Insight:** Routers are **dynamic** - they examine actual DB state, not hardcoded sequences. This enables seniors' unpredictable behavior to be handled gracefully.
+**Key Insight (Old System):** Routers were **dynamic** - they examined actual DB state, not hardcoded sequences. 
+
+**New System Insight:** Tools are **dynamic** - they examine actual DB state and return appropriate Agent instances. This enables seniors' unpredictable behavior to be handled gracefully. LiveKit handles all transitions automatically via tool returns.
 
 ---
 
@@ -1658,8 +1635,127 @@ Whether you're a business owner looking to improve call quality or a developer b
 
 ---
 
+## Maintaining Both Platforms via Vue Portal
+
+**File:** `portal/src/views/admin/Verticals.vue`
+
+### Overview
+
+The Vue Portal provides unified management for both SignalWire and LiveKit platforms. Both platforms share the same prompt database but have separate AI model configurations.
+
+### Shared Configuration (Both Platforms)
+
+**Theme & Prompts Tab:**
+- ✅ **Theme Editor** - Universal personality per vertical (shared by both platforms)
+- ✅ **8-Node Prompt Editor** - Instructions, tools, valid_contexts (shared by both platforms)
+- ✅ **Tool Selection** - Multi-select dropdown for available tools per node (shared)
+- ✅ **AI Helper** - Generate prompts via GPT-4o-mini (shared)
+- ✅ **Variable Insertion** - Add `{lead.first_name}` style variables (shared)
+- ✅ **Version Control** - Draft/publish workflow (shared)
+
+**What's Shared:**
+- `theme_prompts` table - Both platforms load same theme
+- `prompts` / `prompt_versions` table - Both platforms load same node instructions
+- `conversation_state` table - Both platforms update same flags
+- `valid_contexts` arrays - Both platforms respect same routing rules
+- Tool definitions - Both platforms use same tool names (backward compatible)
+
+**Impact of Changes:**
+- ✅ Editing prompts in Vue Portal → Both platforms use updated prompts on next call
+- ✅ Changing valid_contexts → Both platforms respect new routing rules
+- ✅ Adding tools to node → Both platforms have access to tool
+- ✅ No code deploy needed for prompt/instruction changes
+
+### Platform-Specific Configuration
+
+**Models & Voice Tab:**
+
+The Models & Voice tab has **two sub-tabs** for platform-specific AI configuration:
+
+**1. SignalWire Tab:**
+- ✅ **LLM Model** - Select from `signalwire_available_llm_models` (e.g., "gpt-4o-mini", "gpt-4.1-mini")
+- ✅ **STT Model** - Select from `signalwire_available_stt_models` (e.g., "deepgram:nova-3", "assemblyai:universal-streaming")
+- ✅ **TTS Engine** - Select provider (ElevenLabs, OpenAI, Google Cloud, Amazon Polly, Azure, Cartesia, Rime)
+- ✅ **Voice Name** - Select voice from `signalwire_available_voices` (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
+- ✅ **Language Code** - Select language (en-US, es-US, es-MX)
+- ✅ **Saves to:** `agent_voice_config` table
+- ✅ **Live Reload:** SignalWire agent loads active models from database on each call
+
+**2. LiveKit Tab:**
+- ✅ **Model Type Selector** - Choose between:
+  - **Pipeline Mode** - Separate STT + LLM + TTS (recommended)
+  - **OpenAI Realtime** - Unified model with built-in STT/TTS
+  - **Gemini Live** - Google's unified realtime model
+- ✅ **Pipeline Mode Configuration:**
+  - **STT Model** - Select from `livekit_available_stt_models` (e.g., "deepgram/nova-3:en", "assemblyai/universal-streaming:multi")
+  - **LLM Model** - Select from `livekit_available_llm_models` (e.g., "openai/gpt-4o", "anthropic/claude-3-5-sonnet-20241022")
+  - **TTS Voice** - Select from `livekit_available_voices` (e.g., "elevenlabs/eleven_turbo_v2_5:EXAVITQu4vr4xnSDxMaL")
+  - **Custom Voice Support** - If custom ElevenLabs voice selected, uses plugin with user's API key
+- ✅ **Realtime Mode Configuration:**
+  - **Realtime Model** - Select from `livekit_available_realtime_models` (e.g., "gpt-4o-realtime-preview", "gemini-2.0-flash-exp")
+  - **Voice** - Model-specific voice selection
+  - **Temperature** - LLM temperature (0.6-1.2 for OpenAI, 0-2 for Gemini)
+  - **Modalities** - Audio, text, or both
+  - **Turn Detection** - Server VAD or semantic turn detection
+- ✅ **Saves to:** `ai_templates` table (one active template per vertical)
+- ✅ **Live Reload:** LiveKit agent loads active template from database on each call
+
+**What's Separate:**
+- SignalWire uses `agent_voice_config` table (simple TTS configuration)
+- LiveKit uses `ai_templates` table (complex STT/LLM/TTS/VAD configuration)
+- Different model catalogs (`signalwire_*` vs `livekit_*` tables)
+- Different model formats (SignalWire uses colon format "deepgram:nova-3", LiveKit uses slash format "deepgram/nova-3:en")
+
+### How to Maintain Both Platforms
+
+**1. Editing Prompts (Shared):**
+- Navigate to **Theme & Prompts** tab
+- Edit theme or node prompts
+- Changes affect **both platforms immediately** on next call
+- No code deploy needed
+
+**2. Changing Routing Rules (Shared):**
+- Edit `valid_contexts` array in node prompt
+- Changes affect **both platforms immediately**
+- Both platforms respect same routing rules (implemented differently)
+
+**3. Configuring SignalWire AI Models:**
+- Navigate to **Models & Voice** tab
+- Click **SignalWire** sub-tab
+- Select LLM, STT, TTS models from dropdowns
+- Click "Save SignalWire Configuration"
+- Changes take effect on **next SignalWire call**
+
+**4. Configuring LiveKit AI Models:**
+- Navigate to **Models & Voice** tab
+- Click **LiveKit** sub-tab
+- Select model type (Pipeline, OpenAI Realtime, or Gemini Live)
+- Configure models for selected type
+- Click "Save LiveKit Configuration"
+- Changes take effect on **next LiveKit call**
+
+**5. Testing Changes:**
+- Use **Test Full Vertical** button (browser-based WebRTC test)
+- Or make test call via SignalWire phone number
+- Both platforms load same prompts, different AI models
+
+**Key Differences Summary:**
+
+| Aspect | SignalWire | LiveKit |
+|--------|-----------|---------|
+| **Routing** | LLM-driven (SignalWire chooses from valid_contexts) | Tool-driven (tools return Agent instances) |
+| **Prompts** | Same database (shared) | Same database (shared) |
+| **AI Models** | `agent_voice_config` table | `ai_templates` table |
+| **Model Format** | Colon format (`deepgram:nova-3`) | Slash format (`deepgram/nova-3:en`) |
+| **Tool Format** | SWAIG functions (`{response, action}`) | `@function_tool` decorators (returns `str` or `Agent`) |
+| **Update Method** | Edit in Vue → Database → Next call | Edit in Vue → Database → Next call |
+| **Code Deploy** | Not needed for prompts | Not needed for prompts |
+| **Code Deploy** | Needed for tool changes | Needed for tool changes |
+
+---
+
 **Questions?** Contact the dev team or consult the implementation docs:
-- `MASTER_PRODUCTION_PLAN.md` - Complete system overview (Nov 19 dual platform update)
+- `MASTER_PRODUCTION_PLAN.md` - Complete system overview (Nov 22 dual platform update)
 - `BARBGRAPH_SYSTEM_VERIFICATION.md` - System verification results
 - `THEME_AND_QUOTE_IMPLEMENTATION_COMPLETE.md` - Theme system + QUOTE node
 - `docs/conversation_flags.md` - All conversation flags documented

@@ -398,11 +398,12 @@ Action: Check livekit_available_stt_models table
 - **Status:** ✅ **WORKING - Tools now available, contexts routing correctly**
 
 **LiveKit Agent** (`livekit-agent/`)
-- **What:** LiveKit Agents framework with `AgentSession` and function tools
+- **What:** LiveKit native Agent system with automatic handoffs via tool returns
 - **How:** SignalWire SIP → LiveKit SIP Bridge → LiveKit agent worker
-- **Tools:** Decorated with `@function_tool`, auto-registered with AgentSession
-- **Routing:** BarbGraph Python routers (`workflows/routers.py`, `workflows/node_completion.py`)
-- **Status:** ✅ **WORKING - Spun up as fallback, fully functional**
+- **Architecture:** Agent classes (`BarbaraGreetAgent`, `BarbaraVerifyTask`, etc.) that inherit from `livekit.agents.Agent`
+- **Tools:** Decorated with `@function_tool`, tools return other Agent instances for automatic handoffs
+- **Routing:** Tools return Agent/Task instances → LiveKit handles handoffs automatically
+- **Status:** ✅ **WORKING - Native LiveKit agents with tool-based routing**
 
 ---
 
@@ -422,10 +423,14 @@ Action: Check livekit_available_stt_models table
 - **Same Business Logic:** Both call same Supabase queries, Nylas API, knowledge search
 
 **Routing Logic (Database-Informed, Platform-Specific Implementation):**
-- **SignalWire:** Uses `valid_contexts` arrays from database. SignalWire's LLM determines which transition to take based on conversation context. Natural language `step_criteria` guide completion.
-- **LiveKit:** Uses Python router functions (`route_after_greet()`, etc.) that check database flags and `valid_contexts` for allowed transitions. Boolean expression `step_criteria_lk` evaluated by custom parser.
-- **Key Difference:** SignalWire = LLM-driven routing within allowed contexts. LiveKit = Code-driven routing with database validation.
-- **Same Rules, Different Execution:** Both platforms use same database tables (`valid_contexts`, flags, prompts) but implement routing logic differently.
+- **SignalWire:** Uses `valid_contexts` arrays from database. SignalWire's LLM determines which transition to take based on conversation context. Natural language `step_criteria` guide completion. Routing happens automatically via SignalWire's context system.
+- **LiveKit:** Uses native Agent handoffs - tools decorated with `@function_tool` return other Agent/Task instances. LiveKit automatically handles the handoff when a tool returns an Agent. Tools check database flags and `valid_contexts` to decide which Agent to return. Example: `mark_greeted()` tool checks `conversation_data.verified` flag and returns `BarbaraVerifyTask` or `BarbaraAnswerAgent` accordingly.
+- **Key Difference:** 
+  - **SignalWire** = LLM-driven routing (SignalWire's LLM chooses from `valid_contexts` based on conversation)
+  - **LiveKit** = Tool-driven routing (LLM calls tool, tool returns next Agent instance, LiveKit handles handoff)
+- **Same Rules, Different Execution:** Both platforms use same database tables (`valid_contexts`, flags, prompts) but implement routing completely differently:
+  - **SignalWire:** LLM interprets instructions and chooses context transition
+  - **LiveKit:** LLM calls tools, tools implement routing logic via Agent returns
 
 **Prompt Loading (Identical):**
 - Both load from `prompt_versions` table
@@ -445,18 +450,32 @@ Action: Check livekit_available_stt_models table
 5. ✅ Fixed function handler to update conversation_state correctly
 6. ✅ Deployed to Fly.io (`barbara-swaig-bridge.fly.dev`)
 
-**LiveKit Agent:**
-7. ✅ Re-enabled LiveKit agent (was archived as "DEPRECATED")
-8. ✅ Updated `agent.py` to use database-driven prompts (not hardcoded)
-9. ✅ Added `load_node_config()` to fetch full node config (tools, valid_contexts, step_criteria)
-10. ✅ Added `validate_transition()` to check valid_contexts before routing
-11. ✅ Fixed phone number extraction from room name (`sip-_+16505300051_...`)
-12. ✅ Fixed Supabase query ordering (`.select()` before `.or_()`)
-13. ✅ Added support for OpenAI Realtime and Gemini Live plugins (realtime models)
-14. ✅ Fixed TTS voice to use LiveKit Inference compatible voice (Sarah, not custom)
-15. ✅ Fixed `AgentSession.userdata` initialization (`userdata={}` in constructor)
-16. ✅ Fixed `load_node()` to call `generate_reply(speak_now=True)` on transitions
-17. ✅ Deployed to Fly.io (`barbara-livekit.fly.dev`)
+**LiveKit Agent (November 22, 2025 - Complete Refactor):**
+7. ✅ **REFACTORED:** Replaced node-based routing system with LiveKit native agents
+8. ✅ **DELETED:** `routing_coordinator.py`, `node_agent.py`, `session_data.py`, `workflows/routers.py`, `workflows/node_completion.py` (~1000 lines)
+9. ✅ **CREATED:** `agents/` directory with 8 Agent classes:
+   - `agents/greet.py` - `BarbaraGreetAgent`
+   - `agents/verify.py` - `BarbaraVerifyTask` (AgentTask for mandatory completion)
+   - `agents/qualify.py` - `BarbaraQualifyTask`
+   - `agents/answer.py` - `BarbaraAnswerAgent`
+   - `agents/quote.py` - `BarbaraQuoteAgent`
+   - `agents/objections.py` - `BarbaraObjectionsAgent`
+   - `agents/book.py` - `BarbaraBookAgent`
+   - `agents/goodbye.py` - `BarbaraGoodbyeAgent`
+10. ✅ **ROUTING:** Tools now return Agent instances → LiveKit handles handoffs automatically
+11. ✅ **TOOLS:** All tools renamed to match SignalWire DB instructions for backward compatibility:
+    - `continue_to_verification` → `mark_greeted`
+    - `verify_caller_identity_tool` → `verify_caller_identity`
+    - `mark_qualification_result_tool` → `mark_qualified`
+    - `search_knowledge_tool` → `search_knowledge`
+    - And 8 more tool renames across all agents
+12. ✅ Fixed phone number extraction from room name (`sip-_+16505300051_...`)
+13. ✅ Fixed Supabase query ordering (`.select()` before `.or_()`)
+14. ✅ Added support for OpenAI Realtime and Gemini Live plugins (realtime models)
+15. ✅ Fixed TTS voice to use LiveKit Inference compatible voice (Sarah, not custom)
+16. ✅ Fixed `AgentSession` initialization (removed premature `async with` closure)
+17. ✅ Fixed `on_enter()` to call `generate_reply()` correctly (no await needed)
+18. ✅ Deployed to Fly.io (`barbara-livekit.fly.dev`)
 
 **Database:**
 18. ✅ Fixed missing tools in database (`calculate_reverse_mortgage` added to Quote node)
@@ -1575,15 +1594,20 @@ BarbGraph is a database-driven conversation routing system with 8 nodes and dyna
 **How It Works on Each Platform:**
 
 **SignalWire SWML:**
-- Contexts built from database and returned in SWML response
-- `valid_contexts` arrays define allowed transitions
-- `step_criteria` guide completion detection
-- SignalWire handles transitions automatically based on LLM output
+- Contexts built from database and returned in SWML response (`swaig-agent/services/contexts.py`)
+- `valid_contexts` arrays define allowed transitions (stored in database)
+- `step_criteria` guide completion detection (natural language instructions for LLM)
+- SignalWire's LLM determines which context to transition to based on conversation
+- SignalWire handles transitions automatically via native context system
+- **File:** `swaig-agent/main.py` generates SWML with contexts
 
 **LiveKit Agents:**
-- Python routers (`route_after_greet()`, etc.) check database flags and valid_contexts
-- Completion checkers (`is_node_complete()`) evaluate flags and step_criteria
-- Manual transitions via `session.generate_reply()` with new instructions
+- **Native Agent System:** Each conversation node is a separate Agent class (e.g., `BarbaraGreetAgent`, `BarbaraAnswerAgent`)
+- **Tool-Based Routing:** Tools decorated with `@function_tool` return other Agent/Task instances
+- **Automatic Handoffs:** When a tool returns an Agent instance, LiveKit automatically handles the handoff
+- **Example:** `mark_greeted()` tool checks `conversation_data.verified` flag and returns `BarbaraVerifyTask` or `BarbaraAnswerAgent`
+- Tools check `valid_contexts` from database to validate allowed transitions before returning Agent
+- **Files:** `livekit-agent/agents/*.py` (8 Agent classes), `livekit-agent/agent.py` (entrypoint creates initial `BarbaraGreetAgent`)
 
 ### Architecture: 3-Layer System (Platform-Agnostic)
 
@@ -1619,10 +1643,10 @@ BarbGraph is a database-driven conversation routing system with 8 nodes and dyna
 │  │  SignalWire SWML Bridge  │  │  LiveKit Agent Worker   │ │
 │  │  (Fly.io)                │  │  (Fly.io)               │ │
 │  ├──────────────────────────┤  ├─────────────────────────┤ │
-│  │ • FastAPI SWAIG bridge   │  │ • BarbaraAgent class    │ │
-│  │ • contexts.py (DB → SWML)│  │ • routers.py (BarbGraph)│ │
+│  │ • FastAPI SWAIG bridge   │  │ • Native Agent classes  │ │
+│  │ • contexts.py (DB → SWML)│  │ • agents/*.py (8 agents)│ │
 │  │ • SWAIG function handlers│  │ • @function_tool tools  │ │
-│  │ • valid_contexts routing │  │ • AgentSession          │ │
+│  │ • LLM-driven routing     │  │ • Tool returns → handoff│ │
 │  └──────────────────────────┘  └─────────────────────────┘ │
 │                                                              │
 │  Both load same data from database:                         │
@@ -1726,10 +1750,17 @@ CREATE TABLE theme_prompts (
 - SignalWire handles transitions automatically based on LLM intent
 
 **LiveKit Implementation:**
-- Python routers (`route_after_greet()`, `route_after_verify()`, etc.)
-- Check conversation_data flags and step completion
-- Validate transitions against `valid_contexts` from database
-- Manual transitions via `load_node()` + `session.generate_reply()`
+- **Native Agent Classes:** Each node is a separate Agent class (`BarbaraGreetAgent`, `BarbaraVerifyTask`, etc.)
+- **Tool Returns:** Tools decorated with `@function_tool` return other Agent/Task instances for handoffs
+- **Automatic Handoffs:** LiveKit handles Agent handoffs automatically when tools return Agent instances
+- **Routing Logic:** Tools check `conversation_data` flags and `valid_contexts` from database to decide which Agent to return
+- **Example Flow:**
+  ```
+  BarbaraGreetAgent.on_enter() → generates greeting
+  LLM calls mark_greeted() tool → tool checks flags → returns BarbaraVerifyTask
+  LiveKit automatically hands off to BarbaraVerifyTask
+  ```
+- **No Manual Transitions:** LiveKit handles all transitions automatically via tool returns
 
 **Routing Logic (in Database - Used by Both Platforms):**
 - **greet** → `["answer", "verify", "quote"]`
@@ -2038,10 +2069,130 @@ CREATE TABLE conversation_state (
 - `signalwire_available_voices` - TTS voice catalog (7 providers, 400+ voices, English/Spanish)
 - `signalwire_available_stt_models` - STT model catalog (5 providers, English/Spanish models)
 - `signalwire_available_llm_models` - LLM model catalog (OpenAI only - SignalWire default)
+- `livekit_available_voices` - TTS voice catalog for LiveKit Inference (175 voices)
+- `livekit_available_stt_models` - STT model catalog for LiveKit Inference (16 models)
+- `livekit_available_llm_models` - LLM model catalog for LiveKit Inference (21 models)
+- `livekit_available_realtime_models` - Realtime model catalog (OpenAI Realtime, Gemini Live)
 - `theme_prompts` - Global vertical configuration (theme content + config JSONB)
 - `vertical_snapshots` - Version metadata for entire vertical snapshots
 - `contexts_config` - Context-level settings (isolated, enter_fillers, exit_fillers)
-- `agent_voice_config` - TTS provider configuration per vertical/language
+- `agent_voice_config` - SignalWire TTS provider configuration per vertical/language
+- `ai_templates` - LiveKit AI configuration (STT, LLM, TTS, VAD, turn detection)
+
+### Dual Platform Maintenance via Vue Portal
+
+**Status:** ✅ **PRODUCTION READY - Dual Platform Configuration**
+
+The Vue Portal (`portal/src/views/admin/Verticals.vue`) provides unified management for both SignalWire and LiveKit platforms. Both platforms share the same prompt database but have separate AI model configurations.
+
+#### Shared Configuration (Both Platforms)
+
+**Theme & Prompts Tab:**
+- ✅ **Theme Editor** - Universal personality per vertical (shared by both platforms)
+- ✅ **8-Node Prompt Editor** - Instructions, tools, valid_contexts (shared by both platforms)
+- ✅ **Tool Selection** - Multi-select dropdown for available tools per node (shared)
+- ✅ **AI Helper** - Generate prompts via GPT-4o-mini (shared)
+- ✅ **Variable Insertion** - Add `{lead.first_name}` style variables (shared)
+- ✅ **Version Control** - Draft/publish workflow (shared)
+
+**What's Shared:**
+- `theme_prompts` table - Both platforms load same theme
+- `prompts` / `prompt_versions` table - Both platforms load same node instructions
+- `conversation_state` table - Both platforms update same flags
+- `valid_contexts` arrays - Both platforms respect same routing rules
+- Tool definitions - Both platforms use same tool names (backward compatible)
+
+**Impact of Changes:**
+- ✅ Editing prompts in Vue Portal → Both platforms use updated prompts on next call
+- ✅ Changing valid_contexts → Both platforms respect new routing rules
+- ✅ Adding tools to node → Both platforms have access to tool
+- ✅ No code deploy needed for prompt/instruction changes
+
+#### Platform-Specific Configuration
+
+**Models & Voice Tab:**
+
+The Models & Voice tab has **two sub-tabs** for platform-specific AI configuration:
+
+**1. SignalWire Tab:**
+- ✅ **LLM Model** - Select from `signalwire_available_llm_models` (e.g., "gpt-4o-mini", "gpt-4.1-mini")
+- ✅ **STT Model** - Select from `signalwire_available_stt_models` (e.g., "deepgram:nova-3", "assemblyai:universal-streaming")
+- ✅ **TTS Engine** - Select provider (ElevenLabs, OpenAI, Google Cloud, Amazon Polly, Azure, Cartesia, Rime)
+- ✅ **Voice Name** - Select voice from `signalwire_available_voices` (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
+- ✅ **Language Code** - Select language (en-US, es-US, es-MX)
+- ✅ **Saves to:** `agent_voice_config` table
+- ✅ **Live Reload:** SignalWire agent loads active models from database on each call
+
+**2. LiveKit Tab:**
+- ✅ **Model Type Selector** - Choose between:
+  - **Pipeline Mode** - Separate STT + LLM + TTS (recommended)
+  - **OpenAI Realtime** - Unified model with built-in STT/TTS
+  - **Gemini Live** - Google's unified realtime model
+- ✅ **Pipeline Mode Configuration:**
+  - **STT Model** - Select from `livekit_available_stt_models` (e.g., "deepgram/nova-3:en", "assemblyai/universal-streaming:multi")
+  - **LLM Model** - Select from `livekit_available_llm_models` (e.g., "openai/gpt-4o", "anthropic/claude-3-5-sonnet-20241022")
+  - **TTS Voice** - Select from `livekit_available_voices` (e.g., "elevenlabs/eleven_turbo_v2_5:EXAVITQu4vr4xnSDxMaL")
+  - **Custom Voice Support** - If custom ElevenLabs voice selected, uses plugin with user's API key
+- ✅ **Realtime Mode Configuration:**
+  - **Realtime Model** - Select from `livekit_available_realtime_models` (e.g., "gpt-4o-realtime-preview", "gemini-2.0-flash-exp")
+  - **Voice** - Model-specific voice selection
+  - **Temperature** - LLM temperature (0.6-1.2 for OpenAI, 0-2 for Gemini)
+  - **Modalities** - Audio, text, or both
+  - **Turn Detection** - Server VAD or semantic turn detection
+- ✅ **Saves to:** `ai_templates` table (one active template per vertical)
+- ✅ **Live Reload:** LiveKit agent loads active template from database on each call
+
+**What's Separate:**
+- SignalWire uses `agent_voice_config` table (simple TTS configuration)
+- LiveKit uses `ai_templates` table (complex STT/LLM/TTS/VAD configuration)
+- Different model catalogs (`signalwire_*` vs `livekit_*` tables)
+- Different model formats (SignalWire uses colon format "deepgram:nova-3", LiveKit uses slash format "deepgram/nova-3:en")
+
+#### How to Maintain Both Platforms
+
+**1. Editing Prompts (Shared):**
+- Navigate to **Theme & Prompts** tab
+- Edit theme or node prompts
+- Changes affect **both platforms immediately** on next call
+- No code deploy needed
+
+**2. Changing Routing Rules (Shared):**
+- Edit `valid_contexts` array in node prompt
+- Changes affect **both platforms immediately**
+- Both platforms respect same routing rules (implemented differently)
+
+**3. Configuring SignalWire AI Models:**
+- Navigate to **Models & Voice** tab
+- Click **SignalWire** sub-tab
+- Select LLM, STT, TTS models from dropdowns
+- Click "Save SignalWire Configuration"
+- Changes take effect on **next SignalWire call**
+
+**4. Configuring LiveKit AI Models:**
+- Navigate to **Models & Voice** tab
+- Click **LiveKit** sub-tab
+- Select model type (Pipeline, OpenAI Realtime, or Gemini Live)
+- Configure models for selected type
+- Click "Save LiveKit Configuration"
+- Changes take effect on **next LiveKit call**
+
+**5. Testing Changes:**
+- Use **Test Full Vertical** button (browser-based WebRTC test)
+- Or make test call via SignalWire phone number
+- Both platforms load same prompts, different AI models
+
+**Key Differences Summary:**
+
+| Aspect | SignalWire | LiveKit |
+|--------|-----------|---------|
+| **Routing** | LLM-driven (SignalWire chooses from valid_contexts) | Tool-driven (tools return Agent instances) |
+| **Prompts** | Same database (shared) | Same database (shared) |
+| **AI Models** | `agent_voice_config` table | `ai_templates` table |
+| **Model Format** | Colon format (`deepgram:nova-3`) | Slash format (`deepgram/nova-3:en`) |
+| **Tool Format** | SWAIG functions (`{response, action}`) | `@function_tool` decorators (returns `str` or `Agent`) |
+| **Update Method** | Edit in Vue → Database → Next call | Edit in Vue → Database → Next call |
+| **Code Deploy** | Not needed for prompts | Not needed for prompts |
+| **Code Deploy** | Needed for tool changes | Needed for tool changes |
 
 ### Lead Management Portal
 

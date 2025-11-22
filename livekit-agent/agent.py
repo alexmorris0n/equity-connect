@@ -947,11 +947,11 @@ def build_llm_plugin(template: dict):
                 )
             )
         
+        # OpenRouter LLM only supports: model, fallback_models, provider, plugins, site_url, app_name
+        # API key is set via OPENROUTER_API_KEY environment variable
+        # Temperature, top_p, max_tokens are NOT supported by with_openrouter()
         return openai.LLM.with_openrouter(
             model=model,
-            api_key=Config.OPENROUTER_API_KEY,
-            temperature=temperature,
-            top_p=top_p,
             plugins=plugins if plugins else None,
         )
     elif provider == "openai":
