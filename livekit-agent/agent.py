@@ -538,15 +538,31 @@ async def entrypoint(ctx: JobContext):
         else:
             stt_plugin = None
         
-        # LLM model string - use model_id_full from database
+        # LLM - Use OpenRouter for low latency (~15-40ms overhead vs 31+ sec with LiveKit Inference)
         if active_llm and active_llm.get("model_id_full"):
-            llm_string = active_llm["model_id_full"]  # e.g., "openai/gpt-5"
-            logger.info(f"🧠 ENTRYPOINT: LLM initialized - {llm_string} (LiveKit Inference)")
+            llm_model = active_llm["model_id_full"]  # e.g., "openai/gpt-5"
+            logger.info(f"🧠 ENTRYPOINT: LLM initialized - {llm_model} (OpenRouter with fallbacks)")
         else:
             # 🚨 LOUD FALLBACK
             from services.fallbacks import log_model_fallback, get_fallback_model
-            llm_string = get_fallback_model("livekit", "llm")
-            log_model_fallback("livekit", "llm", "No active LLM model found in database (is_active=true)", llm_string)
+            llm_model = get_fallback_model("livekit", "llm")
+            log_model_fallback("livekit", "llm", "No active LLM model found in database (is_active=true)", llm_model)
+        
+        # Create OpenRouter LLM instance with fallbacks and latency optimization
+        llm_instance = openai.LLM.with_openrouter(
+            model=llm_model,  # Primary model from database
+            fallback_models=[
+                "openai/gpt-4o",           # Fast, reliable fallback
+                "anthropic/claude-sonnet-4",  # High quality fallback
+                "openai/gpt-4o-mini",      # Cost-effective fallback
+            ],
+            provider={
+                "sort": "latency",         # Prioritize lowest latency providers
+                "allow_fallbacks": True,   # Enable automatic failover
+            },
+            site_url="https://equityconnect.ai",
+            app_name="Barbara Voice Agent",
+        )
         
         # TTS model string - Check if we need plugin for custom voices
         tts_use_plugin = is_custom_voice
@@ -729,7 +745,7 @@ async def entrypoint(ctx: JobContext):
         # ✅ Pass userdata with type annotation (matches docs pattern)
         session = AgentSession[BarbaraSessionData](
             stt=stt_for_session,  # Plugin instance OR LiveKit Inference string format
-            llm=llm_string,  # LiveKit Inference string format
+            llm=llm_instance,  # OpenRouter LLM instance with fallbacks
             tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
             userdata=userdata,  # ✅ Pass BarbaraSessionData instance
