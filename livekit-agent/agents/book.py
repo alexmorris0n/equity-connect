@@ -40,7 +40,7 @@ class BarbaraBookAgent(Agent):
     
     async def on_enter(self) -> None:
         """Called when agent takes control - check broker availability"""
-        await self.session.generate_reply(
+        self.session.generate_reply(
             instructions="Check broker availability and present available time slots to the user. Be warm and helpful."
         )
     

@@ -41,7 +41,7 @@ class BarbaraObjectionsAgent(Agent):
     
     async def on_enter(self) -> None:
         """Called when agent takes control - address the concern"""
-        await self.session.generate_reply(
+        self.session.generate_reply(
             instructions="Address the user's concern empathetically. Use search_knowledge if you need information to address their specific objection."
         )
     

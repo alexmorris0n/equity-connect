@@ -51,32 +51,32 @@ class BarbaraGoodbyeAgent(Agent):
             appointment_datetime = conversation_data.get('appointment_datetime')
             
             if appointment_datetime:
-                await self.session.generate_reply(
+                self.session.generate_reply(
                     instructions=f"Confirm the appointment on {appointment_datetime} and deliver warm goodbye. Thank them for their time."
                 )
             else:
-                await self.session.generate_reply(
+                self.session.generate_reply(
                     instructions="Confirm the appointment and deliver warm goodbye. Thank them for their time."
                 )
         
         elif self.reason == "disqualified":
-            await self.session.generate_reply(
+            self.session.generate_reply(
                 instructions=f"Deliver empathetic goodbye explaining they don't qualify. Reason: {self.disqualification_reason}. Be warm and understanding."
             )
         
         elif self.reason == "waiting_for_correct_person":
-            await self.session.generate_reply(
+            self.session.generate_reply(
                 instructions="Tell them you'll wait while they get the correct person on the phone. Be patient and friendly."
             )
         
         elif self.reason == "wrong_person_unavailable":
-            await self.session.generate_reply(
+            self.session.generate_reply(
                 instructions="Politely end the call since the correct person isn't available. Offer to call back later."
             )
         
         else:
             # Standard goodbye
-            await self.session.generate_reply(
+            self.session.generate_reply(
                 instructions="Deliver warm goodbye. Thank them for their time and offer to help if they have more questions."
             )
     

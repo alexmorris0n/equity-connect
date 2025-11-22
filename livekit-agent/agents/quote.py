@@ -41,7 +41,7 @@ class BarbaraQuoteAgent(Agent):
     
     async def on_enter(self) -> None:
         """Called when agent takes control - calculate and present quote"""
-        await self.session.generate_reply(
+        self.session.generate_reply(
             instructions="Calculate the reverse mortgage quote based on lead data and present it to the user. Use the information from the lead record (age, home value, mortgage balance) to calculate available equity."
         )
     

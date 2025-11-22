@@ -54,11 +54,11 @@ class BarbaraAnswerAgent(Agent):
                 user_has_question = True
         
         if user_has_question:
-            await self.session.generate_reply(
+            self.session.generate_reply(
                 instructions="Answer the user's question using search_knowledge if needed."
             )
         else:
-            await self.session.generate_reply(
+            self.session.generate_reply(
                 instructions="Prompt the user to ask their question. Be warm and encouraging."
             )
     
