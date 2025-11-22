@@ -801,8 +801,11 @@ async def entrypoint(ctx: JobContext):
                 f"🤖 AGENT STATE: {old_state} -> {new_state} (phase={phase})"
             )
             
-            # Check routing after agent finishes speaking (for silent routing after mark_greeted)
-            if old_state == "speaking" and new_state == "listening":
+            # Check routing after agent finishes (for silent routing after mark_greeted)
+            # This can happen in two ways:
+            # 1. speaking -> listening (agent spoke then stopped)
+            # 2. thinking -> listening (tool called, no speech generated)
+            if new_state == "listening" and old_state in ("speaking", "thinking"):
                 # Schedule routing check if we're in greet and reason_captured is True
                 import asyncio
                 asyncio.create_task(_check_routing_after_speaking(session))
