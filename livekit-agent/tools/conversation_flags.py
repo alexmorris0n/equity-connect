@@ -42,7 +42,7 @@ async def mark_greeted(phone: str, reason_summary: str) -> str:
         }
     })
     
-    return "Greeting + reason confirmed. Ready to transition to next conversation phase."
+    return "Routing initiated. Do not generate any further response - routing system will handle the transition."
 
 
 @function_tool
