@@ -580,8 +580,6 @@ async def entrypoint(ctx: JobContext):
             from services.fallbacks import log_model_fallback, get_fallback_model
             tts_string = get_fallback_model("livekit", "tts")
             log_model_fallback("livekit", "tts", "No active TTS voice found in database (is_active=true)", tts_string)
-        
-        llm_instance = None  # Will use llm_string for pipeline mode
     
     # Get interruption settings from template
     allow_interruptions = template.get("allow_interruptions", True)
