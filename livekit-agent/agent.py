@@ -562,9 +562,6 @@ async def entrypoint(ctx: JobContext):
             },
             site_url="https://equityconnect.ai",
             app_name="Barbara Voice Agent",
-            # Streaming optimization - start speaking ASAP
-            temperature=0.7,  # Slightly lower for faster token generation
-            max_tokens=512,   # Reasonable limit for voice responses
         )
         
         # 🧪 TEMPORARY: Force TTS plugin to bypass LiveKit Inference rate limits (HTTP 429)
@@ -747,10 +744,6 @@ async def entrypoint(ctx: JobContext):
             false_interruption_timeout=false_interruption_timeout,
             # Response generation settings from template
             preemptive_generation=preemptive_generation,
-            # 🚀 STREAMING OPTIMIZATION: Start speaking as soon as first tokens arrive
-            # This makes perceived latency much lower - user hears response ASAP
-            streaming=True,  # Enable streaming mode
-            sentence_tokenizer="basic",  # Use basic tokenizer for faster sentence detection
         )
     
     def _install_session_state_observers():
