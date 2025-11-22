@@ -306,36 +306,10 @@ class BarbaraNodeAgent(Agent):
         If so, skip the "what's your question?" prompt and let the LLM
         see the question in chat history and answer it directly.
         """
-        # Check if the last user message contains a question
-        chat_ctx = getattr(self.session, "_chat_ctx", None)
-        if chat_ctx:
-            # ChatContext is iterable - convert to list to check last messages
-            try:
-                messages = list(chat_ctx)
-                last_messages = messages[-3:] if len(messages) >= 3 else messages
-                for msg in reversed(last_messages):
-                    if hasattr(msg, "role") and msg.role == "user":
-                        text = getattr(msg, "text_content", "") or getattr(msg, "content", "")
-                        if text and ("?" in text or len(text.split()) > 5):
-                            # User already asked a question or provided context
-                            # Skip the "what's your question?" prompt and let LLM respond to history
-                            logger.info(f"✅ User already asked question: '{text[:50]}...' - letting LLM respond directly")
-                            return False  # Don't handle on_enter, let normal flow process the question
-            except Exception as e:
-                logger.debug(f"Could not check chat history: {e}")
-        
-        # No recent question found - ask what they want to know
-        session_userdata = getattr(getattr(self, "session", None), "userdata", None)  # type: ignore[attr-defined]
-        summary = getattr(session_userdata, "call_reason_summary", None) if session_userdata else None
-        if summary:
-            opener = (
-                f"Thanks for letting me know you're looking to {summary.lower()}. "
-                "What questions should we tackle first?"
-            )
-        else:
-            opener = "Happy to help. What questions would you like to dig into first?"
-        await self.session.generate_reply(instructions=opener)
-        return True
+        # Note: ChatContext iteration API is not clearly documented in v1.x
+        # Safest approach is to always let LLM see the chat history and respond naturally
+        # The LLM will see the question in history and answer it directly without prompting
+        return False  # Don't add generic prompt, let LLM process the question from history
 
     async def _maybe_handle_outbound_confirmation(self) -> bool:
         """After outbound caller responds, deliver the follow-up introduction."""
