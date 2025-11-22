@@ -796,6 +796,11 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info(f"✅ ENTRYPOINT: AgentSession started - agent.on_enter() should be called next")
         
+        # Wait for the session to close (participant disconnect or shutdown)
+        # This prevents the finally block from executing immediately
+        logger.info(f"⏳ ENTRYPOINT: Waiting for session to close...")
+        await session.wait()
+        logger.info(f"✅ ENTRYPOINT: Session closed normally")
         exit_reason = "hangup"
     except Exception as e:
         logger.error(f"Session error: {e}")
