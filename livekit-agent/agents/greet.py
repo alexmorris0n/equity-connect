@@ -26,10 +26,17 @@ class BarbaraGreetAgent(Agent):
         chat_ctx: Optional[ChatContext] = None
     ):
         # Load from database (same as node system)
-        config = load_node_config("greet", vertical)
+        try:
+            config = load_node_config("greet", vertical)
+            instructions = config['instructions']
+            logger.info(f"✅ Loaded greet config from database for {vertical}")
+        except Exception as e:
+            logger.error(f"❌ Failed to load greet config: {e}")
+            # Fallback to basic instructions
+            instructions = "You are Barbara, a friendly AI assistant for reverse mortgage inquiries. Greet the caller warmly."
         
         super().__init__(
-            instructions=config['instructions'],  # Combined theme + node prompt
+            instructions=instructions,
             chat_ctx=chat_ctx
         )
         
