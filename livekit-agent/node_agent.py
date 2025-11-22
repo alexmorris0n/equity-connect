@@ -193,7 +193,8 @@ class BarbaraNodeAgent(Agent):
         
         We use this to:
         1. Log the node transition for debugging
-        2. Trigger immediate speech to execute the node's instructions
+        2. Trigger immediate speech ONLY for greet node (initial greeting)
+        3. For other nodes, let the LLM respond naturally based on context
         
         Documentation:
             From LiveKit docs (/agents/build/agents-handoffs/#defining-an-agent):
@@ -206,23 +207,15 @@ class BarbaraNodeAgent(Agent):
         """
         logger.info(f"🎯 ON_ENTER: BarbaraNodeAgent entered node '{self.session.userdata.current_node}'")
         
+        # ONLY greet on the initial greet node - all other nodes let LLM respond naturally
         if self.node_name == "greet":
             handled = await self._handle_greet_on_enter()
             if handled:
                 logger.info("✅ ON_ENTER complete for node 'greet' (scripted greeting delivered)")
                 return
-        elif self.node_name == "answer":
-            handled = await self._handle_answer_on_enter()
-            if handled:
-                logger.info("✅ ON_ENTER complete for node 'answer' (intent acknowledged)")
-                return
         
-        # Generate agent speech based on node instructions
-        # This ensures the agent immediately acts according to the new node's purpose
-        await self.session.generate_reply(
-            instructions=f"Begin the {self.session.userdata.current_node} conversation phase. Follow the instructions for this node."
-        )
-        
+        # For all other nodes (answer, quote, etc), don't generate a reply here
+        # Let the conversation flow naturally based on the chat history and node instructions
         logger.info(f"✅ ON_ENTER complete for node '{self.session.userdata.current_node}'")
     
     async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
@@ -346,11 +339,18 @@ class BarbaraNodeAgent(Agent):
         return True
 
     def _extract_lead_name(self, lead_context: Optional[Dict[str, Any]]) -> Optional[str]:
-        """Prefer full name, fall back to first name."""
+        """Extract FIRST NAME ONLY for natural greeting."""
         if not lead_context:
             return None
+        
+        # Prefer first_name field
+        if lead_context.get("first_name"):
+            return lead_context["first_name"]
+        
+        # If only full name available, extract first word
         if lead_context.get("name"):
-            return lead_context["name"]
+            full_name = lead_context["name"]
+            return full_name.split()[0] if full_name else None
         first = lead_context.get("first_name")
         last = lead_context.get("last_name")
         if first and last:
