@@ -50,14 +50,52 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
         logger.info(f"BarbaraQualifyTask started for {caller_phone}")
     
     async def on_enter(self) -> None:
-        """Start qualification - only check gates that haven't been checked yet"""
+        """Start qualification - check history and only check gates that haven't been checked yet"""
+        # First, check if user already answered qualification questions in their last message
+        history_items = list(self.chat_ctx.items) if hasattr(self.chat_ctx, 'items') else []
+        
+        # Find the last user message and check if it contains qualification info
+        user_provided_qualification = False
+        last_user_message_text = ""
+        
+        # Search backwards through history to find last user message
+        for item in reversed(history_items):
+            if hasattr(item, 'role') and item.role == 'user':
+                # Extract message text - content can be a list or string
+                if hasattr(item, 'text_content'):
+                    last_user_message_text = item.text_content()
+                elif hasattr(item, 'content'):
+                    content = item.content
+                    if isinstance(content, list):
+                        last_user_message_text = ' '.join(str(c) for c in content if c)
+                    else:
+                        last_user_message_text = str(content)
+                elif hasattr(item, 'text'):
+                    last_user_message_text = str(item.text)
+                else:
+                    continue
+                
+                # Detect if user provided qualification info (age, homeowner status, etc.)
+                qualification_indicators = [
+                    'years old', 'age', 'i\'m', 'i am', 'turned',
+                    'own', 'owner', 'homeowner', 'my house', 'my property',
+                    'primary residence', 'live here', 'full-time',
+                    'worth', 'value', 'equity', 'mortgage', 'balance',
+                    'dollars', '$', 'thousand', 'hundred thousand'
+                ]
+                message_lower = last_user_message_text.lower()
+                if any(indicator in message_lower for indicator in qualification_indicators):
+                    user_provided_qualification = True
+                    logger.info(f"Detected qualification info in last user message: {last_user_message_text[:100]}")
+                break
+        
         lead_id = self.lead_data.get('id')
         if not lead_id:
             logger.warning("No lead_id in lead_data, cannot check qualification status")
-            # Fallback to generic instructions if lead_id is missing
-            await self.session.generate_reply(
-                instructions="Check the 4 qualification gates."
-            )
+            qualification_context = "=== QUALIFICATION CONTEXT ===\n"
+            qualification_context += "Lead ID not available - check all qualification gates.\n"
+            qualification_context += "===========================\n"
+            await self.session.generate_reply(instructions=qualification_context)
             return
 
         sb = get_supabase_client()
@@ -73,31 +111,16 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
 
             if all_qualified:
                 logger.info(f"Lead {lead_id} is fully qualified, skipping qualification")
-                # on_enter() must return None - cannot return Agent instances
-                # Instead, generate a reply that instructs the agent to immediately call mark_qualified
-                # which will handle routing to the next agent
-                await self.session.generate_reply(
-                    instructions="Qualification is already complete. Immediately call mark_qualified with qualified=True to route to the answer agent."
-                )
+                qualification_context = "=== QUALIFICATION CONTEXT ===\n"
+                qualification_context += "Status: Already fully qualified\n"
+                qualification_context += "Action: Route to answer agent\n"
+                qualification_context += "===========================\n"
+                await self.session.generate_reply(instructions=qualification_context)
                 return
 
-            needs_qualification = []
-            if not age_qualified:
-                needs_qualification.append("age (62+)")
-            if not homeowner_qualified:
-                needs_qualification.append("homeownership")
-            if not primary_residence_qualified:
-                needs_qualification.append("primary residence")
-            if not equity_qualified:
-                needs_qualification.append("sufficient equity")
-
-            logger.info(f"Lead {lead_id} needs qualification: {', '.join(needs_qualification)}")
-
-            # Build context for the agent
-            qualification_context = f"""
-=== QUALIFICATION STATUS ===
-The following gates need to be checked:
-"""
+            # Build context for the agent (no hard-coded instructions)
+            qualification_context = "=== QUALIFICATION CONTEXT ===\n"
+            qualification_context += "The following gates need to be checked:\n"
             if not age_qualified:
                 qualification_context += "- age_qualified = false (need to confirm caller is 62+)\n"
             if not homeowner_qualified:
@@ -107,17 +130,22 @@ The following gates need to be checked:
             if not equity_qualified:
                 qualification_context += "- equity_qualified = false (need to confirm sufficient equity)\n"
             
+            # Add history context if user provided qualification info
+            if user_provided_qualification:
+                qualification_context += f"\n=== USER JUST PROVIDED QUALIFICATION INFO ===\n"
+                qualification_context += f"Last message: {last_user_message_text[:200]}\n"
+                qualification_context += "Extract and use this information immediately - don't ask for it again.\n"
+            
             qualification_context += "===========================\n"
 
-            # Generate reply with context - let database prompt handle the greeting
-            await self.session.generate_reply(
-                instructions=qualification_context + "\nGreet the caller and begin checking the qualification gates."
-            )
+            # Let database prompt handle the actual instructions
+            await self.session.generate_reply(instructions=qualification_context)
         except Exception as e:
             logger.error(f"Error checking qualification status: {e}")
-            await self.session.generate_reply(
-                instructions="Check the 4 qualification gates: age 62+, homeowner, primary residence, sufficient equity."
-            )
+            qualification_context = "=== QUALIFICATION CONTEXT ===\n"
+            qualification_context += "Error checking status - check all qualification gates.\n"
+            qualification_context += "===========================\n"
+            await self.session.generate_reply(instructions=qualification_context)
     
     @function_tool()
     async def mark_age_qualified(self, context: RunContext):
@@ -214,9 +242,9 @@ The following gates need to be checked:
         
         # After qualification, route to next step
         if qualified:
-            # Qualified - go to main conversation
-            from .answer import BarbaraAnswerAgent
-            return BarbaraAnswerAgent(
+            # Qualified - go to QUOTE first (perfect route: qualify → quote → answer → book)
+            from .quote import BarbaraQuoteAgent
+            return BarbaraQuoteAgent(
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,

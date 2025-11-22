@@ -46,21 +46,53 @@ class BarbaraAnswerAgent(Agent):
         # If yes, answer it. If no, prompt for question.
         history_items = list(self.chat_ctx.items) if hasattr(self.chat_ctx, 'items') else []
         
-        # Check if last user message was a question
+        # Find the last user message and check if it's a question
         user_has_question = False
-        if history_items:
-            last_item = history_items[-1]
-            if hasattr(last_item, 'role') and last_item.role == 'user':
-                user_has_question = True
+        last_user_message = None
         
+        # Search backwards through history to find last user message
+        for item in reversed(history_items):
+            if hasattr(item, 'role') and item.role == 'user':
+                last_user_message = item
+                # Check if it contains a question mark or question words
+                # Extract message text - content can be a list or string
+                message_text = ""
+                if hasattr(item, 'text_content'):
+                    # Preferred method if available
+                    message_text = item.text_content()
+                elif hasattr(item, 'content'):
+                    content = item.content
+                    # Handle both list and string content
+                    if isinstance(content, list):
+                        message_text = ' '.join(str(c) for c in content if c)
+                    else:
+                        message_text = str(content)
+                elif hasattr(item, 'text'):
+                    message_text = str(item.text)
+                else:
+                    continue  # Skip if we can't extract text
+                
+                # Detect if it's a question (has ? or question words)
+                question_indicators = ['?', 'can i', 'can we', 'could i', 'could we', 'may i', 
+                                      'what', 'when', 'where', 'who', 'why', 'how', 'is it', 
+                                      'are you', 'will i', 'would i', 'should i', 'do i', 'does']
+                message_lower = message_text.lower()
+                if '?' in message_text or any(indicator in message_lower for indicator in question_indicators):
+                    user_has_question = True
+                break
+        
+        # Build dynamic context (no hard-coded instructions)
+        answer_context = "=== ANSWER CONTEXT ===\n"
         if user_has_question:
-            self.session.generate_reply(
-                instructions="Answer the user's question using search_knowledge if needed."
-            )
+            answer_context += "User already asked a question in their last message.\n"
+            answer_context += "Action: Answer it immediately - do not ask 'what's your question'.\n"
         else:
-            self.session.generate_reply(
-                instructions="Prompt the user to ask their question. Be warm and encouraging."
-            )
+            answer_context += "User indicated they have questions but hasn't asked yet.\n"
+            answer_context += "Action: Prompt them to ask their question.\n"
+        answer_context += "===========================\n"
+        
+        # Let database prompt handle the actual instructions
+        await self.session.generate_reply(instructions=answer_context)
     
     @function_tool()
     async def search_knowledge(self, context: RunContext, question: str) -> str:

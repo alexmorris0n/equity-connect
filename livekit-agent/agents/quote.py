@@ -43,7 +43,53 @@ class BarbaraQuoteAgent(Agent):
         logger.info(f"BarbaraQuoteAgent created for {caller_phone}")
     
     async def on_enter(self) -> None:
-        """Called when agent takes control - calculate and present quote"""
+        """Called when agent takes control - check history and calculate quote"""
+        # First, check if user already asked for quote or provided numbers in their last message
+        history_items = list(self.chat_ctx.items) if hasattr(self.chat_ctx, 'items') else []
+        
+        # Find the last user message and check if it's a quote request or contains numbers
+        user_asked_for_quote = False
+        user_provided_numbers = False
+        last_user_message_text = ""
+        
+        # Search backwards through history to find last user message
+        for item in reversed(history_items):
+            if hasattr(item, 'role') and item.role == 'user':
+                # Extract message text - content can be a list or string
+                if hasattr(item, 'text_content'):
+                    last_user_message_text = item.text_content()
+                elif hasattr(item, 'content'):
+                    content = item.content
+                    if isinstance(content, list):
+                        last_user_message_text = ' '.join(str(c) for c in content if c)
+                    else:
+                        last_user_message_text = str(content)
+                elif hasattr(item, 'text'):
+                    last_user_message_text = str(item.text)
+                else:
+                    continue
+                
+                # Detect if user asked for quote
+                quote_request_indicators = [
+                    'how much', 'what can i get', 'how much can i', 'calculate',
+                    'run the numbers', 'what are my numbers', 'quote', 'estimate'
+                ]
+                message_lower = last_user_message_text.lower()
+                if any(indicator in message_lower for indicator in quote_request_indicators):
+                    user_asked_for_quote = True
+                
+                # Detect if user provided numbers (property value, age, etc.)
+                number_indicators = [
+                    '$', 'dollars', 'thousand', 'hundred thousand', 'million',
+                    'worth', 'value', 'age', 'years old', 'mortgage', 'balance'
+                ]
+                if any(indicator in message_lower for indicator in number_indicators):
+                    user_provided_numbers = True
+                
+                if user_asked_for_quote or user_provided_numbers:
+                    logger.info(f"Detected quote request/numbers in last user message: {last_user_message_text[:100]}")
+                break
+        
         lead_id = self.lead_data.get('id')
         
         # Build context about available data for calculation
@@ -85,9 +131,19 @@ class BarbaraQuoteAgent(Agent):
         else:
             quote_context += "No lead_id available. Collect property value, age, and mortgage balance.\n===========================\n"
         
-        # Generate reply with context - let database prompt handle the greeting and calculation instructions
+        # Add history context if user asked for quote or provided numbers
+        if user_asked_for_quote or user_provided_numbers:
+            quote_context += f"\n=== USER JUST ASKED FOR QUOTE / PROVIDED NUMBERS ===\n"
+            quote_context += f"Last message: {last_user_message_text[:200]}\n"
+            if user_asked_for_quote:
+                quote_context += "User asked for a quote - calculate it immediately.\n"
+            if user_provided_numbers:
+                quote_context += "User provided numbers - extract and use them immediately.\n"
+            quote_context += "===========================\n"
+        
+        # Let database prompt handle the actual instructions
         await self.session.generate_reply(
-            instructions=quote_context + "\nGreet the caller and calculate the reverse mortgage quote using the calculate_reverse_mortgage tool."
+            instructions=quote_context
         )
     
     @function_tool()

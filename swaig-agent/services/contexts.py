@@ -157,8 +157,8 @@ def get_functions_for_node(node_name: str) -> List[str]:
         "qualify": ["mark_qualified", "mark_age_qualified", "mark_homeowner_qualified", "mark_primary_residence_qualified", "mark_equity_qualified", "route_conversation"],
         "quote": ["mark_quote_presented", "calculate_reverse_mortgage", "route_conversation"],
         "answer": ["search_knowledge", "mark_ready_to_book", "route_conversation"],
-        "objections": ["search_knowledge", "mark_ready_to_book", "route_conversation"],
-        "book": ["book_appointment", "mark_ready_to_book", "route_conversation"],
+        "objections": ["search_knowledge", "mark_has_objection", "mark_objection_handled", "route_conversation"],
+        "book": ["check_broker_availability", "book_appointment", "route_conversation"],
         "goodbye": ["route_conversation"],
         "end": []
     }

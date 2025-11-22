@@ -536,12 +536,12 @@ async def get_function_declarations(request: Request):
             },
             "check_broker_availability": {
                 "function": "check_broker_availability",
-                "description": "Check if assigned broker has availability for appointment",
+                "description": "Check assigned broker's calendar availability. Call this BEFORE suggesting specific times to see when the broker is actually available.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "preferred_date": {"type": "string", "description": "Preferred date (optional)"},
-                        "preferred_time": {"type": "string", "description": "Preferred time (optional)"}
+                        "preferred_date": {"type": "string", "description": "Preferred date if user has one (e.g., 'Monday', '2025-11-25')"},
+                        "preferred_time": {"type": "string", "description": "Preferred time if user has one (e.g., 'morning', 'afternoon', '2pm')"}
                     }
                 }
             }
@@ -665,6 +665,9 @@ async def handle_function_call(function_name: str, request: Request):
         
         elif function_name == "book_appointment":
             result = await handle_booking(caller_id, args)
+        
+        elif function_name == "check_broker_availability":
+            result = await handle_check_broker_availability(caller_id, args)
         
         elif function_name == "verify_caller_identity":
             result = await handle_verify_caller_identity(caller_id, args)

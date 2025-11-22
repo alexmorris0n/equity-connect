@@ -10,7 +10,6 @@ from livekit.agents.llm import ChatContext
 from dataclasses import dataclass
 from services.prompt_loader import load_node_config
 from services.conversation_state import update_conversation_state
-from services.supabase import get_supabase_client
 from tools.lead import verify_caller_identity, update_lead_info
 from typing import Optional
 import logging
@@ -49,74 +48,10 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         logger.info(f"BarbaraVerifyTask started for {caller_phone}")
     
     async def on_enter(self) -> None:
-        """Start verification - only verify what's not already verified"""
-        # Check which verifications are needed
-        lead_id = self.lead_data.get('id')
-        if not lead_id:
-            logger.warning("No lead_id in lead_data, cannot check verification status")
-            await self.session.generate_reply(
-                instructions="Collect missing information or confirm existing details."
-            )
-            return
-        
-        # Query database for current verification status
-        sb = get_supabase_client()
-        try:
-            response = sb.table('leads').select('phone_verified, email_verified, address_verified, verified').eq('id', lead_id).single().execute()
-            lead = response.data
-            
-            phone_verified = lead.get('phone_verified', False)
-            email_verified = lead.get('email_verified', False)
-            address_verified = lead.get('address_verified', False)
-            all_verified = lead.get('verified', False)
-            
-            # If all verified, skip to next agent
-            if all_verified:
-                logger.info(f"Lead {lead_id} is fully verified, skipping verification")
-                # on_enter() must return None - cannot return Agent instances
-                # Instead, generate a reply that instructs the agent to immediately call verify_caller_identity
-                # which will handle routing to the next agent
-                await self.session.generate_reply(
-                    instructions="Verification is already complete. Immediately call verify_caller_identity to route to the next step."
-                )
-                return
-            
-            # Build list of what needs verification
-            needs_verification = []
-            if not phone_verified:
-                needs_verification.append("phone number")
-            if not email_verified:
-                needs_verification.append("email address")
-            if not address_verified:
-                needs_verification.append("property address")
-            
-            logger.info(f"Lead {lead_id} needs verification: {', '.join(needs_verification)}")
-            
-            # Inject verification status as context for the agent
-            # The agent's instructions (from database) will handle the greeting and verification flow
-            verification_context = f"""
-=== VERIFICATION STATUS ===
-The following items need verification:
-"""
-            if not phone_verified:
-                verification_context += "- phone_verified = false (need to confirm phone number)\n"
-            if not email_verified:
-                verification_context += "- email_verified = false (need to collect/confirm email address)\n"
-            if not address_verified:
-                verification_context += "- address_verified = false (need to confirm property address)\n"
-            verification_context += "===========================\n"
-            
-            # Generate reply with context about what needs verification
-            # The database prompt will tell the agent to greet and start verification
-            await self.session.generate_reply(
-                instructions=verification_context + "\nGreet the caller and start the verification process for the items listed above."
-            )
-        except Exception as e:
-            logger.error(f"Error checking verification status: {e}")
-            # Fallback: let database instructions handle it
-            await self.session.generate_reply(
-                instructions="Greet the caller and begin the verification process."
-            )
+        """Start verification - collect missing info or confirm existing"""
+        await self.session.generate_reply(
+            instructions="Collect any missing information or confirm existing details. Use 'collect missing, confirm existing' pattern."
+        )
     
     @function_tool()
     async def verify_caller_identity(self, context: RunContext):
@@ -149,8 +84,8 @@ The following items need verification:
             # Check if qualified - if yes, go to answer, if no, go to qualify
             from services.conversation_state import get_conversation_state
             state = get_conversation_state(self.caller_phone)
-            # qualified is stored at the TOP LEVEL of conversation_state, not in conversation_data
-            qualified = state.get('qualified', False) if state else False
+            conversation_data = (state.get('conversation_data', {}) if state else {})
+            qualified = conversation_data.get('qualified', False)
             
             if qualified:
                 # Already qualified - go to main conversation
@@ -244,70 +179,3 @@ The following items need verification:
         logger.info(f"Updated lead {lead_id}")
         
         return result_str
-    
-    @function_tool()
-    async def mark_phone_verified(self, context: RunContext):
-        """
-        Mark the caller's phone number as verified.
-        
-        Call this after:
-        - You've confirmed the phone number with the caller
-        - The caller acknowledges this is their correct phone number
-        """
-        lead_id = self.lead_data.get('id')
-        if not lead_id:
-            return "Error: No lead_id available"
-        
-        sb = get_supabase_client()
-        try:
-            sb.table('leads').update({'phone_verified': True}).eq('id', lead_id).execute()
-            logger.info(f"✅ Phone verified for lead {lead_id}")
-            return "Phone number verified successfully"
-        except Exception as e:
-            logger.error(f"Error marking phone verified: {e}")
-            return f"Error verifying phone: {str(e)}"
-    
-    @function_tool()
-    async def mark_email_verified(self, context: RunContext):
-        """
-        Mark the caller's email address as verified.
-        
-        Call this after:
-        - You've collected or confirmed the email address with the caller
-        - The caller confirms the email address is correct
-        """
-        lead_id = self.lead_data.get('id')
-        if not lead_id:
-            return "Error: No lead_id available"
-        
-        sb = get_supabase_client()
-        try:
-            sb.table('leads').update({'email_verified': True}).eq('id', lead_id).execute()
-            logger.info(f"✅ Email verified for lead {lead_id}")
-            return "Email address verified successfully"
-        except Exception as e:
-            logger.error(f"Error marking email verified: {e}")
-            return f"Error verifying email: {str(e)}"
-    
-    @function_tool()
-    async def mark_address_verified(self, context: RunContext):
-        """
-        Mark the caller's property address as verified.
-        
-        Call this after:
-        - You've collected or confirmed the full property address with the caller
-        - The caller confirms the address is correct (including street, city, state, zip)
-        """
-        lead_id = self.lead_data.get('id')
-        if not lead_id:
-            return "Error: No lead_id available"
-        
-        sb = get_supabase_client()
-        try:
-            sb.table('leads').update({'address_verified': True}).eq('id', lead_id).execute()
-            logger.info(f"✅ Address verified for lead {lead_id}")
-            return "Property address verified successfully"
-        except Exception as e:
-            logger.error(f"Error marking address verified: {e}")
-            return f"Error verifying address: {str(e)}"
-

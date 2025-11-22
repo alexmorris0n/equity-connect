@@ -39,9 +39,71 @@ class BarbaraBookAgent(Agent):
         logger.info(f"BarbaraBookAgent created for {caller_phone}")
     
     async def on_enter(self) -> None:
-        """Called when agent takes control - check broker availability"""
-        self.session.generate_reply(
-            instructions="Check broker availability and present available time slots to the user. Be warm and helpful."
+        """Called when agent takes control - check history and broker availability"""
+        # First, check if user already expressed booking preferences in their last message
+        history_items = list(self.chat_ctx.items) if hasattr(self.chat_ctx, 'items') else []
+        
+        # Find the last user message and check if it contains booking preferences
+        user_provided_preferences = False
+        user_asked_to_book = False
+        last_user_message_text = ""
+        
+        # Search backwards through history to find last user message
+        for item in reversed(history_items):
+            if hasattr(item, 'role') and item.role == 'user':
+                # Extract message text - content can be a list or string
+                if hasattr(item, 'text_content'):
+                    last_user_message_text = item.text_content()
+                elif hasattr(item, 'content'):
+                    content = item.content
+                    if isinstance(content, list):
+                        last_user_message_text = ' '.join(str(c) for c in content if c)
+                    else:
+                        last_user_message_text = str(content)
+                elif hasattr(item, 'text'):
+                    last_user_message_text = str(item.text)
+                else:
+                    continue
+                
+                # Detect if user asked to book
+                booking_request_indicators = [
+                    'book', 'schedule', 'appointment', 'meeting', 'set up',
+                    'available', 'when can', 'what time', 'i want to'
+                ]
+                message_lower = last_user_message_text.lower()
+                if any(indicator in message_lower for indicator in booking_request_indicators):
+                    user_asked_to_book = True
+                
+                # Detect if user provided scheduling preferences (day, time)
+                preference_indicators = [
+                    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+                    'morning', 'afternoon', 'evening', 'tomorrow', 'next week',
+                    'am', 'pm', 'o\'clock', ':00', 'at ', 'around'
+                ]
+                if any(indicator in message_lower for indicator in preference_indicators):
+                    user_provided_preferences = True
+                
+                if user_asked_to_book or user_provided_preferences:
+                    logger.info(f"Detected booking request/preferences in last user message: {last_user_message_text[:100]}")
+                break
+        
+        # Build booking context
+        booking_context = """
+=== BOOKING CONTEXT ===
+"""
+        
+        if user_asked_to_book:
+            booking_context += "- User asked to book an appointment\n"
+        if user_provided_preferences:
+            booking_context += f"- User provided scheduling preferences in last message\n"
+            booking_context += f"- Last message: {last_user_message_text[:200]}\n"
+            booking_context += "- Extract day/time preferences and use them when checking availability\n"
+        
+        booking_context += "===========================\n"
+        
+        # Let database prompt handle the actual instructions
+        await self.session.generate_reply(
+            instructions=booking_context
         )
     
     @function_tool()
@@ -151,6 +213,16 @@ class BarbaraBookAgent(Agent):
             )
             
             logger.info(f"Appointment booked: {appointment_datetime}")
+            
+            # AUTOMATIC ROUTING: After successful booking, route to goodbye
+            from .goodbye import BarbaraGoodbyeAgent
+            return BarbaraGoodbyeAgent(
+                caller_phone=self.caller_phone,
+                lead_data=self.lead_data,
+                vertical=self.vertical,
+                reason="appointment_booked",
+                chat_ctx=self.chat_ctx
+            )
         
         return result
     
@@ -179,6 +251,60 @@ class BarbaraBookAgent(Agent):
         )
     
     @function_tool()
+    async def route_to_objections(self, context: RunContext):
+        """
+        Route to objections agent when user expresses concerns or hesitation.
+        
+        Call when:
+        - User expresses concerns after booking or during booking process
+        - User says "I'm worried about..."
+        - User has second thoughts
+        - User expresses fear or hesitation
+        
+        Do NOT call for:
+        - General questions (use route_to_answer)
+        - Calculation questions (use route_to_quote)
+        - User ready to book (stay in book agent)
+        """
+        logger.info("Routing to objections - concern detected during booking")
+        
+        from .objections import BarbaraObjectionsAgent
+        
+        return BarbaraObjectionsAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
+    
+    @function_tool()
+    async def route_to_quote(self, context: RunContext):
+        """
+        Route to quote agent when user asks calculation questions.
+        
+        Call when:
+        - User asks "how much can I get?"
+        - User wants to see numbers/calculations
+        - User asks about their equity or available funds
+        - User wants a quote/estimate
+        
+        Do NOT call for:
+        - General questions (use route_to_answer)
+        - Concerns/objections (use route_to_objections)
+        - User ready to book (stay in book agent)
+        """
+        logger.info("Routing to quote - calculation question detected during booking")
+        
+        from .quote import BarbaraQuoteAgent
+        
+        return BarbaraQuoteAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
+    
+    @function_tool()
     async def route_to_goodbye(self, context: RunContext):
         """
         Route to goodbye after booking complete or user declines.
@@ -190,6 +316,8 @@ class BarbaraBookAgent(Agent):
         
         Do NOT call if:
         - User has questions (use route_to_answer)
+        - User has concerns (use route_to_objections)
+        - User wants calculations (use route_to_quote)
         - Still in booking process (stay in book agent)
         """
         logger.info("Routing to goodbye - booking complete or declined")

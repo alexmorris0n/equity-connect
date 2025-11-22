@@ -51,9 +51,14 @@ class BarbaraGreetAgent(Agent):
         first_name = self.lead_data.get('first_name', 'there')
         
         logger.info(f"🎤 Generating greeting for {first_name}...")
-        self.session.generate_reply(
-            instructions=f"Deliver your warm greeting to {first_name}. Ask how they're doing today."
-        )
+        
+        # Build dynamic context (no hard-coded instructions)
+        greet_context = "=== GREETING CONTEXT ===\n"
+        greet_context += f"Caller name: {first_name}\n"
+        greet_context += "===========================\n"
+        
+        # Let database prompt handle the actual instructions
+        await self.session.generate_reply(instructions=greet_context)
         logger.info(f"✅ Greeting generation triggered for {first_name}")
     
     @function_tool()
@@ -126,12 +131,14 @@ class BarbaraGreetAgent(Agent):
             )
         
         # Route based on CURRENT database state
+        # PERFECT ROUTE: greet → verify → qualify → quote → answer → book → goodbye
+        # Skip steps that are already complete, but stay on the route
         if verified and qualified:
-            # Both complete - skip to main conversation
-            logger.info(f"Caller already verified + qualified, skipping to answer")
-            from .answer import BarbaraAnswerAgent
+            # Both complete - skip verify & qualify, but continue route: go to QUOTE
+            logger.info(f"Caller already verified + qualified, skipping to quote (perfect route)")
+            from .quote import BarbaraQuoteAgent
             
-            return BarbaraAnswerAgent(
+            return BarbaraQuoteAgent(
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,
@@ -139,8 +146,8 @@ class BarbaraGreetAgent(Agent):
             )
         
         elif verified and not qualified:
-            # Verified but not qualified - skip verify, run qualify
-            logger.info(f"Caller already verified, skipping to qualification")
+            # Verified but not qualified - skip verify, continue route: go to QUALIFY
+            logger.info(f"Caller already verified, skipping to qualification (perfect route)")
             from .qualify import BarbaraQualifyTask
             
             return BarbaraQualifyTask(
@@ -211,4 +218,43 @@ class BarbaraGreetAgent(Agent):
                 reason="wrong_person_unavailable",
                 chat_ctx=self.chat_ctx
             )
+    
+    @function_tool()
+    async def route_to_objections(self, context: RunContext):
+        """
+        Route to objections agent - EXCEPTION: Can be accessed from GREET before verify/qualify.
+        
+        Call when:
+        - User expresses concerns or objections in greeting
+        - User is hesitant or skeptical before giving personal info
+        - User says things like "I'm not sure about this", "I heard bad things", "This sounds like a scam"
+        
+        CRITICAL: This is the ONLY exception to the verify/qualify requirement.
+        People won't give personal information if they have objections, so we must address
+        objections first, even before verification.
+        
+        Do NOT call for:
+        - General questions (use mark_greeted to route normally)
+        - Booking requests (use mark_greeted with booking keyword)
+        """
+        logger.info("Routing to objections from GREET - user has concerns before verify/qualify")
+        
+        update_conversation_state(
+            self.caller_phone,
+            {
+                "conversation_data": {
+                    "has_objections": True,
+                    "node_before_objection": "greet"
+                }
+            }
+        )
+        
+        from .objections import BarbaraObjectionsAgent
+        
+        return BarbaraObjectionsAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
 

@@ -37,9 +37,18 @@ async def route_after_greet(state: Dict[str, Any]) -> str:
     """
     DB-driven routing after greeting
     Per BarbGraph routing logic
+    
+    EXCEPTION: OBJECTIONS can be accessed from GREET before verify/qualify
+    Reason: People won't give personal info if they have objections (e.g., "This is a scam")
     """
     conversation_data = state.get('conversation_data', {})
     qualified = state.get('qualified')
+    
+    # EXCEPTION: Check for objections FIRST (can skip verify/qualify)
+    # Example: "This is a scam" - they won't give personal info until we address this
+    if conversation_data.get("has_objection"):
+        logger.info("⚠️ EXCEPTION: Objection raised during greet → OBJECTIONS (skipping verify/qualify)")
+        return "objections"
     
     # Check if wrong person answered
     if conversation_data.get("wrong_person"):
@@ -159,9 +168,34 @@ async def route_after_objections(state: Dict[str, Any]) -> str:
 
 
 async def route_after_book(state: Dict[str, Any]) -> str:
-    """Route after booking"""
-    if state.get('conversation_data', {}).get("appointment_booked"):
+    """
+    Route after booking node
+    Can go to: answer (questions), objections (concerns), quote (calculations), goodbye (done)
+    """
+    conversation_data = state.get('conversation_data', {})
+    
+    # If appointment booked, go to goodbye
+    if conversation_data.get("appointment_booked"):
+        logger.info("✅ Appointment booked → GOODBYE")
         return "goodbye"
+    
+    # If user has objections/concerns during booking
+    if conversation_data.get("has_objection"):
+        logger.info("⚠️ Objection raised during booking → OBJECTIONS")
+        return "objections"
+    
+    # If user wants to recalculate or verify quote
+    if conversation_data.get("needs_quote_recalc"):
+        logger.info("💰 Calculation question during booking → QUOTE")
+        return "quote"
+    
+    # If user has questions before committing
+    if conversation_data.get("has_questions_before_booking"):
+        logger.info("❓ Questions before booking → ANSWER")
+        return "answer"
+    
+    # Default: stay in booking
+    logger.info("⏳ Still working on booking → STAY IN BOOK")
     return "book"
 
 
