@@ -44,7 +44,7 @@ class BarbaraAnswerAgent(Agent):
         """Called when agent takes control - check if user already asked a question"""
         # Check conversation history to see if user already asked something
         # If yes, answer it. If no, prompt for question.
-        history_items = list(self.session.chat_ctx.items) if hasattr(self.session.chat_ctx, 'items') else []
+        history_items = list(self.chat_ctx.items) if hasattr(self.chat_ctx, 'items') else []
         
         # Check if last user message was a question
         user_has_question = False
@@ -123,7 +123,7 @@ class BarbaraAnswerAgent(Agent):
             caller_phone=self.caller_phone,
             lead_data=self.lead_data,
             vertical=self.vertical,
-            chat_ctx=self.session.chat_ctx
+            chat_ctx=self.chat_ctx
         )
     
     @function_tool()
@@ -166,7 +166,7 @@ class BarbaraAnswerAgent(Agent):
             caller_phone=self.caller_phone,
             lead_data=self.lead_data,
             vertical=self.vertical,
-            chat_ctx=self.session.chat_ctx
+            chat_ctx=self.chat_ctx
         )
     
     @function_tool()
@@ -198,6 +198,6 @@ class BarbaraAnswerAgent(Agent):
             caller_phone=self.caller_phone,
             lead_data=self.lead_data,
             vertical=self.vertical,
-            chat_ctx=self.session.chat_ctx
+            chat_ctx=self.chat_ctx
         )
 

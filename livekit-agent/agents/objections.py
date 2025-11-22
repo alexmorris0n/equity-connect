@@ -134,7 +134,7 @@ class BarbaraObjectionsAgent(Agent):
             caller_phone=self.caller_phone,
             lead_data=self.lead_data,
             vertical=self.vertical,
-            chat_ctx=self.session.chat_ctx
+            chat_ctx=self.chat_ctx
         )
     
     @function_tool()
@@ -168,7 +168,7 @@ class BarbaraObjectionsAgent(Agent):
             caller_phone=self.caller_phone,
             lead_data=self.lead_data,
             vertical=self.vertical,
-            chat_ctx=self.session.chat_ctx
+            chat_ctx=self.chat_ctx
         )
     
     @function_tool()
@@ -194,6 +194,6 @@ class BarbaraObjectionsAgent(Agent):
             lead_data=self.lead_data,
             vertical=self.vertical,
             reason="objection_unresolved",
-            chat_ctx=self.session.chat_ctx
+            chat_ctx=self.chat_ctx
         )
 

@@ -101,7 +101,7 @@ class BarbaraGreetAgent(Agent):
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
         
         elif verified and not qualified:
@@ -113,7 +113,7 @@ class BarbaraGreetAgent(Agent):
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
         
         else:
@@ -125,7 +125,7 @@ class BarbaraGreetAgent(Agent):
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
     
     @function_tool()
@@ -166,7 +166,7 @@ class BarbaraGreetAgent(Agent):
                 lead_data=self.lead_data,
                 vertical=self.vertical,
                 reason="waiting_for_correct_person",
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
         else:
             # End call politely
@@ -175,6 +175,6 @@ class BarbaraGreetAgent(Agent):
                 lead_data=self.lead_data,
                 vertical=self.vertical,
                 reason="wrong_person_unavailable",
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
 

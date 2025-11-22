@@ -101,7 +101,7 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
                 caller_phone=self.caller_phone,
                 lead_data=self.lead_data,
                 vertical=self.vertical,
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
         else:
             # Not qualified - go to goodbye with empathetic message
@@ -112,7 +112,7 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
                 vertical=self.vertical,
                 reason="disqualified",
                 disqualification_reason=reason,
-                chat_ctx=self.session.chat_ctx
+                chat_ctx=self.chat_ctx
             )
     
     @function_tool()
