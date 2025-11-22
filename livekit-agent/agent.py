@@ -554,7 +554,6 @@ async def entrypoint(ctx: JobContext):
             fallback_models=[
                 "openai/gpt-4o",           # Fast, reliable fallback
                 "anthropic/claude-sonnet-4",  # High quality fallback
-                "openai/gpt-4o-mini",      # Cost-effective fallback
             ],
             provider={
                 "sort": "latency",         # Prioritize lowest latency providers
