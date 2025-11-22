@@ -257,4 +257,32 @@ class BarbaraGreetAgent(Agent):
             vertical=self.vertical,
             chat_ctx=self.chat_ctx
         )
+    
+    @function_tool()
+    async def route_to_quote(self, context: RunContext):
+        """
+        Route to quote calculation - EXCEPTION: Can be accessed from GREET for calculation questions.
+        
+        Call when:
+        - User asks "How much can I get?" in greeting
+        - User asks calculation questions before verification
+        - User wants to know amounts immediately
+        
+        This allows routing to QUOTE before verification/qualification for calculation questions.
+        QUOTE will handle missing data gracefully and route back to QUALIFY if needed.
+        
+        Do NOT call for:
+        - General questions (use mark_greeted to route normally)
+        - Booking requests (use mark_greeted with booking keyword)
+        """
+        logger.info("Routing to quote from GREET - calculation question detected")
+        
+        from .quote import BarbaraQuoteAgent
+        
+        return BarbaraQuoteAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
 

@@ -44,11 +44,17 @@ async def route_after_greet(state: Dict[str, Any]) -> str:
     conversation_data = state.get('conversation_data', {})
     qualified = state.get('qualified')
     
-    # EXCEPTION: Check for objections FIRST (can skip verify/qualify)
+    # EXCEPTION 1: Check for objections FIRST (can skip verify/qualify)
     # Example: "This is a scam" - they won't give personal info until we address this
     if conversation_data.get("has_objection"):
         logger.info("⚠️ EXCEPTION: Objection raised during greet → OBJECTIONS (skipping verify/qualify)")
         return "objections"
+    
+    # EXCEPTION 2: Check for immediate calculation questions (can skip verify/qualify)
+    # Example: "How much can I get?" - answer their question first, qualify later
+    if conversation_data.get("asked_about_amount"):
+        logger.info("💰 EXCEPTION: Calculation question during greet → QUOTE (will qualify after)")
+        return "quote"
     
     # Check if wrong person answered
     if conversation_data.get("wrong_person"):
@@ -96,6 +102,11 @@ async def route_after_qualify(state: Dict[str, Any]) -> str:
     conversation_data = state.get('conversation_data', {})
     qualified = state.get('qualified')
     
+    # Check for objections FIRST
+    if conversation_data.get("has_objection"):
+        logger.info("⚠️ Objection raised during qualify → OBJECTIONS")
+        return "objections"
+    
     if qualified:
         if not conversation_data.get("quote_presented"):
             return "quote"
@@ -110,6 +121,17 @@ async def route_after_quote(state: Dict[str, Any]) -> str:
     DB-driven routing after quote presentation
     """
     conversation_data = state.get('conversation_data', {})
+    qualified = state.get('qualified')
+    
+    # Check for late disqualification FIRST
+    if qualified == False:
+        logger.info("🚫 Late disqualification discovered in quote → GOODBYE")
+        return "goodbye"
+    
+    # Check for objections
+    if conversation_data.get("has_objection"):
+        logger.info("⚠️ Objection raised during quote → OBJECTIONS")
+        return "objections"
     
     # Check reaction to quote
     quote_reaction = conversation_data.get("quote_reaction")
@@ -130,6 +152,11 @@ async def route_after_quote(state: Dict[str, Any]) -> str:
 async def route_after_answer(state: Dict[str, Any]) -> str:
     """Route after answering questions"""
     conversation_data = state.get('conversation_data', {})
+    
+    # Check for calculation questions FIRST
+    if conversation_data.get("needs_quote"):
+        logger.info("💰 Calculation question → QUOTE")
+        return "quote"
     
     # Check for objections
     if conversation_data.get("has_objection"):
@@ -201,6 +228,15 @@ async def route_after_book(state: Dict[str, Any]) -> str:
 
 async def route_after_goodbye(state: Dict[str, Any]) -> str:
     """Route after goodbye"""
+    conversation_data = state.get('conversation_data', {})
+    
+    # If user asks a question during goodbye, route to answer
+    if conversation_data.get("has_questions_during_goodbye"):
+        logger.info("❓ User has questions during goodbye → ANSWER")
+        return "answer"
+    
+    # Otherwise, end the call
+    logger.info("🚪 Goodbye complete → END")
     return "end"
 
 

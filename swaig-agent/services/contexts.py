@@ -133,14 +133,14 @@ def get_valid_contexts_for_node(node_name: str) -> List[str]:
     Based on BarbGraph routing logic
     """
     routing_map = {
-        "greet": ["verify", "answer", "goodbye"],
+        "greet": ["verify", "answer", "goodbye", "objections"],
         "verify": ["qualify", "answer", "goodbye"],
-        "qualify": ["quote", "goodbye", "answer"],
-        "quote": ["answer", "book", "goodbye"],
-        "answer": ["objections", "book", "goodbye"],
+        "qualify": ["quote", "goodbye", "answer", "objections"],
+        "quote": ["answer", "book", "goodbye", "objections"],
+        "answer": ["objections", "book", "goodbye", "quote"],
         "objections": ["answer", "book", "goodbye"],
-        "book": ["goodbye"],
-        "goodbye": ["end"],
+        "book": ["goodbye", "answer", "objections", "quote"],
+        "goodbye": ["answer", "end"],
         "end": []  # Terminal
     }
     
@@ -152,10 +152,10 @@ def get_functions_for_node(node_name: str) -> List[str]:
     Get available SWAIG functions for a node
     """
     function_map = {
-        "greet": ["mark_greeted", "route_conversation"],
+        "greet": ["mark_greeted", "mark_wrong_person", "route_conversation"],
         "verify": ["mark_verified", "mark_phone_verified", "mark_email_verified", "mark_address_verified", "route_conversation"],
-        "qualify": ["mark_qualified", "mark_age_qualified", "mark_homeowner_qualified", "mark_primary_residence_qualified", "mark_equity_qualified", "route_conversation"],
-        "quote": ["mark_quote_presented", "calculate_reverse_mortgage", "route_conversation"],
+        "qualify": ["mark_qualified", "mark_age_qualified", "mark_homeowner_qualified", "mark_primary_residence_qualified", "mark_equity_qualified", "mark_has_objection", "route_conversation"],
+        "quote": ["mark_quote_presented", "calculate_reverse_mortgage", "mark_qualification_result", "route_conversation"],
         "answer": ["search_knowledge", "mark_ready_to_book", "route_conversation"],
         "objections": ["search_knowledge", "mark_has_objection", "mark_objection_handled", "route_conversation"],
         "book": ["check_broker_availability", "book_appointment", "route_conversation"],

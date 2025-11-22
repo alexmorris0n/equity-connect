@@ -233,4 +233,29 @@ class BarbaraAnswerAgent(Agent):
             vertical=self.vertical,
             chat_ctx=self.chat_ctx
         )
+    
+    @function_tool()
+    async def route_to_goodbye(self, context: RunContext, reason: Optional[str] = None):
+        """
+        Route to goodbye agent.
+        
+        Call when:
+        - User is satisfied with answers and ready to end call
+        - Returning caller (already quoted/booked) has no more questions
+        - Conversation should end gracefully
+        
+        Args:
+            reason: Optional reason for goodbye (e.g., "standard", "questions_answered", "returning_caller")
+        """
+        logger.info(f"Routing to goodbye from ANSWER - reason: {reason or 'standard'}")
+        
+        from .goodbye import BarbaraGoodbyeAgent
+        
+        return BarbaraGoodbyeAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            reason=reason or "standard",
+            chat_ctx=self.chat_ctx
+        )
 

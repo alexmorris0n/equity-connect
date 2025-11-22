@@ -110,12 +110,12 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
             all_qualified = lead.get('qualified', False)
 
             if all_qualified:
-                logger.info(f"Lead {lead_id} is fully qualified, skipping qualification")
-                qualification_context = "=== QUALIFICATION CONTEXT ===\n"
-                qualification_context += "Status: Already fully qualified\n"
-                qualification_context += "Action: Route to answer agent\n"
-                qualification_context += "===========================\n"
-                await self.session.generate_reply(instructions=qualification_context)
+                logger.info(f"Lead {lead_id} is fully qualified, completing qualification task")
+                # Complete the task immediately since already qualified
+                self.complete(QualificationResult(
+                    qualified=True,
+                    reason="Already qualified from previous conversation"
+                ))
                 return
 
             # Build context for the agent (no hard-coded instructions)
@@ -327,4 +327,43 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
         logger.info(f"Updated lead {lead_id} during qualification")
         
         return result_str
+    
+    @function_tool()
+    async def route_to_objections(self, context: RunContext):
+        """
+        Route to objections agent when user raises concerns during qualification.
+        
+        Call when:
+        - User expresses concerns or objections during qualification questions
+        - User says things like "Why does that matter?", "Are you discriminating?", "I'm not sure about this"
+        - User is hesitant or skeptical about providing qualification information
+        
+        This allows addressing objections mid-qualification before continuing.
+        After objection is resolved, user can return to qualification.
+        
+        Do NOT call for:
+        - Simple answers to qualification questions (continue qualification)
+        - General questions (stay in qualify or route to answer)
+        """
+        logger.info("Routing to objections from QUALIFY - concern detected during qualification")
+        
+        from services.conversation_state import update_conversation_state
+        update_conversation_state(
+            self.caller_phone,
+            {
+                "conversation_data": {
+                    "has_objections": True,
+                    "node_before_objection": "qualify"
+                }
+            }
+        )
+        
+        from .objections import BarbaraObjectionsAgent
+        
+        return BarbaraObjectionsAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
 

@@ -195,6 +195,84 @@ class BarbaraQuoteAgent(Agent):
         return result
     
     @function_tool()
+    async def mark_qualification_result(
+        self,
+        context: RunContext,
+        qualified: bool,
+        reason: Optional[str] = None
+    ) -> str:
+        """
+        Mark qualification status - used for late disqualification during quote.
+        
+        Call when:
+        - User reveals disqualifying information during quote (e.g., "actually it's a rental property")
+        - You discover they don't meet requirements that weren't caught in QUALIFY
+        - Late disqualification triggers are detected
+        
+        Late disqualification triggers:
+        - "Actually, it's a rental property" → non_primary_residence
+        - "I rent it out to tenants" → non_primary_residence
+        - "I'm only 58" or "I'm 60" → age_below_62
+        - "I don't own it, I'm renting" → not_homeowner
+        - "The bank owns it, I'm underwater" → insufficient_equity
+        
+        Args:
+            qualified: Whether the caller qualifies (typically False for late disqualification)
+            reason: Disqualification reason if qualified=False:
+                - "age_below_62" - Must be 62 or older
+                - "non_primary_residence" - Must be primary residence, not rental/investment
+                - "not_homeowner" - Must own the property
+                - "insufficient_equity" - Must have meaningful equity
+        
+        After calling this with qualified=False, the system will automatically route to GOODBYE.
+        """
+        from tools.conversation_flags import mark_qualification_result as mark_tool
+        
+        # Mark qualification in conversation state
+        result = await mark_tool(self.caller_phone, qualified)
+        
+        # Also update leads table if we have lead_id
+        lead_id = self.lead_data.get('id')
+        if lead_id:
+            from services.supabase import get_supabase_client
+            sb = get_supabase_client()
+            try:
+                update_data = {'qualified': qualified}
+                if not qualified and reason:
+                    # Store disqualification reason in conversation_data, not leads table
+                    from services.conversation_state import update_conversation_state
+                    update_conversation_state(
+                        self.caller_phone,
+                        {
+                            "conversation_data": {
+                                "disqualified": True,
+                                "disqualification_reason": reason
+                            }
+                        }
+                    )
+                
+                sb.table('leads').update(update_data).eq('id', lead_id).execute()
+                logger.info(f"Lead {lead_id}: Updated qualified={qualified}, reason={reason}")
+            except Exception as e:
+                logger.error(f"Error updating lead qualification: {e}")
+        
+        logger.info(f"[QUOTE] Marked qualified={qualified}, reason={reason} for {self.caller_phone}")
+        
+        # If disqualified, route to goodbye
+        if not qualified:
+            from .goodbye import BarbaraGoodbyeAgent
+            return BarbaraGoodbyeAgent(
+                caller_phone=self.caller_phone,
+                lead_data=self.lead_data,
+                vertical=self.vertical,
+                reason="disqualified",
+                disqualification_reason=reason,
+                chat_ctx=self.chat_ctx
+            )
+        
+        return result
+    
+    @function_tool()
     async def update_lead_info(
         self, 
         context: RunContext,
@@ -343,6 +421,31 @@ class BarbaraQuoteAgent(Agent):
             caller_phone=self.caller_phone,
             lead_data=self.lead_data,
             vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
+    
+    @function_tool()
+    async def route_to_goodbye(self, context: RunContext, reason: Optional[str] = None):
+        """
+        Route to goodbye agent.
+        
+        Call when:
+        - User is disqualified during quote (e.g., reveals rental property, insufficient equity)
+        - User declines to continue after seeing quote
+        - Conversation should end gracefully
+        
+        Args:
+            reason: Optional reason for goodbye (e.g., "disqualified", "not_interested", "standard")
+        """
+        logger.info(f"Routing to goodbye from QUOTE - reason: {reason or 'standard'}")
+        
+        from .goodbye import BarbaraGoodbyeAgent
+        
+        return BarbaraGoodbyeAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            reason=reason or "standard",
             chat_ctx=self.chat_ctx
         )
 
