@@ -12,13 +12,20 @@ from livekit.agents import (
     AgentSession,
     AgentStateChangedEvent,
     JobContext,
-    RoomOptions,
     JobExecutorType,
     JobProcess,
     UserStateChangedEvent,
     WorkerOptions,
     cli,
 )
+
+# Try to import RoomOptions (added in newer versions), fallback to deprecated API
+try:
+    from livekit.agents import RoomOptions
+    HAS_ROOM_OPTIONS = True
+except ImportError:
+    from livekit.agents import RoomInputOptions, RoomOutputOptions
+    HAS_ROOM_OPTIONS = False
 from livekit.agents.llm import ChatContext, ChatMessage
 from livekit.plugins import silero
 
