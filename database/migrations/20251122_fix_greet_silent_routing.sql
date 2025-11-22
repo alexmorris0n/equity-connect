@@ -18,10 +18,11 @@ IMPORTANT - TOOL USAGE:
 You MUST call mark_greeted(reason_summary=\"...\") to exit this node.
 - reason_summary MUST be a clear 1-sentence description of why they called
 - Examples:
-  * \"Caller has questions about reverse mortgages\"
-  * \"Asking if grandson living with them affects eligibility\"
-  * \"Wants to know how much equity they can access\"
-  * \"Called back after receiving marketing material\"
+  * \"Caller has questions\"
+  * \"Asking about eligibility\"
+  * \"Wants to know how much they can access\"
+  * \"Called back after receiving materials\"
+  * \"Interested in learning more\"
 
 DO NOT:
 - Ask follow-up questions after calling mark_greeted (the next node handles that)
