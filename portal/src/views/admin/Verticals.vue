@@ -2911,29 +2911,66 @@ async function saveActiveComponents() {
     if (livekitConfig.value.custom_voice_id) {
       console.log('Saving custom voice:', livekitConfig.value.custom_voice_id)
       
-      // First, clear all active voices
-      await supabase
+      // First, find or create the "Custom Voice" row (single row for all custom voices)
+      const { data: existingCustom } = await supabase
         .from('livekit_available_voices')
-        .update({ is_active: false })
-        .eq('is_active', true)
-
-      // Then upsert and activate the custom voice
-      const { data: customVoice } = await supabase
-        .from('livekit_available_voices')
-        .upsert({
-          provider: 'elevenlabs',
-          voice_id: livekitConfig.value.custom_voice_id,
-          voice_name: 'Custom',
-          display_name: 'Custom Voice',
-          is_custom: true,
-          is_available: true,
-          is_active: true, // ✅ Mark as active
-          model: 'eleven_multilingual_v2'
-        }, { onConflict: 'provider,voice_name' })
-        .select()
-        .single()
+        .select('id')
+        .eq('voice_name', 'Custom Voice')
+        .eq('is_custom', true)
+        .maybeSingle()
       
-      console.log('Custom voice saved and activated:', customVoice)
+      if (existingCustom) {
+        // Update existing custom voice row
+        const customVoiceIdFull = `elevenlabs/eleven_turbo_v2_5:${livekitConfig.value.custom_voice_id}`
+        
+        const { error } = await supabase
+          .from('livekit_available_voices')
+          .update({
+            voice_id: livekitConfig.value.custom_voice_id,
+            voice_id_full: customVoiceIdFull,
+            is_active: true
+          })
+          .eq('id', existingCustom.id)
+        
+        if (error) throw error
+        
+        // Clear all other active voices
+        await supabase
+          .from('livekit_available_voices')
+          .update({ is_active: false })
+          .neq('id', existingCustom.id)
+          .eq('is_active', true)
+        
+        console.log('Custom voice updated:', livekitConfig.value.custom_voice_id)
+      } else {
+        // Create new custom voice row
+        const customVoiceIdFull = `elevenlabs/eleven_turbo_v2_5:${livekitConfig.value.custom_voice_id}`
+        
+        // Clear all active voices first
+        await supabase
+          .from('livekit_available_voices')
+          .update({ is_active: false })
+          .eq('is_active', true)
+        
+        const { data: newCustom, error } = await supabase
+          .from('livekit_available_voices')
+          .insert({
+            provider: 'elevenlabs',
+            voice_id: livekitConfig.value.custom_voice_id,
+            voice_id_full: customVoiceIdFull,
+            voice_name: 'Custom Voice',
+            display_name: 'Custom Voice (ElevenLabs)',
+            is_custom: true,
+            is_available: true,
+            is_active: true,
+            model: 'eleven_turbo_v2_5'
+          })
+          .select()
+          .single()
+        
+        if (error) throw error
+        console.log('Custom voice created:', newCustom)
+      }
     }
     
     // Handle realtime models - mark selected one as active
