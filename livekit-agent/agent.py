@@ -761,6 +761,27 @@ async def entrypoint(ctx: JobContext):
             preemptive_generation=preemptive_generation,
         )
     
+    async def _check_routing_after_speaking(session):
+        """Check routing after agent finishes speaking (for silent routing after mark_greeted)"""
+        try:
+            import asyncio
+            await asyncio.sleep(0.05)  # Small delay to ensure state is fully updated
+            
+            userdata = getattr(session, "userdata", None)
+            if not userdata:
+                return
+                
+            coordinator = getattr(userdata, "coordinator", None)
+            current_agent = getattr(userdata, "current_agent", None)
+            current_node = getattr(userdata, "current_node", None)
+            
+            # Only check routing for greet node (where silent routing happens)
+            if current_node == "greet" and coordinator and current_agent:
+                logger.info("🔄 Agent finished speaking in greet - checking routing")
+                await coordinator.check_and_route(current_agent, session)
+        except Exception as e:
+            logger.warning(f"Failed to check routing after speaking: {e}")
+    
     def _install_session_state_observers():
         @session.on("user_state_changed")
         def _log_user_state(ev: UserStateChangedEvent):
@@ -779,6 +800,12 @@ async def entrypoint(ctx: JobContext):
             logger.info(
                 f"🤖 AGENT STATE: {old_state} -> {new_state} (phase={phase})"
             )
+            
+            # Check routing after agent finishes speaking (for silent routing after mark_greeted)
+            if old_state == "speaking" and new_state == "listening":
+                # Schedule routing check if we're in greet and reason_captured is True
+                import asyncio
+                asyncio.create_task(_check_routing_after_speaking(session))
     
     _install_session_state_observers()
     
