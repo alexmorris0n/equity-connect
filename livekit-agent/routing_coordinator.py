@@ -231,11 +231,12 @@ class RoutingCoordinator:
             session.userdata.current_node = next_node
             logger.debug(f"📝 Updated session.userdata.current_node = '{next_node}'")
 
-            # Optional filler speech so user isn't left in silence during handoff.
+            # Get filler utterance to cover handoff latency
             filler = self._handoff_filler_for(next_node, session)
             if filler:
-                logger.debug(f"🗣️ Sending filler before handoff: {filler}")
-                await session.generate_reply(instructions=filler)
+                # Use session.say() for instant TTS without LLM call
+                logger.info(f"🗣️ Speaking filler before handoff: '{filler}'")
+                await session.say(filler, allow_interruptions=False)
             
             # Safely extract chat_ctx (validate structure)
             chat_ctx = None
