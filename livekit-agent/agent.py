@@ -33,10 +33,8 @@ from livekit.plugins import noise_cancellation
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-# Import agent handoff components
-from routing_coordinator import RoutingCoordinator
-from node_agent import BarbaraNodeAgent
-from session_data import BarbaraSessionData
+# Import agent system (replaces node system)
+from agents.greet import BarbaraGreetAgent
 
 
 # Import config
@@ -321,12 +319,12 @@ async def entrypoint(ctx: JobContext):
     active_tts = getattr(tts_result, "data", None) if tts_result else None
     
     stt_provider = active_stt.get("provider") if active_stt else "NOT SET"
-    stt_model = active_stt.get("model_name") if active_stt else "NOT SET"
-    logger.info(f"🎙️ ACTIVE STT: {stt_provider}/{stt_model}")
+    stt_model_name = active_stt.get("model_name") if active_stt else "NOT SET"
+    logger.info(f"🎙️ ACTIVE STT: {stt_provider}/{stt_model_name}")
     
     llm_provider = active_llm.get("provider") if active_llm else "NOT SET"
-    llm_model = active_llm.get("model_name") if active_llm else "NOT SET"
-    logger.info(f"🧠 ACTIVE LLM: {llm_provider}/{llm_model}")
+    llm_model_name = active_llm.get("model_name") if active_llm else "NOT SET"
+    logger.info(f"🧠 ACTIVE LLM: {llm_provider}/{llm_model_name}")
     
     tts_provider = active_tts.get("provider") if active_tts else "NOT SET"
     tts_voice = active_tts.get("voice_name") if active_tts else "NOT SET"
@@ -516,12 +514,15 @@ async def entrypoint(ctx: JobContext):
         
         # Extract STT model and language from model_id_full
         # Format: "provider/model:language" (e.g., "deepgram/nova-3:multi" → model="deepgram/nova-3", lang="multi")
-        stt_model = stt_string
+        stt_model_full = stt_string
         stt_language = None
         if ":" in stt_string:
-            stt_model, stt_language = stt_string.rsplit(":", 1)
+            stt_model_full, stt_language = stt_string.rsplit(":", 1)
         else:
             stt_language = "en"  # Default if no language specified
+        
+        # Extract just the model name from "provider/model" format (e.g., "deepgram/nova-3" → "nova-3")
+        stt_model_name_only = stt_model_full.split("/")[-1] if "/" in stt_model_full else stt_model_full
         
         # 🧪 TEMPORARY: Test Deepgram plugin instead of LiveKit Inference for STT
         # This bypasses LiveKit Inference and uses your own Deepgram API key
@@ -530,10 +531,10 @@ async def entrypoint(ctx: JobContext):
             from livekit.plugins import deepgram
             stt_plugin = deepgram.STT(
                 api_key=Config.DEEPGRAM_API_KEY,
-                model="nova-3",  # Extract from stt_model if needed
+                model=stt_model_name_only,  # Use extracted model name from database
                 language=stt_language if stt_language else "en"
             )
-            logger.info(f"🧪 TEMPORARY: Using Deepgram PLUGIN for STT (bypassing LiveKit Inference)")
+            logger.info(f"🧪 TEMPORARY: Using Deepgram PLUGIN for STT (model={stt_model_name_only}, bypassing LiveKit Inference)")
             stt_string = None  # Signal to use plugin instead of Inference string
         else:
             stt_plugin = None
@@ -622,6 +623,8 @@ async def entrypoint(ctx: JobContext):
                 f"⚠️ Deprecated turnDetector value '{template_turn_detector}' ignored. "
                 "Valid values: 'english' or 'multilingual'. Falling back to auto-select."
             )
+            # Set default to avoid NameError - will be overridden by auto-select logic below
+            turn_detector_model = "english"
         else:
             # Auto-detect based on STT language
             # Per LiveKit docs: Use MultilingualModel when language="multi" for automatic language detection
@@ -677,55 +680,34 @@ async def entrypoint(ctx: JobContext):
     
     # ✅ Create userdata instance (matches docs pattern)
     # From docs: "session = AgentSession[MySessionInfo](userdata=MySessionInfo(), ...)"
-    lead_has_name = bool(lead_context and (lead_context.get("name") or lead_context.get("first_name")))
-    userdata = BarbaraSessionData(
-        phone_number=caller_phone,
-        vertical=vertical,
-        current_node="greet",
-        lead_context=lead_context,
-        call_type=call_type,
-        call_direction=call_direction,
-        outbound_intro_pending=(call_direction == "outbound" and lead_has_name)
-    )
-    logger.debug(f"📝 Created BarbaraSessionData: current_node='greet'")
+    # Create initial greet agent (LiveKit native agent system)
+    logger.info(f"🤖 ENTRYPOINT: Creating BarbaraGreetAgent - phone={caller_phone}, vertical={vertical}")
     
-    # Create routing coordinator
-    coordinator = RoutingCoordinator(
-        phone=caller_phone,
+    # Prepare lead_data dict for agent
+    lead_data = {
+        "id": lead_context.get("lead_id") if lead_context else None,
+        "first_name": lead_context.get("first_name") if lead_context else None,
+        "last_name": lead_context.get("last_name") if lead_context else None,
+        "phone": caller_phone,
+    }
+    if lead_context:
+        lead_data.update(lead_context)
+    
+    initial_agent = BarbaraGreetAgent(
+        caller_phone=caller_phone,
+        lead_data=lead_data,
         vertical=vertical
     )
     
-    # ✅ Store coordinator in userdata (matches docs pattern)
-    # From docs: "context.userdata.user_name = name"
-    userdata.coordinator = coordinator
-    logger.debug(f"📝 Stored coordinator in userdata")
-    
-    logger.info(f"🤖 ENTRYPOINT: Creating BarbaraNodeAgent for 'greet' node - phone={caller_phone}, vertical={vertical}")
-    # Create initial greet agent (database-driven, no need for explicit instructions)
-    agent = BarbaraNodeAgent(
-        node_name="greet",
-        vertical=vertical,
-        phone_number=caller_phone,
-        chat_ctx=None,  # Fresh conversation
-        coordinator=coordinator,
-        lead_context=lead_context
-    )
-    
-    # ✅ Store agent in userdata for routing checks
-    userdata.current_agent = agent
-    logger.debug(f"📝 Stored current_agent in userdata")
-    
-    logger.info(f"✅ ENTRYPOINT: BarbaraAgent created")
+    logger.info(f"✅ ENTRYPOINT: BarbaraGreetAgent created")
     
     # Create session - different config for realtime vs pipeline
     if model_type in ["openai_realtime", "gemini_live"]:
         # Realtime model mode - use realtime model as LLM (handles STT+TTS internally)
         # Realtime models use their built-in turn detection (optimized for their architecture)
-        # ✅ Pass userdata with type annotation (matches docs pattern)
-        session = AgentSession[BarbaraSessionData](
+        session = AgentSession(
             llm=llm_instance,  # RealtimeModel instance (has built-in turn detection)
             vad=ctx.proc.userdata["vad"],
-            userdata=userdata,  # ✅ Pass BarbaraSessionData instance
             # Interruption settings from template
             allow_interruptions=allow_interruptions,
             min_interruption_duration=min_interruption_duration,
@@ -746,13 +728,11 @@ async def entrypoint(ctx: JobContext):
         # Use Deepgram plugin if enabled, otherwise use LiveKit Inference string
         stt_for_session = stt_plugin if stt_plugin else stt_string
         
-        # ✅ Pass userdata with type annotation (matches docs pattern)
-        session = AgentSession[BarbaraSessionData](
+        session = AgentSession(
             stt=stt_for_session,  # Plugin instance OR LiveKit Inference string format
             llm=llm_instance,  # OpenRouter LLM instance with fallbacks
             tts=tts_for_session,  # LiveKit Inference string OR plugin instance
             vad=ctx.proc.userdata["vad"],
-            userdata=userdata,  # ✅ Pass BarbaraSessionData instance
             turn_detection=turn_detector,  # EnglishModel or MultilingualModel - SOLE source of truth
             # Endpointing timing - faster response
             min_endpointing_delay=min_endpointing_delay,
@@ -765,27 +745,6 @@ async def entrypoint(ctx: JobContext):
             # Response generation settings from template
             preemptive_generation=preemptive_generation,
         )
-    
-    async def _check_routing_after_speaking(session):
-        """Check routing after agent finishes speaking (for silent routing after mark_greeted)"""
-        try:
-            import asyncio
-            await asyncio.sleep(0.05)  # Small delay to ensure state is fully updated
-            
-            userdata = getattr(session, "userdata", None)
-            if not userdata:
-                return
-                
-            coordinator = getattr(userdata, "coordinator", None)
-            current_agent = getattr(userdata, "current_agent", None)
-            current_node = getattr(userdata, "current_node", None)
-            
-            # Only check routing for greet node (where silent routing happens)
-            if current_node == "greet" and coordinator and current_agent:
-                logger.info("🔄 Agent finished speaking in greet - checking routing")
-                await coordinator.check_and_route(current_agent, session)
-        except Exception as e:
-            logger.warning(f"Failed to check routing after speaking: {e}")
     
     def _install_session_state_observers():
         @session.on("user_state_changed")
@@ -805,23 +764,14 @@ async def entrypoint(ctx: JobContext):
             logger.info(
                 f"🤖 AGENT STATE: {old_state} -> {new_state} (phase={phase})"
             )
-            
-            # Check routing after agent finishes (for silent routing after mark_greeted)
-            # This can happen in two ways:
-            # 1. speaking -> listening (agent spoke then stopped)
-            # 2. thinking -> listening (tool called, no speech generated)
-            if new_state == "listening" and old_state in ("speaking", "thinking"):
-                # Schedule routing check if we're in greet and reason_captured is True
-                import asyncio
-                asyncio.create_task(_check_routing_after_speaking(session))
     
     _install_session_state_observers()
     
-    # Start the session with custom BarbaraAgent that auto-greets on entry
-    # The session property is set automatically when session.start() is called
+    # Start the session with initial agent
+    # LiveKit handles all handoffs automatically via tool returns
     logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
     await session.start(
-        agent=agent,
+        agent=initial_agent,
         room=ctx.room,
         room_options=RoomOptions(
             audio_input=AudioInputOptions(
