@@ -270,6 +270,9 @@ class RoutingCoordinator:
             from livekit.agents.llm import StopResponse
             raise StopResponse()
             
+        except StopResponse:
+            # StopResponse is intentional control flow, not an error - re-raise it
+            raise
         except Exception as e:
             logger.error(f"❌ Handoff FAILED: {session.userdata.current_node} → {next_node}: {e}", exc_info=True)
             # Stay in current agent - conversation continues
