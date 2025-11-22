@@ -50,11 +50,11 @@ class BarbaraGreetAgent(Agent):
         """Called when agent takes control - deliver scripted greeting"""
         first_name = self.lead_data.get('first_name', 'there')
         
-        await self.session.generate_reply(
+        logger.info(f"🎤 Generating greeting for {first_name}...")
+        self.session.generate_reply(
             instructions=f"Deliver your warm greeting to {first_name}. Ask how they're doing today."
         )
-        
-        logger.info(f"Greeting delivered to {first_name}")
+        logger.info(f"✅ Greeting generation triggered for {first_name}")
     
     @function_tool()
     async def continue_to_verification(self, context: RunContext):
