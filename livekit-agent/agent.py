@@ -247,6 +247,9 @@ async def entrypoint(ctx: JobContext):
                 is_qualified = lead["status"] in ["qualified", "appointment_set", "showed", "application", "funded"]
                 qualified = is_qualified
                 
+                # Get verification status from database
+                is_verified = lead.get("verified", False)
+                
                 lead_context = {
                     "lead_id": lead_id,
                     "broker_id": lead.get("assigned_broker_id"),
@@ -265,10 +268,11 @@ async def entrypoint(ctx: JobContext):
                     "age": lead.get("age"),
                     "status": lead.get("status"),
                     "qualified": is_qualified,
+                    "verified": is_verified,  # From database
                     "broker_name": broker.get("contact_name") if broker else None,
                     "broker_company": broker.get("company_name") if broker else None,
                 }
-                logger.info(f"✅ Lead found: {lead.get('first_name')} {lead.get('last_name')} (Status: {lead.get('status')})")
+                logger.info(f"✅ Lead found: {lead.get('first_name')} {lead.get('last_name')} (Status: {lead.get('status')}, Verified: {is_verified})")
             else:
                 logger.info(f"⚠️ No lead found for phone: {caller_phone}")
                 lead_context = {
@@ -286,16 +290,33 @@ async def entrypoint(ctx: JobContext):
         try:
             cs_start_call(str(caller_phone), {"lead_id": lead_id, "qualified": bool(qualified)})
             logger.info(f"📞 ENTRYPOINT: start_call recorded for {caller_phone}")
+            
+            # If we found a lead with verified=true in database, set conversation_data.verified
+            # This must be done AFTER start_call because start_call resets conversation_data
+            if lead_id and lead_context and lead_context.get('verified'):
+                from services.conversation_state import update_conversation_state
+                update_conversation_state(str(caller_phone), {
+                    "conversation_data": {
+                        "verified": True  # Lead.verified = true in database
+                    }
+                })
+                logger.info(f"✅ ENTRYPOINT: Marked lead as verified (leads.verified = true in database)")
         except Exception as e:
             logger.warning(f"⚠️ ENTRYPOINT: Failed to start_call for {caller_phone}: {e}")
             # FALLBACK: If start_call fails but we have lead_id, manually update state
             if lead_id:
                 try:
                     from services.conversation_state import update_conversation_state
-                    update_conversation_state(str(caller_phone), {
+                    update_data = {
                         "lead_id": str(lead_id),
                         "qualified": bool(qualified)
-                    })
+                    }
+                    # Set verified in conversation_data if lead.verified is true
+                    if lead_context and lead_context.get('verified'):
+                        update_data["conversation_data"] = {
+                            "verified": True
+                        }
+                    update_conversation_state(str(caller_phone), update_data)
                     logger.info(f"✅ ENTRYPOINT: Manually set lead_id={lead_id} in conversation state (fallback)")
                 except Exception as e2:
                     logger.error(f"❌ ENTRYPOINT: Failed to set lead_id fallback: {e2}")

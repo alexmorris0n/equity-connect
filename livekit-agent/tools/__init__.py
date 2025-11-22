@@ -29,6 +29,7 @@ from .conversation_flags import (
     mark_wrong_person,
     clear_conversation_flags
 )
+from .quote import calculate_reverse_mortgage
 
 # Export all tools as a list for the agent
 __all__ = [
@@ -55,9 +56,12 @@ __all__ = [
     "mark_has_objection",
     "mark_objection_handled",
     "mark_questions_answered",
+    "mark_qualification_result",
     "mark_quote_presented",
     "mark_wrong_person",
     "clear_conversation_flags",
+    # Quote calculation
+    "calculate_reverse_mortgage",
 ]
 
 # List of all tools for easy import
@@ -85,4 +89,6 @@ all_tools = [
     mark_quote_presented,
     mark_wrong_person,
     clear_conversation_flags,
+    # Quote calculation
+    calculate_reverse_mortgage,
 ]

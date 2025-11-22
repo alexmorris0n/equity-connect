@@ -10,6 +10,7 @@ from livekit.agents.llm import ChatContext
 from dataclasses import dataclass
 from services.prompt_loader import load_node_config
 from services.conversation_state import get_conversation_state
+from services.supabase import get_supabase_client
 from tools.conversation_flags import mark_qualification_result
 from tools.lead import update_lead_info
 from typing import Optional
@@ -49,10 +50,134 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
         logger.info(f"BarbaraQualifyTask started for {caller_phone}")
     
     async def on_enter(self) -> None:
-        """Start qualification - check 4 gates"""
-        await self.session.generate_reply(
-            instructions="Begin checking the 4 qualification gates: age 62+, homeowner, primary residence, sufficient equity."
-        )
+        """Start qualification - only check gates that haven't been checked yet"""
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            logger.warning("No lead_id in lead_data, cannot check qualification status")
+            # Fallback to generic instructions if lead_id is missing
+            await self.session.generate_reply(
+                instructions="Check the 4 qualification gates."
+            )
+            return
+
+        sb = get_supabase_client()
+        try:
+            response = sb.table('leads').select('age_qualified, homeowner_qualified, primary_residence_qualified, equity_qualified, qualified').eq('id', lead_id).single().execute()
+            lead = response.data
+
+            age_qualified = lead.get('age_qualified', False)
+            homeowner_qualified = lead.get('homeowner_qualified', False)
+            primary_residence_qualified = lead.get('primary_residence_qualified', False)
+            equity_qualified = lead.get('equity_qualified', False)
+            all_qualified = lead.get('qualified', False)
+
+            if all_qualified:
+                logger.info(f"Lead {lead_id} is fully qualified, skipping qualification")
+                # on_enter() must return None - cannot return Agent instances
+                # Instead, generate a reply that instructs the agent to immediately call mark_qualified
+                # which will handle routing to the next agent
+                await self.session.generate_reply(
+                    instructions="Qualification is already complete. Immediately call mark_qualified with qualified=True to route to the answer agent."
+                )
+                return
+
+            needs_qualification = []
+            if not age_qualified:
+                needs_qualification.append("age (62+)")
+            if not homeowner_qualified:
+                needs_qualification.append("homeownership")
+            if not primary_residence_qualified:
+                needs_qualification.append("primary residence")
+            if not equity_qualified:
+                needs_qualification.append("sufficient equity")
+
+            logger.info(f"Lead {lead_id} needs qualification: {', '.join(needs_qualification)}")
+
+            # Build context for the agent
+            qualification_context = f"""
+=== QUALIFICATION STATUS ===
+The following gates need to be checked:
+"""
+            if not age_qualified:
+                qualification_context += "- age_qualified = false (need to confirm caller is 62+)\n"
+            if not homeowner_qualified:
+                qualification_context += "- homeowner_qualified = false (need to confirm caller owns the property)\n"
+            if not primary_residence_qualified:
+                qualification_context += "- primary_residence_qualified = false (need to confirm property is primary residence)\n"
+            if not equity_qualified:
+                qualification_context += "- equity_qualified = false (need to confirm sufficient equity)\n"
+            
+            qualification_context += "===========================\n"
+
+            # Generate reply with context - let database prompt handle the greeting
+            await self.session.generate_reply(
+                instructions=qualification_context + "\nGreet the caller and begin checking the qualification gates."
+            )
+        except Exception as e:
+            logger.error(f"Error checking qualification status: {e}")
+            await self.session.generate_reply(
+                instructions="Check the 4 qualification gates: age 62+, homeowner, primary residence, sufficient equity."
+            )
+    
+    @function_tool()
+    async def mark_age_qualified(self, context: RunContext):
+        """Mark that the caller is 62+ years old (FHA requirement for reverse mortgages)."""
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark age as qualified."
+        sb = get_supabase_client()
+        try:
+            sb.table('leads').update({'age_qualified': True}).eq('id', lead_id).execute()
+            logger.info(f"Lead {lead_id}: Age marked as qualified (62+).")
+            return "Age requirement confirmed (62+)."
+        except Exception as e:
+            logger.error(f"Error marking age as qualified for lead {lead_id}: {e}")
+            return f"Failed to mark age as qualified: {e}"
+
+    @function_tool()
+    async def mark_homeowner_qualified(self, context: RunContext):
+        """Mark that the caller owns the property."""
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark homeowner as qualified."
+        sb = get_supabase_client()
+        try:
+            sb.table('leads').update({'homeowner_qualified': True}).eq('id', lead_id).execute()
+            logger.info(f"Lead {lead_id}: Homeowner marked as qualified.")
+            return "Homeownership confirmed."
+        except Exception as e:
+            logger.error(f"Error marking homeowner as qualified for lead {lead_id}: {e}")
+            return f"Failed to mark homeowner as qualified: {e}"
+
+    @function_tool()
+    async def mark_primary_residence_qualified(self, context: RunContext):
+        """Mark that the property is the caller's primary residence (not rental/investment)."""
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark primary residence as qualified."
+        sb = get_supabase_client()
+        try:
+            sb.table('leads').update({'primary_residence_qualified': True}).eq('id', lead_id).execute()
+            logger.info(f"Lead {lead_id}: Primary residence marked as qualified.")
+            return "Primary residence confirmed."
+        except Exception as e:
+            logger.error(f"Error marking primary residence as qualified for lead {lead_id}: {e}")
+            return f"Failed to mark primary residence as qualified: {e}"
+
+    @function_tool()
+    async def mark_equity_qualified(self, context: RunContext):
+        """Mark that the caller has sufficient equity in the property."""
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark equity as qualified."
+        sb = get_supabase_client()
+        try:
+            sb.table('leads').update({'equity_qualified': True}).eq('id', lead_id).execute()
+            logger.info(f"Lead {lead_id}: Equity marked as qualified.")
+            return "Sufficient equity confirmed."
+        except Exception as e:
+            logger.error(f"Error marking equity as qualified for lead {lead_id}: {e}")
+            return f"Failed to mark equity as qualified: {e}"
     
     @function_tool()
     async def mark_qualified(

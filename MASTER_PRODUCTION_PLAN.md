@@ -1,8 +1,8 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 21, 2025  
+**Last Updated:** November 22, 2025  
 **Status:** ✅ Production Ready - SWML Bridge (Fly.io) + LiveKit Agent (Fly.io) - Dual Platform  
-**Current Phase:** Production-Grade Fallback System Implemented
+**Current Phase:** Granular Verification & Qualification System (Both LiveKit and SignalWire)
 
 ---
 
@@ -58,15 +58,21 @@ equity-connect/ (Git Monorepo)
 │   ├── Dockerfile                → Fly.io deployment
 │   └── fly.toml                  → Fly.io config (LAX region)
 ├── livekit-agent/                → Fly.io LiveKit Agent (PRODUCTION ACTIVE)
-│   ├── agent.py                  → BarbaraAgent (LiveKit Agent class)
+│   ├── agent.py                  → Entrypoint (creates initial BarbaraGreetAgent)
+│   ├── agents/                    → Native LiveKit Agent classes (8 agents)
+│   │   ├── greet.py              → BarbaraGreetAgent
+│   │   ├── verify.py             → BarbaraVerifyTask (with granular verification tools)
+│   │   ├── qualify.py            → BarbaraQualifyTask (with granular qualification tools)
+│   │   ├── answer.py             → BarbaraAnswerAgent
+│   │   ├── quote.py              → BarbaraQuoteAgent
+│   │   ├── objections.py         → BarbaraObjectionsAgent
+│   │   ├── book.py               → BarbaraBookAgent
+│   │   └── goodbye.py            → BarbaraGoodbyeAgent
 │   ├── services/
 │   │   ├── database.py           → Supabase client + node configs
 │   │   ├── prompt_loader.py      → Load prompts from DB
 │   │   ├── conversation_state.py → Multi-call persistence
 │   │   └── prompts.py            → Prompt variable injection
-│   ├── workflows/
-│   │   ├── routers.py            → BarbGraph routing logic
-│   │   └── node_completion.py    → Node completion checks
 │   ├── tools/                    → LiveKit function tools
 │   │   ├── flags.py              → State flag tools
 │   │   ├── lead.py               → Lead management
@@ -85,7 +91,9 @@ equity-connect/ (Git Monorepo)
 ├── database/                     → Shared Supabase schema
 ├── workflows/                    → N8N workflow definitions
 ├── config/                       → API configurations
-└── deprecated/                   → Archived (equity_connect/, bridge/, barbara-v3/)
+├── equity_connect/agent/         → DEPRECATED (Old SignalWire SDK agent)
+│   └── barbara_agent.py          → Replaced by swaig-agent/ (FastAPI bridge)
+└── deprecated/                   → Archived (bridge/, barbara-v3/)
 ```
 
 **Why Dual Platform:**
@@ -281,6 +289,209 @@ equity-connect/ (Git Monorepo)
 
 ---
 
+## 🔐 Nov 22: Granular Verification & Qualification System (Both Platforms)
+
+**Date:** November 22, 2025  
+**Status:** ✅ **COMPLETE - Both LiveKit and SignalWire Fully Backwards Compatible**
+
+### The Problem: All-or-Nothing Verification and Qualification
+
+**Before:**
+- Single boolean flags: `verified` (true/false), `qualified` (true/false)
+- All-or-nothing approach - couldn't track which specific items were verified/qualified
+- Every call asked for all information again, even if most was already confirmed
+- No context-aware flow - agent asked for everything regardless of database state
+- Poor UX for returning callers
+
+### The Solution: Granular Tracking with Auto-Compute Triggers
+
+**Database Schema Updates:**
+
+**Verification Fields (3 granular + 1 summary):**
+```sql
+ALTER TABLE leads
+ADD COLUMN phone_verified BOOLEAN DEFAULT FALSE,      -- Existing
+ADD COLUMN email_verified BOOLEAN DEFAULT FALSE,      -- Existing
+ADD COLUMN address_verified BOOLEAN DEFAULT FALSE,    -- NEW
+ADD COLUMN verified BOOLEAN DEFAULT FALSE;            -- NEW (auto-computed)
+
+-- Trigger to auto-compute verified summary field
+CREATE FUNCTION update_lead_verified_status()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.verified = NEW.phone_verified AND NEW.email_verified AND NEW.address_verified;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_lead_verified_status
+BEFORE INSERT OR UPDATE OF phone_verified, email_verified, address_verified ON leads
+FOR EACH ROW EXECUTE FUNCTION update_lead_verified_status();
+```
+
+**Qualification Fields (4 granular + 1 summary):**
+```sql
+-- Already existed in database
+age_qualified BOOLEAN DEFAULT FALSE
+homeowner_qualified BOOLEAN DEFAULT FALSE
+primary_residence_qualified BOOLEAN DEFAULT FALSE
+equity_qualified BOOLEAN DEFAULT FALSE
+qualified BOOLEAN DEFAULT FALSE  -- Summary field
+
+-- Trigger to auto-compute qualified summary field
+CREATE FUNCTION update_lead_qualified_status()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.qualified = NEW.age_qualified AND NEW.homeowner_qualified 
+                    AND NEW.primary_residence_qualified AND NEW.equity_qualified;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_lead_qualified_status
+BEFORE INSERT OR UPDATE OF age_qualified, homeowner_qualified, 
+                          primary_residence_qualified, equity_qualified ON leads
+FOR EACH ROW EXECUTE FUNCTION update_lead_qualified_status();
+```
+
+### LiveKit Implementation
+
+**1. Verify Agent (`livekit-agent/agents/verify.py`):**
+- ✅ Added safety check in `on_enter()` - skips if `verified=true`
+- ✅ Checks database for which verifications are needed (phone, email, address)
+- ✅ Dynamically generates instructions for only missing items
+- ✅ Added 3 new tools:
+  - `mark_phone_verified()` → Updates `leads.phone_verified = TRUE`
+  - `mark_email_verified()` → Updates `leads.email_verified = TRUE`
+  - `mark_address_verified()` → Updates `leads.address_verified = TRUE`
+
+**2. Qualify Agent (`livekit-agent/agents/qualify.py`):**
+- ✅ Added safety check in `on_enter()` - skips if `qualified=true`
+- ✅ Checks database for which gates are needed (age, homeowner, residence, equity)
+- ✅ Dynamically injects context for only missing gates
+- ✅ Added 4 new tools:
+  - `mark_age_qualified()` → Updates `leads.age_qualified = TRUE`
+  - `mark_homeowner_qualified()` → Updates `leads.homeowner_qualified = TRUE`
+  - `mark_primary_residence_qualified()` → Updates `leads.primary_residence_qualified = TRUE`
+  - `mark_equity_qualified()` → Updates `leads.equity_qualified = TRUE`
+
+**3. Call-Start Sync (`livekit-agent/agent.py`):**
+- ✅ Fetches `leads.verified` and `leads.qualified` from database
+- ✅ Syncs to `conversation_state` on every call start
+- ✅ Routing logic uses synced values to skip completed nodes
+
+### SignalWire Implementation
+
+**1. Verification Tools (`swaig-agent/tools/verification.py`):**
+- ✅ Created 3 new SWAIG functions matching LiveKit tools exactly:
+  - `mark_phone_verified()` → Updates `leads.phone_verified = TRUE`
+  - `mark_email_verified()` → Updates `leads.email_verified = TRUE`
+  - `mark_address_verified()` → Updates `leads.address_verified = TRUE`
+
+**2. Qualification Tools (`swaig-agent/tools/qualification.py`):**
+- ✅ Created 4 new SWAIG functions matching LiveKit tools exactly:
+  - `mark_age_qualified()` → Updates `leads.age_qualified = TRUE`
+  - `mark_homeowner_qualified()` → Updates `leads.homeowner_qualified = TRUE`
+  - `mark_primary_residence_qualified()` → Updates `leads.primary_residence_qualified = TRUE`
+  - `mark_equity_qualified()` → Updates `leads.equity_qualified = TRUE`
+
+**3. Function Registration (`swaig-agent/main.py`):**
+- ✅ Registered 7 new functions (3 verification + 4 qualification)
+- ✅ Added function declarations for SignalWire discovery
+- ✅ Added routing handlers to call the new tools
+- ✅ Updated verify and qualify contexts to include granular tools
+
+**4. Call-Start Sync (`swaig-agent/main.py`):**
+- ✅ Fetches `leads.verified` and `leads.qualified` from database
+- ✅ Syncs to `conversation_state` on every call start
+- ✅ Routing logic uses synced values to skip completed nodes
+
+**5. Database Prompts Updated:**
+- ✅ Verify prompt: Agent-led flow, checks context, only asks for missing items
+- ✅ Qualify prompt: Agent-led flow, checks gates, only asks for missing items
+
+### How It Works
+
+**Verification Flow Example:**
+```
+Call 1:
+  → Lead has: email ✅
+  → Lead needs: phone ❌, address ❌
+  → Agent asks: "Let me confirm your phone number and property address"
+  → Calls: mark_phone_verified(), mark_address_verified()
+  → Trigger sets: verified = TRUE (all 3 verified)
+
+Call 2:
+  → Lead has: verified = TRUE
+  → Routing: SKIPS verify → Goes to qualify/quote
+```
+
+**Qualification Flow Example:**
+```
+Call 1:
+  → Lead has: age_qualified ✅, homeowner_qualified ✅
+  → Lead needs: primary_residence ❌, equity ❌
+  → Agent asks: "Do you live there full-time? And about the value?"
+  → Calls: mark_primary_residence_qualified(), mark_equity_qualified()
+  → Trigger sets: qualified = TRUE (all 4 qualified)
+
+Call 2:
+  → Lead has: qualified = TRUE
+  → Routing: SKIPS qualify → Goes to quote/answer
+```
+
+### Backwards Compatibility
+
+**✅ Cross-Platform Compatibility:**
+- LiveKit and SignalWire share the same database schema
+- A lead verified in LiveKit will skip verification in SignalWire (and vice versa)
+- A lead qualified in LiveKit will skip qualification in SignalWire (and vice versa)
+- Both platforms use identical routing logic
+
+**✅ Legacy Tool Support:**
+- Old single tools still work: `mark_verified`, `mark_qualified`
+- New systems use granular tools for better UX
+- Gradual migration supported
+
+### Files Changed
+
+**LiveKit:**
+1. ✅ `livekit-agent/agents/verify.py` - Added granular verification tools
+2. ✅ `livekit-agent/agents/qualify.py` - Added granular qualification tools
+3. ✅ `livekit-agent/agent.py` - Added call-start sync logic
+
+**SignalWire:**
+1. ✅ `swaig-agent/tools/verification.py` (NEW) - 3 granular verification tools
+2. ✅ `swaig-agent/tools/qualification.py` (NEW) - 4 granular qualification tools
+3. ✅ `swaig-agent/main.py` - Registered 7 new functions
+4. ✅ `swaig-agent/services/contexts.py` - Updated verify/qualify contexts
+5. ✅ `swaig-agent/main.py` - Added call-start sync logic
+
+**Database:**
+1. ✅ `database/migrations/20251122_add_verification_fields.sql` - Added address_verified, verified fields + trigger
+2. ✅ Database trigger for qualification (executed via Supabase MCP)
+3. ✅ Verify prompt updated (executed via Supabase MCP)
+4. ✅ Qualify prompt updated (executed via Supabase MCP)
+
+### Impact
+
+**User Experience:**
+- ✅ Returning callers don't repeat verification/qualification
+- ✅ Partial information preserved across calls
+- ✅ Faster conversations (skip what's done)
+- ✅ Natural flow ("I just need to confirm your email")
+
+**Technical:**
+- ✅ Granular tracking in database
+- ✅ Context-aware agent behavior
+- ✅ Automatic summary field computation
+- ✅ Platform-agnostic (works on both LiveKit and SignalWire)
+- ✅ No data loss between platforms
+
+**Status:** ✅ **COMPLETE - Granular Verification & Qualification Active on Both Platforms (November 22, 2025)**
+
+---
+
 ## 🛡️ Nov 21: Production-Grade Fallback System with LOUD Error Logging
 
 **Date:** November 21, 2025  
@@ -361,6 +572,139 @@ Action: Check livekit_available_stt_models table
 - DO NOT update for minor tweaks (these are emergency backups)
 
 **Status:** ✅ **COMPLETE - Production-Grade Fallback System Active (November 21, 2025)**
+
+---
+
+## ✅ Nov 22: Granular Qualification System + Verification Fixes (LiveKit Only)
+
+**Date:** November 22, 2025  
+**Status:** ✅ **COMPLETE - Granular Tracking Active (LiveKit Agent)**
+
+### The Problem: Single Boolean Fields + Hard-Coded Prompts
+
+**Before:**
+- **Verification:** Only had `phone_verified` and `email_verified` - no address verification, no summary field
+- **Qualification:** Single `qualified` boolean - couldn't track which of the 4 gates passed/failed
+- **No safety checks:** Verify/qualify agents would run even if already complete
+- **Hard-coded greetings:** Python code had hard-coded "Say: '...'" instructions instead of database prompts
+- **No granular tools:** Had to pass/fail all gates at once, couldn't mark individual gates
+
+### The Solution: Granular Fields + Database-Driven Prompts
+
+**1. ✅ Verification System Overhaul (LiveKit Agent)**
+
+**Database Migration:** `database/migrations/20251122_add_verification_fields.sql`
+- Added `address_verified` boolean field
+- Added `verified` summary boolean (auto-computed from all 3 fields)
+- Created trigger `update_lead_verified()` - auto-sets `verified=true` when all 3 fields are true
+- Backfilled existing leads based on property_address presence
+
+**LiveKit Agent (`livekit-agent/agents/verify.py`):**
+- ✅ Added safety check in `on_enter()` - skips if `verified=true` in database
+- ✅ Checks which fields need verification (phone, email, address)
+- ✅ Injects context dynamically (no hard-coding)
+- ✅ Added 3 granular tools: `mark_phone_verified()`, `mark_email_verified()`, `mark_address_verified()`
+- ✅ Removed hard-coded greeting - now uses database prompt
+
+**Database Prompt Updated:**
+- ✅ Added greeting instructions: "IMMEDIATELY greet the caller and explain what you need to verify"
+- ✅ Added example opening text
+- ✅ Added instructions for checking each of the 3 verification fields
+- ✅ Updated tools list to include 3 new granular tools
+
+**2. ✅ Qualification System Overhaul (LiveKit Agent)**
+
+**Database Migration:** `database/migrations/20251122_add_qualification_fields.sql`
+- Added 4 granular fields: `age_qualified`, `homeowner_qualified`, `primary_residence_qualified`, `equity_qualified`
+- Added trigger `update_lead_qualified()` - auto-sets `qualified=true` when all 4 gates are true
+- Backfilled existing qualified leads (status = 'qualified' or beyond)
+
+**LiveKit Agent (`livekit-agent/agents/qualify.py`):**
+- ✅ Added safety check in `on_enter()` - skips if `qualified=true` in database
+- ✅ Checks which gates need checking (age, homeowner, primary residence, equity)
+- ✅ Injects context dynamically (no hard-coding)
+- ✅ Added 4 granular tools: `mark_age_qualified()`, `mark_homeowner_qualified()`, `mark_primary_residence_qualified()`, `mark_equity_qualified()`
+- ✅ Removed hard-coded greeting - now uses database prompt
+
+**Database Prompt Updated:**
+- ✅ Added greeting instructions: "IMMEDIATELY greet the caller and explain that you need to check qualifications"
+- ✅ Added example opening text
+- ✅ Added instructions for checking each of the 4 qualification gates
+- ✅ Updated tools list to include 4 new granular tools
+
+**3. ✅ Entrypoint & Greet Agent Updates**
+
+**LiveKit Agent (`livekit-agent/agent.py`):**
+- ✅ Updated lead lookup to retrieve `verified` and `qualified` from `leads` table
+- ✅ Passes `verified` status to `cs_start_call()` and `update_conversation_state()`
+
+**LiveKit Agent (`livekit-agent/agents/greet.py`):**
+- ✅ Fetches `verified` and `qualified` directly from `leads` table (not conversation_data)
+- ✅ Routes correctly: `verified=true` → skips verify, `qualified=true` → skips qualify
+
+### How It Works Now
+
+**Verification Flow:**
+1. **Greet** checks database: `verified=true` → Routes directly to Answer (skips verify)
+2. **Verify** enters → Checks which fields need verification (phone, email, address)
+3. Injects context: "Need to verify: phone, email" (example)
+4. Database prompt → Agent greets: "Before I can help, I need to verify your phone number and email address..."
+5. Agent asks about missing fields only
+6. Marks each field using `mark_*_verified()` tools
+7. Trigger auto-updates `verified=true` when all 3 fields are true
+8. Routes to next agent
+
+**Qualification Flow:**
+1. **Greet** checks database: `qualified=true` → Routes directly to Answer (skips qualify)
+2. **Qualify** enters → Checks which gates need checking (age, homeowner, residence, equity)
+3. Injects context: "Need to check: age, equity" (example)
+4. Database prompt → Agent greets: "Before we continue, I need to check a few quick qualifications..."
+5. Agent asks about missing gates only
+6. Marks each gate using `mark_*_qualified()` tools
+7. Trigger auto-updates `qualified=true` when all 4 gates are true
+8. Routes to answer agent
+
+### Comparison: Before vs After
+
+| Feature | Before ❌ | After ✅ |
+|---------|----------|---------|
+| **Verification tracking** | 2 fields (phone, email) | 3 fields + summary (phone, email, address, verified) |
+| **Qualification tracking** | Single boolean | 4 separate gate fields + summary |
+| **Safety checks** | None | Skips if already verified/qualified |
+| **Greeting** | Hard-coded in Python | Database prompt |
+| **Tool usage** | 1 tool (pass/fail all) | 7 granular tools (3 verify + 4 qualify) |
+| **Partial completion** | Not possible | Can track which fields/gates completed |
+| **Auto-computation** | Manual | Triggers auto-update summary fields |
+
+### Benefits
+
+- ✅ **No hard-coded prompts** - All greeting/behavior in database
+- ✅ **Granular tracking** - Know exactly which fields/gates are complete
+- ✅ **Smart skipping** - Already verified/qualified leads skip unnecessary steps
+- ✅ **Database-driven** - Can update behavior without code changes
+- ✅ **Data consistency** - Triggers ensure summary fields stay accurate
+- ✅ **Agent speaks first** - Greets immediately on enter (database prompt)
+
+### Files Created
+
+- `database/migrations/20251122_add_verification_fields.sql` - Verification granular fields + trigger
+- `database/migrations/20251122_add_qualification_fields.sql` - Qualification granular fields + trigger
+- `VERIFICATION_FIX_COMPLETE.md` - Verification system documentation
+- `QUALIFICATION_FIX_COMPLETE.md` - Qualification system documentation
+
+### Files Modified (LiveKit Only)
+
+- `livekit-agent/agent.py` - Updated lead lookup to get verified/qualified from database
+- `livekit-agent/agents/greet.py` - Fetches verified/qualified from leads table
+- `livekit-agent/agents/verify.py` - Added safety check, granular tools, removed hard-coding
+- `livekit-agent/agents/qualify.py` - Added safety check, granular tools, removed hard-coding
+- `prompt_versions` table - Updated verify and qualify node prompts with greeting instructions
+
+### Status
+
+**Status:** ✅ **COMPLETE - Granular Verification & Qualification System Active (November 22, 2025)**
+
+**Note:** These changes are **LiveKit-only**. SignalWire agent maintains existing single boolean fields for backward compatibility.
 
 ---
 
@@ -469,6 +813,9 @@ Action: Check livekit_available_stt_models table
     - `mark_qualification_result_tool` → `mark_qualified`
     - `search_knowledge_tool` → `search_knowledge`
     - And 8 more tool renames across all agents
+11a. ✅ **GRANULAR TOOLS (Nov 22):** Added 7 new granular tools for verification and qualification:
+    - Verification: `mark_phone_verified()`, `mark_email_verified()`, `mark_address_verified()`
+    - Qualification: `mark_age_qualified()`, `mark_homeowner_qualified()`, `mark_primary_residence_qualified()`, `mark_equity_qualified()`
 12. ✅ Fixed phone number extraction from room name (`sip-_+16505300051_...`)
 13. ✅ Fixed Supabase query ordering (`.select()` before `.or_()`)
 14. ✅ Added support for OpenAI Realtime and Gemini Live plugins (realtime models)
@@ -490,6 +837,9 @@ Action: Check livekit_available_stt_models table
 27. ✅ Deactivated orphaned "end" node
 28. ✅ Added `appointment_datetime` flag to `book_appointment` tool
 29. ✅ Documented all conversation flags (`docs/conversation_flags.md`)
+30. ✅ **Nov 22:** Added granular verification fields (`address_verified`, `verified` summary) + trigger
+31. ✅ **Nov 22:** Added granular qualification fields (`age_qualified`, `homeowner_qualified`, `primary_residence_qualified`, `equity_qualified`, `qualified` summary) + trigger
+32. ✅ **Nov 22:** Updated VERIFY and QUALIFY node prompts with greeting instructions (database-driven)
 
 **Vue Portal:**
 30. ✅ Split "Models & Voice Configuration" into two tabs: SignalWire and LiveKit

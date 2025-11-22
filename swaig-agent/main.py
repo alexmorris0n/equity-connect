@@ -109,6 +109,23 @@ async def barbara_agent(request: Request):
         lead = await get_lead_by_phone(phone)
         state = await get_conversation_state(phone)
         
+        # Sync lead status to conversation_state on call start (backwards compatibility with LiveKit)
+        if lead:
+            lead_qualified = lead.get('qualified', False)
+            lead_verified = lead.get('verified', False)
+            
+            # Update conversation_state if lead data exists
+            await update_conversation_state(phone, {
+                'qualified': lead_qualified,
+                'conversation_data': {
+                    'verified': lead_verified
+                }
+            })
+            
+            # Refresh state after update
+            state = await get_conversation_state(phone)
+            logger.info(f"[AGENT] Synced lead status to conversation_state: qualified={lead_qualified}, verified={lead_verified}")
+        
         # Determine starting node (multi-call persistence)
         current_node = "greet"
         if state:
@@ -215,8 +232,15 @@ async def barbara_agent(request: Request):
                                         "route_conversation",
                                         "mark_greeted",
                                         "mark_verified",
+                                        "mark_phone_verified",  # Granular verification
+                                        "mark_email_verified",  # Granular verification
+                                        "mark_address_verified",  # Granular verification
                                         "mark_qualified",
                                         "mark_qualification_result",  # Vue/database uses this name
+                                        "mark_age_qualified",  # Granular qualification
+                                        "mark_homeowner_qualified",  # Granular qualification
+                                        "mark_primary_residence_qualified",  # Granular qualification
+                                        "mark_equity_qualified",  # Granular qualification
                                         "mark_quote_presented",
                                         "mark_ready_to_book",
                                         "mark_wrong_person",  # Added for LiveKit compatibility
@@ -316,6 +340,30 @@ async def get_function_declarations(request: Request):
                     }
                 }
             },
+            "mark_phone_verified": {
+                "function": "mark_phone_verified",
+                "description": "Mark that caller's phone number has been verified. Call after confirming phone number with caller.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            "mark_email_verified": {
+                "function": "mark_email_verified",
+                "description": "Mark that caller's email address has been verified. Call after collecting or confirming email with caller.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            "mark_address_verified": {
+                "function": "mark_address_verified",
+                "description": "Mark that caller's property address has been verified. Call after collecting or confirming full property address with caller.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
             "mark_qualified": {
                 "function": "mark_qualified",
                 "description": "Mark caller qualification status (age 62+, owner-occupied, equity)",
@@ -334,6 +382,38 @@ async def get_function_declarations(request: Request):
                     "properties": {
                         "qualified": {"type": "boolean", "description": "Meets qualification criteria"}
                     }
+                }
+            },
+            "mark_age_qualified": {
+                "function": "mark_age_qualified",
+                "description": "Mark that the caller is 62+ years old (FHA requirement). Call after confirming age.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            "mark_homeowner_qualified": {
+                "function": "mark_homeowner_qualified",
+                "description": "Mark that the caller owns the property. Call after confirming homeownership.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            "mark_primary_residence_qualified": {
+                "function": "mark_primary_residence_qualified",
+                "description": "Mark that the property is caller's primary residence (not rental). Call after confirming occupancy.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            "mark_equity_qualified": {
+                "function": "mark_equity_qualified",
+                "description": "Mark that the caller has sufficient equity. Call after confirming equity/value.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
                 }
             },
             "mark_quote_presented": {
@@ -542,6 +622,8 @@ async def handle_function_call(function_name: str, request: Request):
         
         # Import tool handlers
         from tools.flags import handle_flag_update
+        from tools.verification import mark_phone_verified, mark_email_verified, mark_address_verified
+        from tools.qualification import mark_age_qualified, mark_homeowner_qualified, mark_primary_residence_qualified, mark_equity_qualified
         from tools.calculate import handle_calculate
         from tools.knowledge import handle_knowledge_search
         from tools.booking import handle_booking, handle_check_broker_availability
@@ -550,6 +632,27 @@ async def handle_function_call(function_name: str, request: Request):
         # Route to appropriate handler
         if function_name == "route_conversation":
             result = await handle_routing_check(caller_id, args.get('current_node', 'greet'), args)
+        
+        elif function_name == "mark_phone_verified":
+            result = await mark_phone_verified(caller_id)
+        
+        elif function_name == "mark_email_verified":
+            result = await mark_email_verified(caller_id)
+        
+        elif function_name == "mark_address_verified":
+            result = await mark_address_verified(caller_id)
+        
+        elif function_name == "mark_age_qualified":
+            result = await mark_age_qualified(caller_id)
+        
+        elif function_name == "mark_homeowner_qualified":
+            result = await mark_homeowner_qualified(caller_id)
+        
+        elif function_name == "mark_primary_residence_qualified":
+            result = await mark_primary_residence_qualified(caller_id)
+        
+        elif function_name == "mark_equity_qualified":
+            result = await mark_equity_qualified(caller_id)
         
         elif function_name.startswith("mark_"):
             result = await handle_flag_update(caller_id, function_name, args)

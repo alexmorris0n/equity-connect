@@ -8,10 +8,13 @@ from livekit.agents import Agent, function_tool, RunContext
 from livekit.agents.llm import ChatContext
 from services.prompt_loader import load_node_config
 from services.conversation_state import update_conversation_state
+from services.supabase import get_supabase_client
 from tools.conversation_flags import mark_quote_presented
 from tools.lead import update_lead_info
+from tools.quote import calculate_reverse_mortgage as calculate_reverse_mortgage_tool
 from typing import Optional
 import logging
+import json
 
 logger = logging.getLogger("agents.quote")
 
@@ -41,9 +44,79 @@ class BarbaraQuoteAgent(Agent):
     
     async def on_enter(self) -> None:
         """Called when agent takes control - calculate and present quote"""
-        self.session.generate_reply(
-            instructions="Calculate the reverse mortgage quote based on lead data and present it to the user. Use the information from the lead record (age, home value, mortgage balance) to calculate available equity."
+        lead_id = self.lead_data.get('id')
+        
+        # Build context about available data for calculation
+        quote_context = """
+=== QUOTE CALCULATION DATA ===
+"""
+        
+        if lead_id:
+            sb = get_supabase_client()
+            try:
+                response = sb.table('leads').select('property_value, estimated_equity, age, mortgage_balance').eq('id', lead_id).single().execute()
+                lead = response.data
+                
+                property_value = lead.get('property_value')
+                estimated_equity = lead.get('estimated_equity')
+                age = lead.get('age')
+                mortgage_balance = lead.get('mortgage_balance')
+                
+                if property_value:
+                    quote_context += f"- property_value = ${property_value:,.0f}\n"
+                if estimated_equity:
+                    quote_context += f"- estimated_equity = ${estimated_equity:,.0f}\n"
+                if age:
+                    quote_context += f"- age = {age}\n"
+                if mortgage_balance:
+                    quote_context += f"- mortgage_balance = ${mortgage_balance:,.0f}\n"
+                
+                if not property_value:
+                    quote_context += "- property_value = MISSING (need to collect)\n"
+                if not age:
+                    quote_context += "- age = MISSING (need to collect)\n"
+                
+                quote_context += "===========================\n"
+                
+                logger.info(f"Quote context for lead {lead_id}: property_value={property_value}, age={age}, equity={estimated_equity}")
+            except Exception as e:
+                logger.error(f"Error fetching lead data for quote: {e}")
+                quote_context += "Error loading lead data. Collect property value and age.\n===========================\n"
+        else:
+            quote_context += "No lead_id available. Collect property value, age, and mortgage balance.\n===========================\n"
+        
+        # Generate reply with context - let database prompt handle the greeting and calculation instructions
+        await self.session.generate_reply(
+            instructions=quote_context + "\nGreet the caller and calculate the reverse mortgage quote using the calculate_reverse_mortgage tool."
         )
+    
+    @function_tool()
+    async def calculate_reverse_mortgage(
+        self,
+        context: RunContext,
+        property_value: float,
+        age: int,
+        equity: Optional[float] = None,
+        mortgage_balance: Optional[float] = None
+    ):
+        """
+        Calculate reverse mortgage loan amounts (lump sum and monthly payment estimates).
+        
+        CRITICAL: Always use this tool for calculations - never estimate or guess amounts.
+        This tool uses HECM calculation principles and returns accurate estimates.
+        
+        Args:
+            property_value: Current estimated home value (required)
+            age: Borrower age (must be 62+, required)
+            equity: Estimated equity amount (if not provided, calculated from property_value - mortgage_balance)
+            mortgage_balance: Current mortgage balance (used to calculate equity if equity not provided)
+        
+        Returns:
+            JSON string with lump_sum, monthly_payment_20yr, monthly_payment_tenure, and note
+        """
+        logger.info(f"📊 Quote agent calling calculate_reverse_mortgage: property_value=${property_value:,.0f}, age={age}")
+        result = await calculate_reverse_mortgage_tool(property_value, age, equity, mortgage_balance)
+        return result
     
     @function_tool()
     async def mark_quote_presented(self, context: RunContext, quote_reaction: str):

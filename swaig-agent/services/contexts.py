@@ -153,8 +153,8 @@ def get_functions_for_node(node_name: str) -> List[str]:
     """
     function_map = {
         "greet": ["mark_greeted", "route_conversation"],
-        "verify": ["mark_verified", "route_conversation"],
-        "qualify": ["mark_qualified", "route_conversation"],
+        "verify": ["mark_verified", "mark_phone_verified", "mark_email_verified", "mark_address_verified", "route_conversation"],
+        "qualify": ["mark_qualified", "mark_age_qualified", "mark_homeowner_qualified", "mark_primary_residence_qualified", "mark_equity_qualified", "route_conversation"],
         "quote": ["mark_quote_presented", "calculate_reverse_mortgage", "route_conversation"],
         "answer": ["search_knowledge", "mark_ready_to_book", "route_conversation"],
         "objections": ["search_knowledge", "mark_ready_to_book", "route_conversation"],

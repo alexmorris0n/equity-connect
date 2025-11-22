@@ -73,12 +73,28 @@ class BarbaraGreetAgent(Agent):
         This tool checks the database to determine if verification/qualification
         are already complete from a previous call, and routes accordingly.
         """
-        # Check database status - EVERY call checks current flags
-        state = get_conversation_state(self.caller_phone)
-        conversation_data = (state.get('conversation_data', {}) if state else {})
-        
-        verified = conversation_data.get('verified', False)
-        qualified = conversation_data.get('qualified', False)
+        # Check database status - EVERY call checks current flags from DATABASE
+        # Get the lead from database to check verified status
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            logger.warning("No lead_id in lead_data, defaulting to unverified/unqualified")
+            verified = False
+            qualified = False
+        else:
+            from services.supabase import get_supabase_client
+            sb = get_supabase_client()
+            try:
+                response = sb.table('leads').select('verified, qualified').eq('id', lead_id).single().execute()
+                lead = response.data
+                # verified is from leads.verified (auto-computed from phone/email/address)
+                verified = lead.get('verified', False)
+                # qualified is from leads.qualified
+                qualified = lead.get('qualified', False)
+                logger.info(f"Database status for {self.caller_phone}: verified={verified}, qualified={qualified}")
+            except Exception as e:
+                logger.error(f"Error fetching lead verification status: {e}")
+                verified = False
+                qualified = False
         
         # Mark greeted with reason
         update_conversation_state(
