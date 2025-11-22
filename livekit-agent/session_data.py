@@ -10,6 +10,7 @@ from typing import Optional, TYPE_CHECKING, Dict, Any
 
 if TYPE_CHECKING:
     from routing_coordinator import RoutingCoordinator
+    from node_agent import BarbaraNodeAgent
 
 @dataclass
 class BarbaraSessionData:
@@ -17,6 +18,7 @@ class BarbaraSessionData:
     
     Attributes:
         coordinator: Reference to RoutingCoordinator for managing node transitions
+        current_agent: Reference to the currently active BarbaraNodeAgent
         phone_number: Caller's phone number for database lookups
         vertical: Business vertical (e.g., "reverse_mortgage")
         current_node: Name of the current conversation node
@@ -28,6 +30,7 @@ class BarbaraSessionData:
             age: int | None = None
     """
     coordinator: Optional["RoutingCoordinator"] = None
+    current_agent: Optional["BarbaraNodeAgent"] = None
     phone_number: Optional[str] = None
     vertical: str = "reverse_mortgage"
     current_node: Optional[str] = None
