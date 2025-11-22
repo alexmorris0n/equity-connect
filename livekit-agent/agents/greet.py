@@ -129,6 +129,42 @@ class BarbaraGreetAgent(Agent):
             )
     
     @function_tool()
+    async def route_to_booking(self, context: RunContext):
+        """
+        Route directly to appointment booking.
+        
+        Call when user EXPLICITLY requests to book an appointment:
+        - "I want to book an appointment"
+        - "Can I schedule a call?"
+        - "I'd like to set up a meeting"
+        - "Let's book something"
+        
+        This is for returning callers who are ready to book immediately.
+        For new callers, use continue_to_verification instead.
+        """
+        from .book import BarbaraBookAgent
+        
+        logger.info(f"Routing directly to booking for {self.caller_phone}")
+        
+        # Mark greeted
+        update_conversation_state(
+            self.caller_phone,
+            {
+                "conversation_data": {
+                    "greeted": True,
+                    "ready_to_book": True
+                }
+            }
+        )
+        
+        return BarbaraBookAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
+    
+    @function_tool()
     async def mark_wrong_person(
         self, 
         context: RunContext, 
