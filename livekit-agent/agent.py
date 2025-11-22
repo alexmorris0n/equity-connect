@@ -767,22 +767,7 @@ async def entrypoint(ctx: JobContext):
     
     _install_session_state_observers()
     
-    # Start the session with initial agent
-    # LiveKit handles all handoffs automatically via tool returns
-    logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
-    await session.start(
-        agent=initial_agent,
-        room=ctx.room,
-        room_options=RoomOptions(
-            audio_input=AudioInputOptions(
-                noise_cancellation=noise_cancellation.BVC(),
-            ),
-        ),
-    )
-    logger.info(f"✅ ENTRYPOINT: AgentSession started - session will run until participant disconnect")
-    
     # Register cleanup callback for when session ends
-    # The @rtc_session decorator keeps this function alive until room closes
     async def _on_shutdown(_reason: str):
         if caller_phone:
             try:
@@ -792,6 +777,21 @@ async def entrypoint(ctx: JobContext):
                 logger.warning(f"Failed to mark_call_completed for {caller_phone}: {e}")
     
     ctx.add_shutdown_callback(_on_shutdown)
+    
+    # Start the session with initial agent and WAIT for it to complete
+    # LiveKit handles all handoffs automatically via tool returns
+    logger.info(f"🎬 ENTRYPOINT: Starting AgentSession...")
+    async with session:
+        await session.start(
+            agent=initial_agent,
+            room=ctx.room,
+            room_options=RoomOptions(
+                audio_input=AudioInputOptions(
+                    noise_cancellation=noise_cancellation.BVC(),
+                ),
+            ),
+        )
+        logger.info(f"✅ ENTRYPOINT: AgentSession started - session will run until participant disconnect")
 
 
 async def load_template(template_id: str) -> Optional[dict]:
