@@ -301,7 +301,24 @@ class BarbaraNodeAgent(Agent):
         return True
 
     async def _handle_answer_on_enter(self) -> bool:
-        """Acknowledge the caller's intent and ask for specifics."""
+        """Check if user already asked a question in previous turn.
+        
+        If so, skip the "what's your question?" prompt and let the LLM
+        see the question in chat history and answer it directly.
+        """
+        # Check if the last user message contains a question
+        if hasattr(self.session, "_chat_ctx") and self.session._chat_ctx.messages:
+            last_messages = self.session._chat_ctx.messages[-3:]  # Check last 3 messages
+            for msg in reversed(last_messages):
+                if hasattr(msg, "role") and msg.role == "user":
+                    text = getattr(msg, "text_content", "") or getattr(msg, "content", "")
+                    if text and ("?" in text or len(text.split()) > 5):
+                        # User already asked a question or provided context
+                        # Skip the "what's your question?" prompt and let LLM respond to history
+                        logger.info(f"✅ User already asked question: '{text[:50]}...' - letting LLM respond directly")
+                        return False  # Don't handle on_enter, let normal flow process the question
+        
+        # No recent question found - ask what they want to know
         session_userdata = getattr(getattr(self, "session", None), "userdata", None)  # type: ignore[attr-defined]
         summary = getattr(session_userdata, "call_reason_summary", None) if session_userdata else None
         if summary:

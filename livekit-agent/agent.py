@@ -12,8 +12,7 @@ from livekit.agents import (
     AgentSession,
     AgentStateChangedEvent,
     JobContext,
-    RoomInputOptions,
-    RoomOutputOptions,
+    RoomOptions,
     JobExecutorType,
     JobProcess,
     UserStateChangedEvent,
@@ -774,10 +773,8 @@ async def entrypoint(ctx: JobContext):
         await session.start(
             agent=agent,  # Pass our pre-created agent with phone number
             room=ctx.room,
-            room_input_options=RoomInputOptions(
-                noise_cancellation=noise_cancellation.BVC()
-            ),
-            room_output_options=RoomOutputOptions(
+            room_options=RoomOptions(
+                noise_cancellation=noise_cancellation.BVC(),
                 audio_enabled=True,  # CRITICAL: Enable audio output for TTS
             ),
         )
