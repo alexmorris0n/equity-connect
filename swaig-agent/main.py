@@ -136,7 +136,8 @@ async def barbara_agent(request: Request):
                 current_node = "book"
             elif state.get('qualified'):
                 current_node = "answer"
-            current_node = state.get('current_node', current_node)
+            # Only override if database has a non-None/non-empty current_node
+            current_node = state.get('current_node') or current_node
         
         logger.info(f"[AGENT] Starting at node: {current_node}")
         
