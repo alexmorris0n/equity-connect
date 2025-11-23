@@ -18,6 +18,12 @@
 - ✅ Database prompt updated
 - ✅ Tools array updated
 
+### ✅ Scenario 3: Pre-Qualified Returning Caller
+**Status:** ✅ **WORKS** (Already Fixed!)
+- ✅ GREET checks `quote_presented` flag
+- ✅ Routes to ANSWER if quote already presented (returning caller)
+- ✅ Routes to QUOTE if quote not yet presented (fresh qualified caller)
+
 ### ✅ Scenario 4: Objection After Quote
 **Status:** ✅ **WORKS** (No changes needed)
 
@@ -30,6 +36,12 @@
 
 ### ✅ Scenario 7: Calculation in Answer
 **Status:** ✅ **WORKS** (No changes needed)
+
+### ✅ Scenario 8: Wrong Person Handoff
+**Status:** ✅ **WORKS** (Fixed!)
+- ✅ `route_to_greet()` tool added to GOODBYE
+- ✅ GOODBYE prompt updated with handoff detection instructions
+- ✅ Name verification added to GREET prompt
 
 ### ✅ Scenario 13: Disqualification in Quote
 **Status:** ✅ **WORKS** (Fixed!)
@@ -74,28 +86,19 @@
 
 ## ❌ Scenarios That Don't Work
 
-### ❌ Scenario 3: Pre-Qualified Returning Caller
-**Status:** ❌ **DOESN'T WORK**
+### ✅ Scenario 3: Pre-Qualified Returning Caller
+**Status:** ✅ **WORKS** (Already Fixed!)
 
-**Issue:**
-- GREET routes verified+qualified to QUOTE (not ANSWER)
-- No logic to check `quote_presented` flag
-- Returning callers who already got quote will get quote again
+**Verified:**
+- ✅ GREET checks `quote_presented` flag (lines 137-163 in greet.py)
+- ✅ Routes to ANSWER if quote already presented (returning caller)
+- ✅ Routes to QUOTE if quote not yet presented (fresh qualified caller)
+- ✅ Logs routing decision for debugging
 
-**Fix Needed:**
-```python
-# In greet.py mark_greeted():
-if verified and qualified:
-    quote_presented = conversation_data.get('quote_presented', False)
-    if quote_presented:
-        # Returning caller - go to ANSWER
-        return BarbaraAnswerAgent(...)
-    else:
-        # Fresh caller - go to QUOTE
-        return BarbaraQuoteAgent(...)
-```
+**Code Location:**
+`livekit-agent/agents/greet.py` lines 137-163
 
-**Impact:** Medium - Returning callers get redundant quote
+**Impact:** None - Working correctly
 
 ---
 

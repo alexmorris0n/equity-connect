@@ -147,6 +147,128 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             ))
     
     @function_tool()
+    async def mark_phone_verified(self, context: RunContext, phone_number: str):
+        """
+        Mark phone number as verified after confirming it with the caller.
+        
+        Call when:
+        - You've confirmed their phone number verbally
+        - They've acknowledged it's correct
+        
+        Args:
+            phone_number: The phone number being verified (e.g., "555-123-4567")
+        """
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark phone verified."
+        
+        from services.supabase import get_supabase_client
+        sb = get_supabase_client()
+        
+        try:
+            sb.table('leads').update({
+                'phone_verified': True
+            }).eq('id', lead_id).execute()
+            
+            logger.info(f"✅ Phone verified for lead {lead_id}: {phone_number}")
+            return f"Phone number {phone_number} verified successfully."
+        except Exception as e:
+            logger.error(f"Failed to mark phone verified: {e}")
+            return f"Error verifying phone: {str(e)}"
+    
+    @function_tool()
+    async def mark_email_verified(self, context: RunContext, email: str):
+        """
+        Mark email address as verified after confirming it with the caller.
+        
+        Call when:
+        - You've confirmed their email address verbally
+        - They've spelled it out or acknowledged it's correct
+        
+        Args:
+            email: The email address being verified (e.g., "john@example.com")
+        """
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark email verified."
+        
+        from services.supabase import get_supabase_client
+        sb = get_supabase_client()
+        
+        try:
+            # Update email if provided and mark as verified
+            sb.table('leads').update({
+                'primary_email': email,
+                'email_verified': True
+            }).eq('id', lead_id).execute()
+            
+            logger.info(f"✅ Email verified for lead {lead_id}: {email}")
+            return f"Email {email} verified successfully."
+        except Exception as e:
+            logger.error(f"Failed to mark email verified: {e}")
+            return f"Error verifying email: {str(e)}"
+    
+    @function_tool()
+    async def mark_address_verified(
+        self, 
+        context: RunContext, 
+        address: str,
+        city: str,
+        state: str,
+        zip_code: str
+    ):
+        """
+        Mark property address as verified after confirming it with the caller.
+        
+        Call when:
+        - You've confirmed their full property address
+        - They've acknowledged it's correct
+        
+        Args:
+            address: Street address (e.g., "123 Main St")
+            city: City name (e.g., "Springfield")
+            state: State abbreviation (e.g., "CA")
+            zip_code: ZIP code (e.g., "12345")
+        """
+        lead_id = self.lead_data.get('id')
+        if not lead_id:
+            return "No lead_id available. Cannot mark address verified."
+        
+        from services.supabase import get_supabase_client
+        sb = get_supabase_client()
+        
+        try:
+            # Update address fields and mark as verified
+            update_data = {
+                'property_address': address,
+                'property_city': city,
+                'property_state': state,
+                'property_zip': zip_code,
+                'address_verified': True
+            }
+            
+            sb.table('leads').update(update_data).eq('id', lead_id).execute()
+            
+            logger.info(f"✅ Address verified for lead {lead_id}: {address}, {city}, {state} {zip_code}")
+            
+            # BONUS: Auto-assign broker based on territory after address verification
+            from tools.broker import find_broker_by_territory
+            try:
+                broker_result = await find_broker_by_territory(state, city, zip_code)
+                import json
+                broker_data = json.loads(broker_result)
+                if broker_data.get('success') and broker_data.get('broker_id'):
+                    logger.info(f"✅ Auto-assigned broker {broker_data['broker_id']} based on territory")
+            except Exception as broker_error:
+                logger.warning(f"Could not auto-assign broker: {broker_error}")
+            
+            full_address = f"{address}, {city}, {state} {zip_code}"
+            return f"Property address {full_address} verified successfully."
+        except Exception as e:
+            logger.error(f"Failed to mark address verified: {e}")
+            return f"Error verifying address: {str(e)}"
+    
+    @function_tool()
     async def update_lead_info(
         self, 
         context: RunContext,
