@@ -879,6 +879,7 @@
               :key="node"
               class="node-card"
               :class="{ expanded: expandedNodes[node], active: selectedNode === node }"
+              :data-node="node"
             >
               <div class="node-card-header" @click.stop="toggleNode(node)">
                 <span class="node-name">
@@ -895,7 +896,7 @@
                     <label>Role & Objective</label>
                     <textarea
                       :value="nodeContent[node]?.role || ''"
-                      @input="(e) => { updateRole(node, e.target.value); }"
+                      @input="(e) => { updateRole(node, e.target.value); autoResizeNodeTextareas(node); }"
                       placeholder="You are Barbara, a [role description] assistant..."
                       rows="3"
                     ></textarea>
@@ -964,7 +965,7 @@
                       :id="`instructions-${node}`"
                       :ref="el => setTextareaRef(node, el)"
                       :value="nodeContent[node]?.instructions || ''"
-                      @input="(e) => { updateInstructions(node, e.target.value); setTextareaCursor(node, e); }"
+                      @input="(e) => { updateInstructions(node, e.target.value); setTextareaCursor(node, e); autoResizeNodeTextareas(node); }"
                       @focus="(e) => setTextareaCursor(node, e)"
                       @click="(e) => setTextareaCursor(node, e)"
                       placeholder="What should Barbara do?"
@@ -976,7 +977,7 @@
                     <label>Step Criteria</label>
                     <textarea
                       :value="nodeContent[node]?.step_criteria || ''"
-                      @input="(e) => { updateStepCriteria(node, e.target.value); }"
+                      @input="(e) => { updateStepCriteria(node, e.target.value); autoResizeNodeTextareas(node); }"
                       placeholder="When is this step complete?"
                       rows="3"
                     ></textarea>
@@ -4101,11 +4102,40 @@ async function loadVersions(nodeName) {
   
   loading.value = true
   try {
-    const nodePrompt = nodePrompts.value[selectedVertical.value]?.[nodeName]
+    let nodePrompt = nodePrompts.value[selectedVertical.value]?.[nodeName]
     if (!nodePrompt) {
-      versions.value = []
-      currentVersion.value = null
-      return
+      // Fallback: fetch prompt by vertical + node_name so versions sidebar can populate on first load
+      console.warn('loadVersions: nodePrompt missing for', nodeName, '- attempting DB fallback')
+      const { data: promptData, error: promptError } = await supabase
+        .from('prompts')
+        .select('id, name, vertical, node_name, current_version')
+        .eq('vertical', selectedVertical.value)
+        .eq('node_name', nodeName)
+        .limit(1)
+        .maybeSingle()
+      
+      if (promptError) {
+        console.error('loadVersions: fallback query failed:', promptError)
+      }
+      
+      if (promptData) {
+        nodePrompt = {
+          id: promptData.id,
+          vertical: promptData.vertical,
+          node_name: promptData.node_name,
+          name: promptData.name,
+          version_number: promptData.current_version,
+          content: null
+        }
+        if (!nodePrompts.value[selectedVertical.value]) {
+          nodePrompts.value[selectedVertical.value] = {}
+        }
+        nodePrompts.value[selectedVertical.value][nodeName] = nodePrompt
+      } else {
+        versions.value = []
+        currentVersion.value = null
+        return
+      }
     }
     
     const { data, error } = await supabase
@@ -4143,9 +4173,17 @@ async function loadVersion(versionId) {
     
     if (error) throw error
     
-    currentVersion.value = data
-    
-    if (data.content && selectedNode.value) {
+      currentVersion.value = data
+      
+      // Auto-resize textareas after loading version content
+      if (selectedNode.value) {
+        await nextTick()
+        setTimeout(() => {
+          autoResizeNodeTextareas(selectedNode.value)
+        }, 100)
+      }
+      
+      if (data.content && selectedNode.value) {
       console.log('loadVersion: Loading content for', selectedNode.value, ':', data.content)
       
       // Handle tools - convert to array for multi-select
@@ -4255,6 +4293,12 @@ async function loadVersion(versionId) {
       console.log('loadVersion: Tools array type:', Array.isArray(nodeContent.value[selectedNode.value].tools), 'length:', nodeContent.value[selectedNode.value].tools.length)
       console.log('loadVersion: Tools array contents:', JSON.stringify(nodeContent.value[selectedNode.value].tools))
       nodeHasChanges.value[selectedNode.value] = false
+      
+      // Auto-resize textareas after content is updated
+      await nextTick()
+      setTimeout(() => {
+        autoResizeNodeTextareas(selectedNode.value)
+      }, 150)
     } else {
       console.log('loadVersion: No content in data or no selectedNode')
     }
@@ -4953,6 +4997,13 @@ async function toggleNode(node) {
     
     // Then load versions (which will load the active version and may update content)
     await loadVersions(node)
+    
+    // Auto-resize textareas after content is loaded
+    // Use multiple nextTick calls and setTimeout to ensure Vue has fully rendered
+    await nextTick()
+    setTimeout(() => {
+      autoResizeNodeTextareas(node)
+    }, 100)
   }
 }
 
@@ -5816,19 +5867,15 @@ async function onVerticalChange() {
   await checkForDraft()
   
   // Don't auto-expand any nodes - leave them all closed
-  selectedNode.value = null
-  
-  // Load versions for the first node so the versions bar has content
-  // Wait a tick to ensure nodePrompts is populated after loadNodePrompts
-  await nextTick()
+  // But ensure the Versions sidebar has data by selecting the first node
   if (nodeKeys.length > 0) {
     const firstNode = nodeKeys[0]
-    // Check if this node actually has data loaded
-    if (nodePrompts.value[selectedVertical.value]?.[firstNode]) {
-      selectedNode.value = firstNode
-      await loadVersions(firstNode)
-      // Keep selectedNode set so versions bar stays populated
-    }
+    selectedNode.value = firstNode
+    // Always attempt to load versions for the first node.
+    // loadVersions() contains a DB fallback if nodePrompts isn't ready yet.
+    await loadVersions(firstNode)
+  } else {
+    selectedNode.value = null
   }
 }
 
@@ -5851,12 +5898,105 @@ watch(themeStructured, () => {
   })
 }, { deep: true })
 
+// Watch for node expansion and auto-resize textareas
+watch(expandedNodes, (newExpanded, oldExpanded) => {
+  nextTick(() => {
+    // Find newly expanded nodes
+    Object.keys(newExpanded).forEach(node => {
+      if (newExpanded[node] && (!oldExpanded || !oldExpanded[node])) {
+        // Node was just expanded
+        setTimeout(() => {
+          autoResizeNodeTextareas(node)
+        }, 150)
+      }
+    })
+  })
+}, { deep: true })
+
+// Watch nodeContent changes and auto-resize when content updates
+watch(() => nodeContent.value, () => {
+  if (selectedNode.value && expandedNodes.value[selectedNode.value]) {
+    nextTick(() => {
+      setTimeout(() => {
+        autoResizeNodeTextareas(selectedNode.value)
+      }, 50)
+    })
+  }
+}, { deep: true })
+
 // Auto-resize theme textareas to fit content
 function autoResizeThemeTextareas() {
   const textareas = document.querySelectorAll('.theme-field-auto')
   textareas.forEach(textarea => {
     textarea.style.height = 'auto'
     textarea.style.height = textarea.scrollHeight + 'px'
+  })
+}
+
+// Auto-resize node textareas to fit content
+function autoResizeNodeTextareas(node) {
+  if (!node) return
+  
+  // Find all textareas within the node's editor fields
+  const nodeCard = document.querySelector(`[data-node="${node}"]`)
+  if (!nodeCard) {
+    console.warn('Auto-resize: Node card not found for:', node)
+    return
+  }
+  
+  const textareas = nodeCard.querySelectorAll('.editor-field textarea')
+  if (textareas.length === 0) {
+    console.warn('Auto-resize: No textareas found for node:', node)
+    return
+  }
+  
+  textareas.forEach((textarea, index) => {
+    // Ensure the textarea value is set (for :value binding)
+    const nodeContentValue = nodeContent.value[node]
+    if (nodeContentValue) {
+      // Force Vue to sync the value by reading the binding
+      // This ensures the textarea.value is set correctly
+      if (index === 0 && nodeContentValue.role !== undefined) {
+        textarea.value = nodeContentValue.role || ''
+      } else if (index === 1 && nodeContentValue.instructions !== undefined) {
+        textarea.value = nodeContentValue.instructions || ''
+      } else if (index === 2 && nodeContentValue.step_criteria !== undefined) {
+        textarea.value = nodeContentValue.step_criteria || ''
+      }
+    }
+    
+    // Store current scroll position
+    const scrollTop = textarea.scrollTop
+    
+    // Reset height to auto to get accurate scrollHeight
+    textarea.style.height = 'auto'
+    
+    // Force a reflow to ensure scrollHeight is calculated correctly
+    void textarea.offsetHeight
+    
+    // Calculate new height based on scrollHeight
+    const computedStyle = window.getComputedStyle(textarea)
+    const lineHeight = parseInt(computedStyle.getPropertyValue('line-height')) || 20
+    const paddingTop = parseInt(computedStyle.getPropertyValue('padding-top')) || 12
+    const paddingBottom = parseInt(computedStyle.getPropertyValue('padding-bottom')) || 12
+    const padding = paddingTop + paddingBottom
+    const borderTop = parseInt(computedStyle.getPropertyValue('border-top-width')) || 1
+    const borderBottom = parseInt(computedStyle.getPropertyValue('border-bottom-width')) || 1
+    const border = borderTop + borderBottom
+    
+    // Calculate minimum height based on rows attribute
+    const rows = parseInt(textarea.getAttribute('rows') || '3')
+    const minHeight = (rows * lineHeight) + padding + border
+    
+    // Get scrollHeight - this should account for all content
+    const scrollHeight = textarea.scrollHeight
+    
+    // Use scrollHeight, but ensure it's at least the minimum
+    const newHeight = Math.max(scrollHeight, minHeight)
+    textarea.style.height = newHeight + 'px'
+    
+    // Restore scroll position
+    textarea.scrollTop = scrollTop
   })
 }
 
@@ -6206,12 +6346,20 @@ onUnmounted(() => {
 
 .main-content {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 200px minmax(0, 1fr); /* Narrower sidebar to match card width */
   gap: 3rem;
   position: relative;
   max-width: 100%;
+  width: 100%;
   overflow-x: hidden;
   overflow-y: visible; /* Allow dropdown to extend vertically */
+  box-sizing: border-box;
+}
+
+.main-content > * {
+  min-width: 0; /* Allow grid items to shrink below content size */
+  max-width: 100%; /* Prevent overflow */
+  box-sizing: border-box;
 }
 
 .main-content:has(.preview-panel) {
@@ -6222,11 +6370,16 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 0.5rem;
   padding: 0.6rem;
+  padding-right: 0.6rem; /* balance left/right padding */
   position: sticky;
   top: 2rem;
   height: fit-content;
   max-height: calc(100vh - 4rem);
   overflow-y: auto;
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+  flex-shrink: 0;
 }
 
 .versions-bar.mobile {
@@ -6249,7 +6402,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  align-items: flex-start;
+  align-items: center; /* center items so left/right spacing is equal */
 }
 
 .versions-list.horizontal {
@@ -6268,6 +6421,17 @@ onUnmounted(() => {
   text-align: left;
   width: 175px;
   flex-shrink: 0;
+}
+
+.versions-list:not(.horizontal) .version-item {
+  width: 90%;        /* make card wider - reduces left/right padding */
+  min-width: 0;
+  padding-right: 0;  /* remove right-side inner padding */
+  margin: 0 auto;    /* equal left/right */
+}
+
+.versions-list .version-item {
+  padding-right: 0; /* remove extra right padding inside versions list */
 }
 
 .versions-list.horizontal .version-item {
@@ -6353,8 +6517,11 @@ onUnmounted(() => {
   border-radius: 0.5rem;
   padding: 2rem;
   max-width: 100%;
+  min-width: 0; /* Allow grid item to shrink below content size */
+  width: 100%; /* Take full available width */
   overflow-x: hidden;
   overflow-y: visible; /* Allow dropdown to extend vertically */
+  box-sizing: border-box;
 }
 
 .tab-content {
@@ -6580,9 +6747,12 @@ onUnmounted(() => {
 .nodes-section {
   margin-top: 0.75rem;
   width: 100%;
+  max-width: 100%;
   overflow-x: visible;
   overflow-y: visible;
   padding-bottom: 1rem;
+  box-sizing: border-box;
+  display: block; /* Ensure section is visible */
 }
 
 .nodes-header h2 {
@@ -6597,13 +6767,18 @@ onUnmounted(() => {
   overflow-x: auto; /* Enable horizontal scrolling */
   overflow-y: visible; /* Allow dropdown to extend vertically */
   padding-bottom: 0.5rem;
-  direction: rtl; /* Move scrollbar to top */
+  /* Use normal flow so first card is visible on load */
+  direction: ltr;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Desktop/Tablet: versions bar on left, nodes align left-to-right horizontally */
 @media (min-width: 768px) {
   .nodes-grid {
-    flex-direction: row-reverse; /* Reverse to compensate for rtl direction */
+    /* Normal left-to-right order so cards are visible immediately */
+    flex-direction: row;
     flex-wrap: nowrap;
     align-items: flex-start;
   }
@@ -6641,8 +6816,12 @@ onUnmounted(() => {
   transition: all 0.2s;
   flex-shrink: 0;
   width: auto;
-  min-height: 400px;
+  min-height: auto; /* Changed from 400px - only expanded cards need min-height */
   position: relative; /* Ensure z-index works */
+  max-width: 100%;
+  box-sizing: border-box;
+  display: block; /* Ensure card is always visible */
+  visibility: visible; /* Explicitly show cards */
 }
 
 .node-card:hover {
@@ -6657,6 +6836,7 @@ onUnmounted(() => {
 .node-card.expanded {
   max-width: 550px; /* Don't exceed 550px */
   width: 100%; /* Responsive - shrink on narrow screens */
+  min-width: 280px; /* Minimum width for expanded cards */
   min-height: 400px; /* Keep full height when expanded */
 }
 
@@ -6672,6 +6852,11 @@ onUnmounted(() => {
 .node-card:not(.expanded) {
   min-height: auto; /* Remove min-height constraint */
   height: fit-content; /* Only as tall as content */
+  display: block; /* Always show collapsed cards */
+  visibility: visible; /* Explicitly visible */
+  width: 280px; /* Fixed width for collapsed cards */
+  min-width: 280px;
+  max-width: 280px;
 }
 
 /* Override header padding for collapsed cards - must come after base rule */
@@ -6712,6 +6897,8 @@ onUnmounted(() => {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   overflow: visible; /* Allow dropdown to extend beyond content */
   position: relative; /* Ensure z-index works */
+  min-width: 0; /* Allow content to shrink */
+  max-width: 100%;
 }
 
 .node-editor {
@@ -6842,6 +7029,11 @@ onUnmounted(() => {
   color: #fff !important;
   font-size: 0.875rem;
   font-family: inherit;
+  overflow: hidden;
+  resize: none;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 .editor-field textarea::placeholder,
