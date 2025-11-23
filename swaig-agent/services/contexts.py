@@ -62,9 +62,10 @@ async def build_contexts_structure(
         else:
             node_instructions = node_config.get('instructions', '')
             # Load valid_contexts from database (fallback to hardcoded if missing)
-            valid_contexts = node_config.get('valid_contexts') or get_valid_contexts_for_node(node_name)
+            # Use 'is None' check to allow empty arrays [] to be valid
+            valid_contexts = node_config.get('valid_contexts') if node_config.get('valid_contexts') is not None else get_valid_contexts_for_node(node_name)
             # Load functions from database (fallback to hardcoded if missing)
-            functions = node_config.get('functions') or get_functions_for_node(node_name)
+            functions = node_config.get('functions') if node_config.get('functions') is not None else get_functions_for_node(node_name)
         
         # Combine: Theme → Context → Node Instructions
         full_prompt_parts = []
@@ -133,16 +134,17 @@ def get_valid_contexts_for_node(node_name: str) -> List[str]:
     """
     Get valid context transitions for a node
     Based on BarbGraph routing logic
+    FALLBACK ONLY - Database should define valid_contexts
     """
     routing_map = {
-        "greet": ["verify", "answer", "goodbye", "objections"],
-        "verify": ["qualify", "answer", "goodbye"],
-        "qualify": ["quote", "goodbye", "answer", "objections"],
-        "quote": ["answer", "book", "goodbye", "objections"],
-        "answer": ["objections", "book", "goodbye", "quote"],
-        "objections": ["answer", "book", "goodbye"],
-        "book": ["goodbye", "answer", "objections", "quote"],
-        "goodbye": ["answer", "end"],
+        "greet": ["verify", "answer", "end", "objections"],
+        "verify": ["qualify", "answer", "end"],
+        "qualify": ["quote", "end", "answer", "objections"],
+        "quote": ["answer", "book", "end", "objections"],
+        "answer": ["objections", "book", "end", "quote"],
+        "objections": ["answer", "book", "end"],
+        "book": ["end", "answer", "objections", "quote"],
+        "goodbye": ["answer", "greet", "end"],
         "end": []  # Terminal
     }
     
