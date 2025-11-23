@@ -183,3 +183,5 @@ ALTER TABLE leads ADD COLUMN borderline_equity BOOLEAN DEFAULT false;
 **Which path do you prefer?**
 
 
+
+

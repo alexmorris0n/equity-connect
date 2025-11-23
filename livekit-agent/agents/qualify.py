@@ -63,7 +63,7 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
             if hasattr(item, 'role') and item.role == 'user':
                 # Extract message text - content can be a list or string
                 if hasattr(item, 'text_content'):
-                    last_user_message_text = item.text_content()
+                    last_user_message_text = item.text_content  # Property, not method
                 elif hasattr(item, 'content'):
                     content = item.content
                     if isinstance(content, list):

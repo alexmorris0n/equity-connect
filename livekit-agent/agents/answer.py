@@ -59,7 +59,7 @@ class BarbaraAnswerAgent(Agent):
                 message_text = ""
                 if hasattr(item, 'text_content'):
                     # Preferred method if available
-                    message_text = item.text_content()
+                    message_text = item.text_content  # Property, not method
                 elif hasattr(item, 'content'):
                     content = item.content
                     # Handle both list and string content

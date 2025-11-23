@@ -379,3 +379,5 @@ WHERE prompt_id = (SELECT id FROM prompts WHERE node_name = 'greet' AND vertical
 **Ready to implement? Start with Fix #1 (Late Disqualification) - it's simpler and has clear boundaries.**
 
 
+
+

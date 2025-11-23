@@ -38,7 +38,16 @@ const SIGNALWIRE_SPACE_URL = process.env.SIGNALWIRE_SPACE_URL;
 const SIGNALWIRE_PHONE_NUMBER = process.env.SIGNALWIRE_PHONE_NUMBER;
 const SIGNALWIRE_ALLOWED_ADDRESSES = process.env.SIGNALWIRE_ALLOWED_ADDRESSES || '';
 const SIGNALWIRE_GUEST_TOKEN_PATH = process.env.SIGNALWIRE_GUEST_TOKEN_PATH || '/api/fabric/guests/tokens';
-const BARBARA_AGENT_URL = process.env.BARBARA_AGENT_URL || 'https://barbara-agent.fly.dev/agent';
+
+// Agent URLs
+const SWAIG_AGENT_URL = process.env.SWAIG_AGENT_URL || 'https://barbara-swaig.fly.dev/agent/barbara';
+const LIVEKIT_API_URL = process.env.LIVEKIT_API_URL || 'https://barbara-livekit.fly.dev/api/outbound-call';
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
+
+// Agent routing strategy
+// Options: 'round_robin', 'lead_based', 'swaig_only', 'livekit_only', 'weighted'
+const ROUTING_STRATEGY = process.env.ROUTING_STRATEGY || 'round_robin';
+const LIVEKIT_WEIGHT = parseFloat(process.env.LIVEKIT_WEIGHT || '0.5'); // 0.5 = 50/50 split
 
 const SIGNALWIRE_FEATURES_ENABLED = Boolean(
   SIGNALWIRE_PROJECT_ID &&
@@ -46,6 +55,14 @@ const SIGNALWIRE_FEATURES_ENABLED = Boolean(
   SIGNALWIRE_SPACE_URL &&
   SIGNALWIRE_PHONE_NUMBER
 );
+
+const LIVEKIT_FEATURES_ENABLED = Boolean(
+  LIVEKIT_API_URL &&
+  LIVEKIT_API_KEY
+);
+
+// Call counter for round-robin (in-memory, resets on restart)
+let callCounter = 0;
 
 const parsedAllowedAddresses = SIGNALWIRE_ALLOWED_ADDRESSES
   .split(',')
@@ -62,6 +79,33 @@ function buildSignalWireUrl(path) {
   } catch (error) {
     return `${SIGNALWIRE_SPACE_URL}${path}`;
   }
+}
+
+/**
+ * Determine which agent to use for this call
+ * @param {Object} args - Call arguments (lead_id, etc.)
+ * @returns {string} 'swaig' or 'livekit'
+ */
+function selectAgent(args) {
+  // Strategy 1: Force specific agent
+  if (ROUTING_STRATEGY === 'swaig_only') return 'swaig';
+  if (ROUTING_STRATEGY === 'livekit_only') return 'livekit';
+  
+  // Strategy 2: Lead-based (consistent per lead)
+  if (ROUTING_STRATEGY === 'lead_based' && args.lead_id) {
+    // Hash lead_id to get consistent assignment
+    const hash = args.lead_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return hash % 2 === 0 ? 'swaig' : 'livekit';
+  }
+  
+  // Strategy 3: Weighted random
+  if (ROUTING_STRATEGY === 'weighted') {
+    return Math.random() < LIVEKIT_WEIGHT ? 'livekit' : 'swaig';
+  }
+  
+  // Strategy 4: Round-robin (default)
+  callCounter++;
+  return callCounter % 2 === 0 ? 'swaig' : 'livekit';
 }
 
 if (!BRIDGE_API_KEY) {
@@ -271,7 +315,7 @@ const tools = [
   },
   {
     name: 'create_outbound_call',
-    description: 'Create an outbound call to a lead using Barbara AI voice assistant. Pass all available lead/broker data - bridge handles number selection, personalization, and ElevenLabs integration.',
+    description: 'Create an outbound call to a lead using either SWAIG (SignalWire AI Gateway) or LiveKit (LangGraph multi-agent) system. Supports A/B testing with multiple routing strategies.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -285,10 +329,17 @@ const tools = [
           description: 'Lead ID from the database'
         },
         
+        // Agent selection
+        agent: {
+          type: 'string',
+          enum: ['swaig', 'livekit', 'auto'],
+          description: 'Which agent to use. "auto" uses configured routing strategy (default: auto)'
+        },
+        
         // Optional outbound number selection
         from_phone: {
           type: 'string',
-          description: 'Optional SignalWire number to call FROM. If not provided, bridge will select from pool.'
+          description: 'Optional SignalWire number to call FROM. If not provided, system will select from pool.'
         },
         
         // Optional broker
@@ -297,7 +348,7 @@ const tools = [
           description: 'Optional broker ID'
         },
         
-        // All other fields are optional and passed through to bridge for dynamic variables
+        // All other fields are optional and passed through for dynamic variables
         lead_first_name: { type: 'string' },
         lead_last_name: { type: 'string' },
         lead_full_name: { type: 'string' },
@@ -568,53 +619,109 @@ async function executeTool(name, args) {
     }
     
     case 'create_outbound_call': {
-      app.log.info({ to_phone: args.to_phone, lead_id: args.lead_id }, '📞 Creating outbound call via SignalWire');
+      // Use explicit agent from n8n, or fall back to auto-selection
+      const selectedAgent = (args.agent && args.agent !== 'auto') ? args.agent : selectAgent(args);
+      
+      app.log.info({ 
+        to_phone: args.to_phone, 
+        lead_id: args.lead_id,
+        explicit_agent: args.agent,
+        selected_agent: selectedAgent,
+        routing_strategy: ROUTING_STRATEGY
+      }, '📞 Creating outbound call');
       
       try {
-        // Call SignalWire Voice API directly
-        const auth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+        let result, callId, agentUsed;
         
-        const response = await fetch(`${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${auth}`
-          },
-          body: new URLSearchParams({
-            To: args.to_phone,
-            From: args.from_phone || SIGNALWIRE_PHONE_NUMBER,
-            Url: BARBARA_AGENT_URL,
-            Method: 'POST'
-          })
-        });
+        // Route to SWAIG agent
+        if (selectedAgent === 'swaig') {
+          if (!SIGNALWIRE_FEATURES_ENABLED) {
+            throw new Error('SignalWire credentials not configured for SWAIG agent');
+          }
+          
+          const auth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+          
+          const response = await fetch(`${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${auth}`
+            },
+            body: new URLSearchParams({
+              To: args.to_phone,
+              From: args.from_phone || SIGNALWIRE_PHONE_NUMBER,
+              Url: SWAIG_AGENT_URL,
+              Method: 'POST'
+            })
+          });
+          
+          result = await response.json();
+          
+          if (!result.sid) {
+            throw new Error(result.message || 'SWAIG call creation failed');
+          }
+          
+          callId = result.sid;
+          agentUsed = 'SWAIG (SignalWire AI Gateway)';
+          
+          app.log.info({ call_sid: callId, agent: 'swaig' }, '✅ SWAIG call created');
+        } 
         
-        const result = await response.json();
-        
-        if (result.sid) {
-          app.log.info({ call_sid: result.sid, to: args.to_phone }, '✅ Outbound call created');
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `✅ Outbound Call Created!\n\n` +
-                      `📞 Call SID: ${result.sid}\n` +
-                      `📱 From: ${result.from || SIGNALWIRE_PHONE_NUMBER}\n` +
-                      `📱 To: ${result.to}\n` +
-                      `👤 Lead ID: ${args.lead_id}\n` +
-                      `💬 Status: ${result.status}`
-              }
-            ]
-          };
-        } else {
-          throw new Error(result.message || 'Call creation failed');
+        // Route to LiveKit agent
+        else if (selectedAgent === 'livekit') {
+          if (!LIVEKIT_FEATURES_ENABLED) {
+            throw new Error('LiveKit credentials not configured');
+          }
+          
+          const response = await fetch(LIVEKIT_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${LIVEKIT_API_KEY}`
+            },
+            body: JSON.stringify({
+              to_phone: args.to_phone,
+              from_phone: args.from_phone,
+              lead_id: args.lead_id,
+              broker_id: args.broker_id
+            })
+          });
+          
+          result = await response.json();
+          
+          if (!result.success) {
+            throw new Error(result.message || 'LiveKit call creation failed');
+          }
+          
+          callId = result.call_id || result.room_name;
+          agentUsed = 'LiveKit (LangGraph Multi-Agent)';
+          
+          app.log.info({ call_id: callId, agent: 'livekit' }, '✅ LiveKit call created');
         }
-      } catch (error) {
-        app.log.error({ error }, '❌ SignalWire API error');
+        
+        // Return success response
         return {
           content: [
             {
               type: 'text',
-              text: `❌ Outbound call failed: ${error.message}`
+              text: `✅ Outbound Call Created!\n\n` +
+                    `🤖 Agent: ${agentUsed}\n` +
+                    `📞 Call ID: ${callId}\n` +
+                    `📱 From: ${args.from_phone || SIGNALWIRE_PHONE_NUMBER}\n` +
+                    `📱 To: ${args.to_phone}\n` +
+                    `👤 Lead ID: ${args.lead_id || 'N/A'}\n` +
+                    `💬 Status: ${result.status || 'initiated'}`
+            }
+          ]
+        };
+        
+      } catch (error) {
+        app.log.error({ error, agent: selectedAgent }, '❌ Outbound call failed');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Outbound call failed (${selectedAgent}): ${error.message}`
             }
           ],
           isError: true

@@ -95,7 +95,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         for item in reversed(history_items):
             if hasattr(item, 'role') and item.role == 'user':
                 if hasattr(item, 'text_content'):
-                    last_message = item.text_content()
+                    last_message = item.text_content  # Property, not method
                 elif hasattr(item, 'content'):
                     content = item.content
                     last_message = ' '.join(str(c) for c in content if c) if isinstance(content, list) else str(content)
