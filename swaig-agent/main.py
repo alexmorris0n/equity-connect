@@ -134,7 +134,8 @@ async def barbara_agent(request: Request):
                 current_node = "goodbye"
             elif state.get('conversation_data', {}).get('ready_to_book'):
                 current_node = "book"
-            elif state.get('qualified'):
+            elif state.get('conversation_data', {}).get('greeted'):
+                # Only skip greeting if they've already been greeted
                 current_node = "answer"
             # Only override if database has a non-None/non-empty current_node
             current_node = state.get('current_node') or current_node
