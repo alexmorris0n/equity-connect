@@ -126,21 +126,10 @@ async def barbara_agent(request: Request):
             state = await get_conversation_state(phone)
             logger.info(f"[AGENT] Synced lead status to conversation_state: qualified={lead_qualified}, verified={lead_verified}")
         
-        # Determine starting node (multi-call persistence)
+        # Determine starting node
+        # Every call is fresh in SignalWire - always start at greet
+        # The prompt will check conversation_data and adjust behavior accordingly
         current_node = "greet"
-        if state and state.get('call_status') != 'completed':
-            # Only resume where we left off if previous call wasn't completed
-            # If call_status is 'completed', treat this as a fresh call
-            if state.get('conversation_data', {}).get('appointment_booked'):
-                current_node = "goodbye"
-            elif state.get('conversation_data', {}).get('ready_to_book'):
-                current_node = "book"
-            elif state.get('conversation_data', {}).get('greeted') or state.get('conversation_data', {}).get('greeting_reason'):
-                # Only skip greeting if they've already been greeted (check both greeted flag and greeting_reason)
-                current_node = "answer"
-            # Only override if database has a non-None/non-empty current_node
-            if state.get('current_node'):
-                current_node = state.get('current_node')
         
         logger.info(f"[AGENT] Starting at node: {current_node}")
         
