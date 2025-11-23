@@ -260,18 +260,10 @@
                 <div class="form-group">
                   <label>TTS Engine</label>
                   <select v-model="signalwireConfig.tts_engine" @change="onSignalWireTTSChange">
-                    <option value="amazon">Amazon Polly</option>
-                    <option value="azure">Microsoft Azure</option>
-                    <option value="cartesia">Cartesia</option>
-                    <option value="deepgram">Deepgram</option>
-                    <option value="elevenlabs">ElevenLabs</option>
-                    <option value="gcloud">Google Cloud</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="rime">Rime</option>
-                    <option value="amazon">Amazon Polly</option>
-                    <option value="cartesia">Cartesia</option>
-                    <option value="rime">Rime</option>
-                    <option value="deepgram">Deepgram</option>
+                    <option v-if="availableSignalWireTTSEngines.length === 0" value="">Loading engines...</option>
+                    <option v-for="engine in availableSignalWireTTSEngines" :key="engine.value" :value="engine.value">
+                      {{ engine.label }}
+                    </option>
                   </select>
                   <small class="form-hint">Select the TTS provider for voice synthesis</small>
                 </div>
@@ -294,6 +286,99 @@
                     <option value="es-US">Spanish (US)</option>
                     <option value="es-MX">Spanish (Mexico)</option>
                   </select>
+                </div>
+
+                <!-- TTS Parameters Section -->
+                <div class="parameters-section" style="margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                  <h4 style="margin-bottom: 16px; font-size: 16px; color: #fff; font-weight: 600;">TTS Parameters</h4>
+                  
+                  <!-- AI Volume (All Providers) -->
+                  <div class="form-group">
+                    <label>
+                      AI Volume
+                      <span style="font-weight: normal; color: rgba(255, 255, 255, 0.6); margin-left: 8px;">
+                        {{ signalwireConfig.ai_volume ?? 0 }}
+                      </span>
+                    </label>
+                    <div class="slider-wrapper">
+                      <div 
+                        class="slider-fill" 
+                        :style="{ width: ((signalwireConfig.ai_volume ?? 0) + 50) / 100 * 100 + '%' }"
+                      ></div>
+                      <input
+                        type="range"
+                        v-model.number="signalwireConfig.ai_volume"
+                        min="-50"
+                        max="50"
+                        step="1"
+                      />
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: rgba(255, 255, 255, 0.5); margin-top: 4px;">
+                      <span>-50 (Quiet)</span>
+                      <span>0 (Normal)</span>
+                      <span>50 (Loud)</span>
+                    </div>
+                    <small class="form-hint">SignalWire AI-level volume control. Applies to all TTS providers.</small>
+                  </div>
+
+                  <!-- ElevenLabs Parameters (Only when ElevenLabs is selected) -->
+                  <template v-if="signalwireConfig.tts_engine === 'elevenlabs'">
+                    <div class="form-group">
+                      <label>
+                        Stability
+                        <span style="font-weight: normal; color: rgba(255, 255, 255, 0.6); margin-left: 8px;">
+                          {{ (signalwireConfig.eleven_labs_stability ?? 0.5).toFixed(2) }}
+                        </span>
+                      </label>
+                      <div class="slider-wrapper">
+                        <div 
+                          class="slider-fill" 
+                          :style="{ width: ((signalwireConfig.eleven_labs_stability ?? 0.5) / 1 * 100) + '%' }"
+                        ></div>
+                        <input
+                          type="range"
+                          v-model.number="signalwireConfig.eleven_labs_stability"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                        />
+                      </div>
+                      <div style="display: flex; justify-content: space-between; font-size: 12px; color: rgba(255, 255, 255, 0.5); margin-top: 4px;">
+                        <span>0.0 (More Variation)</span>
+                        <span>0.5 (Balanced)</span>
+                        <span>1.0 (More Consistent)</span>
+                      </div>
+                      <small class="form-hint">Voice consistency. Lower = more variation, Higher = more consistent.</small>
+                    </div>
+
+                    <div class="form-group">
+                      <label>
+                        Similarity Boost
+                        <span style="font-weight: normal; color: rgba(255, 255, 255, 0.6); margin-left: 8px;">
+                          {{ (signalwireConfig.eleven_labs_similarity ?? 0.75).toFixed(2) }}
+                        </span>
+                      </label>
+                      <div class="slider-wrapper">
+                        <div 
+                          class="slider-fill" 
+                          :style="{ width: ((signalwireConfig.eleven_labs_similarity ?? 0.75) / 1 * 100) + '%' }"
+                        ></div>
+                        <input
+                          type="range"
+                          v-model.number="signalwireConfig.eleven_labs_similarity"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                        />
+                      </div>
+                      <div style="display: flex; justify-content: space-between; font-size: 12px; color: rgba(255, 255, 255, 0.5); margin-top: 4px;">
+                        <span>0.0 (Less Similar)</span>
+                        <span>0.75 (Default)</span>
+                        <span>1.0 (Most Similar)</span>
+                      </div>
+                      <small class="form-hint">How closely output matches original voice. Higher = closer to original.</small>
+                    </div>
+                  </template>
                 </div>
               </div>
 
@@ -1607,6 +1692,9 @@ const signalwireConfig = ref({
   stt_model: '',
   tts_engine: 'elevenlabs',
   voice_name: 'rachel',
+  ai_volume: 0,
+  eleven_labs_stability: 0.5,
+  eleven_labs_similarity: 0.75,
   is_active: true
 })
 
@@ -1671,6 +1759,7 @@ const livekitConfig = ref({
 })
 
 // Available options for dropdowns
+const availableSignalWireTTSEngines = ref([])
 const availableSignalWireVoices = ref([])
 const availableSignalWireLLMModels = ref([])
 const availableSignalWireSTTModels = ref([])
@@ -2024,14 +2113,22 @@ const settingsTabs = [
 // Initialize node content structure
 function initNodeContent() {
   nodeKeys.forEach(node => {
-    if (!nodeContent.value[node]) {
+    // Only initialize if node doesn't exist OR if it exists but has no role/instructions
+    // This prevents overwriting data loaded from database
+    if (!nodeContent.value[node] || 
+        (!nodeContent.value[node].role && !nodeContent.value[node].instructions)) {
       nodeContent.value[node] = {
+        role: '',
         instructions: '',
         step_criteria: '',
         valid_contexts: [], // Initialize as empty array for multi-select
         tools: [], // Initialize as empty array for multi-select
         skip_user_turn: false
       }
+    }
+    // Ensure role field exists even if it's empty
+    if (!('role' in nodeContent.value[node])) {
+      nodeContent.value[node].role = ''
     }
     if (nodeHasChanges.value[node] === undefined) {
       nodeHasChanges.value[node] = false
@@ -2579,6 +2676,14 @@ async function saveConfig() {
 // Load active SignalWire models from component tables
 async function loadActiveSignalWireModels() {
   try {
+    // Step 1: Load all available options from DB (populate dropdowns)
+    await loadSignalWireLLMModels()
+    await loadSignalWireSTTModels()
+    // TTS engines are loaded separately in onMounted
+    
+    // Step 2: Load active selections from DB (where is_active = true)
+    // This sets the selected values in the dropdowns via v-model
+    
     // Load active LLM model
     const { data: activeLLM } = await supabase
       .from('signalwire_available_llm_models')
@@ -2614,12 +2719,8 @@ async function loadActiveSignalWireModels() {
       signalwireConfig.value.tts_engine = activeTTS.provider
       signalwireConfig.value.voice_name = activeTTS.voice_id_full
       console.log('✅ Loaded active SignalWire TTS:', activeTTS.provider, activeTTS.voice_id_full)
-    }
-    
-    // Now load the dropdowns with the active values set
-    await loadSignalWireLLMModels()
-    await loadSignalWireSTTModels()
-    if (signalwireConfig.value.tts_engine) {
+      
+      // Load voices for the active TTS provider
       await loadSignalWireVoices()
     }
   } catch (error) {
@@ -2647,7 +2748,11 @@ async function loadSignalWireConfig() {
       signalwireConfig.value = {
         ...signalwireConfig.value,
         ...data,
-        vertical: selectedVertical.value
+        vertical: selectedVertical.value,
+        // Ensure defaults for new parameters if not present
+        ai_volume: data.ai_volume ?? 0,
+        eleven_labs_stability: data.eleven_labs_stability ?? 0.5,
+        eleven_labs_similarity: data.eleven_labs_similarity ?? 0.75
       }
       // Load available voices for selected TTS engine
       await loadSignalWireVoices()
@@ -2729,6 +2834,9 @@ async function saveSignalWireConfig() {
       language_code: signalwireConfig.value.language_code,
       tts_engine: signalwireConfig.value.tts_engine,
       voice_name: signalwireConfig.value.voice_name,
+      ai_volume: signalwireConfig.value.ai_volume ?? 0,
+      eleven_labs_stability: signalwireConfig.value.eleven_labs_stability ?? 0.5,
+      eleven_labs_similarity: signalwireConfig.value.eleven_labs_similarity ?? 0.75,
       is_active: true,
       updated_at: new Date().toISOString()
     }
@@ -2751,6 +2859,48 @@ async function saveSignalWireConfig() {
     window.$message?.error('Failed to save SignalWire configuration: ' + error.message)
   } finally {
     loading.value = false
+  }
+}
+
+// Provider display name mapping
+const providerDisplayNames = {
+  'amazon': 'Amazon Polly',
+  'azure': 'Microsoft Azure',
+  'cartesia': 'Cartesia',
+  'deepgram': 'Deepgram',
+  'elevenlabs': 'ElevenLabs',
+  'gcloud': 'Google Cloud',
+  'openai': 'OpenAI',
+  'rime': 'Rime'
+}
+
+// Load available TTS engines (providers) from database
+async function loadSignalWireTTSEngines() {
+  try {
+    const { data, error } = await supabase
+      .from('signalwire_available_voices')
+      .select('provider')
+      .eq('is_available', true)
+
+    if (error) {
+      console.error('Failed to load SignalWire TTS engines:', error)
+      availableSignalWireTTSEngines.value = []
+      return
+    }
+
+    // Get distinct providers and map to display names
+    const uniqueProviders = [...new Set((data || []).map(v => v.provider))]
+    availableSignalWireTTSEngines.value = uniqueProviders
+      .map(provider => ({
+        value: provider,
+        label: providerDisplayNames[provider] || provider.charAt(0).toUpperCase() + provider.slice(1)
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+
+    console.log(`✅ Loaded ${availableSignalWireTTSEngines.value.length} SignalWire TTS engines`)
+  } catch (err) {
+    console.error('Error loading SignalWire TTS engines:', err)
+    availableSignalWireTTSEngines.value = []
   }
 }
 
@@ -3728,12 +3878,30 @@ async function loadNodePrompts() {
       error = result.error
     }
     
-    if (error) throw error
+    if (error) {
+      console.error('loadNodePrompts: Query error:', error)
+      throw error
+    }
     
     console.log('loadNodePrompts: Loaded prompts:', data)
+    console.log('loadNodePrompts: Number of prompts loaded:', data?.length || 0)
+    console.log('loadNodePrompts: Prompt node_names:', data?.map(p => p.node_name) || [])
+    
+    // Debug: Check if greet is in the results
+    const greetPrompt = data?.find(p => p.node_name === 'greet')
+    console.log('loadNodePrompts: Greet prompt in results?', !!greetPrompt)
+    if (greetPrompt) {
+      console.log('loadNodePrompts: Greet prompt details:', {
+        id: greetPrompt.id,
+        node_name: greetPrompt.node_name,
+        hasPromptVersions: !!greetPrompt.prompt_versions,
+        versionsCount: Array.isArray(greetPrompt.prompt_versions) ? greetPrompt.prompt_versions.length : (greetPrompt.prompt_versions ? 1 : 0)
+      })
+    }
     
     const grouped = {}
     for (const p of (data || [])) {
+      console.log('loadNodePrompts: Processing prompt:', p.node_name, 'id:', p.id)
       // Choose draft version if available, otherwise active version
       let matchingVersion
       if (Array.isArray(p.prompt_versions)) {
@@ -3746,6 +3914,7 @@ async function loadNodePrompts() {
       }
       
       if (matchingVersion) {
+        console.log('loadNodePrompts: Adding to grouped:', p.node_name, 'version:', matchingVersion.version_number)
         grouped[p.node_name] = {
           id: p.id,
           vertical: p.vertical,
@@ -3759,6 +3928,15 @@ async function loadNodePrompts() {
         
         // Initialize node content from matching version
         if (matchingVersion.content) {
+          console.log('loadNodePrompts: Processing content for', p.node_name, ':', {
+            hasRole: !!matchingVersion.content.role,
+            hasInstructions: !!matchingVersion.content.instructions,
+            hasStepCriteria: !!matchingVersion.content.step_criteria,
+            roleLength: matchingVersion.content.role?.length || 0,
+            instructionsLength: matchingVersion.content.instructions?.length || 0,
+            contentKeys: Object.keys(matchingVersion.content)
+          })
+          
           // Handle tools - convert to array for multi-select
           let toolsArray = []
           const toolsData = matchingVersion.content.tools
@@ -3853,14 +4031,31 @@ async function loadNodePrompts() {
           if (!nodeContent.value[p.node_name]) {
             nodeContent.value[p.node_name] = {}
           }
-          nodeContent.value[p.node_name].role = matchingVersion.content.role || ''
-          nodeContent.value[p.node_name].instructions = matchingVersion.content.instructions || ''
-          nodeContent.value[p.node_name].step_criteria = matchingVersion.content.step_criteria || ''
+          // Extract content fields - handle both string and object formats
+          const roleValue = typeof matchingVersion.content.role === 'string' 
+            ? matchingVersion.content.role 
+            : (matchingVersion.content.role || '')
+          const instructionsValue = typeof matchingVersion.content.instructions === 'string'
+            ? matchingVersion.content.instructions
+            : (matchingVersion.content.instructions || '')
+          const stepCriteriaValue = typeof matchingVersion.content.step_criteria === 'string'
+            ? matchingVersion.content.step_criteria
+            : (matchingVersion.content.step_criteria || '')
+          
+          nodeContent.value[p.node_name].role = roleValue
+          nodeContent.value[p.node_name].instructions = instructionsValue
+          nodeContent.value[p.node_name].step_criteria = stepCriteriaValue
           nodeContent.value[p.node_name].valid_contexts = [...validContextsArray] // Create new array copy for reactivity
           nodeContent.value[p.node_name].tools = [...toolsArray] // Create new array copy for reactivity
           nodeContent.value[p.node_name].skip_user_turn = matchingVersion.content.skip_user_turn || false
           
-          console.log('loadNodePrompts: Set nodeContent for', p.node_name, ':', nodeContent.value[p.node_name])
+          console.log('loadNodePrompts: Set nodeContent for', p.node_name, ':', {
+            role: nodeContent.value[p.node_name].role?.substring(0, 50) + '...',
+            instructions: nodeContent.value[p.node_name].instructions?.substring(0, 50) + '...',
+            instructionsLength: nodeContent.value[p.node_name].instructions?.length || 0,
+            stepCriteria: nodeContent.value[p.node_name].step_criteria?.substring(0, 50) + '...',
+            toolsCount: nodeContent.value[p.node_name].tools?.length || 0
+          })
           console.log('loadNodePrompts: Tools in nodeContent:', nodeContent.value[p.node_name].tools)
           console.log('loadNodePrompts: Tools array type:', Array.isArray(nodeContent.value[p.node_name].tools), 'length:', nodeContent.value[p.node_name].tools.length)
           console.log('loadNodePrompts: Tools array contents:', JSON.stringify(nodeContent.value[p.node_name].tools))
@@ -3875,12 +4070,23 @@ async function loadNodePrompts() {
             skip_user_turn: false
           }
         }
+      } else {
+        console.warn('loadNodePrompts: No matching version found for', p.node_name, 'prompt:', p)
       }
     }
     
     nodePrompts.value[selectedVertical.value] = grouped
     console.log('loadNodePrompts: Final nodePrompts:', nodePrompts.value[selectedVertical.value])
+    
+    // Debug: Check if greet node exists
+    console.log('loadNodePrompts: Greet node in grouped?', 'greet' in grouped)
+    console.log('loadNodePrompts: Greet node data:', grouped['greet'])
+    console.log('loadNodePrompts: All nodes found:', Object.keys(grouped))
+    
     initNodeContent()
+    
+    // Debug: Check nodeContent after init
+    console.log('loadNodePrompts: nodeContent.greet after init:', nodeContent.value['greet'])
   } catch (error) {
     console.error('Error loading node prompts:', error)
     window.$message?.error('Failed to load node prompts: ' + error.message)
@@ -4603,10 +4809,67 @@ async function toggleNode(node) {
     }
     
     // First, try to load content from nodePrompts (already loaded from loadNodePrompts)
-    const nodePrompt = nodePrompts.value[selectedVertical.value]?.[node]
+    let nodePrompt = nodePrompts.value[selectedVertical.value]?.[node]
     console.log('Toggle node:', node, 'NodePrompt:', nodePrompt)
     
-      if (nodePrompt && nodePrompt.content) {
+    // If nodePrompt is not found, try to load it from database
+    if (!nodePrompt) {
+      console.warn('Toggle node: NodePrompt not found in nodePrompts, attempting to load from database...')
+      try {
+        const { data, error } = await supabase
+          .from('prompts')
+          .select(`
+            id,
+            name,
+            vertical,
+            node_name,
+            current_version,
+            prompt_versions!inner (
+              id,
+              version_number,
+              content,
+              is_active,
+              is_draft
+            )
+          `)
+          .eq('vertical', selectedVertical.value)
+          .eq('node_name', node)
+          .eq('prompt_versions.is_active', true)
+          .eq('prompt_versions.is_draft', false)
+          .limit(1)
+          .maybeSingle()
+        
+        if (error) throw error
+        
+        if (data) {
+          const matchingVersion = Array.isArray(data.prompt_versions) 
+            ? data.prompt_versions.find(v => v.is_active && !v.is_draft) || data.prompt_versions[0]
+            : data.prompt_versions
+          
+          if (matchingVersion) {
+            nodePrompt = {
+              id: data.id,
+              vertical: data.vertical,
+              node_name: data.node_name,
+              name: data.name,
+              version_number: matchingVersion.version_number,
+              content: matchingVersion.content
+            }
+            
+            // Add to nodePrompts for future use
+            if (!nodePrompts.value[selectedVertical.value]) {
+              nodePrompts.value[selectedVertical.value] = {}
+            }
+            nodePrompts.value[selectedVertical.value][node] = nodePrompt
+            console.log('Toggle node: Successfully loaded node from database:', nodePrompt)
+          }
+        }
+      } catch (err) {
+        console.error('Toggle node: Failed to load node from database:', err)
+      }
+    }
+    
+    if (nodePrompt && nodePrompt.content) {
         const content = nodePrompt.content
         console.log('Loading content from nodePrompt:', content)
         
@@ -5709,6 +5972,8 @@ onMounted(async () => {
   await loadLLMModelsFromDB()
   await loadTTSVoicesFromDB()
   // Load SignalWire models from database
+  // Load TTS engines first (needed for dropdown)
+  await loadSignalWireTTSEngines()
   await loadActiveSignalWireModels()
   // await loadLiveKitConfig() // Disabled - ai_templates table doesn't exist
   
@@ -7496,6 +7761,146 @@ onUnmounted(() => {
   .route-option {
     width: 100%;
   }
+}
+
+/* TTS Parameter Sliders - Purple Styling */
+.parameters-section input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  outline: none;
+  margin: 8px 0;
+  position: relative;
+}
+
+/* Webkit/Chrome slider track */
+.parameters-section input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8px;
+  background: transparent;
+  border-radius: 0.5rem; /* Match select border-radius */
+  cursor: pointer;
+}
+
+/* Webkit/Chrome slider thumb */
+.parameters-section input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #8b5cf6; /* Purple */
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s;
+  margin-top: -6px; /* Center the thumb on the track: (20px thumb - 8px track) / 2 = 6px */
+  position: relative;
+  z-index: 2;
+}
+
+.parameters-section input[type="range"]::-webkit-slider-thumb:hover {
+  background: #7c3aed; /* Darker purple on hover */
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
+}
+
+.parameters-section input[type="range"]::-webkit-slider-thumb:active {
+  background: #6d28d9; /* Even darker purple when dragging */
+  transform: scale(1.15);
+}
+
+/* Firefox slider track */
+.parameters-section input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.2); /* Match select background */
+  border: 1px solid rgba(255, 255, 255, 0.2); /* Match select border */
+  border-radius: 0.5rem; /* Match select border-radius */
+  cursor: pointer;
+}
+
+/* Firefox slider thumb */
+.parameters-section input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #8b5cf6; /* Purple */
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s;
+  cursor: grab;
+}
+
+.parameters-section input[type="range"]::-moz-range-thumb:hover {
+  background: #7c3aed; /* Darker purple on hover */
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
+}
+
+.parameters-section input[type="range"]::-moz-range-thumb:active {
+  background: #6d28d9; /* Even darker purple when dragging */
+  transform: scale(1.15);
+  cursor: grabbing;
+}
+
+/* Firefox progress bar (filled portion) - automatically updates */
+.parameters-section input[type="range"]::-moz-range-progress {
+  background: #8b5cf6; /* Purple filled portion */
+  height: 8px;
+  border-radius: 0.5rem; /* Match select border-radius */
+  cursor: pointer;
+}
+
+/* Slider wrapper for filled track visualization */
+.parameters-section .slider-wrapper {
+  position: relative;
+  width: 100%;
+  height: 20px;
+  margin: 8px 0;
+  display: block;
+  box-sizing: border-box;
+}
+
+.parameters-section .slider-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 6px; /* Center: (20px container - 8px track) / 2 = 6px */
+  left: 10px; /* Account for thumb radius (20px/2 = 10px) */
+  width: calc(100% - 20px); /* Full width minus thumb radius on both sides */
+  height: 8px;
+  background: rgba(0, 0, 0, 0.2); /* Match select background */
+  border: 1px solid rgba(255, 255, 255, 0.2); /* Match select border */
+  border-radius: 0.5rem; /* Match select border-radius */
+  z-index: 0;
+}
+
+.parameters-section .slider-wrapper .slider-fill {
+  position: absolute;
+  top: 6px; /* Match track position */
+  left: 10px; /* Match track left offset */
+  height: 8px;
+  background: #8b5cf6;
+  border-radius: 0.5rem; /* Match select border-radius */
+  pointer-events: none;
+  z-index: 1;
+  transition: width 0.1s ease;
+  max-width: calc(100% - 20px); /* Don't extend beyond track */
+}
+
+.parameters-section .slider-wrapper input[type="range"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  z-index: 2;
+  background: transparent;
 }
 
 </style>

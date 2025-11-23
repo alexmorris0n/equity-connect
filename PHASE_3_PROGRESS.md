@@ -185,3 +185,4 @@ ALTER TABLE leads ADD COLUMN borderline_equity BOOLEAN DEFAULT false;
 
 
 
+

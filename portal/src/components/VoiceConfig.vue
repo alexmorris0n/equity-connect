@@ -56,6 +56,78 @@
         <p class="help-text">{{ getModelHelp(currentConfig.tts_engine) }}</p>
       </div>
 
+      <!-- TTS Parameters Section -->
+      <div class="parameters-section">
+        <h4 class="parameters-title">⚙️ TTS Parameters</h4>
+
+        <!-- AI Volume (All Providers) -->
+        <div class="form-group">
+          <label>
+            AI Volume
+            <span class="param-value">{{ currentConfig.ai_volume || 0 }}</span>
+          </label>
+          <input
+            type="range"
+            v-model.number="currentConfig.ai_volume"
+            min="-50"
+            max="50"
+            step="1"
+            class="slider-input"
+          />
+          <div class="slider-labels">
+            <span>-50 (Quiet)</span>
+            <span>0 (Normal)</span>
+            <span>50 (Loud)</span>
+          </div>
+          <p class="help-text">SignalWire AI-level volume control. Applies to all TTS providers. Default: 0</p>
+        </div>
+
+        <!-- ElevenLabs Parameters (Only for ElevenLabs) -->
+        <template v-if="currentConfig.tts_engine === 'elevenlabs'">
+          <div class="form-group">
+            <label>
+              Stability
+              <span class="param-value">{{ (currentConfig.eleven_labs_stability || 0.5).toFixed(2) }}</span>
+            </label>
+            <input
+              type="range"
+              v-model.number="currentConfig.eleven_labs_stability"
+              min="0"
+              max="1"
+              step="0.01"
+              class="slider-input"
+            />
+            <div class="slider-labels">
+              <span>0.0 (More Variation)</span>
+              <span>0.5 (Balanced)</span>
+              <span>1.0 (More Consistent)</span>
+            </div>
+            <p class="help-text">Voice consistency. Lower = more variation, Higher = more consistent. Default: 0.5</p>
+          </div>
+
+          <div class="form-group">
+            <label>
+              Similarity Boost
+              <span class="param-value">{{ (currentConfig.eleven_labs_similarity || 0.75).toFixed(2) }}</span>
+            </label>
+            <input
+              type="range"
+              v-model.number="currentConfig.eleven_labs_similarity"
+              min="0"
+              max="1"
+              step="0.01"
+              class="slider-input"
+            />
+            <div class="slider-labels">
+              <span>0.0 (Less Similar)</span>
+              <span>0.75 (Default)</span>
+              <span>1.0 (Most Similar)</span>
+            </div>
+            <p class="help-text">How closely the output matches the original voice. Higher = closer to original. Default: 0.75</p>
+          </div>
+        </template>
+      </div>
+
       <!-- Popular Voices -->
       <div class="popular-voices" v-if="popularVoices.length > 0">
         <label>Popular {{ getProviderName(currentConfig.tts_engine) }} Voices:</label>
@@ -119,6 +191,9 @@ export default {
         tts_engine: 'elevenlabs',
         voice_name: 'rachel',
         model: null,
+        ai_volume: 0,
+        eleven_labs_stability: 0.5,
+        eleven_labs_similarity: 0.75,
         is_active: true
       }
     })
