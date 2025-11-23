@@ -96,7 +96,7 @@ async def build_contexts_structure(
             "mark_qualification_result": "mark_qualification_result",  # Vue/database uses this name, bridge supports it
         }
         
-        if functions:
+        if functions is not None:
             # Map legacy names to current function names
             mapped_functions = [FUNCTION_NAME_MAP.get(f, f) for f in functions]
             step["functions"] = mapped_functions
