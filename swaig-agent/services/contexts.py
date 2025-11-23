@@ -114,13 +114,14 @@ async def build_contexts_structure(
         else:
             logger.warning(f"[CONTEXTS] ⚠️  No step_criteria for '{node_name}' - AI may not know when to transition!")
         
-        # Set as default if it's the starting node
+        # Always create the node with its actual name
+        contexts[node_name] = {
+            "steps": [step]
+        }
+        
+        # ALSO set as default if it's the starting node (so both "default" and "greet" exist)
         if node_name == starting_node:
             contexts["default"] = {
-                "steps": [step]
-            }
-        else:
-            contexts[node_name] = {
                 "steps": [step]
             }
         

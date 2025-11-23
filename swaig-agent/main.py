@@ -192,7 +192,7 @@ async def barbara_agent(request: Request):
                                 "attention_timeout": 5000,
                                 "enable_barge": "complete,partial",
                                 "transparent_barge": True,
-                                "wait_for_user": True,  # Wait for user after Barbara speaks
+                                "wait_for_user": False,  # Barbara greets first on inbound calls (False = AI speaks first)
                                 "save_conversation": True,
                                 "conversation_id": phone,
                                 # Conscience prompt to reinforce guardrails
