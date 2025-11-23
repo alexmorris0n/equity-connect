@@ -16,9 +16,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Barbara SWAIG Agent")
 
 # Import services
-from services.database import get_lead_by_phone, get_conversation_state, update_conversation_state
+from services.database import (
+    get_lead_by_phone,
+    get_conversation_state,
+    update_conversation_state,
+    get_theme_prompt,
+)
 from services.routing import determine_next_node, is_node_complete
-from services.prompts import build_full_prompt
+from services.prompts import build_context_injection
 
 # ============================================================================
 # 1. AGENT CONFIGURATION ENDPOINT
@@ -143,6 +148,23 @@ async def barbara_agent(request: Request):
             starting_node=current_node
         )
         
+        # Build top-level prompt (theme + caller context) once per SignalWire docs
+        theme_prompt = await get_theme_prompt("reverse_mortgage")
+        conversation_data = state.get('conversation_data', {}) if state else {}
+        caller_context = ""
+        if phone and phone != "unknown":
+            caller_context = build_context_injection(lead, phone, conversation_data, direction)
+        
+        prompt_text_parts = []
+        if theme_prompt:
+            prompt_text_parts.append(theme_prompt)
+        if caller_context:
+            prompt_text_parts.append(caller_context)
+        
+        combined_prompt_text = "\n\n".join(prompt_text_parts).strip()
+        if not combined_prompt_text:
+            combined_prompt_text = "You are Barbara, a professional reverse mortgage assistant."
+        
         # Load active models from database (component-based configuration)
         from services.database import get_active_signalwire_models
         active_models = await get_active_signalwire_models()
@@ -175,6 +197,7 @@ async def barbara_agent(request: Request):
                             # Post-conversation webhook (top level of ai, not in params)
                             "post_prompt_url": f"https://{os.getenv('PUBLIC_URL', 'localhost:8080')}/webhooks/post-conversation",
                             "prompt": {
+                                "text": combined_prompt_text,
                                 "temperature": 0.6,
                                 # Use contexts structure instead of single text prompt
                                 # This enables native SignalWire context switching

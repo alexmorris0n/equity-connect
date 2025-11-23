@@ -4,8 +4,7 @@ Implements native SignalWire context switching per docs/SignalWire Promp Context
 """
 
 from typing import Dict, Any, List, Optional
-from services.database import get_node_prompt, get_theme_prompt, get_node_config
-from services.prompts import build_context_injection
+from services.database import get_node_config
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,15 +37,6 @@ async def build_contexts_structure(
         ...
     }
     """
-    # Load theme (universal personality)
-    theme = await get_theme_prompt(vertical)
-    
-    # Build context injection (caller info + conversation state)
-    context_block = ""
-    if phone_number:
-        conversation_data = conversation_state.get('conversation_data', {}) if conversation_state else None
-        context_block = build_context_injection(lead_context, phone_number, conversation_data, "inbound")
-    
     # Build all contexts
     contexts = {}
     
@@ -67,16 +57,11 @@ async def build_contexts_structure(
             # Load functions from database (fallback to hardcoded if missing)
             functions = node_config.get('functions') if node_config.get('functions') is not None else get_functions_for_node(node_name)
         
-        # Combine: Theme → Context → Node Instructions
-        full_prompt_parts = []
-        if theme:
-            full_prompt_parts.append(theme)
-        if context_block:
-            full_prompt_parts.append(context_block)
-        if node_instructions:
-            full_prompt_parts.append(node_instructions)
-        
-        full_prompt = "\n\n".join(full_prompt_parts)
+        # For SignalWire, we DON'T combine theme + context here
+        # Theme goes in top-level prompt.text (done in main.py)
+        # Only node-specific instructions go in step.text
+        # Context block will be injected once in main.py
+        full_prompt = node_instructions
         
         # Build step for this context
         step = {
