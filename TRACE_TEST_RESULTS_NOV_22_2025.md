@@ -494,3 +494,4 @@ ALTER TABLE leads ADD COLUMN borderline_equity BOOLEAN DEFAULT false;
 
 **After fixes, re-run all 13 traces to verify.**
 
+

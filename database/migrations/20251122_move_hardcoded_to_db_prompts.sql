@@ -481,3 +481,4 @@ WHERE pv.is_active = true
   AND p.vertical = 'reverse_mortgage'
 ORDER BY p.node_name, pv.version DESC;
 
+

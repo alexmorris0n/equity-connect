@@ -107,6 +107,30 @@ class BarbaraBookAgent(Agent):
         )
     
     @function_tool()
+    async def set_manual_booking_required(self, context: RunContext) -> str:
+        """
+        Set manual_booking_required flag when booking system fails.
+        
+        Call when:
+        - check_broker_availability fails
+        - book_appointment fails
+        - No broker is assigned
+        - Any technical error prevents automated booking
+        
+        This flag tells the system that manual follow-up is needed.
+        """
+        update_conversation_state(
+            self.caller_phone,
+            {
+                "conversation_data": {
+                    "manual_booking_required": True
+                }
+            }
+        )
+        logger.info(f"Set manual_booking_required=true for {self.caller_phone}")
+        return "Manual booking required flag set. System will handle follow-up."
+    
+    @function_tool()
     async def check_broker_availability(
         self, 
         context: RunContext,
@@ -173,6 +197,15 @@ class BarbaraBookAgent(Agent):
         if not broker_id:
             import json
             logger.error(f"❌ No assigned broker for lead: {lead_id}")
+            # Set manual_booking_required flag
+            update_conversation_state(
+                self.caller_phone,
+                {
+                    "conversation_data": {
+                        "manual_booking_required": True
+                    }
+                }
+            )
             return json.dumps({
                 "success": False,
                 "error": "No assigned broker",
@@ -199,6 +232,20 @@ class BarbaraBookAgent(Agent):
         
         import json
         result_data = json.loads(result)
+        
+        if not result_data.get('success'):
+            # Booking failed - set manual_booking_required flag
+            logger.warning(f"Booking failed: {result_data.get('error', 'Unknown error')}")
+            update_conversation_state(
+                self.caller_phone,
+                {
+                    "conversation_data": {
+                        "manual_booking_required": True
+                    }
+                }
+            )
+            # Return error but don't route - let LLM handle it with fallback messaging
+            return result
         
         if result_data.get('success'):
             # Mark appointment booked in database

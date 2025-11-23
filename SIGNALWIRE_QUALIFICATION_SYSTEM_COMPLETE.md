@@ -224,3 +224,4 @@ This ensures:
 - ✅ Automatic qualification status updates via database triggers
 - ✅ Context-aware qualification (only asks for missing gates)
 
+

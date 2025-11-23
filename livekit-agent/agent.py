@@ -714,11 +714,31 @@ async def entrypoint(ctx: JobContext):
     if lead_context:
         lead_data.update(lead_context)
     
-    initial_agent = BarbaraGreetAgent(
-        caller_phone=caller_phone,
-        lead_data=lead_data,
-        vertical=vertical
-    )
+    # Check if this is a returning caller with appointment booked
+    # If so, start at GOODBYE instead of GREET
+    from services.conversation_state import get_conversation_state
+    state = get_conversation_state(caller_phone) if caller_phone else None
+    conversation_data = (state.get('conversation_data', {}) if state else {})
+    appointment_booked = conversation_data.get('appointment_booked', False)
+    
+    if appointment_booked:
+        # Returning caller with appointment - start at GOODBYE
+        logger.info(f"📞 ENTRYPOINT: Returning caller with appointment - starting at GOODBYE")
+        from agents.goodbye import BarbaraGoodbyeAgent
+        initial_agent = BarbaraGoodbyeAgent(
+            caller_phone=caller_phone,
+            lead_data=lead_data,
+            vertical=vertical,
+            reason="appointment_booked"
+        )
+    else:
+        # New call or no appointment - start at GREET
+        logger.info(f"📞 ENTRYPOINT: Starting at GREET (new call or no appointment)")
+        initial_agent = BarbaraGreetAgent(
+            caller_phone=caller_phone,
+            lead_data=lead_data,
+            vertical=vertical
+        )
     
     logger.info(f"✅ ENTRYPOINT: BarbaraGreetAgent created")
     

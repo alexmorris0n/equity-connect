@@ -155,3 +155,4 @@ WHERE prompt_id = (SELECT id FROM prompts WHERE vertical = 'reverse_mortgage' AN
 -- Add comment
 COMMENT ON TABLE prompt_versions IS 'Updated verify node to use granular verification tools (2025-11-22)';
 
+

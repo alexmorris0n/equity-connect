@@ -134,16 +134,33 @@ class BarbaraGreetAgent(Agent):
         # PERFECT ROUTE: greet → verify → qualify → quote → answer → book → goodbye
         # Skip steps that are already complete, but stay on the route
         if verified and qualified:
-            # Both complete - skip verify & qualify, but continue route: go to QUOTE
-            logger.info(f"Caller already verified + qualified, skipping to quote (perfect route)")
-            from .quote import BarbaraQuoteAgent
+            # Check if quote already presented (returning caller scenario)
+            from services.conversation_state import get_conversation_state
+            state = get_conversation_state(self.caller_phone)
+            conversation_data = (state.get('conversation_data', {}) if state else {})
+            quote_presented = conversation_data.get('quote_presented', False)
             
-            return BarbaraQuoteAgent(
-                caller_phone=self.caller_phone,
-                lead_data=self.lead_data,
-                vertical=self.vertical,
-                chat_ctx=self.chat_ctx
-            )
+            if quote_presented:
+                # Returning caller - already got quote, go to ANSWER
+                logger.info(f"Returning caller (quote_presented=true), routing to answer")
+                from .answer import BarbaraAnswerAgent
+                return BarbaraAnswerAgent(
+                    caller_phone=self.caller_phone,
+                    lead_data=self.lead_data,
+                    vertical=self.vertical,
+                    chat_ctx=self.chat_ctx
+                )
+            else:
+                # Fresh qualified caller - continue perfect route: go to QUOTE
+                logger.info(f"Caller already verified + qualified, skipping to quote (perfect route)")
+                from .quote import BarbaraQuoteAgent
+                
+                return BarbaraQuoteAgent(
+                    caller_phone=self.caller_phone,
+                    lead_data=self.lead_data,
+                    vertical=self.vertical,
+                    chat_ctx=self.chat_ctx
+                )
         
         elif verified and not qualified:
             # Verified but not qualified - skip verify, continue route: go to QUALIFY

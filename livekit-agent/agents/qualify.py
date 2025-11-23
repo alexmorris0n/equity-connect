@@ -193,16 +193,24 @@ class BarbaraQualifyTask(AgentTask[QualificationResult]):
             return f"Failed to mark primary residence as qualified: {e}"
 
     @function_tool()
-    async def mark_equity_qualified(self, context: RunContext):
-        """Mark that the caller has sufficient equity in the property."""
+    async def mark_equity_qualified(self, context: RunContext, borderline: bool = False):
+        """
+        Mark that the caller has sufficient equity in the property.
+        
+        Args:
+            borderline: True if equity is low but sufficient (typically < $50k after mortgage payoff)
+        """
         lead_id = self.lead_data.get('id')
         if not lead_id:
             return "No lead_id available. Cannot mark equity as qualified."
         sb = get_supabase_client()
         try:
-            sb.table('leads').update({'equity_qualified': True}).eq('id', lead_id).execute()
-            logger.info(f"Lead {lead_id}: Equity marked as qualified.")
-            return "Sufficient equity confirmed."
+            update_data = {'equity_qualified': True}
+            if borderline:
+                update_data['borderline_equity'] = True
+            sb.table('leads').update(update_data).eq('id', lead_id).execute()
+            logger.info(f"Lead {lead_id}: Equity marked as qualified (borderline={borderline}).")
+            return "Sufficient equity confirmed." + (" Note: Equity is on the lower side but still qualifies." if borderline else "")
         except Exception as e:
             logger.error(f"Error marking equity as qualified for lead {lead_id}: {e}")
             return f"Failed to mark equity as qualified: {e}"

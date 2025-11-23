@@ -49,9 +49,42 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
     
     async def on_enter(self) -> None:
         """Start verification - collect missing info or confirm existing"""
-        await self.session.generate_reply(
-            instructions="Collect any missing information or confirm existing details. Use 'collect missing, confirm existing' pattern."
-        )
+        # Build dynamic context (no hard-coded instructions)
+        verify_context = "=== VERIFICATION CONTEXT ===\n"
+        
+        # Check what verification fields are needed
+        lead_id = self.lead_data.get('id')
+        if lead_id:
+            from services.supabase import get_supabase_client
+            sb = get_supabase_client()
+            try:
+                response = sb.table('leads').select('phone_verified, email_verified, address_verified').eq('id', lead_id).single().execute()
+                lead = response.data
+                verify_context += f"Phone verified: {lead.get('phone_verified', False)}\n"
+                verify_context += f"Email verified: {lead.get('email_verified', False)}\n"
+                verify_context += f"Address verified: {lead.get('address_verified', False)}\n"
+            except Exception as e:
+                logger.error(f"Error checking verification status: {e}")
+        
+        # Check history for verification info
+        history_items = list(self.chat_ctx.items) if hasattr(self.chat_ctx, 'items') else []
+        for item in reversed(history_items):
+            if hasattr(item, 'role') and item.role == 'user':
+                if hasattr(item, 'text_content'):
+                    last_message = item.text_content()
+                elif hasattr(item, 'content'):
+                    content = item.content
+                    last_message = ' '.join(str(c) for c in content if c) if isinstance(content, list) else str(content)
+                else:
+                    continue
+                verify_context += f"Last user message: {last_message[:200]}\n"
+                verify_context += "Extract verification info if provided.\n"
+                break
+        
+        verify_context += "===========================\n"
+        
+        # Let database prompt handle the actual instructions
+        await self.session.generate_reply(instructions=verify_context)
     
     @function_tool()
     async def verify_caller_identity(self, context: RunContext):
