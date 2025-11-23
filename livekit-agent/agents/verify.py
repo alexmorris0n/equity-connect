@@ -5,7 +5,7 @@ Collects and verifies caller identity. MUST complete before continuing.
 This is a Task (not Agent) because verification is mandatory and cannot be skipped.
 """
 
-from livekit.agents import AgentTask, function_tool, RunContext
+from livekit.agents import AgentTask, function_tool, RunContext, ToolError
 from livekit.agents.llm import ChatContext
 from dataclasses import dataclass
 from services.prompt_loader import load_node_config
@@ -46,6 +46,30 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         self.vertical = vertical
         
         logger.info(f"BarbaraVerifyTask started for {caller_phone}")
+
+    def _store_session_verification_state(self, context: RunContext, **fields) -> None:
+        """Persist verification progress inside the session userdata via RunContext."""
+        session = getattr(context, "session", None)
+        if not session:
+            return
+        userdata = getattr(session, "userdata", None)
+        if userdata is None:
+            try:
+                session.userdata = {}  # type: ignore[attr-defined]
+                userdata = session.userdata
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug(f"Unable to initialize session userdata: {exc}")
+                return
+        if isinstance(userdata, dict):
+            verification_state = userdata.get("verification_state", {})
+            verification_state.update({k: v for k, v in fields.items() if v is not None})
+            userdata["verification_state"] = verification_state
+            return
+        for key, value in fields.items():
+            try:
+                setattr(userdata, key, value)
+            except AttributeError:
+                logger.debug(f"Unable to set session userdata field {key}")
     
     async def on_enter(self) -> None:
         """Start verification - collect missing info or confirm existing"""
@@ -112,6 +136,28 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             lead_id = result.get('lead_id')
             
             logger.info(f"Verification complete: confirmed=True, lead_id={lead_id}")
+
+            self._store_session_verification_state(
+                context,
+                verified=True,
+                lead_id=lead_id
+            )
+
+            try:
+                update_conversation_state(self.caller_phone, {
+                    "lead_id": lead_id,
+                    "conversation_data": {
+                        "verified": True,
+                        "verification_source": "barbara_verify_task"
+                    }
+                })
+            except Exception as state_error:
+                logger.warning(f"Unable to persist verification state: {state_error}")
+
+            self.complete(VerificationResult(
+                verified=True,
+                lead_id=lead_id
+            ))
             
             # After completion, route to next step based on database status
             # Check if qualified - if yes, go to answer, if no, go to qualify
@@ -141,6 +187,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         else:
             logger.warning(f"Verification failed: {result.get('error', 'Unknown error')}")
             # Still complete task but with verified=False
+            self._store_session_verification_state(context, verified=False)
             self.complete(VerificationResult(
                 verified=False,
                 lead_id=None
@@ -160,7 +207,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         """
         lead_id = self.lead_data.get('id')
         if not lead_id:
-            return "No lead_id available. Cannot mark phone verified."
+            raise ToolError("No lead_id available. Cannot mark phone verified.")
         
         from services.supabase import get_supabase_client
         sb = get_supabase_client()
@@ -171,10 +218,24 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             }).eq('id', lead_id).execute()
             
             logger.info(f"✅ Phone verified for lead {lead_id}: {phone_number}")
+            self._store_session_verification_state(
+                context,
+                phone_verified=True,
+                verified_phone_number=phone_number
+            )
+            try:
+                update_conversation_state(self.caller_phone, {
+                    "conversation_data": {
+                        "phone_verified": True,
+                        "verified_phone_number": phone_number
+                    }
+                })
+            except Exception as state_error:
+                logger.warning(f"Unable to persist phone verification state: {state_error}")
             return f"Phone number {phone_number} verified successfully."
         except Exception as e:
             logger.error(f"Failed to mark phone verified: {e}")
-            return f"Error verifying phone: {str(e)}"
+            raise ToolError(f"Error verifying phone: {str(e)}") from e
     
     @function_tool()
     async def mark_email_verified(self, context: RunContext, email: str):
@@ -190,7 +251,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         """
         lead_id = self.lead_data.get('id')
         if not lead_id:
-            return "No lead_id available. Cannot mark email verified."
+            raise ToolError("No lead_id available. Cannot mark email verified.")
         
         from services.supabase import get_supabase_client
         sb = get_supabase_client()
@@ -203,10 +264,24 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             }).eq('id', lead_id).execute()
             
             logger.info(f"✅ Email verified for lead {lead_id}: {email}")
+            self._store_session_verification_state(
+                context,
+                email_verified=True,
+                verified_email=email
+            )
+            try:
+                update_conversation_state(self.caller_phone, {
+                    "conversation_data": {
+                        "email_verified": True,
+                        "verified_email": email
+                    }
+                })
+            except Exception as state_error:
+                logger.warning(f"Unable to persist email verification state: {state_error}")
             return f"Email {email} verified successfully."
         except Exception as e:
             logger.error(f"Failed to mark email verified: {e}")
-            return f"Error verifying email: {str(e)}"
+            raise ToolError(f"Error verifying email: {str(e)}") from e
     
     @function_tool()
     async def mark_address_verified(
@@ -232,7 +307,7 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         """
         lead_id = self.lead_data.get('id')
         if not lead_id:
-            return "No lead_id available. Cannot mark address verified."
+            raise ToolError("No lead_id available. Cannot mark address verified.")
         
         from services.supabase import get_supabase_client
         sb = get_supabase_client()
@@ -263,10 +338,24 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
                 logger.warning(f"Could not auto-assign broker: {broker_error}")
             
             full_address = f"{address}, {city}, {state} {zip_code}"
+            self._store_session_verification_state(
+                context,
+                address_verified=True,
+                verified_address=full_address
+            )
+            try:
+                update_conversation_state(self.caller_phone, {
+                    "conversation_data": {
+                        "address_verified": True,
+                        "verified_address": full_address
+                    }
+                })
+            except Exception as state_error:
+                logger.warning(f"Unable to persist address verification state: {state_error}")
             return f"Property address {full_address} verified successfully."
         except Exception as e:
             logger.error(f"Failed to mark address verified: {e}")
-            return f"Error verifying address: {str(e)}"
+            raise ToolError(f"Error verifying address: {str(e)}") from e
     
     @function_tool()
     async def update_lead_info(
@@ -311,26 +400,53 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
         lead_id = self.lead_data.get('id')
         
         if not lead_id:
-            return "No lead_id available. Cannot update lead info."
+            raise ToolError("No lead_id available. Cannot update lead info.")
         
         # Use existing tool from tools/lead.py
         from tools.lead import update_lead_info as update_tool
-        result_str = await update_tool(
-            lead_id=lead_id,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            phone=phone,
-            property_address=property_address,
-            property_city=property_city,
-            property_state=property_state,
-            property_zip=property_zip,
-            age=age,
-            money_purpose=money_purpose,
-            amount_needed=amount_needed,
-            timeline=timeline
-        )
+        try:
+            result_str = await update_tool(
+                lead_id=lead_id,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                phone=phone,
+                property_address=property_address,
+                property_city=property_city,
+                property_state=property_state,
+                property_zip=property_zip,
+                age=age,
+                money_purpose=money_purpose,
+                amount_needed=amount_needed,
+                timeline=timeline
+            )
+        except Exception as exc:
+            logger.error(f"Failed to update lead info: {exc}")
+            raise ToolError(f"Error updating lead info: {str(exc)}") from exc
         
         logger.info(f"Updated lead {lead_id}")
+        updated_fields = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email,
+            "phone": phone,
+            "property_address": property_address,
+            "property_city": property_city,
+            "property_state": property_state,
+            "property_zip": property_zip,
+            "age": age,
+            "money_purpose": money_purpose,
+            "amount_needed": amount_needed,
+            "timeline": timeline
+        }
+        filtered_updates = {k: v for k, v in updated_fields.items() if v is not None}
+        if filtered_updates:
+            self._store_session_verification_state(context, **filtered_updates)
+            try:
+                update_conversation_state(self.caller_phone, {
+                    "conversation_data": filtered_updates
+                })
+            except Exception as state_error:
+                logger.warning(f"Unable to persist lead info updates: {state_error}")
         
         return result_str
