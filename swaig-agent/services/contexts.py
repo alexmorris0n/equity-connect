@@ -137,15 +137,14 @@ def get_valid_contexts_for_node(node_name: str) -> List[str]:
     FALLBACK ONLY - Database should define valid_contexts
     """
     routing_map = {
-        "greet": ["verify", "answer", "end", "objections"],
-        "verify": ["qualify", "answer", "end"],
-        "qualify": ["quote", "end", "answer", "objections"],
-        "quote": ["answer", "book", "end", "objections"],
-        "answer": ["objections", "book", "end", "quote"],
-        "objections": ["answer", "book", "end"],
-        "book": ["end", "answer", "objections", "quote"],
-        "goodbye": ["answer", "greet", "end"],
-        "end": []  # Terminal
+        "greet": ["verify", "answer", "goodbye", "objections"],
+        "verify": ["qualify", "answer", "goodbye"],
+        "qualify": ["quote", "goodbye", "answer", "objections"],
+        "quote": ["answer", "book", "goodbye", "objections"],
+        "answer": ["objections", "book", "goodbye", "quote"],
+        "objections": ["answer", "book", "goodbye"],
+        "book": ["goodbye", "answer", "objections", "quote"],
+        "goodbye": ["answer", "greet"],
     }
     
     return routing_map.get(node_name, [])
