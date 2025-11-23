@@ -128,8 +128,9 @@ async def barbara_agent(request: Request):
         
         # Determine starting node (multi-call persistence)
         current_node = "greet"
-        if state:
-            # Resume where we left off
+        if state and state.get('call_status') != 'completed':
+            # Only resume where we left off if previous call wasn't completed
+            # If call_status is 'completed', treat this as a fresh call
             if state.get('conversation_data', {}).get('appointment_booked'):
                 current_node = "goodbye"
             elif state.get('conversation_data', {}).get('ready_to_book'):
