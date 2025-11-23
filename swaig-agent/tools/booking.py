@@ -14,6 +14,59 @@ logger = logging.getLogger(__name__)
 
 NYLAS_API_KEY = os.getenv("NYLAS_API_KEY")
 NYLAS_CLIENT_ID = os.getenv("NYLAS_CLIENT_ID")
+N8N_MANUAL_BOOKING_WEBHOOK = os.getenv("N8N_MANUAL_BOOKING_WEBHOOK")
+
+
+async def _trigger_manual_booking_webhook(
+    lead_id: str = None,
+    broker_id: str = None,
+    phone: str = None,
+    error: str = None,
+    requested_time: str = None,
+    notes: str = None
+) -> None:
+    """
+    Trigger n8n webhook to notify about manual booking requirement
+    
+    Args:
+        lead_id: Lead UUID
+        broker_id: Broker UUID
+        phone: Phone number
+        error: Error message
+        requested_time: Preferred appointment time
+        notes: Additional notes
+    """
+    webhook_url = N8N_MANUAL_BOOKING_WEBHOOK
+    if not webhook_url:
+        logger.warning("[WEBHOOK] N8N_MANUAL_BOOKING_WEBHOOK not configured, skipping webhook")
+        return
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                webhook_url,
+                json={
+                    "lead_id": lead_id,
+                    "broker_id": broker_id,
+                    "phone": phone,
+                    "error": error,
+                    "error_type": type(error).__name__ if error else "Unknown",
+                    "requested_time": requested_time,
+                    "notes": notes,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "source": "signalwire_agent"
+                },
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"[WEBHOOK] Manual booking webhook triggered successfully for lead {lead_id}")
+            else:
+                logger.error(f"[WEBHOOK] Manual booking webhook failed: {response.status_code} - {response.text}")
+                
+    except Exception as webhook_error:
+        logger.error(f"[WEBHOOK] Failed to trigger manual booking webhook: {webhook_error}")
+        # Don't fail the whole function if webhook fails
 
 
 async def handle_booking(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -63,6 +116,9 @@ async def handle_booking(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]
         ]
     }
     
+    lead_id = lead.get('id')
+    broker_id = broker.get('id') if broker else None
+    
     # Call Nylas API
     try:
         async with httpx.AsyncClient() as client:
@@ -107,20 +163,68 @@ async def handle_booking(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]
                 }
             else:
                 logger.error(f"[BOOKING] Nylas API error: {response.status_code} - {response.text}")
+                
+                # Set manual booking required flag
+                await update_conversation_state(phone, {
+                    "conversation_data": {
+                        "manual_booking_required": True,
+                        "booking_error": f"Nylas API error: {response.status_code}"
+                    }
+                })
+                
+                # Trigger n8n webhook for manual booking
+                await _trigger_manual_booking_webhook(
+                    lead_id=lead_id,
+                    broker_id=broker_id,
+                    phone=phone,
+                    error=f"Nylas API error: {response.status_code} - {response.text}",
+                    requested_time=preferred_time,
+                    notes=notes
+                )
+                
                 return {
                     "response": (
                         "I'm having trouble accessing the calendar right now. "
-                        "Let me connect you with our team to schedule directly."
-                    )
+                        "Let me have someone call you directly to schedule. Is this the best number to reach you at?"
+                    ),
+                    "action": [{
+                        "set_meta_data": {
+                            "manual_booking_required": True
+                        }
+                    }]
                 }
                 
     except Exception as e:
         logger.error(f"[BOOKING] Error creating appointment: {e}")
+        
+        # Set manual booking required flag
+        await update_conversation_state(phone, {
+            "conversation_data": {
+                "manual_booking_required": True,
+                "booking_error": str(e)
+            }
+        })
+        
+        # Trigger n8n webhook for manual booking
+        await _trigger_manual_booking_webhook(
+            lead_id=lead_id,
+            broker_id=broker_id,
+            phone=phone,
+            error=str(e),
+            requested_time=preferred_time,
+            notes=notes
+        )
+        
         return {
             "response": (
                 "I encountered an issue scheduling your appointment. "
-                "Let me connect you with our team to schedule directly."
-            )
+                "Let me have someone call you directly to schedule. Is this the best number to reach you at?"
+            ),
+            "action": [{
+                "set_meta_data": {
+                    "manual_booking_required": True
+                }
+            }]
         }
 
 
@@ -184,9 +288,35 @@ async def handle_check_broker_availability(caller_id: str, args: Dict[str, Any])
             
     except Exception as e:
         logger.error(f"[AVAILABILITY] Error checking availability: {e}")
+        
+        # Set manual booking required flag
+        await update_conversation_state(phone, {
+            "conversation_data": {
+                "manual_booking_required": True,
+                "availability_check_error": str(e)
+            }
+        })
+        
+        # Trigger n8n webhook for manual booking
+        await _trigger_manual_booking_webhook(
+            lead_id=lead.get('id') if lead else None,
+            broker_id=broker.get('id') if broker else None,
+            phone=phone,
+            error=f"Availability check error: {str(e)}",
+            requested_time=preferred_time or preferred_date
+        )
+        
         return {
-            "response": f"I can check {broker_name}'s availability. What time would work best for you?",
-            "available": True,  # Assume available if check fails
-            "broker_name": broker_name
+            "response": (
+                "I'm having trouble accessing the calendar right now. "
+                "Let me have someone call you directly to schedule. Is this the best number to reach you at?"
+            ),
+            "available": False,  # Don't assume available - flag as manual
+            "broker_name": broker_name,
+            "action": [{
+                "set_meta_data": {
+                    "manual_booking_required": True
+                }
+            }]
         }
 

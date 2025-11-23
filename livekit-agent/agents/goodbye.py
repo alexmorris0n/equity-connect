@@ -130,4 +130,44 @@ class BarbaraGoodbyeAgent(Agent):
             vertical=self.vertical,
             chat_ctx=self.chat_ctx
         )
+    
+    @function_tool()
+    async def route_to_greet(self, context: RunContext):
+        """
+        Route back to greet agent when the correct person comes on line.
+        
+        Call when:
+        - Wrong person handoff complete
+        - Correct person is now speaking
+        - Need to restart greeting for the right person
+        
+        Example:
+        - Wife answered → waiting → "I'm here!" (husband) → Call this tool
+        
+        Detection triggers:
+        - User says "I'm here", "This is [name]", "He's on", "She's here"
+        - New voice introduces themselves
+        """
+        logger.info("Routing to greet - correct person now on line")
+        
+        # Clear wrong_person flag
+        from services.conversation_state import update_conversation_state
+        update_conversation_state(
+            self.caller_phone,
+            {
+                "conversation_data": {
+                    "wrong_person": False,
+                    "handoff_complete": True
+                }
+            }
+        )
+        
+        from .greet import BarbaraGreetAgent
+        
+        return BarbaraGreetAgent(
+            caller_phone=self.caller_phone,
+            lead_data=self.lead_data,
+            vertical=self.vertical,
+            chat_ctx=self.chat_ctx
+        )
 

@@ -1,8 +1,8 @@
 # Equity Connect - Master Production Plan
 
-**Last Updated:** November 22, 2025  
+**Last Updated:** November 21, 2025  
 **Status:** ✅ Production Ready - SWML Bridge (Fly.io) + LiveKit Agent (Fly.io) - Dual Platform  
-**Current Phase:** Granular Verification & Qualification System (Both LiveKit and SignalWire)
+**Current Phase:** Production-Grade Fallback System Implemented
 
 ---
 
@@ -58,21 +58,15 @@ equity-connect/ (Git Monorepo)
 │   ├── Dockerfile                → Fly.io deployment
 │   └── fly.toml                  → Fly.io config (LAX region)
 ├── livekit-agent/                → Fly.io LiveKit Agent (PRODUCTION ACTIVE)
-│   ├── agent.py                  → Entrypoint (creates initial BarbaraGreetAgent)
-│   ├── agents/                    → Native LiveKit Agent classes (8 agents)
-│   │   ├── greet.py              → BarbaraGreetAgent
-│   │   ├── verify.py             → BarbaraVerifyTask (with granular verification tools)
-│   │   ├── qualify.py            → BarbaraQualifyTask (with granular qualification tools)
-│   │   ├── answer.py             → BarbaraAnswerAgent
-│   │   ├── quote.py              → BarbaraQuoteAgent
-│   │   ├── objections.py         → BarbaraObjectionsAgent
-│   │   ├── book.py               → BarbaraBookAgent
-│   │   └── goodbye.py            → BarbaraGoodbyeAgent
+│   ├── agent.py                  → BarbaraAgent (LiveKit Agent class)
 │   ├── services/
 │   │   ├── database.py           → Supabase client + node configs
 │   │   ├── prompt_loader.py      → Load prompts from DB
 │   │   ├── conversation_state.py → Multi-call persistence
 │   │   └── prompts.py            → Prompt variable injection
+│   ├── workflows/
+│   │   ├── routers.py            → BarbGraph routing logic
+│   │   └── node_completion.py    → Node completion checks
 │   ├── tools/                    → LiveKit function tools
 │   │   ├── flags.py              → State flag tools
 │   │   ├── lead.py               → Lead management
@@ -91,9 +85,7 @@ equity-connect/ (Git Monorepo)
 ├── database/                     → Shared Supabase schema
 ├── workflows/                    → N8N workflow definitions
 ├── config/                       → API configurations
-├── equity_connect/agent/         → DEPRECATED (Old SignalWire SDK agent)
-│   └── barbara_agent.py          → Replaced by swaig-agent/ (FastAPI bridge)
-└── deprecated/                   → Archived (bridge/, barbara-v3/)
+└── deprecated/                   → Archived (equity_connect/, bridge/, barbara-v3/)
 ```
 
 **Why Dual Platform:**
@@ -289,209 +281,6 @@ equity-connect/ (Git Monorepo)
 
 ---
 
-## 🔐 Nov 22: Granular Verification & Qualification System (Both Platforms)
-
-**Date:** November 22, 2025  
-**Status:** ✅ **COMPLETE - Both LiveKit and SignalWire Fully Backwards Compatible**
-
-### The Problem: All-or-Nothing Verification and Qualification
-
-**Before:**
-- Single boolean flags: `verified` (true/false), `qualified` (true/false)
-- All-or-nothing approach - couldn't track which specific items were verified/qualified
-- Every call asked for all information again, even if most was already confirmed
-- No context-aware flow - agent asked for everything regardless of database state
-- Poor UX for returning callers
-
-### The Solution: Granular Tracking with Auto-Compute Triggers
-
-**Database Schema Updates:**
-
-**Verification Fields (3 granular + 1 summary):**
-```sql
-ALTER TABLE leads
-ADD COLUMN phone_verified BOOLEAN DEFAULT FALSE,      -- Existing
-ADD COLUMN email_verified BOOLEAN DEFAULT FALSE,      -- Existing
-ADD COLUMN address_verified BOOLEAN DEFAULT FALSE,    -- NEW
-ADD COLUMN verified BOOLEAN DEFAULT FALSE;            -- NEW (auto-computed)
-
--- Trigger to auto-compute verified summary field
-CREATE FUNCTION update_lead_verified_status()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.verified = NEW.phone_verified AND NEW.email_verified AND NEW.address_verified;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_update_lead_verified_status
-BEFORE INSERT OR UPDATE OF phone_verified, email_verified, address_verified ON leads
-FOR EACH ROW EXECUTE FUNCTION update_lead_verified_status();
-```
-
-**Qualification Fields (4 granular + 1 summary):**
-```sql
--- Already existed in database
-age_qualified BOOLEAN DEFAULT FALSE
-homeowner_qualified BOOLEAN DEFAULT FALSE
-primary_residence_qualified BOOLEAN DEFAULT FALSE
-equity_qualified BOOLEAN DEFAULT FALSE
-qualified BOOLEAN DEFAULT FALSE  -- Summary field
-
--- Trigger to auto-compute qualified summary field
-CREATE FUNCTION update_lead_qualified_status()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.qualified = NEW.age_qualified AND NEW.homeowner_qualified 
-                    AND NEW.primary_residence_qualified AND NEW.equity_qualified;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_update_lead_qualified_status
-BEFORE INSERT OR UPDATE OF age_qualified, homeowner_qualified, 
-                          primary_residence_qualified, equity_qualified ON leads
-FOR EACH ROW EXECUTE FUNCTION update_lead_qualified_status();
-```
-
-### LiveKit Implementation
-
-**1. Verify Agent (`livekit-agent/agents/verify.py`):**
-- ✅ Added safety check in `on_enter()` - skips if `verified=true`
-- ✅ Checks database for which verifications are needed (phone, email, address)
-- ✅ Dynamically generates instructions for only missing items
-- ✅ Added 3 new tools:
-  - `mark_phone_verified()` → Updates `leads.phone_verified = TRUE`
-  - `mark_email_verified()` → Updates `leads.email_verified = TRUE`
-  - `mark_address_verified()` → Updates `leads.address_verified = TRUE`
-
-**2. Qualify Agent (`livekit-agent/agents/qualify.py`):**
-- ✅ Added safety check in `on_enter()` - skips if `qualified=true`
-- ✅ Checks database for which gates are needed (age, homeowner, residence, equity)
-- ✅ Dynamically injects context for only missing gates
-- ✅ Added 4 new tools:
-  - `mark_age_qualified()` → Updates `leads.age_qualified = TRUE`
-  - `mark_homeowner_qualified()` → Updates `leads.homeowner_qualified = TRUE`
-  - `mark_primary_residence_qualified()` → Updates `leads.primary_residence_qualified = TRUE`
-  - `mark_equity_qualified()` → Updates `leads.equity_qualified = TRUE`
-
-**3. Call-Start Sync (`livekit-agent/agent.py`):**
-- ✅ Fetches `leads.verified` and `leads.qualified` from database
-- ✅ Syncs to `conversation_state` on every call start
-- ✅ Routing logic uses synced values to skip completed nodes
-
-### SignalWire Implementation
-
-**1. Verification Tools (`swaig-agent/tools/verification.py`):**
-- ✅ Created 3 new SWAIG functions matching LiveKit tools exactly:
-  - `mark_phone_verified()` → Updates `leads.phone_verified = TRUE`
-  - `mark_email_verified()` → Updates `leads.email_verified = TRUE`
-  - `mark_address_verified()` → Updates `leads.address_verified = TRUE`
-
-**2. Qualification Tools (`swaig-agent/tools/qualification.py`):**
-- ✅ Created 4 new SWAIG functions matching LiveKit tools exactly:
-  - `mark_age_qualified()` → Updates `leads.age_qualified = TRUE`
-  - `mark_homeowner_qualified()` → Updates `leads.homeowner_qualified = TRUE`
-  - `mark_primary_residence_qualified()` → Updates `leads.primary_residence_qualified = TRUE`
-  - `mark_equity_qualified()` → Updates `leads.equity_qualified = TRUE`
-
-**3. Function Registration (`swaig-agent/main.py`):**
-- ✅ Registered 7 new functions (3 verification + 4 qualification)
-- ✅ Added function declarations for SignalWire discovery
-- ✅ Added routing handlers to call the new tools
-- ✅ Updated verify and qualify contexts to include granular tools
-
-**4. Call-Start Sync (`swaig-agent/main.py`):**
-- ✅ Fetches `leads.verified` and `leads.qualified` from database
-- ✅ Syncs to `conversation_state` on every call start
-- ✅ Routing logic uses synced values to skip completed nodes
-
-**5. Database Prompts Updated:**
-- ✅ Verify prompt: Agent-led flow, checks context, only asks for missing items
-- ✅ Qualify prompt: Agent-led flow, checks gates, only asks for missing items
-
-### How It Works
-
-**Verification Flow Example:**
-```
-Call 1:
-  → Lead has: email ✅
-  → Lead needs: phone ❌, address ❌
-  → Agent asks: "Let me confirm your phone number and property address"
-  → Calls: mark_phone_verified(), mark_address_verified()
-  → Trigger sets: verified = TRUE (all 3 verified)
-
-Call 2:
-  → Lead has: verified = TRUE
-  → Routing: SKIPS verify → Goes to qualify/quote
-```
-
-**Qualification Flow Example:**
-```
-Call 1:
-  → Lead has: age_qualified ✅, homeowner_qualified ✅
-  → Lead needs: primary_residence ❌, equity ❌
-  → Agent asks: "Do you live there full-time? And about the value?"
-  → Calls: mark_primary_residence_qualified(), mark_equity_qualified()
-  → Trigger sets: qualified = TRUE (all 4 qualified)
-
-Call 2:
-  → Lead has: qualified = TRUE
-  → Routing: SKIPS qualify → Goes to quote/answer
-```
-
-### Backwards Compatibility
-
-**✅ Cross-Platform Compatibility:**
-- LiveKit and SignalWire share the same database schema
-- A lead verified in LiveKit will skip verification in SignalWire (and vice versa)
-- A lead qualified in LiveKit will skip qualification in SignalWire (and vice versa)
-- Both platforms use identical routing logic
-
-**✅ Legacy Tool Support:**
-- Old single tools still work: `mark_verified`, `mark_qualified`
-- New systems use granular tools for better UX
-- Gradual migration supported
-
-### Files Changed
-
-**LiveKit:**
-1. ✅ `livekit-agent/agents/verify.py` - Added granular verification tools
-2. ✅ `livekit-agent/agents/qualify.py` - Added granular qualification tools
-3. ✅ `livekit-agent/agent.py` - Added call-start sync logic
-
-**SignalWire:**
-1. ✅ `swaig-agent/tools/verification.py` (NEW) - 3 granular verification tools
-2. ✅ `swaig-agent/tools/qualification.py` (NEW) - 4 granular qualification tools
-3. ✅ `swaig-agent/main.py` - Registered 7 new functions
-4. ✅ `swaig-agent/services/contexts.py` - Updated verify/qualify contexts
-5. ✅ `swaig-agent/main.py` - Added call-start sync logic
-
-**Database:**
-1. ✅ `database/migrations/20251122_add_verification_fields.sql` - Added address_verified, verified fields + trigger
-2. ✅ Database trigger for qualification (executed via Supabase MCP)
-3. ✅ Verify prompt updated (executed via Supabase MCP)
-4. ✅ Qualify prompt updated (executed via Supabase MCP)
-
-### Impact
-
-**User Experience:**
-- ✅ Returning callers don't repeat verification/qualification
-- ✅ Partial information preserved across calls
-- ✅ Faster conversations (skip what's done)
-- ✅ Natural flow ("I just need to confirm your email")
-
-**Technical:**
-- ✅ Granular tracking in database
-- ✅ Context-aware agent behavior
-- ✅ Automatic summary field computation
-- ✅ Platform-agnostic (works on both LiveKit and SignalWire)
-- ✅ No data loss between platforms
-
-**Status:** ✅ **COMPLETE - Granular Verification & Qualification Active on Both Platforms (November 22, 2025)**
-
----
-
 ## 🛡️ Nov 21: Production-Grade Fallback System with LOUD Error Logging
 
 **Date:** November 21, 2025  
@@ -575,139 +364,6 @@ Action: Check livekit_available_stt_models table
 
 ---
 
-## ✅ Nov 22: Granular Qualification System + Verification Fixes (LiveKit Only)
-
-**Date:** November 22, 2025  
-**Status:** ✅ **COMPLETE - Granular Tracking Active (LiveKit Agent)**
-
-### The Problem: Single Boolean Fields + Hard-Coded Prompts
-
-**Before:**
-- **Verification:** Only had `phone_verified` and `email_verified` - no address verification, no summary field
-- **Qualification:** Single `qualified` boolean - couldn't track which of the 4 gates passed/failed
-- **No safety checks:** Verify/qualify agents would run even if already complete
-- **Hard-coded greetings:** Python code had hard-coded "Say: '...'" instructions instead of database prompts
-- **No granular tools:** Had to pass/fail all gates at once, couldn't mark individual gates
-
-### The Solution: Granular Fields + Database-Driven Prompts
-
-**1. ✅ Verification System Overhaul (LiveKit Agent)**
-
-**Database Migration:** `database/migrations/20251122_add_verification_fields.sql`
-- Added `address_verified` boolean field
-- Added `verified` summary boolean (auto-computed from all 3 fields)
-- Created trigger `update_lead_verified()` - auto-sets `verified=true` when all 3 fields are true
-- Backfilled existing leads based on property_address presence
-
-**LiveKit Agent (`livekit-agent/agents/verify.py`):**
-- ✅ Added safety check in `on_enter()` - skips if `verified=true` in database
-- ✅ Checks which fields need verification (phone, email, address)
-- ✅ Injects context dynamically (no hard-coding)
-- ✅ Added 3 granular tools: `mark_phone_verified()`, `mark_email_verified()`, `mark_address_verified()`
-- ✅ Removed hard-coded greeting - now uses database prompt
-
-**Database Prompt Updated:**
-- ✅ Added greeting instructions: "IMMEDIATELY greet the caller and explain what you need to verify"
-- ✅ Added example opening text
-- ✅ Added instructions for checking each of the 3 verification fields
-- ✅ Updated tools list to include 3 new granular tools
-
-**2. ✅ Qualification System Overhaul (LiveKit Agent)**
-
-**Database Migration:** `database/migrations/20251122_add_qualification_fields.sql`
-- Added 4 granular fields: `age_qualified`, `homeowner_qualified`, `primary_residence_qualified`, `equity_qualified`
-- Added trigger `update_lead_qualified()` - auto-sets `qualified=true` when all 4 gates are true
-- Backfilled existing qualified leads (status = 'qualified' or beyond)
-
-**LiveKit Agent (`livekit-agent/agents/qualify.py`):**
-- ✅ Added safety check in `on_enter()` - skips if `qualified=true` in database
-- ✅ Checks which gates need checking (age, homeowner, primary residence, equity)
-- ✅ Injects context dynamically (no hard-coding)
-- ✅ Added 4 granular tools: `mark_age_qualified()`, `mark_homeowner_qualified()`, `mark_primary_residence_qualified()`, `mark_equity_qualified()`
-- ✅ Removed hard-coded greeting - now uses database prompt
-
-**Database Prompt Updated:**
-- ✅ Added greeting instructions: "IMMEDIATELY greet the caller and explain that you need to check qualifications"
-- ✅ Added example opening text
-- ✅ Added instructions for checking each of the 4 qualification gates
-- ✅ Updated tools list to include 4 new granular tools
-
-**3. ✅ Entrypoint & Greet Agent Updates**
-
-**LiveKit Agent (`livekit-agent/agent.py`):**
-- ✅ Updated lead lookup to retrieve `verified` and `qualified` from `leads` table
-- ✅ Passes `verified` status to `cs_start_call()` and `update_conversation_state()`
-
-**LiveKit Agent (`livekit-agent/agents/greet.py`):**
-- ✅ Fetches `verified` and `qualified` directly from `leads` table (not conversation_data)
-- ✅ Routes correctly: `verified=true` → skips verify, `qualified=true` → skips qualify
-
-### How It Works Now
-
-**Verification Flow:**
-1. **Greet** checks database: `verified=true` → Routes directly to Answer (skips verify)
-2. **Verify** enters → Checks which fields need verification (phone, email, address)
-3. Injects context: "Need to verify: phone, email" (example)
-4. Database prompt → Agent greets: "Before I can help, I need to verify your phone number and email address..."
-5. Agent asks about missing fields only
-6. Marks each field using `mark_*_verified()` tools
-7. Trigger auto-updates `verified=true` when all 3 fields are true
-8. Routes to next agent
-
-**Qualification Flow:**
-1. **Greet** checks database: `qualified=true` → Routes directly to Answer (skips qualify)
-2. **Qualify** enters → Checks which gates need checking (age, homeowner, residence, equity)
-3. Injects context: "Need to check: age, equity" (example)
-4. Database prompt → Agent greets: "Before we continue, I need to check a few quick qualifications..."
-5. Agent asks about missing gates only
-6. Marks each gate using `mark_*_qualified()` tools
-7. Trigger auto-updates `qualified=true` when all 4 gates are true
-8. Routes to answer agent
-
-### Comparison: Before vs After
-
-| Feature | Before ❌ | After ✅ |
-|---------|----------|---------|
-| **Verification tracking** | 2 fields (phone, email) | 3 fields + summary (phone, email, address, verified) |
-| **Qualification tracking** | Single boolean | 4 separate gate fields + summary |
-| **Safety checks** | None | Skips if already verified/qualified |
-| **Greeting** | Hard-coded in Python | Database prompt |
-| **Tool usage** | 1 tool (pass/fail all) | 7 granular tools (3 verify + 4 qualify) |
-| **Partial completion** | Not possible | Can track which fields/gates completed |
-| **Auto-computation** | Manual | Triggers auto-update summary fields |
-
-### Benefits
-
-- ✅ **No hard-coded prompts** - All greeting/behavior in database
-- ✅ **Granular tracking** - Know exactly which fields/gates are complete
-- ✅ **Smart skipping** - Already verified/qualified leads skip unnecessary steps
-- ✅ **Database-driven** - Can update behavior without code changes
-- ✅ **Data consistency** - Triggers ensure summary fields stay accurate
-- ✅ **Agent speaks first** - Greets immediately on enter (database prompt)
-
-### Files Created
-
-- `database/migrations/20251122_add_verification_fields.sql` - Verification granular fields + trigger
-- `database/migrations/20251122_add_qualification_fields.sql` - Qualification granular fields + trigger
-- `VERIFICATION_FIX_COMPLETE.md` - Verification system documentation
-- `QUALIFICATION_FIX_COMPLETE.md` - Qualification system documentation
-
-### Files Modified (LiveKit Only)
-
-- `livekit-agent/agent.py` - Updated lead lookup to get verified/qualified from database
-- `livekit-agent/agents/greet.py` - Fetches verified/qualified from leads table
-- `livekit-agent/agents/verify.py` - Added safety check, granular tools, removed hard-coding
-- `livekit-agent/agents/qualify.py` - Added safety check, granular tools, removed hard-coding
-- `prompt_versions` table - Updated verify and qualify node prompts with greeting instructions
-
-### Status
-
-**Status:** ✅ **COMPLETE - Granular Verification & Qualification System Active (November 22, 2025)**
-
-**Note:** These changes are **LiveKit-only**. SignalWire agent maintains existing single boolean fields for backward compatibility.
-
----
-
 ## 🔥 Nov 18-19: SignalWire Agent SDK Abandoned → SWML Bridge + LiveKit Dual Platform
 
 **Date:** November 18-19, 2025  
@@ -742,12 +398,11 @@ Action: Check livekit_available_stt_models table
 - **Status:** ✅ **WORKING - Tools now available, contexts routing correctly**
 
 **LiveKit Agent** (`livekit-agent/`)
-- **What:** LiveKit native Agent system with automatic handoffs via tool returns
+- **What:** LiveKit Agents framework with `AgentSession` and function tools
 - **How:** SignalWire SIP → LiveKit SIP Bridge → LiveKit agent worker
-- **Architecture:** Agent classes (`BarbaraGreetAgent`, `BarbaraVerifyTask`, etc.) that inherit from `livekit.agents.Agent`
-- **Tools:** Decorated with `@function_tool`, tools return other Agent instances for automatic handoffs
-- **Routing:** Tools return Agent/Task instances → LiveKit handles handoffs automatically
-- **Status:** ✅ **WORKING - Native LiveKit agents with tool-based routing**
+- **Tools:** Decorated with `@function_tool`, auto-registered with AgentSession
+- **Routing:** BarbGraph Python routers (`workflows/routers.py`, `workflows/node_completion.py`)
+- **Status:** ✅ **WORKING - Spun up as fallback, fully functional**
 
 ---
 
@@ -767,14 +422,10 @@ Action: Check livekit_available_stt_models table
 - **Same Business Logic:** Both call same Supabase queries, Nylas API, knowledge search
 
 **Routing Logic (Database-Informed, Platform-Specific Implementation):**
-- **SignalWire:** Uses `valid_contexts` arrays from database. SignalWire's LLM determines which transition to take based on conversation context. Natural language `step_criteria` guide completion. Routing happens automatically via SignalWire's context system.
-- **LiveKit:** Uses native Agent handoffs - tools decorated with `@function_tool` return other Agent/Task instances. LiveKit automatically handles the handoff when a tool returns an Agent. Tools check database flags and `valid_contexts` to decide which Agent to return. Example: `mark_greeted()` tool checks `conversation_data.verified` flag and returns `BarbaraVerifyTask` or `BarbaraAnswerAgent` accordingly.
-- **Key Difference:** 
-  - **SignalWire** = LLM-driven routing (SignalWire's LLM chooses from `valid_contexts` based on conversation)
-  - **LiveKit** = Tool-driven routing (LLM calls tool, tool returns next Agent instance, LiveKit handles handoff)
-- **Same Rules, Different Execution:** Both platforms use same database tables (`valid_contexts`, flags, prompts) but implement routing completely differently:
-  - **SignalWire:** LLM interprets instructions and chooses context transition
-  - **LiveKit:** LLM calls tools, tools implement routing logic via Agent returns
+- **SignalWire:** Uses `valid_contexts` arrays from database. SignalWire's LLM determines which transition to take based on conversation context. Natural language `step_criteria` guide completion.
+- **LiveKit:** Uses Python router functions (`route_after_greet()`, etc.) that check database flags and `valid_contexts` for allowed transitions. Boolean expression `step_criteria_lk` evaluated by custom parser.
+- **Key Difference:** SignalWire = LLM-driven routing within allowed contexts. LiveKit = Code-driven routing with database validation.
+- **Same Rules, Different Execution:** Both platforms use same database tables (`valid_contexts`, flags, prompts) but implement routing logic differently.
 
 **Prompt Loading (Identical):**
 - Both load from `prompt_versions` table
@@ -794,35 +445,18 @@ Action: Check livekit_available_stt_models table
 5. ✅ Fixed function handler to update conversation_state correctly
 6. ✅ Deployed to Fly.io (`barbara-swaig-bridge.fly.dev`)
 
-**LiveKit Agent (November 22, 2025 - Complete Refactor):**
-7. ✅ **REFACTORED:** Replaced node-based routing system with LiveKit native agents
-8. ✅ **DELETED:** `routing_coordinator.py`, `node_agent.py`, `session_data.py`, `workflows/routers.py`, `workflows/node_completion.py` (~1000 lines)
-9. ✅ **CREATED:** `agents/` directory with 8 Agent classes:
-   - `agents/greet.py` - `BarbaraGreetAgent`
-   - `agents/verify.py` - `BarbaraVerifyTask` (AgentTask for mandatory completion)
-   - `agents/qualify.py` - `BarbaraQualifyTask`
-   - `agents/answer.py` - `BarbaraAnswerAgent`
-   - `agents/quote.py` - `BarbaraQuoteAgent`
-   - `agents/objections.py` - `BarbaraObjectionsAgent`
-   - `agents/book.py` - `BarbaraBookAgent`
-   - `agents/goodbye.py` - `BarbaraGoodbyeAgent`
-10. ✅ **ROUTING:** Tools now return Agent instances → LiveKit handles handoffs automatically
-11. ✅ **TOOLS:** All tools renamed to match SignalWire DB instructions for backward compatibility:
-    - `continue_to_verification` → `mark_greeted`
-    - `verify_caller_identity_tool` → `verify_caller_identity`
-    - `mark_qualification_result_tool` → `mark_qualified`
-    - `search_knowledge_tool` → `search_knowledge`
-    - And 8 more tool renames across all agents
-11a. ✅ **GRANULAR TOOLS (Nov 22):** Added 7 new granular tools for verification and qualification:
-    - Verification: `mark_phone_verified()`, `mark_email_verified()`, `mark_address_verified()`
-    - Qualification: `mark_age_qualified()`, `mark_homeowner_qualified()`, `mark_primary_residence_qualified()`, `mark_equity_qualified()`
-12. ✅ Fixed phone number extraction from room name (`sip-_+16505300051_...`)
-13. ✅ Fixed Supabase query ordering (`.select()` before `.or_()`)
-14. ✅ Added support for OpenAI Realtime and Gemini Live plugins (realtime models)
-15. ✅ Fixed TTS voice to use LiveKit Inference compatible voice (Sarah, not custom)
-16. ✅ Fixed `AgentSession` initialization (removed premature `async with` closure)
-17. ✅ Fixed `on_enter()` to call `generate_reply()` correctly (no await needed)
-18. ✅ Deployed to Fly.io (`barbara-livekit.fly.dev`)
+**LiveKit Agent:**
+7. ✅ Re-enabled LiveKit agent (was archived as "DEPRECATED")
+8. ✅ Updated `agent.py` to use database-driven prompts (not hardcoded)
+9. ✅ Added `load_node_config()` to fetch full node config (tools, valid_contexts, step_criteria)
+10. ✅ Added `validate_transition()` to check valid_contexts before routing
+11. ✅ Fixed phone number extraction from room name (`sip-_+16505300051_...`)
+12. ✅ Fixed Supabase query ordering (`.select()` before `.or_()`)
+13. ✅ Added support for OpenAI Realtime and Gemini Live plugins (realtime models)
+14. ✅ Fixed TTS voice to use LiveKit Inference compatible voice (Sarah, not custom)
+15. ✅ Fixed `AgentSession.userdata` initialization (`userdata={}` in constructor)
+16. ✅ Fixed `load_node()` to call `generate_reply(speak_now=True)` on transitions
+17. ✅ Deployed to Fly.io (`barbara-livekit.fly.dev`)
 
 **Database:**
 18. ✅ Fixed missing tools in database (`calculate_reverse_mortgage` added to Quote node)
@@ -837,9 +471,6 @@ Action: Check livekit_available_stt_models table
 27. ✅ Deactivated orphaned "end" node
 28. ✅ Added `appointment_datetime` flag to `book_appointment` tool
 29. ✅ Documented all conversation flags (`docs/conversation_flags.md`)
-30. ✅ **Nov 22:** Added granular verification fields (`address_verified`, `verified` summary) + trigger
-31. ✅ **Nov 22:** Added granular qualification fields (`age_qualified`, `homeowner_qualified`, `primary_residence_qualified`, `equity_qualified`, `qualified` summary) + trigger
-32. ✅ **Nov 22:** Updated VERIFY and QUALIFY node prompts with greeting instructions (database-driven)
 
 **Vue Portal:**
 30. ✅ Split "Models & Voice Configuration" into two tabs: SignalWire and LiveKit
@@ -1944,20 +1575,15 @@ BarbGraph is a database-driven conversation routing system with 8 nodes and dyna
 **How It Works on Each Platform:**
 
 **SignalWire SWML:**
-- Contexts built from database and returned in SWML response (`swaig-agent/services/contexts.py`)
-- `valid_contexts` arrays define allowed transitions (stored in database)
-- `step_criteria` guide completion detection (natural language instructions for LLM)
-- SignalWire's LLM determines which context to transition to based on conversation
-- SignalWire handles transitions automatically via native context system
-- **File:** `swaig-agent/main.py` generates SWML with contexts
+- Contexts built from database and returned in SWML response
+- `valid_contexts` arrays define allowed transitions
+- `step_criteria` guide completion detection
+- SignalWire handles transitions automatically based on LLM output
 
 **LiveKit Agents:**
-- **Native Agent System:** Each conversation node is a separate Agent class (e.g., `BarbaraGreetAgent`, `BarbaraAnswerAgent`)
-- **Tool-Based Routing:** Tools decorated with `@function_tool` return other Agent/Task instances
-- **Automatic Handoffs:** When a tool returns an Agent instance, LiveKit automatically handles the handoff
-- **Example:** `mark_greeted()` tool checks `conversation_data.verified` flag and returns `BarbaraVerifyTask` or `BarbaraAnswerAgent`
-- Tools check `valid_contexts` from database to validate allowed transitions before returning Agent
-- **Files:** `livekit-agent/agents/*.py` (8 Agent classes), `livekit-agent/agent.py` (entrypoint creates initial `BarbaraGreetAgent`)
+- Python routers (`route_after_greet()`, etc.) check database flags and valid_contexts
+- Completion checkers (`is_node_complete()`) evaluate flags and step_criteria
+- Manual transitions via `session.generate_reply()` with new instructions
 
 ### Architecture: 3-Layer System (Platform-Agnostic)
 
@@ -1993,10 +1619,10 @@ BarbGraph is a database-driven conversation routing system with 8 nodes and dyna
 │  │  SignalWire SWML Bridge  │  │  LiveKit Agent Worker   │ │
 │  │  (Fly.io)                │  │  (Fly.io)               │ │
 │  ├──────────────────────────┤  ├─────────────────────────┤ │
-│  │ • FastAPI SWAIG bridge   │  │ • Native Agent classes  │ │
-│  │ • contexts.py (DB → SWML)│  │ • agents/*.py (8 agents)│ │
+│  │ • FastAPI SWAIG bridge   │  │ • BarbaraAgent class    │ │
+│  │ • contexts.py (DB → SWML)│  │ • routers.py (BarbGraph)│ │
 │  │ • SWAIG function handlers│  │ • @function_tool tools  │ │
-│  │ • LLM-driven routing     │  │ • Tool returns → handoff│ │
+│  │ • valid_contexts routing │  │ • AgentSession          │ │
 │  └──────────────────────────┘  └─────────────────────────┘ │
 │                                                              │
 │  Both load same data from database:                         │
@@ -2100,17 +1726,10 @@ CREATE TABLE theme_prompts (
 - SignalWire handles transitions automatically based on LLM intent
 
 **LiveKit Implementation:**
-- **Native Agent Classes:** Each node is a separate Agent class (`BarbaraGreetAgent`, `BarbaraVerifyTask`, etc.)
-- **Tool Returns:** Tools decorated with `@function_tool` return other Agent/Task instances for handoffs
-- **Automatic Handoffs:** LiveKit handles Agent handoffs automatically when tools return Agent instances
-- **Routing Logic:** Tools check `conversation_data` flags and `valid_contexts` from database to decide which Agent to return
-- **Example Flow:**
-  ```
-  BarbaraGreetAgent.on_enter() → generates greeting
-  LLM calls mark_greeted() tool → tool checks flags → returns BarbaraVerifyTask
-  LiveKit automatically hands off to BarbaraVerifyTask
-  ```
-- **No Manual Transitions:** LiveKit handles all transitions automatically via tool returns
+- Python routers (`route_after_greet()`, `route_after_verify()`, etc.)
+- Check conversation_data flags and step completion
+- Validate transitions against `valid_contexts` from database
+- Manual transitions via `load_node()` + `session.generate_reply()`
 
 **Routing Logic (in Database - Used by Both Platforms):**
 - **greet** → `["answer", "verify", "quote"]`
@@ -2419,130 +2038,10 @@ CREATE TABLE conversation_state (
 - `signalwire_available_voices` - TTS voice catalog (7 providers, 400+ voices, English/Spanish)
 - `signalwire_available_stt_models` - STT model catalog (5 providers, English/Spanish models)
 - `signalwire_available_llm_models` - LLM model catalog (OpenAI only - SignalWire default)
-- `livekit_available_voices` - TTS voice catalog for LiveKit Inference (175 voices)
-- `livekit_available_stt_models` - STT model catalog for LiveKit Inference (16 models)
-- `livekit_available_llm_models` - LLM model catalog for LiveKit Inference (21 models)
-- `livekit_available_realtime_models` - Realtime model catalog (OpenAI Realtime, Gemini Live)
 - `theme_prompts` - Global vertical configuration (theme content + config JSONB)
 - `vertical_snapshots` - Version metadata for entire vertical snapshots
 - `contexts_config` - Context-level settings (isolated, enter_fillers, exit_fillers)
-- `agent_voice_config` - SignalWire TTS provider configuration per vertical/language
-- `ai_templates` - LiveKit AI configuration (STT, LLM, TTS, VAD, turn detection)
-
-### Dual Platform Maintenance via Vue Portal
-
-**Status:** ✅ **PRODUCTION READY - Dual Platform Configuration**
-
-The Vue Portal (`portal/src/views/admin/Verticals.vue`) provides unified management for both SignalWire and LiveKit platforms. Both platforms share the same prompt database but have separate AI model configurations.
-
-#### Shared Configuration (Both Platforms)
-
-**Theme & Prompts Tab:**
-- ✅ **Theme Editor** - Universal personality per vertical (shared by both platforms)
-- ✅ **8-Node Prompt Editor** - Instructions, tools, valid_contexts (shared by both platforms)
-- ✅ **Tool Selection** - Multi-select dropdown for available tools per node (shared)
-- ✅ **AI Helper** - Generate prompts via GPT-4o-mini (shared)
-- ✅ **Variable Insertion** - Add `{lead.first_name}` style variables (shared)
-- ✅ **Version Control** - Draft/publish workflow (shared)
-
-**What's Shared:**
-- `theme_prompts` table - Both platforms load same theme
-- `prompts` / `prompt_versions` table - Both platforms load same node instructions
-- `conversation_state` table - Both platforms update same flags
-- `valid_contexts` arrays - Both platforms respect same routing rules
-- Tool definitions - Both platforms use same tool names (backward compatible)
-
-**Impact of Changes:**
-- ✅ Editing prompts in Vue Portal → Both platforms use updated prompts on next call
-- ✅ Changing valid_contexts → Both platforms respect new routing rules
-- ✅ Adding tools to node → Both platforms have access to tool
-- ✅ No code deploy needed for prompt/instruction changes
-
-#### Platform-Specific Configuration
-
-**Models & Voice Tab:**
-
-The Models & Voice tab has **two sub-tabs** for platform-specific AI configuration:
-
-**1. SignalWire Tab:**
-- ✅ **LLM Model** - Select from `signalwire_available_llm_models` (e.g., "gpt-4o-mini", "gpt-4.1-mini")
-- ✅ **STT Model** - Select from `signalwire_available_stt_models` (e.g., "deepgram:nova-3", "assemblyai:universal-streaming")
-- ✅ **TTS Engine** - Select provider (ElevenLabs, OpenAI, Google Cloud, Amazon Polly, Azure, Cartesia, Rime)
-- ✅ **Voice Name** - Select voice from `signalwire_available_voices` (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
-- ✅ **Language Code** - Select language (en-US, es-US, es-MX)
-- ✅ **Saves to:** `agent_voice_config` table
-- ✅ **Live Reload:** SignalWire agent loads active models from database on each call
-
-**2. LiveKit Tab:**
-- ✅ **Model Type Selector** - Choose between:
-  - **Pipeline Mode** - Separate STT + LLM + TTS (recommended)
-  - **OpenAI Realtime** - Unified model with built-in STT/TTS
-  - **Gemini Live** - Google's unified realtime model
-- ✅ **Pipeline Mode Configuration:**
-  - **STT Model** - Select from `livekit_available_stt_models` (e.g., "deepgram/nova-3:en", "assemblyai/universal-streaming:multi")
-  - **LLM Model** - Select from `livekit_available_llm_models` (e.g., "openai/gpt-4o", "anthropic/claude-3-5-sonnet-20241022")
-  - **TTS Voice** - Select from `livekit_available_voices` (e.g., "elevenlabs/eleven_turbo_v2_5:EXAVITQu4vr4xnSDxMaL")
-  - **Custom Voice Support** - If custom ElevenLabs voice selected, uses plugin with user's API key
-- ✅ **Realtime Mode Configuration:**
-  - **Realtime Model** - Select from `livekit_available_realtime_models` (e.g., "gpt-4o-realtime-preview", "gemini-2.0-flash-exp")
-  - **Voice** - Model-specific voice selection
-  - **Temperature** - LLM temperature (0.6-1.2 for OpenAI, 0-2 for Gemini)
-  - **Modalities** - Audio, text, or both
-  - **Turn Detection** - Server VAD or semantic turn detection
-- ✅ **Saves to:** `ai_templates` table (one active template per vertical)
-- ✅ **Live Reload:** LiveKit agent loads active template from database on each call
-
-**What's Separate:**
-- SignalWire uses `agent_voice_config` table (simple TTS configuration)
-- LiveKit uses `ai_templates` table (complex STT/LLM/TTS/VAD configuration)
-- Different model catalogs (`signalwire_*` vs `livekit_*` tables)
-- Different model formats (SignalWire uses colon format "deepgram:nova-3", LiveKit uses slash format "deepgram/nova-3:en")
-
-#### How to Maintain Both Platforms
-
-**1. Editing Prompts (Shared):**
-- Navigate to **Theme & Prompts** tab
-- Edit theme or node prompts
-- Changes affect **both platforms immediately** on next call
-- No code deploy needed
-
-**2. Changing Routing Rules (Shared):**
-- Edit `valid_contexts` array in node prompt
-- Changes affect **both platforms immediately**
-- Both platforms respect same routing rules (implemented differently)
-
-**3. Configuring SignalWire AI Models:**
-- Navigate to **Models & Voice** tab
-- Click **SignalWire** sub-tab
-- Select LLM, STT, TTS models from dropdowns
-- Click "Save SignalWire Configuration"
-- Changes take effect on **next SignalWire call**
-
-**4. Configuring LiveKit AI Models:**
-- Navigate to **Models & Voice** tab
-- Click **LiveKit** sub-tab
-- Select model type (Pipeline, OpenAI Realtime, or Gemini Live)
-- Configure models for selected type
-- Click "Save LiveKit Configuration"
-- Changes take effect on **next LiveKit call**
-
-**5. Testing Changes:**
-- Use **Test Full Vertical** button (browser-based WebRTC test)
-- Or make test call via SignalWire phone number
-- Both platforms load same prompts, different AI models
-
-**Key Differences Summary:**
-
-| Aspect | SignalWire | LiveKit |
-|--------|-----------|---------|
-| **Routing** | LLM-driven (SignalWire chooses from valid_contexts) | Tool-driven (tools return Agent instances) |
-| **Prompts** | Same database (shared) | Same database (shared) |
-| **AI Models** | `agent_voice_config` table | `ai_templates` table |
-| **Model Format** | Colon format (`deepgram:nova-3`) | Slash format (`deepgram/nova-3:en`) |
-| **Tool Format** | SWAIG functions (`{response, action}`) | `@function_tool` decorators (returns `str` or `Agent`) |
-| **Update Method** | Edit in Vue → Database → Next call | Edit in Vue → Database → Next call |
-| **Code Deploy** | Not needed for prompts | Not needed for prompts |
-| **Code Deploy** | Needed for tool changes | Needed for tool changes |
+- `agent_voice_config` - TTS provider configuration per vertical/language
 
 ### Lead Management Portal
 

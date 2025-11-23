@@ -145,6 +145,7 @@ async def barbara_agent(request: Request):
         contexts = await build_contexts_structure(
             lead_context=lead,
             phone_number=phone,
+            conversation_state=state,
             vertical="reverse_mortgage",
             starting_node=current_node
         )

@@ -59,8 +59,8 @@ async def route_after_greet(state: Dict[str, Any]) -> str:
     # Check if wrong person answered
     if conversation_data.get("wrong_person"):
         if conversation_data.get("right_person_available"):
-            logger.info("🔄 Wrong person, but right person available → RE-GREET")
-            return "greet"
+            logger.info("🔄 Wrong person, but right person available → GOODBYE (waiting)")
+            return "goodbye"
         else:
             logger.info("🚪 Wrong person, not available → GOODBYE")
             return "goodbye"
@@ -229,6 +229,11 @@ async def route_after_book(state: Dict[str, Any]) -> str:
 async def route_after_goodbye(state: Dict[str, Any]) -> str:
     """Route after goodbye"""
     conversation_data = state.get('conversation_data', {})
+    
+    # If wrong person and right person becomes available, re-greet
+    if conversation_data.get("wrong_person") and conversation_data.get("right_person_available"):
+        logger.info("🔄 Right person available → RE-GREET")
+        return "greet"
     
     # If user asks a question during goodbye, route to answer
     if conversation_data.get("has_questions_during_goodbye"):

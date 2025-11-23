@@ -17,6 +17,7 @@ ALL_NODES = ["greet", "verify", "qualify", "quote", "answer", "objections", "boo
 async def build_contexts_structure(
     lead_context: Optional[Dict[str, Any]] = None,
     phone_number: Optional[str] = None,
+    conversation_state: Optional[Dict[str, Any]] = None,
     vertical: str = "reverse_mortgage",
     starting_node: str = "greet"
 ) -> Dict[str, Any]:
@@ -40,10 +41,11 @@ async def build_contexts_structure(
     # Load theme (universal personality)
     theme = await get_theme_prompt(vertical)
     
-    # Build context injection (caller info)
+    # Build context injection (caller info + conversation state)
     context_block = ""
-    if lead_context and phone_number:
-        context_block = build_context_injection(lead_context, phone_number, "inbound")
+    if phone_number:
+        conversation_data = conversation_state.get('conversation_data', {}) if conversation_state else None
+        context_block = build_context_injection(lead_context, phone_number, conversation_data, "inbound")
     
     # Build all contexts
     contexts = {}

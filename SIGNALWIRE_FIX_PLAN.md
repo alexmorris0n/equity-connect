@@ -1,11 +1,19 @@
 # SignalWire Fix Plan - Based on Documentation Research
 
 ## Overview
-Based on SignalWire SWAIG documentation and existing code patterns, here's how to fix the 3 remaining failing scenarios.
+Based on SignalWire SWAIG documentation and existing code patterns, here's how to fix the 2 remaining failing scenarios.
+
+**Note:** Scenario 9 (Borderline Equity) is intentionally skipped - let the broker handle low equity cases. Same treatment for everyone.
 
 ---
 
-## ✅ Fix #1: Scenario 9 - Borderline Equity Handling
+## ⏭️ Scenario 9: Borderline Equity - INTENTIONALLY SKIPPED
+
+**Decision:** Let the broker handle borderline equity cases. No special handling needed - same quote presentation for everyone.
+
+---
+
+## ✅ Fix #1: Scenario 11 - Tool Failure Handling
 
 ### Documentation Research:
 - **SignalWire SWAIG docs (lines 1700-1717):** Functions can return `action` array with `set_meta_data` to update conversation state
@@ -67,7 +75,7 @@ Add `borderline_equity` parameter to `mark_equity_qualified` function definition
 
 ---
 
-## ✅ Fix #2: Scenario 11 - Tool Failure Handling
+## ✅ Fix #2: Scenario 12 - KB Timeout Handling
 
 ### Documentation Research:
 - **SignalWire SWAIG docs (lines 1721-1735):** Always return HTTP 200, descriptive error messages in `response` field
@@ -135,9 +143,12 @@ If conversation_data shows manual_booking_required=true:
 
 ---
 
-## ✅ Fix #3: Scenario 12 - KB Timeout Handling
+## 📋 Summary Checklist
 
-### Documentation Research:
+### ⏭️ Scenario 9: Borderline Equity
+- [x] **INTENTIONALLY SKIPPED** - Broker handles it
+
+### Fix #1: Tool Failure Handling (Scenario 11)
 - **SignalWire SWAIG docs (lines 1721-1735):** Always return HTTP 200, descriptive error messages
 - **Python asyncio:** Can use `asyncio.wait_for()` with timeout
 - **Existing pattern:** `swaig-agent/tools/booking.py` line 76 uses `timeout=10.0` for httpx
@@ -295,23 +306,19 @@ If search_knowledge times out or errors, provide a helpful fallback response and
 
 ## 📋 Summary Checklist
 
-### Fix #1: Borderline Equity
-- [ ] Update `mark_equity_qualified` to accept and store `borderline_equity` parameter
-- [ ] Auto-detect borderline equity (<$50k or <20% of home value)
-- [ ] Update QUOTE prompt with reframing messaging for borderline cases
-- [ ] Update function declaration in main.py
+### ⏭️ Scenario 9: Borderline Equity
+- [x] **INTENTIONALLY SKIPPED** - Broker handles it
 
-### Fix #2: Tool Failure Handling
+### Fix #1: Tool Failure Handling (Scenario 11)
 - [ ] Update `handle_booking` to set `manual_booking_required` flag on error
 - [ ] Update `handle_check_broker_availability` to set flag on error
 - [ ] Update GOODBYE prompt with manual booking follow-up messaging
 - [ ] Test error scenarios
 
-### Fix #3: KB Timeout Handling
-- [ ] Read actual `search_knowledge` implementation in `tools/knowledge.py`
-- [ ] Add `asyncio.wait_for()` timeout (20 seconds)
+### Fix #2: KB Timeout Handling (Scenario 12)
+- [ ] Update `handle_knowledge_search` to add `asyncio.wait_for()` timeout (20 seconds)
 - [ ] Create fallback response dictionary for common questions
-- [ ] Update ANSWER prompt with timeout handling note
+- [ ] Update ANSWER prompt with timeout handling note (optional)
 - [ ] Test timeout scenario
 
 ---
@@ -350,10 +357,8 @@ If search_knowledge times out or errors, provide a helpful fallback response and
 
 ## 🚀 Next Steps
 
-1. **Read `swaig-agent/tools/knowledge.py`** to see actual implementation
-2. **Implement Fix #1** (Borderline Equity) - simplest, database column exists
-3. **Implement Fix #2** (Error Handling) - add flag setting to existing error handlers
-4. **Implement Fix #3** (KB Timeout) - requires reading knowledge.py first
+1. **Implement Fix #1** (Tool Failure Handling) - add flag setting to existing error handlers in `booking.py`
+2. **Implement Fix #2** (KB Timeout) - add timeout wrapper to `handle_knowledge_search` in `tools/knowledge.py`
 
 **All fixes follow SignalWire documentation patterns and existing code structure!**
 

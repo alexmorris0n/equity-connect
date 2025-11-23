@@ -10,12 +10,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def build_context_injection(lead_context: Optional[Dict[str, Any]], phone: str, call_type: str = "inbound") -> str:
+def build_context_injection(lead_context: Optional[Dict[str, Any]], phone: str, conversation_data: Optional[Dict[str, Any]] = None, call_type: str = "inbound") -> str:
     """
     Build context string to inject into prompt
     Creates formatted text block with call-specific information
     """
-    if not lead_context:
+    if not lead_context and not conversation_data:
         return ""
     
     context_parts = [
@@ -24,48 +24,70 @@ def build_context_injection(lead_context: Optional[Dict[str, Any]], phone: str, 
     ]
     
     # Add lead information if available
-    if lead_context.get('id'):
-        context_parts.append(f"Lead ID: {lead_context['id']}")
-    
-    if lead_context.get('first_name'):
-        context_parts.append(f"Name: {lead_context['first_name']}")
-        if lead_context.get('last_name'):
-            context_parts[-1] += f" {lead_context['last_name']}"
-    
-    if lead_context.get('qualified') is not None:
-        context_parts.append(f"Qualified: {'Yes' if lead_context['qualified'] else 'No'}")
-    
-    # Property information
-    if lead_context.get('property_address'):
-        context_parts.append(f"Property Address: {lead_context['property_address']}")
-    elif lead_context.get('property_city'):
-        city = lead_context['property_city']
-        if lead_context.get('property_state'):
-            city += f", {lead_context['property_state']}"
-        context_parts.append(f"Property Location: {city}")
-    
-    if lead_context.get('estimated_equity'):
-        context_parts.append(f"Estimated Equity: ${lead_context['estimated_equity']:,}")
-    
-    if lead_context.get('property_value'):
-        context_parts.append(f"Property Value: ${lead_context['property_value']:,}")
-    
-    if lead_context.get('age'):
-        context_parts.append(f"Age: {lead_context['age']}")
-    
-    # Broker information
-    if lead_context.get('assigned_broker_id') and lead_context.get('brokers'):
-        broker = lead_context['brokers']
-        broker_name = broker.get('contact_name', 'Unknown')
-        if broker.get('company_name'):
-            broker_name += f" ({broker['company_name']})"
-        context_parts.append(f"Assigned Broker: {broker_name}")
-    
-    # Status
-    if lead_context.get('status'):
-        context_parts.append(f"Lead Status: {lead_context['status']}")
+    if lead_context:
+        if lead_context.get('id'):
+            context_parts.append(f"Lead ID: {lead_context['id']}")
+        
+        if lead_context.get('first_name'):
+            context_parts.append(f"Name: {lead_context['first_name']}")
+            if lead_context.get('last_name'):
+                context_parts[-1] += f" {lead_context['last_name']}"
+        
+        if lead_context.get('qualified') is not None:
+            context_parts.append(f"Qualified: {'Yes' if lead_context['qualified'] else 'No'}")
+        
+        # Property information
+        if lead_context.get('property_address'):
+            context_parts.append(f"Property Address: {lead_context['property_address']}")
+        elif lead_context.get('property_city'):
+            city = lead_context['property_city']
+            if lead_context.get('property_state'):
+                city += f", {lead_context['property_state']}"
+            context_parts.append(f"Property Location: {city}")
+        
+        if lead_context.get('estimated_equity'):
+            context_parts.append(f"Estimated Equity: ${lead_context['estimated_equity']:,}")
+        
+        if lead_context.get('property_value'):
+            context_parts.append(f"Property Value: ${lead_context['property_value']:,}")
+        
+        if lead_context.get('age'):
+            context_parts.append(f"Age: {lead_context['age']}")
+        
+        # Broker information
+        if lead_context.get('assigned_broker_id') and lead_context.get('brokers'):
+            broker = lead_context['brokers']
+            broker_name = broker.get('contact_name', 'Unknown')
+            if broker.get('company_name'):
+                broker_name += f" ({broker['company_name']})"
+            context_parts.append(f"Assigned Broker: {broker_name}")
+        
+        # Status
+        if lead_context.get('status'):
+            context_parts.append(f"Lead Status: {lead_context['status']}")
     
     context_parts.append("===================")
+    
+    # Add conversation state flags if provided
+    if conversation_data:
+        context_parts.append("")
+        context_parts.append("=== CONVERSATION STATUS ===")
+        
+        # Wrong person flags
+        if conversation_data.get('wrong_person') is not None:
+            context_parts.append(f"wrong_person: {str(conversation_data['wrong_person']).lower()}")
+        
+        if conversation_data.get('right_person_available') is not None:
+            context_parts.append(f"right_person_available: {str(conversation_data['right_person_available']).lower()}")
+        
+        # Other relevant flags
+        if conversation_data.get('verified') is not None:
+            context_parts.append(f"verified: {str(conversation_data['verified']).lower()}")
+        
+        if conversation_data.get('greeted') is not None:
+            context_parts.append(f"greeted: {str(conversation_data['greeted']).lower()}")
+        
+        context_parts.append("===================")
     
     return "\n".join(context_parts)
 
