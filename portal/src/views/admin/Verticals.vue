@@ -66,14 +66,14 @@
           <div class="theme-editor-section">
             <div class="theme-header">
               <h2>Theme</h2>
-              <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <div class="theme-header-buttons">
                 <button 
                   class="btn-save-all" 
                   @click="saveAll" 
                   :disabled="loading || !hasAnyChanges"
                   :title="hasAnyChanges ? `Save ${changeCount} change(s) as draft` : 'No changes to save'"
                 >
-                  💾 Save All{{ hasAnyChanges ? ` (${changeCount})` : '' }}
+                  💾 Save{{ hasAnyChanges ? ` (${changeCount})` : '' }}
                 </button>
                 <button 
                   class="btn-publish" 
@@ -84,7 +84,7 @@
                   📢 Publish
                 </button>
                 <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
-                  🎯 Test Full Vertical
+                  🎯 Test
                 </button>
                 <button class="btn-ai-helper" @click="openThemeHelper" title="AI Theme Generator">
                   ✨ AI Helper
@@ -379,6 +379,46 @@
                       <small class="form-hint">How closely output matches original voice. Higher = closer to original.</small>
                     </div>
                   </template>
+                </div>
+              </div>
+
+              <!-- Agent Behavior Parameters Section -->
+              <div class="config-section">
+                <h4>Agent Behavior</h4>
+                <small class="form-hint">Control conversation pacing and interruption handling</small>
+                
+                <div class="form-group">
+                  <label>End of Speech Timeout (ms)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.end_of_speech_timeout" 
+                    min="1000" 
+                    max="5000" 
+                    step="100"
+                    placeholder="2000"
+                  />
+                  <small class="form-hint">How long to wait for silence before considering speech ended (1000-5000ms). Higher = more patience for seniors.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Attention Timeout (ms)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.attention_timeout" 
+                    min="5000" 
+                    max="60000" 
+                    step="1000"
+                    placeholder="8000"
+                  />
+                  <small class="form-hint">How long to wait before prompting inactive caller (5000-60000ms)</small>
+                </div>
+
+                <div class="form-group">
+                  <label>
+                    <input type="checkbox" v-model="signalwireConfig.transparent_barge" />
+                    Transparent Barge
+                  </label>
+                  <small class="form-hint">When enabled, AI waits for caller to finish speaking before responding (recommended for better conversation control)</small>
                 </div>
               </div>
 
@@ -796,73 +836,9 @@
                   💾 Save Configuration
                 </button>
                 <button class="btn-test" @click="openFullVerticalTest" :disabled="loading">
-                  🎯 Test Full Vertical
+                  🎯 Test
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Phone Numbers Tab -->
-        <div v-if="activeTab === 'phone-numbers'" class="tab-content">
-          <div class="settings-form">
-            <h2>Phone Number Routing</h2>
-            <p class="section-hint">
-              📞 Manage how your SignalWire numbers route calls. Toggle between SignalWire (webhook) and LiveKit (SWML script) for each number.
-            </p>
-
-            <div class="phone-numbers-list">
-              <div v-if="phoneNumbers.length === 0" class="empty-state">
-                <p>No phone numbers found. Run the database migration to add your numbers.</p>
-              </div>
-
-              <div 
-                v-for="phone in phoneNumbers" 
-                :key="phone.id" 
-                class="phone-number-card"
-              >
-                <div class="phone-info">
-                  <div class="phone-label">{{ phone.label }}</div>
-                  <div class="phone-number">{{ formatPhoneNumber(phone.phone_number) }}</div>
-                  <div v-if="phone.vertical" class="phone-vertical">{{ phone.vertical }}</div>
-                </div>
-
-                <div class="phone-routing">
-                  <div class="routing-toggle">
-                    <button 
-                      class="route-option" 
-                      :class="{ active: phone.current_route === 'signalwire' }"
-                      @click="() => updateRouting(phone.id, 'signalwire')"
-                      :disabled="routingLoading[phone.id]"
-                    >
-                      <span class="route-icon">🔵</span>
-                      <span>SignalWire</span>
-                      <small>Webhook</small>
-                    </button>
-
-                    <button 
-                      class="route-option" 
-                      :class="{ active: phone.current_route === 'livekit' }"
-                      @click="() => updateRouting(phone.id, 'livekit')"
-                      :disabled="routingLoading[phone.id]"
-                    >
-                      <span class="route-icon">🟣</span>
-                      <span>LiveKit</span>
-                      <small>SWML Script</small>
-                    </button>
-                  </div>
-
-                  <div v-if="phone.last_synced_at" class="last-synced">
-                    Last synced: {{ formatDate(phone.last_synced_at) }}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <button class="btn-save" @click="syncPhoneNumbers" :disabled="loading">
-                🔄 Sync from SignalWire
-              </button>
             </div>
           </div>
         </div>
@@ -1696,6 +1672,9 @@ const signalwireConfig = ref({
   ai_volume: 0,
   eleven_labs_stability: 0.5,
   eleven_labs_similarity: 0.75,
+  end_of_speech_timeout: 2000,
+  attention_timeout: 8000,
+  transparent_barge: false,
   is_active: true
 })
 
@@ -2106,9 +2085,8 @@ const testStartNode = ref('greet')
 
 // Settings tabs
 const settingsTabs = [
-  { key: 'theme', label: 'Theme' },
-  { key: 'models', label: 'Models & Voice' },
-  { key: 'phone-numbers', label: 'Phone Numbers' }
+  { key: 'theme', label: 'Vertical' },
+  { key: 'models', label: 'Models & Voice' }
 ]
 
 // Initialize node content structure
@@ -2730,7 +2708,11 @@ async function loadActiveSignalWireModels() {
 }
 
 async function loadSignalWireConfig() {
+  console.log('🔵 loadSignalWireConfig CALLED')
+  console.log('🔵 Loading for vertical:', selectedVertical.value, 'language:', signalwireConfig.value.language_code)
+  
   try {
+    // Load from agent_voice_config (TTS settings)
     const { data, error } = await supabase
       .from('agent_voice_config')
       .select('*')
@@ -2745,6 +2727,24 @@ async function loadSignalWireConfig() {
       return
     }
 
+    console.log('📥 Loaded from agent_voice_config:', data)
+
+    // Load behavior params from agent_params (source of truth for SignalWire)
+    const { data: paramsData, error: paramsError } = await supabase
+      .from('agent_params')
+      .select('end_of_speech_timeout, attention_timeout, transparent_barge')
+      .eq('vertical', selectedVertical.value)
+      .eq('language', signalwireConfig.value.language_code)
+      .eq('is_active', true)
+      .limit(1)
+      .single()
+
+    if (paramsError && paramsError.code !== 'PGRST116') {
+      console.error('Error loading agent_params:', paramsError)
+    }
+
+    console.log('📥 Loaded from agent_params:', paramsData)
+
     if (data) {
       signalwireConfig.value = {
         ...signalwireConfig.value,
@@ -2753,8 +2753,18 @@ async function loadSignalWireConfig() {
         // Ensure defaults for new parameters if not present
         ai_volume: data.ai_volume ?? 0,
         eleven_labs_stability: data.eleven_labs_stability ?? 0.5,
-        eleven_labs_similarity: data.eleven_labs_similarity ?? 0.75
+        eleven_labs_similarity: data.eleven_labs_similarity ?? 0.75,
+        // Use agent_params values if available (source of truth), otherwise fallback to agent_voice_config
+        end_of_speech_timeout: paramsData?.end_of_speech_timeout ?? data.end_of_speech_timeout ?? 2500,
+        attention_timeout: paramsData?.attention_timeout ?? data.attention_timeout ?? 10000,
+        transparent_barge: paramsData?.transparent_barge ?? data.transparent_barge ?? false
       }
+      console.log('📥 Final merged signalwireConfig:', {
+        end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout,
+        attention_timeout: signalwireConfig.value.attention_timeout,
+        transparent_barge: signalwireConfig.value.transparent_barge
+      })
+      console.log('📥 Loaded SignalWire config. Behavior params from agent_params:', paramsData)
       // Load available voices for selected TTS engine
       await loadSignalWireVoices()
     }
@@ -2765,12 +2775,20 @@ async function loadSignalWireConfig() {
 
 // Save SignalWire config to database
 async function saveSignalWireConfig() {
+  console.log('🔵 saveSignalWireConfig CALLED')
+  console.log('🔵 Current signalwireConfig:', JSON.stringify(signalwireConfig.value, null, 2))
+  
   loading.value = true
   try {
     console.log('💾 Saving SignalWire configuration...')
     console.log('Selected LLM:', signalwireConfig.value.llm_model)
     console.log('Selected STT:', signalwireConfig.value.stt_model)
     console.log('Selected TTS:', signalwireConfig.value.tts_engine, signalwireConfig.value.voice_name)
+    console.log('Behavior params:', {
+      end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout,
+      attention_timeout: signalwireConfig.value.attention_timeout,
+      transparent_barge: signalwireConfig.value.transparent_barge
+    })
 
     // 1. Mark selected LLM as active
     if (signalwireConfig.value.llm_model) {
@@ -2829,7 +2847,7 @@ async function saveSignalWireConfig() {
       console.log('✅ TTS voice marked as active:', voiceIdFull)
     }
 
-    // 4. Also save to agent_voice_config for backwards compatibility
+    // 4. Save to agent_voice_config for backwards compatibility
     const configData = {
       vertical: selectedVertical.value,
       language_code: signalwireConfig.value.language_code,
@@ -2838,6 +2856,9 @@ async function saveSignalWireConfig() {
       ai_volume: signalwireConfig.value.ai_volume ?? 0,
       eleven_labs_stability: signalwireConfig.value.eleven_labs_stability ?? 0.5,
       eleven_labs_similarity: signalwireConfig.value.eleven_labs_similarity ?? 0.75,
+      end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout ?? 2500,
+      attention_timeout: signalwireConfig.value.attention_timeout ?? 10000,
+      transparent_barge: signalwireConfig.value.transparent_barge ?? false,
       is_active: true,
       updated_at: new Date().toISOString()
     }
@@ -2852,14 +2873,41 @@ async function saveSignalWireConfig() {
 
     if (error) throw error
 
+    // 5. CRITICAL: Also save to agent_params (this is what SignalWire actually reads)
+    const agentParamsData = {
+      vertical: selectedVertical.value,
+      language: signalwireConfig.value.language_code,
+      end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout ?? 2500,
+      attention_timeout: signalwireConfig.value.attention_timeout ?? 10000,
+      transparent_barge: signalwireConfig.value.transparent_barge ?? false,
+      is_active: true,
+      updated_at: new Date().toISOString()
+    }
+
+    const { error: paramsError } = await supabase
+      .from('agent_params')
+      .upsert(agentParamsData, {
+        onConflict: 'vertical,language'
+      })
+
+    if (paramsError) {
+      console.error('Failed to save agent_params:', paramsError)
+      throw paramsError
+    }
+
     signalwireConfig.value = { ...signalwireConfig.value, ...data }
-    window.$message?.success('✅ SignalWire configuration saved successfully!')
-    console.log('💾 SignalWire configuration saved successfully')
+    
+    console.log('✅ SignalWire configuration saved successfully to both tables!')
+    alert('✅ SignalWire configuration saved! Changes will apply on next call.')
+    window.$message?.success('✅ SignalWire configuration saved successfully! Changes will apply on next call.')
+    console.log('💾 SignalWire configuration saved to both agent_voice_config and agent_params')
   } catch (error) {
-    console.error('Failed to save SignalWire config:', error)
+    console.error('❌ Failed to save SignalWire config:', error)
+    alert('❌ Failed to save SignalWire configuration: ' + error.message)
     window.$message?.error('Failed to save SignalWire configuration: ' + error.message)
   } finally {
     loading.value = false
+    console.log('🔵 saveSignalWireConfig COMPLETE, loading set to false')
   }
 }
 
@@ -3828,7 +3876,8 @@ async function loadNodePrompts() {
     const verticalVersion = themeData?.version || 1
     console.log('loadNodePrompts: Loading nodes for vertical version:', verticalVersion)
     
-    // Query prompts - prefer draft versions, fallback to active
+    // Query prompts - load ALL nodes, prioritizing drafts where they exist
+    // First, get all prompts with their draft versions (if any)
     const { data: draftData, error: draftError } = await supabase
       .from('prompts')
       .select(`
@@ -3849,35 +3898,45 @@ async function loadNodePrompts() {
       .eq('prompt_versions.is_draft', true)
       .not('node_name', 'is', null)
     
-    let { data, error } = { data: null, error: null }
-    if (draftData && draftData.length > 0) {
-      // Use draft versions
-      data = draftData
-      error = draftError
-    } else {
-      // Load active versions
-      const result = await supabase
-        .from('prompts')
-        .select(`
+    // Then, get all prompts with active versions
+    const { data: activeData, error: activeError } = await supabase
+      .from('prompts')
+      .select(`
+        id,
+        name,
+        vertical,
+        node_name,
+        current_version,
+        prompt_versions!inner (
           id,
-          name,
-          vertical,
-          node_name,
-          current_version,
-          prompt_versions!inner (
-            id,
-            version_number,
-            content,
-            is_active,
-            is_draft
-          )
-        `)
-        .eq('vertical', selectedVertical.value)
-        .eq('prompt_versions.is_active', true)
-        .not('node_name', 'is', null)
-      data = result.data
-      error = result.error
+          version_number,
+          content,
+          is_active,
+          is_draft
+        )
+      `)
+      .eq('vertical', selectedVertical.value)
+      .eq('prompt_versions.is_active', true)
+      .not('node_name', 'is', null)
+    
+    if (draftError) throw draftError
+    if (activeError) throw activeError
+    
+    // Merge: prefer drafts, but include active for nodes without drafts
+    const draftNodes = new Set((draftData || []).map(p => p.node_name))
+    const mergedData = [...(draftData || [])]
+    
+    // Add active versions for nodes that don't have drafts
+    if (activeData) {
+      for (const activePrompt of activeData) {
+        if (!draftNodes.has(activePrompt.node_name)) {
+          mergedData.push(activePrompt)
+        }
+      }
     }
+    
+    const data = mergedData
+    const error = null
     
     if (error) {
       console.error('loadNodePrompts: Query error:', error)
@@ -4105,7 +4164,8 @@ async function loadVersions(nodeName) {
     let nodePrompt = nodePrompts.value[selectedVertical.value]?.[nodeName]
     if (!nodePrompt) {
       // Fallback: fetch prompt by vertical + node_name so versions sidebar can populate on first load
-      console.warn('loadVersions: nodePrompt missing for', nodeName, '- attempting DB fallback')
+      // This is normal for nodes that weren't in the initial batch load (e.g., greet)
+      console.log('loadVersions: Loading', nodeName, 'from DB (not in initial batch)')
       const { data: promptData, error: promptError } = await supabase
         .from('prompts')
         .select('id, name, vertical, node_name, current_version')
@@ -5940,13 +6000,13 @@ function autoResizeNodeTextareas(node) {
   // Find all textareas within the node's editor fields
   const nodeCard = document.querySelector(`[data-node="${node}"]`)
   if (!nodeCard) {
-    console.warn('Auto-resize: Node card not found for:', node)
+    // Node card not rendered yet - this is normal during initial load
     return
   }
   
   const textareas = nodeCard.querySelectorAll('.editor-field textarea')
   if (textareas.length === 0) {
-    console.warn('Auto-resize: No textareas found for node:', node)
+    // Node not expanded yet - this is normal, textareas only exist when expanded
     return
   }
   
@@ -6115,6 +6175,11 @@ onMounted(async () => {
   // Load TTS engines first (needed for dropdown)
   await loadSignalWireTTSEngines()
   await loadActiveSignalWireModels()
+  
+  // CRITICAL: Load SignalWire config on mount
+  console.log('🔵 onMounted: Loading SignalWire config for default vertical')
+  await loadSignalWireConfig()
+  
   // await loadLiveKitConfig() // Disabled - ai_templates table doesn't exist
   
   // Load phone numbers
@@ -6131,6 +6196,16 @@ onMounted(async () => {
 watch(selectedVertical, async () => {
   if (selectedPlatform.value === 'signalwire') {
     signalwireConfig.value.vertical = selectedVertical.value
+    await loadSignalWireConfig()
+  }
+})
+
+// Watch for platform changes to load SignalWire config
+watch(selectedPlatform, async (newPlatform) => {
+  console.log('🔵 Platform changed to:', newPlatform)
+  if (newPlatform === 'signalwire') {
+    console.log('🔵 Loading SignalWire config...')
+    await loadActiveSignalWireModels()
     await loadSignalWireConfig()
   }
 })
@@ -6386,6 +6461,11 @@ onUnmounted(() => {
   position: static;
   grid-column: 1 / -1;
   margin-bottom: 1rem;
+  /* On mobile, sidebar becomes a full-width top bar */
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding-right: 0.6rem; /* keep balanced padding on mobile */
 }
 
 .versions-header {
@@ -6409,6 +6489,8 @@ onUnmounted(() => {
   flex-direction: row;
   overflow-x: auto;
   padding-bottom: 0.5rem;
+  justify-content: flex-start;
+  align-items: stretch;
 }
 
 .version-item {
@@ -6435,8 +6517,9 @@ onUnmounted(() => {
 }
 
 .versions-list.horizontal .version-item {
-  width: 175px;
+  width: 175px;       /* fixed card width in horizontal mode */
   min-width: 175px;
+  flex: 0 0 auto;     /* prevent stretch; allow horizontal scrolling */
 }
 
 .version-item:hover {
@@ -6681,6 +6764,9 @@ onUnmounted(() => {
   font-weight: 500;
   font-size: 0.875rem;
   transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+  width: auto;
 }
 
 .btn-save:hover,
@@ -6695,6 +6781,9 @@ onUnmounted(() => {
 
 .btn-test {
   background: #10b981;
+  flex-shrink: 0;
+  white-space: nowrap;
+  width: auto;
 }
 
 .btn-test:hover {
@@ -6711,6 +6800,9 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 0.875rem;
   transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+  width: auto;
 }
 
 .btn-save-all:hover:not(:disabled) {
@@ -6733,6 +6825,9 @@ onUnmounted(() => {
   font-weight: 500;
   font-size: 0.875rem;
   transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+  width: auto;
 }
 
 .btn-publish:hover:not(:disabled) {
@@ -6848,7 +6943,7 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/* Collapsed state: reduce height by 50% */
+/* Collapsed state */
 .node-card:not(.expanded) {
   min-height: auto; /* Remove min-height constraint */
   height: fit-content; /* Only as tall as content */
@@ -6859,9 +6954,9 @@ onUnmounted(() => {
   max-width: 280px;
 }
 
-/* Override header padding for collapsed cards - must come after base rule */
+/* Match theme section header spacing for collapsed nodes as well */
 .node-card:not(.expanded) .node-card-header {
-  padding: 0.5rem 1rem !important; /* ~67% of 0.75rem - approximately half height */
+  padding: 0.75rem 1rem !important;
 }
 
 .node-name {
@@ -7285,6 +7380,56 @@ onUnmounted(() => {
     grid-template-columns: 1fr !important;
   }
   
+  /* Tablet: stack node cards vertically like mobile */
+  .nodes-grid {
+    flex-direction: column !important;
+    overflow-x: visible !important;
+    direction: ltr !important;
+  }
+  .node-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .node-card.expanded {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  
+  /* Tablet: move versions bar to top and lay out cards horizontally */
+  .versions-bar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding-right: 0.6rem;
+    grid-column: 1 / -1;
+    margin-bottom: 1rem;
+  }
+  
+  .versions-list {
+    flex-direction: row !important;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+  
+  .versions-list .version-item {
+    width: 175px !important;
+    min-width: 175px !important;
+    flex: 0 0 auto !important;
+    padding-right: 0 !important;
+    margin: 0 !important; /* align items flush left; spacing handled by gap */
+  }
+  /* Ensure we override the 90% vertical card rule in tablet range */
+  .versions-list:not(.horizontal) .version-item {
+    width: 175px !important;
+    min-width: 175px !important;
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+  }
+  
   .preview-panel {
     position: static;
     margin-top: 2rem;
@@ -7657,11 +7802,40 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .theme-header h2 {
   margin: 0;
   color: #fff !important;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .theme-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .theme-header h2 {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+  
+  .theme-header-buttons {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+.theme-header-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
 }
 
 /* AI Helper Buttons */
@@ -7675,6 +7849,9 @@ onUnmounted(() => {
   font-size: 0.875rem;
   font-weight: 600;
   transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+  width: auto;
 }
 
 .btn-ai-helper:hover {
@@ -7807,154 +7984,6 @@ onUnmounted(() => {
 .structured-theme-editor textarea::placeholder {
   color: rgba(255, 255, 255, 0.3);
 }
-/* ==================== Phone Numbers Tab ==================== */
-
-.phone-numbers-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.phone-number-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.phone-number-card:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.phone-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.phone-label {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
-}
-
-.phone-number {
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: 'Consolas', 'Monaco', monospace;
-}
-
-.phone-vertical {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: capitalize;
-}
-
-.phone-routing {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-}
-
-.routing-toggle {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.route-option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 100px;
-  font-size: 0.85rem;
-}
-
-.route-option:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.route-option.active {
-  background: rgba(138, 43, 226, 0.2);
-  border-color: rgba(138, 43, 226, 0.6);
-  color: #fff;
-}
-
-.route-option:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.route-option .route-icon {
-  font-size: 1.5rem;
-}
-
-.route-option span:nth-child(2) {
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-.route-option small {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.route-option.active small {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.last-synced {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.empty-state p {
-  margin: 0;
-}
-
-/* Mobile responsive */
-@media (max-width: 768px) {
-  .phone-number-card {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-
-  .phone-routing {
-    width: 100%;
-    align-items: stretch;
-  }
-
-  .routing-toggle {
-    flex-direction: column;
-  }
-
-  .route-option {
-    width: 100%;
-  }
-}
-
 /* TTS Parameter Sliders - Purple Styling */
 .parameters-section input[type="range"] {
   -webkit-appearance: none;

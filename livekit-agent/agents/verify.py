@@ -206,13 +206,43 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             phone_number: The phone number being verified (e.g., "555-123-4567")
         """
         lead_id = self.lead_data.get('id')
-        if not lead_id:
-            raise ToolError("No lead_id available. Cannot mark phone verified.")
         
         from services.supabase import get_supabase_client
         sb = get_supabase_client()
         
         try:
+            # Resolve lead_id by phone if missing (robust fallback)
+            if not lead_id:
+                try:
+                    caller = str(getattr(self, "caller_phone", "")).strip()
+                    # Prefer exact E.164 match
+                    if caller:
+                        lookup = sb.table('leads')\
+                            .select('id')\
+                            .or_(f"primary_phone_e164.eq.{caller},primary_phone.eq.{caller},phone.eq.{caller}")\
+                            .limit(1)\
+                            .execute()
+                        if lookup.data:
+                            lead_id = lookup.data[0]['id']
+                        else:
+                            # Fallback: ends-with match on last 7 digits to handle formatting
+                            import re
+                            digits = re.sub(r'\\D', '', caller)
+                            last7 = digits[-7:] if digits else ""
+                            if last7:
+                                lookup2 = sb.table('leads')\
+                                    .select('id')\
+                                    .or_(f"primary_phone.ilike.%{last7}%,phone.ilike.%{last7}%")\
+                                    .limit(1)\
+                                    .execute()
+                                if lookup2.data:
+                                    lead_id = lookup2.data[0]['id']
+                except Exception as resolve_err:
+                    logger.warning(f"Could not resolve lead_id by phone for phone verification: {resolve_err}")
+            
+            if not lead_id:
+                raise ToolError("No lead_id available (and could not resolve by phone). Cannot mark phone verified.")
+
             sb.table('leads').update({
                 'phone_verified': True
             }).eq('id', lead_id).execute()
@@ -250,13 +280,41 @@ class BarbaraVerifyTask(AgentTask[VerificationResult]):
             email: The email address being verified (e.g., "john@example.com")
         """
         lead_id = self.lead_data.get('id')
-        if not lead_id:
-            raise ToolError("No lead_id available. Cannot mark email verified.")
         
         from services.supabase import get_supabase_client
         sb = get_supabase_client()
         
         try:
+            # Resolve lead_id by phone if missing (robust fallback)
+            if not lead_id:
+                try:
+                    caller = str(getattr(self, "caller_phone", "")).strip()
+                    if caller:
+                        lookup = sb.table('leads')\
+                            .select('id')\
+                            .or_(f"primary_phone_e164.eq.{caller},primary_phone.eq.{caller},phone.eq.{caller}")\
+                            .limit(1)\
+                            .execute()
+                        if lookup.data:
+                            lead_id = lookup.data[0]['id']
+                        else:
+                            import re
+                            digits = re.sub(r'\\D', '', caller)
+                            last7 = digits[-7:] if digits else ""
+                            if last7:
+                                lookup2 = sb.table('leads')\
+                                    .select('id')\
+                                    .or_(f"primary_phone.ilike.%{last7}%,phone.ilike.%{last7}%")\
+                                    .limit(1)\
+                                    .execute()
+                                if lookup2.data:
+                                    lead_id = lookup2.data[0]['id']
+                except Exception as resolve_err:
+                    logger.warning(f"Could not resolve lead_id by phone for email verification: {resolve_err}")
+            
+            if not lead_id:
+                raise ToolError("No lead_id available (and could not resolve by phone). Cannot mark email verified.")
+
             # Update email if provided and mark as verified
             sb.table('leads').update({
                 'primary_email': email,
