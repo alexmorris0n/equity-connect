@@ -167,11 +167,14 @@ async def barbara_agent(request: Request):
         
         # Load active models from database (component-based configuration)
         from services.database import get_active_signalwire_models
-        active_models = await get_active_signalwire_models()
+        active_models = await get_active_signalwire_models(vertical="reverse_mortgage", language="en-US")
         
         llm_model = active_models.get("llm_model", "gpt-4o-mini")
         stt_model = active_models.get("stt_model", "deepgram:nova-3")
         voice_string = active_models.get("tts_voice_string", "elevenlabs.rachel")
+        end_of_speech_timeout = active_models.get("end_of_speech_timeout", 700)
+        attention_timeout = active_models.get("attention_timeout", 5000)
+        transparent_barge = active_models.get("transparent_barge", True)
         
         # Validate voice_string is not None/empty
         if not voice_string or voice_string == "None":
@@ -182,6 +185,7 @@ async def barbara_agent(request: Request):
         logger.info(f"[AGENT]   LLM: {llm_model}")
         logger.info(f"[AGENT]   STT: {stt_model}")
         logger.info(f"[AGENT]   TTS: {voice_string}")
+        logger.info(f"[AGENT]   Behavior: end_of_speech={end_of_speech_timeout}ms, attention={attention_timeout}ms, transparent_barge={transparent_barge}")
         logger.info(f"[AGENT] Built {len(contexts)} contexts with native SignalWire context switching")
         
         # Build SWML response (per SignalWire official docs)
@@ -210,11 +214,11 @@ async def barbara_agent(request: Request):
                                 # STT Configuration (Deepgram via OpenAI ASR engine) - Loaded from database
                                 # Per SignalWire docs: deepgram:nova-2, deepgram:nova-3
                                 "openai_asr_engine": stt_model,
-                                # Call behavior settings
-                                "end_of_speech_timeout": 700,
-                                "attention_timeout": 5000,
+                                # Call behavior settings - Loaded from database (agent_params table)
+                                "end_of_speech_timeout": end_of_speech_timeout,
+                                "attention_timeout": attention_timeout,
                                 "enable_barge": "complete,partial",
-                                "transparent_barge": True,
+                                "transparent_barge": transparent_barge,
                                 "wait_for_user": False,  # Barbara greets first on inbound calls (False = AI speaks first)
                                 "save_conversation": True,
                                 "conversation_id": phone,

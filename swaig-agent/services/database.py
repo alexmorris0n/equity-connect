@@ -275,15 +275,18 @@ async def get_theme_prompt(vertical: str = "reverse_mortgage") -> Optional[str]:
         return get_fallback_theme()
 
 
-async def get_active_signalwire_models() -> Dict[str, Any]:
+async def get_active_signalwire_models(vertical: str = 'reverse_mortgage', language: str = 'en-US') -> Dict[str, Any]:
     """
-    Get active SignalWire models from component tables
-    Returns: {llm_model, stt_model, tts_voice_string}
+    Get active SignalWire models and behavior params from database
+    Returns: {llm_model, stt_model, tts_voice_string, end_of_speech_timeout, attention_timeout, transparent_barge}
     
     Per SignalWire docs:
     - ai_model: Just model name (e.g., "gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1-nano")
     - openai_asr_engine: Colon format (e.g., "deepgram:nova-2", "deepgram:nova-3")
     - voice: Dot format (e.g., "elevenlabs.rachel", "amazon.Joanna:neural:en-US")
+    - end_of_speech_timeout: milliseconds (default 700)
+    - attention_timeout: milliseconds (default 5000)
+    - transparent_barge: boolean (default True)
     """
     try:
         # Load active LLM model
@@ -294,7 +297,7 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             .maybe_single()\
             .execute()
         
-        if llm_result.data:
+        if llm_result and llm_result.data:
             llm_model = llm_result.data.get('model_id_full', None)
             if llm_model:
                 logger.info(f"[DB] ✅ Loaded active LLM: {llm_model}")
@@ -319,7 +322,7 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             .maybe_single()\
             .execute()
         
-        if stt_result.data:
+        if stt_result and stt_result.data:
             stt_model = stt_result.data.get('model_id_full', None)
             if stt_model:
                 logger.info(f"[DB] ✅ Loaded active STT: {stt_model}")
@@ -344,7 +347,7 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             .maybe_single()\
             .execute()
         
-        if tts_result.data:
+        if tts_result and tts_result.data:
             tts_voice_string = tts_result.data.get('voice_id_full', None)
             if tts_voice_string:
                 logger.info(f"[DB] ✅ Loaded active TTS: {tts_voice_string}")
@@ -361,10 +364,35 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
             tts_voice_string = fallbacks['tts_voice_string']
             log_model_fallback("tts", "No active TTS voice found in database (is_active=true)", tts_voice_string)
         
+        # Load behavior params from agent_params table
+        params_result = supabase.table('agent_params')\
+            .select('end_of_speech_timeout, attention_timeout, transparent_barge')\
+            .eq('vertical', vertical)\
+            .eq('language', language)\
+            .eq('is_active', True)\
+            .maybe_single()\
+            .execute()
+        
+        # Set defaults
+        end_of_speech_timeout = 700
+        attention_timeout = 5000
+        transparent_barge = True
+        
+        if params_result and params_result.data:
+            end_of_speech_timeout = params_result.data.get('end_of_speech_timeout', 700)
+            attention_timeout = params_result.data.get('attention_timeout', 5000)
+            transparent_barge = params_result.data.get('transparent_barge', True)
+            logger.info(f"[DB] ✅ Loaded behavior params: end_of_speech={end_of_speech_timeout}ms, attention={attention_timeout}ms, transparent_barge={transparent_barge}")
+        else:
+            logger.warning(f"[DB] ⚠️ No agent_params found for {vertical}/{language}, using defaults")
+        
         return {
             "llm_model": llm_model,
             "stt_model": stt_model,
-            "tts_voice_string": tts_voice_string
+            "tts_voice_string": tts_voice_string,
+            "end_of_speech_timeout": end_of_speech_timeout,
+            "attention_timeout": attention_timeout,
+            "transparent_barge": transparent_barge
         }
         
     except Exception as e:
@@ -375,7 +403,12 @@ async def get_active_signalwire_models() -> Dict[str, Any]:
         log_model_fallback("llm", f"Exception while loading models: {type(e).__name__}", fallbacks['llm_model'])
         log_model_fallback("stt", f"Exception while loading models: {type(e).__name__}", fallbacks['stt_model'])
         log_model_fallback("tts", f"Exception while loading models: {type(e).__name__}", fallbacks['tts_voice_string'])
-        return fallbacks
+        return {
+            **fallbacks,
+            "end_of_speech_timeout": 700,
+            "attention_timeout": 5000,
+            "transparent_barge": True
+        }
 
 
 async def get_voice_config(vertical: str = "reverse_mortgage", language_code: str = "en-US") -> Dict[str, Any]:
