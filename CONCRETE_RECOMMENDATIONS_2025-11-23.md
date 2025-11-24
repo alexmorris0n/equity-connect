@@ -253,3 +253,4 @@ WHERE vertical = 'reverse_mortgage' AND is_active = true;
 
 Want me to generate the exact SQL for these fixes?
 
+

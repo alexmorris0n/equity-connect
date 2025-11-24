@@ -144,6 +144,8 @@ async def handle_update_lead_info(caller_id: str, args: Dict[str, Any]) -> Dict[
         update_data['property_zip'] = args['property_zip']
     if 'age' in args and args['age']:
         update_data['age'] = int(args['age'])
+    if 'property_value' in args and args['property_value']:
+        update_data['property_value'] = float(args['property_value'])
     if 'estimated_equity' in args and args['estimated_equity']:
         update_data['estimated_equity'] = float(args['estimated_equity'])
     

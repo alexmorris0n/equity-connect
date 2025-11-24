@@ -60,7 +60,8 @@ async def build_contexts_structure(
         # For SignalWire, we DON'T combine theme + context here
         # Theme goes in top-level prompt.text (done in main.py)
         # Only node-specific instructions go in step.text
-        # Context block will be injected once in main.py
+        # Context block will be injected once in main.py at the top level
+        # SignalWire maintains that context across all context switches
         full_prompt = node_instructions
         
         # Build step for this context

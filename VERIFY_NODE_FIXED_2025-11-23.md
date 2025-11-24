@@ -97,3 +97,4 @@
 
 All three verification tools now properly set database fields, and the trigger automatically computes `verified = true` when all 3 are complete!
 
+

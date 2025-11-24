@@ -11,3 +11,4 @@ COMMENT ON COLUMN agent_voice_config.ai_volume IS 'SignalWire AI-level volume co
 COMMENT ON COLUMN agent_voice_config.eleven_labs_stability IS 'ElevenLabs voice consistency. Range: 0.0 (more variation) to 1.0 (more consistent). Default: 0.5 (balanced).';
 COMMENT ON COLUMN agent_voice_config.eleven_labs_similarity IS 'ElevenLabs similarity boost. Range: 0.0 (low boost) to 1.0 (high boost). Default: 0.75.';
 
+

@@ -50,3 +50,4 @@
 2. **ANSWER → OBJECTIONS** (around 20:40:46): When user mentioned scam concerns, system correctly routed to OBJECTIONS node
 3. **System Instructions**: Multiple system message injections with node instructions visible in debug logs
 
+

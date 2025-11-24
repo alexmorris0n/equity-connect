@@ -132,3 +132,4 @@ Add 3 settings to SignalWire tab:
 
 **No bloat. Just the essentials.** ✨
 
+

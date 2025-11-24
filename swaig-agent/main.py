@@ -348,7 +348,8 @@ async def get_function_declarations(request: Request):
                 "parameters": {  # Changed from "argument"
                     "type": "object",
                     "properties": {
-                        "greeted": {"type": "boolean", "description": "Greeting completed"}
+                        "greeted": {"type": "boolean", "description": "Greeting completed"},
+                        "reason_summary": {"type": "string", "description": "Brief summary of why the caller is on the line"}
                     }
                 }
             },
@@ -402,7 +403,8 @@ async def get_function_declarations(request: Request):
                 "parameters": {  # Changed from "argument"
                     "type": "object",
                     "properties": {
-                        "qualified": {"type": "boolean", "description": "Meets qualification criteria"}
+                        "qualified": {"type": "boolean", "description": "Meets qualification criteria"},
+                        "reason": {"type": "string", "description": "Reason for disqualification if qualified=false (e.g., 'non_primary_residence')"}
                     }
                 }
             },
@@ -440,13 +442,10 @@ async def get_function_declarations(request: Request):
             },
             "mark_quote_presented": {
                 "function": "mark_quote_presented",
-                "description": "Mark that financial quote has been presented",
+                "description": "Mark that financial quote has been presented to the caller",
                 "parameters": {  # Changed from "argument"
                     "type": "object",
-                    "properties": {
-                        "quote_presented": {"type": "boolean", "description": "Quote presented"},
-                        "quote_reaction": {"type": "string", "description": "positive, skeptical, not_interested"}
-                    }
+                    "properties": {}
                 }
             },
             "mark_ready_to_book": {
@@ -536,7 +535,8 @@ async def get_function_declarations(request: Request):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "has_objection": {"type": "boolean", "description": "Caller has objection"}
+                        "has_objection": {"type": "boolean", "description": "Caller has objection"},
+                        "objection_type": {"type": "string", "description": "Categorized objection type (e.g., 'fees_costs', 'heirs_inheritance')"}
                     }
                 }
             },
@@ -566,7 +566,8 @@ async def get_function_declarations(request: Request):
                         "property_state": {"type": "string", "description": "Property state"},
                         "property_zip": {"type": "string", "description": "Property ZIP code"},
                         "age": {"type": "integer", "description": "Caller's age"},
-                        "estimated_equity": {"type": "number", "description": "Estimated home equity"}
+                        "property_value": {"type": "number", "description": "Estimated property value"},
+                        "estimated_equity": {"type": "number", "description": "Estimated home equity (property_value - mortgage)"}
                     }
                 }
             },

@@ -84,17 +84,29 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
         qualified_value = args.get("qualified", False)
         await update_conversation_state(phone, {"qualified": qualified_value})
         conversation_data_update["qualified"] = qualified_value
+        # Optional disqualification reason
+        reason = args.get("reason")
+        if reason and qualified_value is False:
+            conversation_data_update["disqualified_reason"] = reason
     
     elif function_name == "mark_quote_presented":
-        conversation_data_update["quote_presented"] = args.get("quote_presented", True)
-        if "quote_reaction" in args:
-            conversation_data_update["quote_reaction"] = args["quote_reaction"]
+        # Simple flag - quote was presented
+        conversation_data_update["quote_presented"] = True
     
     elif function_name == "mark_has_objection":
         conversation_data_update["has_objection"] = True
+        # Capture objection type if provided
+        if "objection_type" in args and isinstance(args.get("objection_type"), str):
+            conversation_data_update["objection_type"] = args.get("objection_type")
         # Store current node to return to later
         current_node = state.get("current_node", "answer")
         conversation_data_update["node_before_objection"] = current_node
+    
+    elif function_name == "mark_greeted":
+        # Mark greeted and capture reason summary if provided
+        conversation_data_update["greeted"] = args.get("greeted", True)
+        if "reason_summary" in args and isinstance(args.get("reason_summary"), str):
+            conversation_data_update["reason_summary"] = args.get("reason_summary")
     
     elif function_name == "mark_wrong_person":
         conversation_data_update["wrong_person"] = args.get("wrong_person", True)

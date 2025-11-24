@@ -141,6 +141,7 @@ async def handle_booking(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]
                     "conversation_data": {
                         "appointment_booked": True,
                         "appointment_time": preferred_time,
+                        "appointment_datetime": preferred_time,
                         "appointment_id": event_id,
                         "ready_to_book": False  # Clear ready flag
                     }
@@ -157,7 +158,8 @@ async def handle_booking(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]
                     "action": [{
                         "set_meta_data": {
                             "appointment_booked": True,
-                            "appointment_time": preferred_time
+                            "appointment_time": preferred_time,
+                            "appointment_datetime": preferred_time
                         }
                     }]
                 }

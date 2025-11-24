@@ -108,3 +108,4 @@ Would you like me to:
 2. Update VERIFY node to check qualification first and skip if already qualified?
 3. Both (belt and suspenders approach)?
 
+
