@@ -265,6 +265,7 @@ async def barbara_agent(request: Request):
                                         "mark_quote_presented",
                                         "mark_ready_to_book",
                                         "mark_wrong_person",  # Added for LiveKit compatibility
+                                        "mark_handoff_complete",  # Complete handoff to correct person
                                         "mark_objection_handled",  # Added for LiveKit compatibility
                                         "mark_has_objection",  # Added for LiveKit compatibility
                                         "calculate_reverse_mortgage",
@@ -503,6 +504,20 @@ async def get_function_declarations(request: Request):
                         "wrong_person": {"type": "boolean", "description": "Wrong person answered"},
                         "right_person_available": {"type": "boolean", "description": "Is the right person available?"}
                     }
+                }
+            },
+            "mark_handoff_complete": {
+                "function": "mark_handoff_complete",
+                "description": "Complete handoff when correct person gets on the phone. Resets conversation state for fresh start.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "new_person_name": {
+                            "type": "string", 
+                            "description": "Name of the correct person now speaking (e.g., 'John', 'Mary')"
+                        }
+                    },
+                    "required": ["new_person_name"]
                 }
             },
             "mark_objection_handled": {

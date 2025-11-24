@@ -11,6 +11,38 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+async def handle_handoff_complete(caller_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handle handoff to correct person - reset conversation state and route to GREET
+    Used when wrong person answers initially, then correct person gets on the phone
+    """
+    phone = caller_id.replace('+1', '').replace('+', '')
+    new_person_name = args.get('new_person_name', '')
+    
+    logger.info(f"[HANDOFF] Completing handoff to correct person: {new_person_name} for {phone}")
+    
+    # Reset conversation state for fresh start with correct person
+    success = await update_conversation_state(phone, {
+        "conversation_data": {
+            "wrong_person": False,
+            "right_person_available": True,
+            "greeted": False,  # Reset to greet the correct person
+            "handoff_complete": True,
+            "correct_person_name": new_person_name
+        },
+        "current_node": "greet"
+    })
+    
+    if success:
+        logger.info(f"[HANDOFF] Successfully reset state for {phone}, routing to GREET")
+        return {
+            "response": f"Great! Now speaking with {new_person_name}. Starting fresh.",
+            "action": [{"route_to": "greet"}]
+        }
+    
+    return {"response": "Error completing handoff"}
+
+
 async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle flag update functions (mark_greeted, mark_verified, etc.)
@@ -36,6 +68,7 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
         "mark_objection_handled": "objection_handled",
         "mark_questions_answered": "questions_answered",
         "mark_wrong_person": "wrong_person",  # Added for LiveKit compatibility
+        "mark_handoff_complete": "handoff_complete",  # Handle wrong person → correct person
     }
     
     flag_name = flag_map.get(function_name)
@@ -68,6 +101,10 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
         if "right_person_available" in args:
             conversation_data_update["right_person_available"] = args["right_person_available"]
     
+    elif function_name == "mark_handoff_complete":
+        # Special case: Use dedicated handler
+        return await handle_handoff_complete(caller_id, args)
+    
     else:
         # Simple boolean flag
         flag_value = args.get(flag_name, True)
@@ -92,6 +129,7 @@ async def handle_flag_update(caller_id: str, function_name: str, args: Dict[str,
             "mark_objection_handled": "Objection handled",
             "mark_questions_answered": "Questions answered",
             "mark_wrong_person": "Wrong person noted",
+            "mark_handoff_complete": "Handoff complete",
         }
         
         return {

@@ -1434,6 +1434,7 @@ const availableTools = [
   'book_appointment',
   'cancel_appointment',
   'reschedule_appointment',
+  'set_manual_booking_required',
   // Knowledge
   'search_knowledge',
   // Calculations
@@ -1442,7 +1443,10 @@ const availableTools = [
   'assign_tracking_number',
   'send_appointment_confirmation',
   'verify_appointment_confirmation',
-  // Conversation Flow Flags
+  // Conversation Flow Flags - High Level
+  'mark_greeted',
+  'mark_verified',
+  'mark_qualified',
   'mark_ready_to_book',
   'mark_has_objection',
   'mark_objection_handled',
@@ -1450,7 +1454,17 @@ const availableTools = [
   'mark_qualification_result',
   'mark_quote_presented',
   'mark_wrong_person',
-  'clear_conversation_flags'
+  'mark_handoff_complete',
+  'clear_conversation_flags',
+  // Granular Verification Tools (Nov 2025)
+  'mark_phone_verified',
+  'mark_email_verified',
+  'mark_address_verified',
+  // Granular Qualification Tools (Nov 2025)
+  'mark_age_qualified',
+  'mark_homeowner_qualified',
+  'mark_primary_residence_qualified',
+  'mark_equity_qualified'
 ]
 
 // State
