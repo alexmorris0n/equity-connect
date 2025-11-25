@@ -177,6 +177,115 @@
           </n-card>
         </n-tab-pane>
 
+        <!-- Appointment Settings Tab -->
+        <n-tab-pane name="appointments" tab="Appointments">
+          <n-card title="Appointment Scheduling Settings">
+            <n-table :bordered="true" :single-line="false">
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Timezone</strong></td>
+                  <td>
+                    <n-select 
+                      v-if="editing"
+                      v-model:value="broker.timezone" 
+                      :options="timezoneOptions"
+                      filterable
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ getTimezoneLabel(broker.timezone) || 'Not set' }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Business Hours Start</strong></td>
+                  <td>
+                    <n-time-picker 
+                      v-if="editing"
+                      v-model:value="broker.business_hours_start" 
+                      format="HH:mm"
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ formatTime(broker.business_hours_start) || 'Not set' }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Business Hours End</strong></td>
+                  <td>
+                    <n-time-picker 
+                      v-if="editing"
+                      v-model:value="broker.business_hours_end" 
+                      format="HH:mm"
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ formatTime(broker.business_hours_end) || 'Not set' }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Business Days</strong></td>
+                  <td>
+                    <n-select 
+                      v-if="editing"
+                      v-model:value="broker.business_days" 
+                      :options="dayOptions"
+                      multiple
+                      placeholder="Select business days"
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ formatBusinessDays(broker.business_days) || 'Not set' }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Appointment Duration (minutes)</strong></td>
+                  <td>
+                    <n-input-number 
+                      v-if="editing"
+                      v-model:value="broker.appointment_duration_minutes" 
+                      :min="15"
+                      :max="480"
+                      :step="15"
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ broker.appointment_duration_minutes ? `${broker.appointment_duration_minutes} minutes` : 'Not set' }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Buffer Between Appointments (minutes)</strong></td>
+                  <td>
+                    <n-input-number 
+                      v-if="editing"
+                      v-model:value="broker.buffer_between_appointments_minutes" 
+                      :min="0"
+                      :max="120"
+                      :step="5"
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ broker.buffer_between_appointments_minutes ? `${broker.buffer_between_appointments_minutes} minutes` : 'Not set' }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Minimum Booking Lead Time (minutes)</strong></td>
+                  <td>
+                    <n-input-number 
+                      v-if="editing"
+                      v-model:value="broker.minimum_booking_lead_time_minutes" 
+                      :min="0"
+                      :max="10080"
+                      :step="30"
+                      style="width: 100%"
+                    />
+                    <span v-else>{{ formatLeadTime(broker.minimum_booking_lead_time_minutes) || 'Not set' }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </n-table>
+          </n-card>
+        </n-tab-pane>
+
         <!-- Contract Information Tab -->
         <n-tab-pane name="contract" tab="Contract">
           <n-card title="Contract Details">
@@ -417,6 +526,8 @@ import {
   NSelect,
   NSwitch,
   NDatePicker,
+  NTimePicker,
+  NTable,
   NDivider,
   NSpin,
   NEmpty,
@@ -480,6 +591,16 @@ const timezoneOptions = [
   { label: 'Eastern Time', value: 'America/New_York' }
 ]
 
+const dayOptions = [
+  { label: 'Monday', value: 'monday' },
+  { label: 'Tuesday', value: 'tuesday' },
+  { label: 'Wednesday', value: 'wednesday' },
+  { label: 'Thursday', value: 'thursday' },
+  { label: 'Friday', value: 'friday' },
+  { label: 'Saturday', value: 'saturday' },
+  { label: 'Sunday', value: 'sunday' }
+]
+
 // Load broker data
 async function loadBroker() {
   loading.value = true
@@ -491,6 +612,19 @@ async function loadBroker() {
       .single()
     
     if (error) throw error
+    
+    // Convert time strings to Date objects for time pickers
+    if (data.business_hours_start) {
+      data.business_hours_start = parseTimeToDate(data.business_hours_start)
+    }
+    if (data.business_hours_end) {
+      data.business_hours_end = parseTimeToDate(data.business_hours_end)
+    }
+    
+    // Convert business_days to array if it's a string
+    if (data.business_days && typeof data.business_days === 'string') {
+      data.business_days = data.business_days.split(',').map(d => d.trim()).filter(d => d)
+    }
     
     broker.value = data
   } catch (error) {
@@ -505,15 +639,36 @@ async function loadBroker() {
 async function saveBroker() {
   saving.value = true
   try {
+    // Prepare data for saving - convert Date objects to time strings
+    const dataToSave = { ...broker.value }
+    
+    // Convert time picker Date objects to "HH:mm" format
+    if (dataToSave.business_hours_start instanceof Date) {
+      dataToSave.business_hours_start = formatDateToTime(dataToSave.business_hours_start)
+    }
+    if (dataToSave.business_hours_end instanceof Date) {
+      dataToSave.business_hours_end = formatDateToTime(dataToSave.business_hours_end)
+    }
+    
+    // Convert business_days array to string if needed (or keep as array if DB supports JSONB)
+    if (Array.isArray(dataToSave.business_days)) {
+      // If you want to store as comma-separated string:
+      // dataToSave.business_days = dataToSave.business_days.join(',')
+      // Otherwise keep as array if DB column is JSONB/array type
+    }
+    
     const { error } = await supabase
       .from('brokers')
-      .update(broker.value)
+      .update(dataToSave)
       .eq('id', broker.value.id)
     
     if (error) throw error
     
     message.success('Broker updated successfully')
     editing.value = false
+    
+    // Reload to get fresh data with converted formats
+    await loadBroker()
   } catch (error) {
     console.error('Error saving broker:', error)
     message.error('Failed to save changes')
@@ -538,6 +693,99 @@ function getInitials(name) {
 function formatDate(dateString) {
   if (!dateString) return 'Never'
   return new Date(dateString).toLocaleDateString()
+}
+
+function getTimezoneLabel(timezone) {
+  const option = timezoneOptions.find(opt => opt.value === timezone)
+  return option ? option.label : timezone
+}
+
+function formatTime(timeValue) {
+  if (!timeValue) return null
+  // Handle both string (HH:mm) and Date object formats
+  if (typeof timeValue === 'string') {
+    // If it's already in HH:mm format, return as is
+    if (timeValue.match(/^\d{1,2}:\d{2}$/)) {
+      return timeValue
+    }
+    // Try to parse it
+    return timeValue
+  }
+  if (timeValue instanceof Date) {
+    const hours = String(timeValue.getHours()).padStart(2, '0')
+    const minutes = String(timeValue.getMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
+  }
+  return null
+}
+
+function formatBusinessDays(days) {
+  if (!days) return null
+  if (Array.isArray(days)) {
+    return days.map(day => {
+      const option = dayOptions.find(opt => opt.value === day)
+      return option ? option.label : day
+    }).join(', ')
+  }
+  if (typeof days === 'string') {
+    // Handle comma-separated string
+    return days.split(',').map(day => {
+      const option = dayOptions.find(opt => opt.value === day.trim())
+      return option ? option.label : day.trim()
+    }).join(', ')
+  }
+  return days
+}
+
+function formatLeadTime(minutes) {
+  if (!minutes) return null
+  if (minutes < 60) {
+    return `${minutes} minutes`
+  } else if (minutes < 1440) {
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return mins > 0 ? `${hours} hours ${mins} minutes` : `${hours} hours`
+  } else {
+    const days = Math.floor(minutes / 1440)
+    const hours = Math.floor((minutes % 1440) / 60)
+    if (hours > 0) {
+      return `${days} days ${hours} hours`
+    }
+    return `${days} days`
+  }
+}
+
+// Convert time string (HH:mm) to Date object for time picker
+function parseTimeToDate(timeString) {
+  if (!timeString) return null
+  if (timeString instanceof Date) return timeString
+  
+  // Handle "HH:mm" format
+  const match = timeString.match(/(\d{1,2}):(\d{2})/)
+  if (match) {
+    const date = new Date()
+    date.setHours(parseInt(match[1], 10))
+    date.setMinutes(parseInt(match[2], 10))
+    date.setSeconds(0)
+    date.setMilliseconds(0)
+    return date
+  }
+  
+  return null
+}
+
+// Convert Date object to "HH:mm" string format
+function formatDateToTime(date) {
+  if (!date) return null
+  if (typeof date === 'string') return date
+  
+  if (date instanceof Date) {
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
+  }
+  
+  return null
 }
 
 // Calendar integration functions
@@ -626,7 +874,7 @@ onMounted(() => {
   // Check for hash to set active tab
   if (window.location.hash) {
     const tabName = window.location.hash.substring(1)
-    if (['basic', 'business', 'contract', 'performance', 'integration', 'notes', 'ai-templates', 'phone-numbers'].includes(tabName)) {
+    if (['basic', 'business', 'appointments', 'contract', 'performance', 'integration', 'notes', 'ai-templates', 'phone-numbers'].includes(tabName)) {
       activeTab.value = tabName
     }
   }
