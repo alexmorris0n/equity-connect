@@ -422,6 +422,64 @@
                 </div>
               </div>
 
+              <!-- LLM Behavior Parameters Section -->
+              <div class="config-section">
+                <h4>LLM Behavior</h4>
+                <small class="form-hint">Fine-tune language model response characteristics</small>
+                
+                <div class="form-group">
+                  <label>Temperature</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.temperature" 
+                    min="0" 
+                    max="2" 
+                    step="0.1"
+                    placeholder="0.7"
+                  />
+                  <small class="form-hint">Controls randomness. Lower (0.1-0.3) = more focused/deterministic. Higher (0.7-1.0) = more creative/varied. Default: 0.7</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Top P (Nucleus Sampling)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.top_p" 
+                    min="0" 
+                    max="1" 
+                    step="0.05"
+                    placeholder="1.0"
+                  />
+                  <small class="form-hint">Controls diversity via nucleus sampling. 0.1 = only top 10% probable tokens. 1.0 = consider all tokens. Default: 1.0</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Frequency Penalty</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.frequency_penalty" 
+                    min="-2" 
+                    max="2" 
+                    step="0.1"
+                    placeholder="0.0"
+                  />
+                  <small class="form-hint">Reduces repetition of frequently used words. Positive values decrease repetition. Range: -2.0 to 2.0. Default: 0.0</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Presence Penalty</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.presence_penalty" 
+                    min="-2" 
+                    max="2" 
+                    step="0.1"
+                    placeholder="0.0"
+                  />
+                  <small class="form-hint">Encourages discussing new topics. Positive values increase likelihood of new topics. Range: -2.0 to 2.0. Default: 0.0</small>
+                </div>
+              </div>
+
               <div class="form-actions">
                 <button class="btn-save" @click="saveSignalWireConfig" :disabled="loading">
                   Save SignalWire Configuration
@@ -1689,6 +1747,11 @@ const signalwireConfig = ref({
   end_of_speech_timeout: 2000,
   attention_timeout: 8000,
   transparent_barge: false,
+  // LLM behavior parameters (stored in agent_params)
+  temperature: 0.7,
+  top_p: 1.0,
+  frequency_penalty: 0.0,
+  presence_penalty: 0.0,
   is_active: true
 })
 
@@ -2746,7 +2809,7 @@ async function loadSignalWireConfig() {
     // Load behavior params from agent_params (source of truth for SignalWire)
     const { data: paramsData, error: paramsError } = await supabase
       .from('agent_params')
-      .select('end_of_speech_timeout, attention_timeout, transparent_barge')
+      .select('end_of_speech_timeout, attention_timeout, transparent_barge, temperature, top_p, frequency_penalty, presence_penalty')
       .eq('vertical', selectedVertical.value)
       .eq('language', signalwireConfig.value.language_code)
       .eq('is_active', true)
@@ -2771,12 +2834,21 @@ async function loadSignalWireConfig() {
         // Use agent_params values if available (source of truth), otherwise fallback to agent_voice_config
         end_of_speech_timeout: paramsData?.end_of_speech_timeout ?? data.end_of_speech_timeout ?? 2500,
         attention_timeout: paramsData?.attention_timeout ?? data.attention_timeout ?? 10000,
-        transparent_barge: paramsData?.transparent_barge ?? data.transparent_barge ?? false
+        transparent_barge: paramsData?.transparent_barge ?? data.transparent_barge ?? false,
+        // LLM behavior params from agent_params
+        temperature: paramsData?.temperature ?? 0.7,
+        top_p: paramsData?.top_p ?? 1.0,
+        frequency_penalty: paramsData?.frequency_penalty ?? 0.0,
+        presence_penalty: paramsData?.presence_penalty ?? 0.0
       }
       console.log('📥 Final merged signalwireConfig:', {
         end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout,
         attention_timeout: signalwireConfig.value.attention_timeout,
-        transparent_barge: signalwireConfig.value.transparent_barge
+        transparent_barge: signalwireConfig.value.transparent_barge,
+        temperature: signalwireConfig.value.temperature,
+        top_p: signalwireConfig.value.top_p,
+        frequency_penalty: signalwireConfig.value.frequency_penalty,
+        presence_penalty: signalwireConfig.value.presence_penalty
       })
       console.log('📥 Loaded SignalWire config. Behavior params from agent_params:', paramsData)
       // Load available voices for selected TTS engine
@@ -2801,7 +2873,11 @@ async function saveSignalWireConfig() {
     console.log('Behavior params:', {
       end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout,
       attention_timeout: signalwireConfig.value.attention_timeout,
-      transparent_barge: signalwireConfig.value.transparent_barge
+      transparent_barge: signalwireConfig.value.transparent_barge,
+      temperature: signalwireConfig.value.temperature,
+      top_p: signalwireConfig.value.top_p,
+      frequency_penalty: signalwireConfig.value.frequency_penalty,
+      presence_penalty: signalwireConfig.value.presence_penalty
     })
 
     // 1. Mark selected LLM as active
@@ -2888,26 +2964,43 @@ async function saveSignalWireConfig() {
     if (error) throw error
 
     // 5. CRITICAL: Also save to agent_params (this is what SignalWire actually reads)
+    // Explicitly convert to numbers to ensure proper type handling
     const agentParamsData = {
       vertical: selectedVertical.value,
       language: signalwireConfig.value.language_code,
       end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout ?? 2500,
       attention_timeout: signalwireConfig.value.attention_timeout ?? 10000,
       transparent_barge: signalwireConfig.value.transparent_barge ?? false,
+      // LLM behavior params - explicitly convert to numbers
+      temperature: Number(signalwireConfig.value.temperature ?? 0.7),
+      top_p: Number(signalwireConfig.value.top_p ?? 1.0),
+      frequency_penalty: Number(signalwireConfig.value.frequency_penalty ?? 0.0),
+      presence_penalty: Number(signalwireConfig.value.presence_penalty ?? 0.0),
       is_active: true,
       updated_at: new Date().toISOString()
     }
+    
+    console.log('💾 Saving agent_params with values:', {
+      temperature: agentParamsData.temperature,
+      top_p: agentParamsData.top_p,
+      frequency_penalty: agentParamsData.frequency_penalty,
+      presence_penalty: agentParamsData.presence_penalty
+    })
 
-    const { error: paramsError } = await supabase
+    const { data: savedParams, error: paramsError } = await supabase
       .from('agent_params')
       .upsert(agentParamsData, {
         onConflict: 'vertical,language'
       })
+      .select()
 
     if (paramsError) {
-      console.error('Failed to save agent_params:', paramsError)
+      console.error('❌ Failed to save agent_params:', paramsError)
+      console.error('❌ Data attempted to save:', agentParamsData)
       throw paramsError
     }
+    
+    console.log('✅ agent_params saved successfully:', savedParams)
 
     signalwireConfig.value = { ...signalwireConfig.value, ...data }
     
