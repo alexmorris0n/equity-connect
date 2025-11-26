@@ -44,7 +44,7 @@ serve(async (req) => {
     const nylasClientSecret = Deno.env.get('NYLAS_CLIENT_SECRET');
     const nylasApiKey = Deno.env.get('NYLAS_API_KEY');
     const redirectUri = Deno.env.get('NYLAS_REDIRECT_URI') || 
-                        'https://portal.equityconnect.com/calendar/callback';
+                        'https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/nylas-callback';
 
     if (!nylasClientId || !nylasClientSecret || !nylasApiKey) {
       throw new Error('Nylas credentials not configured');

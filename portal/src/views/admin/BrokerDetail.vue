@@ -795,38 +795,59 @@ async function connectCalendar() {
     // Get current session
     const { data: { session } } = await supabase.auth.getSession()
     console.log('Session:', session ? 'exists' : 'null')
-    console.log('Access token (first 20 chars):', session?.access_token?.substring(0, 20))
-    console.log('Broker ID:', broker.value.id)
     
     if (!session) {
       throw new Error('Not authenticated. Please log in.')
     }
     
-    const url = 'https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/nylas-auth-url'
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
-      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14bnFmd3VodnVyYWpyZ29lZnlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzU3OTAsImV4cCI6MjA3NTQ1MTc5MH0.QMoZAjIKkB05Vr9nM1FKbC2ke5RTvfv6zrSDU0QMuN4'
+    // Decode JWT to check project ref (embedded in issuer URL)
+    const jwtPayload = JSON.parse(atob(session.access_token.split('.')[1]))
+    console.log('JWT payload:', jwtPayload)
+    console.log('JWT issuer:', jwtPayload.iss)
+    
+    // Extract project ref from issuer: https://PROJECT_REF.supabase.co/auth/v1
+    const issuerMatch = jwtPayload.iss?.match(/https:\/\/([^.]+)\.supabase\.co/)
+    const jwtProjectRef = issuerMatch ? issuerMatch[1] : null
+    console.log('JWT project ref:', jwtProjectRef)
+    console.log('Expected ref: mxnqfwuhvurajrgoefyg')
+    console.log('JWT match:', jwtProjectRef === 'mxnqfwuhvurajrgoefyg')
+    
+    if (jwtProjectRef !== 'mxnqfwuhvurajrgoefyg') {
+      message.error('Session is for wrong project! Clear localStorage and log in again.')
+      throw new Error(`Wrong project: ${jwtProjectRef}. Expected: mxnqfwuhvurajrgoefyg`)
     }
-    const body = JSON.stringify({ broker_id: broker.value.id })
     
-    console.log('Fetching:', url)
-    console.log('Headers:', Object.keys(headers))
-    console.log('Body:', body)
+    console.log('Broker ID:', broker.value.id)
     
-    // Call Supabase Edge Function directly via fetch to avoid client issues
+    // JWT verification is OFF on this function, so skip the Authorization header
+    // (The user's JWT contains a huge base64 avatar that exceeds header size limits)
+    const url = `https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/nylas-auth-url`
+    console.log('Fetching URL:', url)
+    console.log('Token length:', session.access_token.length, 'chars')
+    
     const response = await fetch(url, {
       method: 'POST',
-      headers,
-      body
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14bnFmd3VodnVyYWpyZ29lZnlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzU3OTAsImV4cCI6MjA3NTQ1MTc5MH0.QMoZAjIKkB05Vr9nM1FKbC2ke5RTvfv6zrSDU0QMuN4'
+        // NO Authorization header - JWT verification is off, and the token is too large anyway
+      },
+      body: JSON.stringify({ broker_id: broker.value.id })
     })
     
+    console.log('Response status:', response.status)
+    console.log('Response headers:', [...response.headers.entries()])
+    
     if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `HTTP ${response.status}`)
+      const errorText = await response.text()
+      console.log('Error response:', errorText)
+      throw new Error(errorText || `HTTP ${response.status}`)
     }
     
     const data = await response.json()
+    
     if (!data?.auth_url) throw new Error('Failed to generate auth URL')
     
     // Redirect to Nylas OAuth

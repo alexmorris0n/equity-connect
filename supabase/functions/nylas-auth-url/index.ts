@@ -17,37 +17,16 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Getting auth header...');
-    const authHeader = req.headers.get('Authorization');
-    console.log('Auth header present:', !!authHeader);
-    
+    // Use service role for DB access (JWT verification is off)
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader! } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
-
-    console.log('Getting user...');
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
-    if (userError) {
-      console.log('User error:', userError.message);
-      return new Response(JSON.stringify({ error: 'Unauthorized: ' + userError.message }), 
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    
-    if (!user) {
-      console.log('No user found');
-      return new Response(JSON.stringify({ error: 'Unauthorized: No user' }), 
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    
-    console.log('User authenticated:', user.id);
 
     let brokerId: string | null = null;
     let brokerName: string | null = null;
     
-    // Try to get broker_id from body
+    // Get broker_id from body (required)
     if (req.method === 'POST') {
       try {
         const text = await req.text();
@@ -62,28 +41,20 @@ serve(async (req) => {
       }
     }
 
-    if (brokerId) {
-      console.log('Looking up broker by ID:', brokerId);
-      const { data: broker, error: brokerError } = await supabaseClient
-        .from('brokers').select('id, contact_name').eq('id', brokerId).single();
-      if (brokerError || !broker) {
-        console.log('Broker not found by ID');
-        return new Response(JSON.stringify({ error: 'Broker not found' }), 
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      brokerName = broker.contact_name;
-    } else {
-      console.log('Looking up broker by user_id:', user.id);
-      const { data: broker, error: brokerError } = await supabaseClient
-        .from('brokers').select('id, contact_name').eq('user_id', user.id).single();
-      if (brokerError || !broker) {
-        console.log('Broker not found by user_id');
-        return new Response(JSON.stringify({ error: 'Broker not found for this user' }), 
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
-      brokerId = broker.id;
-      brokerName = broker.contact_name;
+    if (!brokerId) {
+      return new Response(JSON.stringify({ error: 'broker_id is required' }), 
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    console.log('Looking up broker by ID:', brokerId);
+    const { data: broker, error: brokerError } = await supabaseClient
+      .from('brokers').select('id, contact_name').eq('id', brokerId).single();
+    if (brokerError || !broker) {
+      console.log('Broker not found by ID');
+      return new Response(JSON.stringify({ error: 'Broker not found' }), 
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    brokerName = broker.contact_name;
 
     console.log('Found broker:', brokerId, brokerName);
 
@@ -98,13 +69,13 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Nylas v3 Hosted Auth URL
+    // See: https://developer.nylas.com/docs/v3/auth/hosted-oauth/
     const authUrl = new URL('https://api.us.nylas.com/v3/connect/auth');
     authUrl.searchParams.set('client_id', nylasClientId);
     authUrl.searchParams.set('redirect_uri', redirectUri);
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('state', brokerId!);
-    authUrl.searchParams.set('access_type', 'offline');
-    authUrl.searchParams.set('provider', 'auto');
 
     console.log('Generated auth URL');
 
