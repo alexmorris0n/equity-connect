@@ -115,7 +115,7 @@
           </div>
           <div v-for="(lead, index) in paginatedLeads" :key="lead.id" 
                :class="['table-row', { 'striped': index % 2 === 1 }]" 
-               @click="router.push(`/admin/leads/${lead.id}`)">
+               @click="router.push(`/leads/${lead.id}`)">
             <div class="td-cell ellipsis">{{ `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unknown' }}</div>
             <div class="td-cell">{{ lead.property_zip || 'N/A' }}</div>
             <div class="td-cell">

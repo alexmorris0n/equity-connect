@@ -678,7 +678,7 @@ async function saveBroker() {
 }
 
 function goBack() {
-  router.push('/admin/brokers')
+  router.push('/brokers')
 }
 
 function getInitials(name) {
@@ -792,26 +792,48 @@ function formatDateToTime(date) {
 async function connectCalendar() {
   connectingCalendar.value = true
   try {
-    // TODO: Replace with your actual Nylas client ID and redirect URI
-    const NYLAS_CLIENT_ID = import.meta.env.VITE_NYLAS_CLIENT_ID
-    const REDIRECT_URI = `${window.location.origin}/admin/brokers/${broker.value.id}/calendar-callback`
+    // Get current session
+    const { data: { session } } = await supabase.auth.getSession()
+    console.log('Session:', session ? 'exists' : 'null')
+    console.log('Access token (first 20 chars):', session?.access_token?.substring(0, 20))
+    console.log('Broker ID:', broker.value.id)
     
-    // Build the Nylas OAuth URL
-    const authUrl = new URL('https://api.us.nylas.com/v3/connect/auth')
-    authUrl.searchParams.append('client_id', NYLAS_CLIENT_ID)
-    authUrl.searchParams.append('redirect_uri', REDIRECT_URI)
-    authUrl.searchParams.append('response_type', 'code')
-    authUrl.searchParams.append('scopes', 'calendar.read_only,calendar.read_write')
-    authUrl.searchParams.append('state', broker.value.id) // Pass broker ID as state
+    if (!session) {
+      throw new Error('Not authenticated. Please log in.')
+    }
     
-    // Store broker email for later
-    sessionStorage.setItem('nylas_broker_email', broker.value.email)
+    const url = 'https://mxnqfwuhvurajrgoefyg.supabase.co/functions/v1/nylas-auth-url'
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14bnFmd3VodnVyYWpyZ29lZnlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzU3OTAsImV4cCI6MjA3NTQ1MTc5MH0.QMoZAjIKkB05Vr9nM1FKbC2ke5RTvfv6zrSDU0QMuN4'
+    }
+    const body = JSON.stringify({ broker_id: broker.value.id })
+    
+    console.log('Fetching:', url)
+    console.log('Headers:', Object.keys(headers))
+    console.log('Body:', body)
+    
+    // Call Supabase Edge Function directly via fetch to avoid client issues
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `HTTP ${response.status}`)
+    }
+    
+    const data = await response.json()
+    if (!data?.auth_url) throw new Error('Failed to generate auth URL')
     
     // Redirect to Nylas OAuth
-    window.location.href = authUrl.toString()
+    window.location.href = data.auth_url
   } catch (error) {
     console.error('Error connecting calendar:', error)
-    message.error('Failed to connect calendar')
+    message.error(error.message || 'Failed to connect calendar')
     connectingCalendar.value = false
   }
 }
@@ -868,8 +890,24 @@ async function syncCalendar() {
   }
 }
 
-onMounted(() => {
-  loadBroker()
+onMounted(async () => {
+  await loadBroker()
+  
+  // Check for calendar sync callback params
+  const urlParams = new URLSearchParams(window.location.search)
+  if (urlParams.get('calendar_synced') === 'true') {
+    message.success('Calendar connected successfully!')
+    // Reload to show updated status
+    await loadBroker()
+    // Switch to integration tab
+    activeTab.value = 'integration'
+    // Clean URL
+    window.history.replaceState({}, '', window.location.pathname)
+  } else if (urlParams.get('calendar_error')) {
+    message.error(`Calendar sync failed: ${decodeURIComponent(urlParams.get('calendar_error'))}`)
+    activeTab.value = 'integration'
+    window.history.replaceState({}, '', window.location.pathname)
+  }
   
   // Check for hash to set active tab
   if (window.location.hash) {

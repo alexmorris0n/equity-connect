@@ -14,23 +14,22 @@ const router = createRouter({
       component: () => import('@/views/Login.vue')
     },
     {
-      path: '/admin',
+      path: '/',
       component: () => import('@/layouts/AdminLayout.vue'),
-      meta: { requiresAuth: true, role: 'admin' },
+      meta: { requiresAuth: true },
       children: [
         {
           path: '',
-          name: 'AdminDashboard',
+          redirect: '/dashboard'
+        },
+        {
+          path: 'dashboard',
+          name: 'Dashboard',
           component: () => import('@/views/admin/Dashboard.vue')
         },
         {
-          path: 'prompts',
-          name: 'PromptManagement',
-          component: () => import('@/views/admin/PromptManagement.vue')
-        },
-        {
           path: 'brokers',
-          name: 'BrokerManagement',
+          name: 'Brokers',
           component: () => import('@/views/admin/BrokerManagement.vue')
         },
         {
@@ -40,7 +39,7 @@ const router = createRouter({
         },
         {
           path: 'leads',
-          name: 'AllLeads',
+          name: 'Leads',
           component: () => import('@/views/admin/AllLeads.vue')
         },
         {
@@ -50,28 +49,13 @@ const router = createRouter({
         },
         {
           path: 'analytics',
-          name: 'SystemAnalytics',
+          name: 'Analytics',
           component: () => import('@/views/admin/SystemAnalytics.vue')
         },
         {
-          path: 'profile',
-          name: 'UserProfile',
-          component: () => import('@/views/admin/UserProfile.vue')
-        },
-        {
           path: 'appointments',
-          name: 'AdminAppointments',
+          name: 'Appointments',
           component: () => import('@/views/admin/Appointments.vue')
-        },
-        {
-          path: 'livekit-playground',
-          name: 'LiveKitPlayground',
-          component: () => import('@/views/admin/LiveKitPlayground.vue')
-        },
-        {
-          path: 'live-calls',
-          name: 'LiveCalls',
-          component: () => import('@/views/admin/LiveCalls.vue')
         },
         {
           path: 'verticals',
@@ -86,42 +70,6 @@ const router = createRouter({
       ]
     },
     {
-      path: '/broker',
-      component: () => import('@/layouts/BrokerLayout.vue'),
-      meta: { requiresAuth: true, role: 'broker' },
-      children: [
-        {
-          path: '',
-          name: 'BrokerDashboard',
-          component: () => import('@/views/broker/Dashboard.vue')
-        },
-        {
-          path: 'leads',
-          name: 'MyLeads',
-          component: () => import('@/views/broker/MyLeads.vue')
-        },
-        {
-          path: 'appointments',
-          name: 'MyAppointments',
-          component: () => import('@/views/broker/MyAppointments.vue')
-        },
-        {
-          path: 'prompt',
-          name: 'MyPrompt',
-          component: () => import('@/views/broker/MyPrompt.vue')
-        },
-        {
-          path: 'onboarding',
-          name: 'BrokerOnboarding',
-          component: () => import('@/views/broker/Onboarding.vue')
-        }
-      ]
-    },
-    {
-      path: '/',
-      redirect: '/login'
-    },
-    {
       path: '/:pathMatch(.*)*',
       name: 'NotFound',
       component: () => import('@/views/NotFound.vue')
@@ -131,7 +79,7 @@ const router = createRouter({
 
 // Navigation guard with proper auth state waiting
 router.beforeEach(async (to, from, next) => {
-  const { isAuthenticated, isAdmin, isBroker, waitForInit } = useAuth()
+  const { isAuthenticated, waitForInit } = useAuth()
 
   // Wait for initial auth check to complete (critical for page refreshes)
   await waitForInit()
@@ -139,8 +87,7 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated.value) {
     next('/login')
   } else if (to.path === '/login' && isAuthenticated.value) {
-    // Redirect logged-in users to their dashboard
-    next(isAdmin.value ? '/admin' : '/broker')
+    next('/dashboard')
   } else {
     next()
   }

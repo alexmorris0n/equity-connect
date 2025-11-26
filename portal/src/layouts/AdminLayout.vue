@@ -38,7 +38,7 @@
       </div>
 
       <div class="sider-footer">
-        <div class="user-profile" @click="handleUserProfile">
+        <div class="user-profile">
           <div class="user-avatar">
             <img v-if="userAvatar" :src="userAvatar" alt="Profile" class="avatar-image" />
             <span v-else>{{ initials }}</span>
@@ -88,14 +88,8 @@ import {
 } from 'naive-ui'
 import {
   LogOutOutline,
-  ChevronForwardOutline,
-  ChevronBackOutline,
-  FlashOutline,
-  HelpCircleOutline,
   GridOutline,
-  DocumentTextOutline,
   PeopleOutline,
-  SparklesOutline,
   PulseOutline,
   BriefcaseOutline,
   CalendarOutline,
@@ -136,61 +130,54 @@ const menuOptions = [
     key: 'dashboard',
     label: 'Dashboard',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(GridOutline) }),
-    to: '/admin'
-  },
-  {
-    key: 'prompts',
-    label: 'Prompts',
-    icon: () => h(NIcon, { size: 18 }, { default: () => h(DocumentTextOutline) }),
-    to: '/admin/prompts'
+    to: '/dashboard'
   },
   {
     key: 'brokers',
     label: 'Brokers',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(BriefcaseOutline) }),
-    to: '/admin/brokers'
+    to: '/brokers'
   },
   {
     key: 'leads',
     label: 'Leads',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(PeopleOutline) }),
-    to: '/admin/leads'
+    to: '/leads'
+  },
+  {
+    key: 'analytics',
+    label: 'Analytics',
+    icon: () => h(NIcon, { size: 18 }, { default: () => h(PulseOutline) }),
+    to: '/analytics'
   },
   {
     key: 'appointments',
     label: 'Appointments',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(CalendarOutline) }),
-    to: '/admin/appointments'
-  },
-  {
-    key: 'analytics',
-    label: 'System Metrics',
-    icon: () => h(NIcon, { size: 18 }, { default: () => h(PulseOutline) }),
-    to: '/admin/analytics'
+    to: '/appointments'
   },
   {
     key: 'verticals',
     label: 'Verticals',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(LayersOutline) }),
-    to: '/admin/verticals'
+    to: '/verticals'
   },
   {
     key: 'testy-control',
     label: 'Testy Control',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(FlaskOutline) }),
-    to: '/admin/testy-control'
+    to: '/testy-control'
   }
 ]
 
 const routeKeyMap = {
-  AdminDashboard: 'dashboard',
-  PromptManagement: 'prompts',
-  BrokerManagement: 'brokers',
-  AllLeads: 'leads',
-  LeadDetail: 'leads', // Lead Detail should highlight Leads
-  AdminAppointments: 'appointments',
-  SystemAnalytics: 'analytics',
-  UserProfile: 'profile',
+  Dashboard: 'dashboard',
+  Brokers: 'brokers',
+  BrokerDetail: 'brokers',
+  Leads: 'leads',
+  LeadDetail: 'leads',
+  Analytics: 'analytics',
+  Appointments: 'appointments',
   Verticals: 'verticals',
   TestyControl: 'testy-control'
 }
@@ -200,12 +187,10 @@ const activeKey = computed(() => routeKeyMap[route.name] || 'dashboard')
 const pageTitle = computed(() => {
   const titles = {
     dashboard: 'Dashboard',
-    prompts: 'Prompts',
     brokers: 'Brokers',
     leads: 'Leads',
+    analytics: 'Analytics',
     appointments: 'Appointments',
-    analytics: 'System Metrics',
-    profile: 'User Profile',
     verticals: 'Verticals',
     'testy-control': 'Testy Control'
   }
@@ -255,10 +240,6 @@ function handleMenuSelect(key, option) {
   if (option?.to && option.to !== route.path) {
     router.push(option.to)
   }
-}
-
-function handleUserProfile() {
-  router.push('/admin/profile')
 }
 
 async function handleSignOut() {

@@ -12,3 +12,4 @@ COMMENT ON COLUMN agent_voice_config.eleven_labs_stability IS 'ElevenLabs voice 
 COMMENT ON COLUMN agent_voice_config.eleven_labs_similarity IS 'ElevenLabs similarity boost. Range: 0.0 (low boost) to 1.0 (high boost). Default: 0.75.';
 
 
+

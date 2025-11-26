@@ -15,18 +15,21 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Parse URL params outside try block so they're accessible in catch
+  const url = new URL(req.url);
+  const code = url.searchParams.get('code');
+  const broker_id = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
+
   try {
-    const url = new URL(req.url);
-    const code = url.searchParams.get('code');
-    const broker_id = url.searchParams.get('state');
-    const error = url.searchParams.get('error');
 
     // Check for OAuth errors
     if (error) {
       console.error('OAuth error:', error);
-      return Response.redirect(
-        `https://portal.equityconnect.com/dashboard?calendar_error=${encodeURIComponent(error)}`
-      );
+      const errorRedirect = broker_id 
+        ? `https://portal.equityconnect.com/brokers/${broker_id}?calendar_error=${encodeURIComponent(error)}`
+        : `https://portal.equityconnect.com/dashboard?calendar_error=${encodeURIComponent(error)}`;
+      return Response.redirect(errorRedirect);
     }
 
     if (!code || !broker_id) {
@@ -116,16 +119,17 @@ serve(async (req) => {
 
     console.log('Broker calendar synced successfully:', broker_id);
 
-    // Redirect back to portal with success
+    // Redirect back to broker detail page with success
     return Response.redirect(
-      'https://portal.equityconnect.com/dashboard?calendar_synced=true'
+      `https://portal.equityconnect.com/brokers/${broker_id}?calendar_synced=true`
     );
 
   } catch (error) {
     console.error('OAuth callback error:', error);
-    return Response.redirect(
-      `https://portal.equityconnect.com/dashboard?calendar_error=${encodeURIComponent(error.message)}`
-    );
+    const errorRedirect = broker_id 
+      ? `https://portal.equityconnect.com/brokers/${broker_id}?calendar_error=${encodeURIComponent(error.message)}`
+      : `https://portal.equityconnect.com/dashboard?calendar_error=${encodeURIComponent(error.message)}`;
+    return Response.redirect(errorRedirect);
   }
 });
 

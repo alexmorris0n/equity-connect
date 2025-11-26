@@ -151,7 +151,7 @@ async function loadBrokers() {
 
 // Navigate to broker detail
 function goToBrokerDetail(brokerId) {
-  router.push(`/admin/brokers/${brokerId}`)
+  router.push(`/brokers/${brokerId}`)
 }
 
 // Get initials for avatar

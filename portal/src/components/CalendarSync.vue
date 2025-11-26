@@ -1,110 +1,166 @@
 <template>
-  <div class="calendar-sync-container">
-    <!-- Not Synced State -->
-    <div v-if="!calendarSynced" class="sync-card">
-      <div class="icon-wrapper">
-        <svg xmlns="http://www.w3.org/2000/svg" class="calendar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
+  <div class="calendar-sync-container" :class="{ 'compact': compact }">
+    <!-- COMPACT MODE -->
+    <template v-if="compact">
+      <div v-if="calendarSynced" class="compact-status synced">
+        <div class="compact-icon success">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="compact-info">
+          <span class="compact-title">{{ providerName }}</span>
+          <span class="compact-detail">Synced {{ lastSyncedFormatted }}</span>
+        </div>
+      </div>
+      <div v-else class="compact-status not-synced">
+        <div class="compact-icon warning">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="compact-info">
+          <span class="compact-title">Calendar Not Connected</span>
+          <span class="compact-detail">Broker needs to sync their calendar</span>
+        </div>
+      </div>
+    </template>
+
+    <!-- FULL MODE -->
+    <template v-else>
+      <!-- Not Synced State -->
+      <div v-if="!calendarSynced" class="sync-card">
+        <div class="icon-wrapper">
+          <svg xmlns="http://www.w3.org/2000/svg" class="calendar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+        
+        <h2 class="title">{{ isReadOnly ? `${brokerName}'s Calendar` : 'Sync Your Calendar' }}</h2>
+        <p class="description">
+          <template v-if="isReadOnly">
+            This broker has not connected their calendar yet.
+          </template>
+          <template v-else>
+            Enable live appointment booking by connecting your calendar. 
+            Works with Google Calendar, Outlook, and iCloud.
+          </template>
+        </p>
+        
+        <button 
+          v-if="!isReadOnly"
+          @click="syncCalendar" 
+          class="btn-sync" 
+          :disabled="loading"
+          :class="{ 'loading': loading }"
+        >
+          <span v-if="!loading">
+            <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Sync Calendar
+          </span>
+          <span v-else>
+            <svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Connecting...
+          </span>
+        </button>
+        
+        <p v-if="!isReadOnly" class="help-text">
+          Your calendar data is securely stored and encrypted. 
+          We only access availability information.
+        </p>
       </div>
       
-      <h2 class="title">Sync Your Calendar</h2>
-      <p class="description">
-        Enable live appointment booking by connecting your calendar. 
-        Works with Google Calendar, Outlook, and iCloud.
-      </p>
-      
-      <button 
-        @click="syncCalendar" 
-        class="btn-sync" 
-        :disabled="loading"
-        :class="{ 'loading': loading }"
-      >
-        <span v-if="!loading">
+      <!-- Synced State -->
+      <div v-else class="sync-card synced">
+        <div class="icon-wrapper success">
+          <svg xmlns="http://www.w3.org/2000/svg" class="check-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        
+        <h2 class="title">{{ isReadOnly ? `${brokerName}'s Calendar` : 'Calendar Connected' }}</h2>
+        <p class="description">
+          <template v-if="isReadOnly">
+            <strong>{{ providerName }}</strong> is connected and synced.
+          </template>
+          <template v-else>
+            Your <strong>{{ providerName }}</strong> calendar is synced and ready for live booking.
+          </template>
+        </p>
+        
+        <div class="sync-info">
+          <div class="info-row">
+            <span class="label">Provider:</span>
+            <span class="value">{{ providerName }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Last Synced:</span>
+            <span class="value">{{ lastSyncedFormatted }}</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Status:</span>
+            <span class="value status-active">
+              <span class="status-dot"></span> Active
+            </span>
+          </div>
+        </div>
+        
+        <button v-if="!isReadOnly" @click="resyncCalendar" class="btn-resync" :disabled="loading">
           <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          Sync Calendar
-        </span>
-        <span v-else>
-          <svg class="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          Connecting...
-        </span>
-      </button>
+          Re-sync Calendar
+        </button>
+      </div>
       
-      <p class="help-text">
-        Your calendar data is securely stored and encrypted. 
-        We only access availability information.
-      </p>
-    </div>
-    
-    <!-- Synced State -->
-    <div v-else class="sync-card synced">
-      <div class="icon-wrapper success">
-        <svg xmlns="http://www.w3.org/2000/svg" class="check-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <!-- Error Alert -->
+      <div v-if="error" class="error-alert">
+        <svg xmlns="http://www.w3.org/2000/svg" class="error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-      </div>
-      
-      <h2 class="title">Calendar Connected</h2>
-      <p class="description">
-        Your <strong>{{ providerName }}</strong> calendar is synced and ready for live booking.
-      </p>
-      
-      <div class="sync-info">
-        <div class="info-row">
-          <span class="label">Provider:</span>
-          <span class="value">{{ providerName }}</span>
+        <div>
+          <strong>Calendar Sync Failed</strong>
+          <p>{{ error }}</p>
         </div>
-        <div class="info-row">
-          <span class="label">Last Synced:</span>
-          <span class="value">{{ lastSyncedFormatted }}</span>
-        </div>
-        <div class="info-row">
-          <span class="label">Status:</span>
-          <span class="value status-active">
-            <span class="status-dot"></span> Active
-          </span>
-        </div>
+        <button @click="error = null" class="close-error">×</button>
       </div>
-      
-      <button @click="resyncCalendar" class="btn-resync" :disabled="loading">
-        <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        Re-sync Calendar
-      </button>
-    </div>
-    
-    <!-- Error Alert -->
-    <div v-if="error" class="error-alert">
-      <svg xmlns="http://www.w3.org/2000/svg" class="error-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <div>
-        <strong>Calendar Sync Failed</strong>
-        <p>{{ error }}</p>
-      </div>
-      <button @click="error = null" class="close-error">×</button>
-    </div>
+    </template>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { supabase } from '@/lib/supabase';
 
 export default {
   name: 'CalendarSync',
-  setup() {
+  props: {
+    // Optional: pass broker ID to view a specific broker's status (admin mode)
+    brokerId: {
+      type: String,
+      default: null
+    },
+    // Compact mode for embedding in other views
+    compact: {
+      type: Boolean,
+      default: false
+    }
+  },
+  setup(props) {
     const loading = ref(false);
     const calendarSynced = ref(false);
     const calendarProvider = ref('');
     const lastSynced = ref(null);
     const error = ref(null);
+    const brokerName = ref('');
+    
+    // Is this read-only mode (viewing another broker's status)?
+    const isReadOnly = computed(() => !!props.brokerId);
     
     // Computed properties
     const providerName = computed(() => {
@@ -141,16 +197,34 @@ export default {
     // Check if calendar is already synced
     const checkSyncStatus = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        // Reset state
+        calendarSynced.value = false;
+        calendarProvider.value = '';
+        lastSynced.value = null;
+        brokerName.value = '';
         
-        const { data: broker, error: brokerError } = await supabase
+        let query = supabase
           .from('brokers')
-          .select('nylas_grant_id, calendar_provider, calendar_synced_at')
-          .eq('user_id', user.id)
-          .single();
+          .select('nylas_grant_id, calendar_provider, calendar_synced_at, contact_name, company_name');
         
-        if (brokerError) throw brokerError;
+        if (props.brokerId) {
+          // Admin mode: look up specific broker by ID
+          query = query.eq('id', props.brokerId);
+        } else {
+          // Broker mode: look up by current user
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          query = query.eq('user_id', user.id);
+        }
+        
+        const { data: broker, error: brokerError } = await query.single();
+        
+        if (brokerError) {
+          if (brokerError.code !== 'PGRST116') throw brokerError; // Ignore "not found"
+          return;
+        }
+        
+        brokerName.value = broker.company_name || broker.contact_name || 'Broker';
         
         if (broker?.nylas_grant_id) {
           calendarSynced.value = true;
@@ -162,8 +236,10 @@ export default {
       }
     };
     
-    // Start OAuth flow
+    // Start OAuth flow (only for non-read-only mode)
     const syncCalendar = async () => {
+      if (isReadOnly.value) return;
+      
       loading.value = true;
       error.value = null;
       
@@ -195,19 +271,27 @@ export default {
     
     const resyncCalendar = syncCalendar;
     
+    // Watch for brokerId changes (admin selecting different broker)
+    watch(() => props.brokerId, async (newId) => {
+      if (newId) {
+        await checkSyncStatus();
+      }
+    });
+    
     // Check for success/error in URL params
     onMounted(async () => {
       await checkSyncStatus();
       
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('calendar_synced') === 'true') {
-        // Refresh sync status
-        await checkSyncStatus();
-        // Clean URL
-        window.history.replaceState({}, '', window.location.pathname);
-      } else if (urlParams.get('calendar_error')) {
-        error.value = decodeURIComponent(urlParams.get('calendar_error'));
-        window.history.replaceState({}, '', window.location.pathname);
+      // Only handle URL params if not in read-only mode
+      if (!isReadOnly.value) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('calendar_synced') === 'true') {
+          await checkSyncStatus();
+          window.history.replaceState({}, '', window.location.pathname);
+        } else if (urlParams.get('calendar_error')) {
+          error.value = decodeURIComponent(urlParams.get('calendar_error'));
+          window.history.replaceState({}, '', window.location.pathname);
+        }
       }
     });
     
@@ -220,7 +304,9 @@ export default {
       lastSyncedFormatted,
       error,
       syncCalendar,
-      resyncCalendar
+      resyncCalendar,
+      isReadOnly,
+      brokerName
     };
   }
 };
@@ -231,6 +317,75 @@ export default {
   max-width: 600px;
   margin: 0 auto;
   padding: 2rem 1rem;
+}
+
+/* Compact Mode Styles */
+.calendar-sync-container.compact {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+
+.compact-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--surface-muted, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.compact-status.synced {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: #86efac;
+}
+
+.compact-status.not-synced {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #fcd34d;
+}
+
+.compact-icon {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.compact-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.compact-icon.success {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.compact-icon.warning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.compact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.compact-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-primary, #1f2937);
+}
+
+.compact-detail {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #6b7280);
 }
 
 .sync-card {
