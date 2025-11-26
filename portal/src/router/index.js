@@ -50,7 +50,8 @@ const router = createRouter({
         {
           path: 'analytics',
           name: 'Analytics',
-          component: () => import('@/views/admin/SystemAnalytics.vue')
+          component: () => import('@/views/admin/SystemAnalytics.vue'),
+          meta: { requiresAdmin: true }
         },
         {
           path: 'appointments',
@@ -60,12 +61,14 @@ const router = createRouter({
         {
           path: 'verticals',
           name: 'Verticals',
-          component: () => import('@/views/admin/Verticals.vue')
+          component: () => import('@/views/admin/Verticals.vue'),
+          meta: { requiresAdmin: true }
         },
         {
           path: 'testy-control',
           name: 'TestyControl',
-          component: () => import('@/views/admin/TestyControl.vue')
+          component: () => import('@/views/admin/TestyControl.vue'),
+          meta: { requiresAdmin: true }
         }
       ]
     },
@@ -79,7 +82,7 @@ const router = createRouter({
 
 // Navigation guard with proper auth state waiting
 router.beforeEach(async (to, from, next) => {
-  const { isAuthenticated, waitForInit } = useAuth()
+  const { isAuthenticated, isAdmin, waitForInit } = useAuth()
 
   // Wait for initial auth check to complete (critical for page refreshes)
   await waitForInit()
@@ -87,6 +90,9 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated.value) {
     next('/login')
   } else if (to.path === '/login' && isAuthenticated.value) {
+    next('/dashboard')
+  } else if (to.meta.requiresAdmin && !isAdmin.value) {
+    // Redirect brokers trying to access admin-only pages
     next('/dashboard')
   } else {
     next()

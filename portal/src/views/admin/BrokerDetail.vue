@@ -26,6 +26,25 @@
             </div>
           </div>
           <div class="header-actions">
+            <!-- Portal Access Status -->
+            <n-tag v-if="hasPortalAccess" type="success" size="small">
+              <template #icon>
+                <n-icon><CheckmarkCircleOutline /></n-icon>
+              </template>
+              Portal Active
+            </n-tag>
+            <n-button 
+              v-else
+              type="warning" 
+              @click="sendInvite"
+              :loading="sendingInvite"
+            >
+              <template #icon>
+                <n-icon><MailOutline /></n-icon>
+              </template>
+              Invite to Portal
+            </n-button>
+            
             <n-button type="primary" @click="editing = !editing">
               <template #icon>
                 <n-icon><CreateOutline /></n-icon>
@@ -492,11 +511,6 @@
           </n-card>
         </n-tab-pane>
 
-        <!-- AI Templates Tab -->
-        <n-tab-pane name="ai-templates" tab="AI Config">
-          <AITemplatesManager :broker-id="broker.id" />
-        </n-tab-pane>
-
         <!-- Phone Numbers Tab -->
         <n-tab-pane name="phone-numbers" tab="Numbers">
           <PhoneNumberManager :broker-id="broker.id" />
@@ -511,7 +525,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import {
@@ -531,6 +545,8 @@ import {
   NDivider,
   NSpin,
   NEmpty,
+  NTag,
+  NTooltip,
   useMessage
 } from 'naive-ui'
 import {
@@ -540,9 +556,11 @@ import {
   CalendarOutline,
   LinkOutline,
   UnlinkOutline,
-  SyncOutline
+  SyncOutline,
+  PersonOutline,
+  CheckmarkCircleOutline,
+  MailOutline
 } from '@vicons/ionicons5'
-import AITemplatesManager from '@/components/AITemplatesManager.vue'
 import PhoneNumberManager from '@/components/PhoneNumberManager.vue'
 
 const route = useRoute()
@@ -550,13 +568,18 @@ const router = useRouter()
 const message = useMessage()
 
 const broker = ref(null)
+const brokerUserProfile = ref(null)
 const loading = ref(true)
 const editing = ref(false)
 const saving = ref(false)
+const sendingInvite = ref(false)
 const connectingCalendar = ref(false)
 const disconnectingCalendar = ref(false)
 const syncingCalendar = ref(false)
 const activeTab = ref('basic')
+
+// Check if broker has portal access (linked user_profile)
+const hasPortalAccess = computed(() => !!brokerUserProfile.value)
 
 // Options
 const statusOptions = [
@@ -627,11 +650,66 @@ async function loadBroker() {
     }
     
     broker.value = data
+    
+    // Check if broker has portal access (user_profile linked)
+    const { data: profileData } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('broker_id', data.id)
+      .maybeSingle()
+    
+    brokerUserProfile.value = profileData
   } catch (error) {
     console.error('Error loading broker:', error)
     message.error('Failed to load broker details')
   } finally {
     loading.value = false
+  }
+}
+
+// Send invite to broker
+async function sendInvite() {
+  sendingInvite.value = true
+  try {
+    // JWT verification is disabled for this function, so we just send anon key.
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+    // Call the unified `invite-broker` edge function in "existing broker" mode
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-broker`,
+      {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anonKey ? { apikey: anonKey } : {})
+        },
+        body: JSON.stringify({
+          broker_id: broker.value.id
+        })
+      }
+    )
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to send invite')
+    }
+
+    if (result.email_sent) {
+      message.success('Invite sent! Broker will receive an email to set up their password.')
+    } else {
+      message.success('Account created! (Email not configured - share login link manually)')
+    }
+    
+    // Reload to update portal access status
+    await loadBroker()
+  } catch (error) {
+    console.error('Error sending invite:', error)
+    message.error(error.message || 'Failed to send invite')
+  } finally {
+    sendingInvite.value = false
   }
 }
 
@@ -933,7 +1011,7 @@ onMounted(async () => {
   // Check for hash to set active tab
   if (window.location.hash) {
     const tabName = window.location.hash.substring(1)
-    if (['basic', 'business', 'appointments', 'contract', 'performance', 'integration', 'notes', 'ai-templates', 'phone-numbers'].includes(tabName)) {
+    if (['basic', 'business', 'appointments', 'contract', 'performance', 'integration', 'notes', 'phone-numbers'].includes(tabName)) {
       activeTab.value = tabName
     }
   }

@@ -13,6 +13,7 @@
       <!-- Filters -->
       <n-space :size="12" style="margin-top: 0.75rem;" align="center">
         <n-select
+          v-if="isAdmin"
           v-model:value="brokerFilter"
           placeholder="Filter by Broker"
           clearable
@@ -27,8 +28,8 @@
           Refresh
         </n-button>
         
-        <!-- Broker Calendar Status (when filtered) -->
-        <div v-if="brokerFilter" class="broker-calendar-status">
+        <!-- Broker Calendar Status (when filtered) - Admin only -->
+        <div v-if="isAdmin && brokerFilter" class="broker-calendar-status">
           <CalendarSync :broker-id="brokerFilter" :compact="true" />
         </div>
       </n-space>
@@ -85,6 +86,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '@/lib/supabase'
 import { NCard, NSpace, NSelect, NButton, NIcon, NSpin, NModal, NTag, useMessage } from 'naive-ui'
+import { useAuth } from '@/composables/useAuth'
 import { CalendarOutline, RefreshOutline } from '@vicons/ionicons5'
 import CalendarSync from '@/components/CalendarSync.vue'
 import FullCalendar from '@fullcalendar/vue3'
@@ -93,6 +95,7 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 
 const message = useMessage()
+const { isAdmin } = useAuth()
 
 // Data
 const appointments = ref([])

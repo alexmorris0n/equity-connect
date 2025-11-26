@@ -12,7 +12,11 @@
             <n-icon><SearchOutline /></n-icon>
           </template>
         </n-input>
-        <n-button type="primary" @click="showAddBroker = true" style="width: 140px; flex-shrink: 0;">
+        <n-button 
+          v-if="isAdmin" 
+          type="primary" 
+          @click="showAddBrokerModal = true"
+        >
           <template #icon>
             <n-icon><AddOutline /></n-icon>
           </template>
@@ -20,6 +24,53 @@
         </n-button>
       </div>
     </div>
+
+    <!-- Add Broker Modal -->
+    <n-modal 
+      v-model:show="showAddBrokerModal" 
+      preset="card" 
+      title="Add New Broker"
+      style="width: 600px; max-width: 90vw;"
+    >
+      <n-form ref="formRef" :model="newBroker" :rules="formRules">
+        <n-form-item label="Contact Name" path="contact_name">
+          <n-input v-model:value="newBroker.contact_name" placeholder="John Smith" />
+        </n-form-item>
+        
+        <n-form-item label="Company Name" path="company_name">
+          <n-input v-model:value="newBroker.company_name" placeholder="ABC Mortgage" />
+        </n-form-item>
+        
+        <n-form-item label="Email" path="email">
+          <n-input v-model:value="newBroker.email" placeholder="john@example.com" />
+        </n-form-item>
+        
+        <n-form-item label="Phone" path="phone">
+          <n-input v-model:value="newBroker.phone" placeholder="(555) 123-4567" />
+        </n-form-item>
+        
+        <n-form-item label="NMLS Number" path="nmls_number">
+          <n-input v-model:value="newBroker.nmls_number" placeholder="123456" />
+        </n-form-item>
+        
+        <n-form-item label="License States" path="license_states">
+          <n-input v-model:value="newBroker.license_states" placeholder="CA, AZ, NV" />
+        </n-form-item>
+        
+        <n-form-item label="Daily Lead Capacity" path="daily_lead_capacity">
+          <n-input-number v-model:value="newBroker.daily_lead_capacity" :min="1" :max="100" />
+        </n-form-item>
+      </n-form>
+      
+      <template #footer>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+          <n-button @click="showAddBrokerModal = false">Cancel</n-button>
+          <n-button type="primary" :loading="saving" @click="createBroker">
+            Create Broker
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
 
     <div v-if="loading" class="loading-state">
       <n-spin size="large" />
@@ -32,8 +83,8 @@
         class="broker-card"
         @click="goToBrokerDetail(broker.id)"
       >
-        <div class="card-status" :class="broker.status">
-          <span class="status-badge">{{ broker.status }}</span>
+        <div class="card-status" :class="broker.display_status">
+          <span class="status-badge">{{ broker.has_portal_access ? 'Active' : 'Invite Pending' }}</span>
         </div>
 
         <div class="card-header">
@@ -91,30 +142,56 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/composables/useAuth'
 import {
   NButton,
   NInput,
+  NInputNumber,
   NIcon,
   NSpin,
   NEmpty,
+  NModal,
+  NForm,
+  NFormItem,
   useMessage
 } from 'naive-ui'
 import {
   SearchOutline,
-  AddOutline,
   MailOutline,
   CallOutline,
   BusinessOutline,
-  LocationOutline
+  LocationOutline,
+  AddOutline
 } from '@vicons/ionicons5'
 
 const router = useRouter()
 const message = useMessage()
+const { isAdmin, isBroker, userProfile } = useAuth()
 
 const brokers = ref([])
 const loading = ref(true)
 const searchQuery = ref('')
-const showAddBroker = ref(false)
+const showAddBrokerModal = ref(false)
+const saving = ref(false)
+const formRef = ref(null)
+
+// New broker form
+const newBroker = ref({
+  contact_name: '',
+  company_name: '',
+  email: '',
+  phone: '',
+  nmls_number: '',
+  license_states: '',
+  daily_lead_capacity: 5
+})
+
+// Form validation rules
+const formRules = {
+  contact_name: { required: true, message: 'Contact name is required', trigger: 'blur' },
+  company_name: { required: true, message: 'Company name is required', trigger: 'blur' },
+  email: { required: true, type: 'email', message: 'Valid email is required', trigger: 'blur' }
+}
 
 // Computed filtered brokers
 const filteredBrokers = computed(() => {
@@ -129,23 +206,115 @@ const filteredBrokers = computed(() => {
   )
 })
 
-// Load brokers from Supabase
+// Load brokers from Supabase with portal access status
 async function loadBrokers() {
   loading.value = true
   try {
-    const { data, error } = await supabase
+    // Fetch brokers
+    const { data: brokersData, error: brokersError } = await supabase
       .from('brokers')
       .select('*')
       .order('contact_name', { ascending: true })
     
-    if (error) throw error
+    if (brokersError) throw brokersError
     
-    brokers.value = data || []
+    // Fetch user_profiles to check portal access
+    const { data: profilesData } = await supabase
+      .from('user_profiles')
+      .select('broker_id')
+      .not('broker_id', 'is', null)
+    
+    // Create a Set of broker IDs that have portal access
+    const brokersWithAccess = new Set(profilesData?.map(p => p.broker_id) || [])
+    
+    // Add portal_status to each broker
+    brokers.value = (brokersData || []).map(broker => ({
+      ...broker,
+      has_portal_access: brokersWithAccess.has(broker.id),
+      display_status: brokersWithAccess.has(broker.id) ? 'active' : 'invite_pending'
+    }))
   } catch (error) {
     console.error('Error loading brokers:', error)
     message.error('Failed to load brokers')
   } finally {
     loading.value = false
+  }
+}
+
+// Create new broker via edge function (creates auth user + sends invite email)
+async function createBroker() {
+  // Validate form
+  try {
+    await formRef.value?.validate()
+  } catch (errors) {
+    return
+  }
+  
+  saving.value = true
+  try {
+    // Call edge function to create broker + auth user + send invite.
+    // JWT verification is disabled for this function, so we only send the anon key.
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-broker`,
+      {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anonKey ? { apikey: anonKey } : {})
+        },
+        body: JSON.stringify({
+          contact_name: newBroker.value.contact_name,
+          company_name: newBroker.value.company_name,
+          email: newBroker.value.email,
+          phone: newBroker.value.phone || null,
+          nmls_number: newBroker.value.nmls_number || null,
+          license_states: newBroker.value.license_states || null,
+          daily_lead_capacity: newBroker.value.daily_lead_capacity
+        })
+      }
+    )
+
+    const result = await response.json()
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to create broker')
+    }
+    
+    if (result.email_sent) {
+      message.success('Broker created! Invite email sent.')
+    } else {
+      message.success('Broker created! (Email not configured - share login link manually)')
+    }
+    
+    showAddBrokerModal.value = false
+    
+    // Reset form
+    newBroker.value = {
+      contact_name: '',
+      company_name: '',
+      email: '',
+      phone: '',
+      nmls_number: '',
+      license_states: '',
+      daily_lead_capacity: 5
+    }
+    
+    // Reload brokers list
+    await loadBrokers()
+    
+    // Navigate to the new broker's detail page
+    if (result.broker_id) {
+      router.push(`/brokers/${result.broker_id}`)
+    }
+  } catch (error) {
+    console.error('Error creating broker:', error)
+    message.error(error.message || 'Failed to create broker')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -175,6 +344,11 @@ function formatPhone(phone) {
 }
 
 onMounted(() => {
+  // Redirect brokers to their own detail page
+  if (isBroker.value && userProfile.value?.broker_id) {
+    router.replace(`/brokers/${userProfile.value.broker_id}`)
+    return
+  }
   loadBrokers()
 })
 </script>
@@ -248,14 +422,19 @@ onMounted(() => {
   color: #065f46;
 }
 
+.card-status.invite_pending .status-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .card-status.inactive .status-badge {
   background: #fee2e2;
   color: #991b1b;
 }
 
 .card-status.suspended .status-badge {
-  background: #fef3c7;
-  color: #92400e;
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .card-header {

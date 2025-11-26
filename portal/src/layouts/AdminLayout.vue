@@ -45,7 +45,7 @@
           </div>
           <transition name="fade">
             <div v-if="!sidebarCollapsed" class="user-role-only">
-              Administrator
+              {{ isAdmin ? 'Administrator' : 'Broker' }}
             </div>
           </transition>
         </div>
@@ -108,7 +108,7 @@ const { isDark } = useTheme()
 // Switch logo based on theme
 const barbaraLogo = computed(() => isDark.value ? barbaraLogoDark : barbaraLogoLight)
 const barbaraLogoCompact = computed(() => isDark.value ? barbaraLogoCompactDark : barbaraLogoCompactLight)
-const { user, broker, signOut } = useAuth()
+const { user, broker, userProfile, isAdmin, signOut } = useAuth()
 
 const sidebarCollapsed = ref(false)
 
@@ -125,7 +125,8 @@ watch(sidebarCollapsed, (v) => {
   try { localStorage.setItem('ec_sidebar_collapsed', v ? '1' : '0') } catch (_) {}
 })
 
-const menuOptions = [
+// All menu options with admin flag
+const allMenuOptions = [
   {
     key: 'dashboard',
     label: 'Dashboard',
@@ -148,7 +149,8 @@ const menuOptions = [
     key: 'analytics',
     label: 'Analytics',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(PulseOutline) }),
-    to: '/analytics'
+    to: '/analytics',
+    adminOnly: true
   },
   {
     key: 'appointments',
@@ -160,15 +162,25 @@ const menuOptions = [
     key: 'verticals',
     label: 'Verticals',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(LayersOutline) }),
-    to: '/verticals'
+    to: '/verticals',
+    adminOnly: true
   },
   {
     key: 'testy-control',
     label: 'Testy Control',
     icon: () => h(NIcon, { size: 18 }, { default: () => h(FlaskOutline) }),
-    to: '/testy-control'
+    to: '/testy-control',
+    adminOnly: true
   }
 ]
+
+// Filter menu based on user role
+const menuOptions = computed(() => {
+  if (isAdmin.value) {
+    return allMenuOptions
+  }
+  return allMenuOptions.filter(item => !item.adminOnly)
+})
 
 const routeKeyMap = {
   Dashboard: 'dashboard',

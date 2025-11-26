@@ -27,8 +27,8 @@ serve(async (req) => {
     if (error) {
       console.error('OAuth error:', error);
       const errorRedirect = broker_id 
-        ? `https://portal.equityconnect.com/brokers/${broker_id}?calendar_error=${encodeURIComponent(error)}`
-        : `https://portal.equityconnect.com/dashboard?calendar_error=${encodeURIComponent(error)}`;
+        ? `https://app.barbarpro.com/brokers/${broker_id}?calendar_error=${encodeURIComponent(error)}`
+        : `https://app.barbarpro.com/dashboard?calendar_error=${encodeURIComponent(error)}`;
       return Response.redirect(errorRedirect);
     }
 
@@ -121,14 +121,14 @@ serve(async (req) => {
 
     // Redirect back to broker detail page with success
     return Response.redirect(
-      `https://portal.equityconnect.com/brokers/${broker_id}?calendar_synced=true`
+      `https://app.barbarpro.com/brokers/${broker_id}?calendar_synced=true`
     );
 
   } catch (error) {
     console.error('OAuth callback error:', error);
     const errorRedirect = broker_id 
-      ? `https://portal.equityconnect.com/brokers/${broker_id}?calendar_error=${encodeURIComponent(error.message)}`
-      : `https://portal.equityconnect.com/dashboard?calendar_error=${encodeURIComponent(error.message)}`;
+      ? `https://app.barbarpro.com/brokers/${broker_id}?calendar_error=${encodeURIComponent(error.message)}`
+      : `https://app.barbarpro.com/dashboard?calendar_error=${encodeURIComponent(error.message)}`;
     return Response.redirect(errorRedirect);
   }
 });

@@ -42,6 +42,7 @@
           style="min-width: 160px;"
         />
         <n-select
+          v-if="isAdmin"
           v-model:value="brokerFilter"
           placeholder="Broker"
           clearable
@@ -86,7 +87,7 @@
               <ArrowDownOutline v-else />
             </n-icon>
           </div>
-          <div class="th-cell sortable" @click="handleSort('broker')">
+          <div v-if="isAdmin" class="th-cell sortable" @click="handleSort('broker')">
             Broker
             <n-icon v-if="sortField === 'broker'" size="14" class="sort-icon">
               <ArrowUpOutline v-if="sortOrder === 'asc'" />
@@ -130,7 +131,7 @@
               </n-tag>
               <span v-else>N/A</span>
             </div>
-            <div class="td-cell ellipsis">{{ lead.broker_name || 'Unassigned' }}</div>
+            <div v-if="isAdmin" class="td-cell ellipsis">{{ lead.broker_name || 'Unassigned' }}</div>
             <div class="td-cell">{{ formatAge(lead) }}</div>
             <div class="td-cell">{{ formatRelativeTime(lead.last_contact || lead.updated_at) }}</div>
           </div>
@@ -162,6 +163,7 @@ import {
   NIcon,
   NSpin
 } from 'naive-ui'
+import { useAuth } from '@/composables/useAuth'
 import {
   PeopleOutline,
   SearchOutline,
@@ -170,6 +172,7 @@ import {
 } from '@vicons/ionicons5'
 
 const router = useRouter()
+const { isAdmin } = useAuth()
 const loading = ref(false)
 const leads = ref([])
 const brokers = ref([])
