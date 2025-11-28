@@ -420,6 +420,73 @@
                   </label>
                   <small class="form-hint">When enabled, AI waits for caller to finish speaking before responding (recommended for better conversation control)</small>
                 </div>
+
+                <div class="form-group">
+                  <label>Initial Sleep (ms)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.initial_sleep_ms" 
+                    min="0" 
+                    max="5000" 
+                    step="100"
+                    placeholder="0"
+                  />
+                  <small class="form-hint">Delay before listening starts (0-5000ms). Use for initial greeting buffer.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>Energy Level</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.energy_level" 
+                    min="0" 
+                    max="255" 
+                    step="5"
+                    placeholder="50"
+                  />
+                  <small class="form-hint">Minimum audio level to detect speech (0-255). Lower = detects quieter speech.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>
+                    Barge Confidence
+                    <span style="font-weight: normal; color: rgba(255, 255, 255, 0.6); margin-left: 8px;">
+                      {{ (signalwireConfig.barge_confidence ?? 0.6).toFixed(2) }}
+                    </span>
+                  </label>
+                  <div class="slider-wrapper">
+                    <div 
+                      class="slider-fill" 
+                      :style="{ width: ((signalwireConfig.barge_confidence ?? 0.6) / 1 * 100) + '%' }"
+                    ></div>
+                    <input
+                      type="range"
+                      v-model.number="signalwireConfig.barge_confidence"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                    />
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 12px; color: rgba(255, 255, 255, 0.5); margin-top: 4px;">
+                    <span>0.0 (Very Sensitive)</span>
+                    <span>0.6 (Default)</span>
+                    <span>1.0 (Less Sensitive)</span>
+                  </div>
+                  <small class="form-hint">Speech detection confidence threshold. Lower = more responsive to barge-in.</small>
+                </div>
+
+                <div class="form-group">
+                  <label>First Word Timeout (ms)</label>
+                  <input 
+                    type="number" 
+                    v-model.number="signalwireConfig.first_word_timeout" 
+                    min="1000" 
+                    max="10000" 
+                    step="500"
+                    placeholder="3000"
+                  />
+                  <small class="form-hint">How long to wait for first word before timeout (1000-10000ms)</small>
+                </div>
               </div>
 
               <!-- LLM Behavior Parameters Section -->
@@ -1747,6 +1814,11 @@ const signalwireConfig = ref({
   end_of_speech_timeout: 2000,
   attention_timeout: 8000,
   transparent_barge: false,
+  // Speech detection parameters (stored in agent_params)
+  initial_sleep_ms: 0,
+  energy_level: 50,
+  barge_confidence: 0.6,
+  first_word_timeout: 3000,
   // LLM behavior parameters (stored in agent_params)
   temperature: 0.7,
   top_p: 1.0,
@@ -2809,7 +2881,7 @@ async function loadSignalWireConfig() {
     // Load behavior params from agent_params (source of truth for SignalWire)
     const { data: paramsData, error: paramsError } = await supabase
       .from('agent_params')
-      .select('end_of_speech_timeout, attention_timeout, transparent_barge, temperature, top_p, frequency_penalty, presence_penalty')
+      .select('end_of_speech_timeout, attention_timeout, transparent_barge, initial_sleep_ms, energy_level, barge_confidence, first_word_timeout, temperature, top_p, frequency_penalty, presence_penalty')
       .eq('vertical', selectedVertical.value)
       .eq('language', signalwireConfig.value.language_code)
       .eq('is_active', true)
@@ -2835,6 +2907,11 @@ async function loadSignalWireConfig() {
         end_of_speech_timeout: paramsData?.end_of_speech_timeout ?? data.end_of_speech_timeout ?? 2500,
         attention_timeout: paramsData?.attention_timeout ?? data.attention_timeout ?? 10000,
         transparent_barge: paramsData?.transparent_barge ?? data.transparent_barge ?? false,
+        // Speech detection params from agent_params
+        initial_sleep_ms: paramsData?.initial_sleep_ms ?? 0,
+        energy_level: paramsData?.energy_level ?? 50,
+        barge_confidence: paramsData?.barge_confidence ?? 0.6,
+        first_word_timeout: paramsData?.first_word_timeout ?? 3000,
         // LLM behavior params from agent_params
         temperature: paramsData?.temperature ?? 0.7,
         top_p: paramsData?.top_p ?? 1.0,
@@ -2845,6 +2922,10 @@ async function loadSignalWireConfig() {
         end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout,
         attention_timeout: signalwireConfig.value.attention_timeout,
         transparent_barge: signalwireConfig.value.transparent_barge,
+        initial_sleep_ms: signalwireConfig.value.initial_sleep_ms,
+        energy_level: signalwireConfig.value.energy_level,
+        barge_confidence: signalwireConfig.value.barge_confidence,
+        first_word_timeout: signalwireConfig.value.first_word_timeout,
         temperature: signalwireConfig.value.temperature,
         top_p: signalwireConfig.value.top_p,
         frequency_penalty: signalwireConfig.value.frequency_penalty,
@@ -2874,6 +2955,10 @@ async function saveSignalWireConfig() {
       end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout,
       attention_timeout: signalwireConfig.value.attention_timeout,
       transparent_barge: signalwireConfig.value.transparent_barge,
+      initial_sleep_ms: signalwireConfig.value.initial_sleep_ms,
+      energy_level: signalwireConfig.value.energy_level,
+      barge_confidence: signalwireConfig.value.barge_confidence,
+      first_word_timeout: signalwireConfig.value.first_word_timeout,
       temperature: signalwireConfig.value.temperature,
       top_p: signalwireConfig.value.top_p,
       frequency_penalty: signalwireConfig.value.frequency_penalty,
@@ -2971,6 +3056,11 @@ async function saveSignalWireConfig() {
       end_of_speech_timeout: signalwireConfig.value.end_of_speech_timeout ?? 2500,
       attention_timeout: signalwireConfig.value.attention_timeout ?? 10000,
       transparent_barge: signalwireConfig.value.transparent_barge ?? false,
+      // Speech detection params
+      initial_sleep_ms: signalwireConfig.value.initial_sleep_ms ?? 0,
+      energy_level: signalwireConfig.value.energy_level ?? 50,
+      barge_confidence: signalwireConfig.value.barge_confidence ?? 0.6,
+      first_word_timeout: signalwireConfig.value.first_word_timeout ?? 3000,
       // LLM behavior params - explicitly convert to numbers
       temperature: Number(signalwireConfig.value.temperature ?? 0.7),
       top_p: Number(signalwireConfig.value.top_p ?? 1.0),
@@ -2981,6 +3071,10 @@ async function saveSignalWireConfig() {
     }
     
     console.log('💾 Saving agent_params with values:', {
+      initial_sleep_ms: agentParamsData.initial_sleep_ms,
+      energy_level: agentParamsData.energy_level,
+      barge_confidence: agentParamsData.barge_confidence,
+      first_word_timeout: agentParamsData.first_word_timeout,
       temperature: agentParamsData.temperature,
       top_p: agentParamsData.top_p,
       frequency_penalty: agentParamsData.frequency_penalty,
