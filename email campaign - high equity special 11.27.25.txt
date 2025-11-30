@@ -1,0 +1,83 @@
+EMAIL 1 - Curiosity Opener
+Subject: {{RANDOM | Quick question about your {{property_city}} home | Saw your property on {{property_address}} | Question about your home equity}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+I'm {{accountSignature}} with Equity Connect.
+I came across your {{property_city}} property and noticed you have {{RANDOM | roughly | approximately | around}} {{estimated_equity}} in equity.
+{{RANDOM | Here's something many homeowners in your position don't realize | What a lot of high-equity homeowners don't know}}: you may be able to access a {{RANDOM | significant portion | large part}} of that equity without selling, moving, or taking on monthly payments.
+It's called a reverse mortgage - FHA-backed and used by thousands of homeowners as a {{RANDOM | retirement planning tool | financial strategy}}.
+{{RANDOM | Is this something you've looked into before? | Have you ever explored this option? | Is this something you've considered?}}
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
+
+EMAIL 2 - Value Add (Tax/Estate Angle)
+Subject: {{RANDOM | Why high-equity homeowners use this | A few things worth knowing | Following up on your {{property_city}} home}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+{{RANDOM | Wanted to share | Thought I'd mention}} a few reasons homeowners with equity like yours explore this option:
+The funds aren't treated as taxable income - unlike withdrawing from retirement accounts or selling investments. {{RANDOM | That can make a real difference | This matters}} come tax time.
+Your liquid savings stay intact for your family. You use your home equity for your lifestyle instead. {{RANDOM | And | Plus}} your heirs still inherit any remaining equity after the loan is repaid.
+It also gives you flexibility - whether that's monthly income, a lump sum, or a line of credit you can tap when needed.
+{{RANDOM | Any questions about how this works? | Anything you'd like me to clarify? | Want me to explain any part of this?}}
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
+
+EMAIL 3 - Direct Ask
+Subject: {{RANDOM | Worth a quick conversation? | 3 minutes to see if you qualify | Quick call about your options}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+I know you're {{RANDOM | probably busy | getting a lot of emails}}, so I'll keep this short.
+If you're curious whether this makes sense for your situation, we can {{RANDOM | find out quickly | verify in just a few minutes}}.
+We'll call to confirm eligibility - takes about 3 minutes - then connect you with {{broker_name}}, a licensed specialist in your area, to {{RANDOM | walk through your options | discuss your specific situation}}.
+{{RANDOM | If you're open to it | If that sounds worthwhile}}, just reply with your phone number and a good time to reach you.
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
+
+EMAIL 4 - Hail Mary with Microsite
+Subject: {{RANDOM | Your personalized breakdown | Last note from me | Your {{property_city}} equity analysis}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+This is my last message.
+I put together a personalized calculator for your {{property_city}} property - it shows your estimated equity, what you could access, and how the different options compare.
+👉 [View Your Personalized Analysis]
+{{RANDOM | Feel free to share it with your financial advisor if you work with one | Many of my clients share this with their advisor before deciding}}.
+Two ways to move forward:
+
+Review the calculator, then click "Get Pre-Qualified" to schedule
+Reply here with your phone number and we'll call you {{RANDOM | today | directly}}
+
+If I don't hear back, I'll close your file - but no hard feelings either way.
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048

@@ -23,7 +23,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? '';
+    const brevoApiKey = Deno.env.get('BREVO_API_KEY') ?? '';
 
     // Get broker_id from request
     const { broker_id } = await req.json();
@@ -107,6 +107,16 @@ serve(async (req) => {
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Generate password reset link
+    // The redirectTo should point to your portal's login/reset page
+    const portalUrl = Deno.env.get('PORTAL_URL') || 'https://app.barbarapro.com';
+    
+    const { data: resetData, error: resetError } = await adminClient.auth.admin.generateLink({
+      type: 'recovery',
+      email: broker.email.toLowerCase(),
+      options: {
+        redirectTo: `${portalUrl}/login`
+      }
+    });
 
     if (resetError) {
       console.error('Failed to generate reset link:', resetError);
@@ -114,88 +124,135 @@ serve(async (req) => {
 
     const resetLink = resetData?.properties?.action_link || null;
 
-    // Send invite email via Resend
+    // Send invite email via Brevo
     let emailSent = false;
-    if (resendApiKey && resetLink) {
+    if (brevoApiKey && resetLink) {
+      // Logo URL - host your Barbara logo PNG somewhere accessible
+      const logoUrl = 'https://app.barbarapro.com/barbara-logo-light.png';
+      
       const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Barbara</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc;">
+<body style="margin: 0; padding: 0; background-color: #0f0f23; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0f0f23;">
     <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
-          
+      <td align="center" style="padding: 48px 24px;">
+        
+        <!-- Logo -->
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width: 560px;">
           <tr>
-            <td style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%); padding: 40px 40px 30px 40px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">Barbara</h1>
-              <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.85); font-size: 14px; font-weight: 500;">by Equity Connect</p>
+            <td align="center" style="padding-bottom: 32px;">
+              <img src="${logoUrl}" alt="Barbara" width="180" style="display: block; max-width: 180px; height: auto;" />
             </td>
           </tr>
+        </table>
+        
+        <!-- Main Card -->
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width: 560px; background: linear-gradient(180deg, #1a1a2e 0%, #16162a 100%); border-radius: 24px; border: 1px solid rgba(139, 92, 246, 0.2); overflow: hidden;">
           
+          <!-- Header accent -->
           <tr>
-            <td style="padding: 40px;">
-              <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 24px; font-weight: 600;">Welcome to the team! 🎉</h2>
+            <td style="height: 4px; background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 50%, #c4b5fd 100%);"></td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 48px 40px;">
               
-              <p style="margin: 0 0 16px 0; color: #475569; font-size: 16px; line-height: 1.6;">
-                Hi <strong>${broker.contact_name}</strong>,
+              <!-- Welcome Badge -->
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 20px; padding: 6px 16px;">
+                    <span style="color: #a78bfa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Welcome to the Team</span>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- Greeting -->
+              <h1 style="margin: 0 0 16px 0; color: #ffffff; font-size: 28px; font-weight: 700; line-height: 1.3;">
+                Hi ${broker.contact_name},
+              </h1>
+              
+              <p style="margin: 0 0 32px 0; color: #a1a1aa; font-size: 16px; line-height: 1.7;">
+                Your broker account at <span style="color: #ffffff; font-weight: 500;">${broker.company_name}</span> is ready. Access your personalized dashboard to manage leads, track appointments, and grow your business.
               </p>
               
-              <p style="margin: 0 0 24px 0; color: #475569; font-size: 16px; line-height: 1.6;">
-                Your broker account at <strong>${broker.company_name}</strong> has been created. You're just one click away from accessing your personalized dashboard where you can manage leads, track appointments, and grow your business.
-              </p>
-              
+              <!-- CTA Button -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td align="center" style="padding: 10px 0 30px 0;">
-                    <a href="${resetLink}" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);">
-                      Set Your Password →
+                  <td align="center" style="padding: 8px 0 40px 0;">
+                    <a href="${resetLink}" style="display: inline-block; background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); color: #ffffff; text-decoration: none; padding: 18px 48px; border-radius: 12px; font-size: 16px; font-weight: 600; letter-spacing: 0.3px; box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255,255,255,0.2);">
+                      Get Started →
                     </a>
                   </td>
                 </tr>
               </table>
               
-              <div style="background-color: #f8fafc; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 16px 0; color: #1e293b; font-size: 16px; font-weight: 600;">What's next?</h3>
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                  <tr>
-                    <td style="padding: 8px 0; color: #475569; font-size: 14px;">
-                      <span style="color: #6366f1; font-weight: bold; margin-right: 8px;">1.</span> Set your secure password
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #475569; font-size: 14px;">
-                      <span style="color: #6366f1; font-weight: bold; margin-right: 8px;">2.</span> Connect your calendar for appointments
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #475569; font-size: 14px;">
-                      <span style="color: #6366f1; font-weight: bold; margin-right: 8px;">3.</span> Start receiving qualified leads
-                    </td>
-                  </tr>
-                </table>
-              </div>
+              <!-- Divider -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 32px;">
+                <tr>
+                  <td style="height: 1px; background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.3) 50%, transparent 100%);"></td>
+                </tr>
+              </table>
               
-              <p style="margin: 0; color: #94a3b8; font-size: 13px; line-height: 1.5;">
-                This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.
-              </p>
+              <!-- Steps -->
+              <p style="margin: 0 0 20px 0; color: #71717a; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">What's Next</p>
+              
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="padding: 12px 0;">
+                    <table role="presentation" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width: 32px; height: 32px; background: rgba(139, 92, 246, 0.15); border-radius: 8px; text-align: center; vertical-align: middle;">
+                          <span style="color: #a78bfa; font-size: 14px; font-weight: 700;">1</span>
+                        </td>
+                        <td style="padding-left: 16px; color: #d4d4d8; font-size: 15px;">Set your secure password</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0;">
+                    <table role="presentation" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width: 32px; height: 32px; background: rgba(139, 92, 246, 0.15); border-radius: 8px; text-align: center; vertical-align: middle;">
+                          <span style="color: #a78bfa; font-size: 14px; font-weight: 700;">2</span>
+                        </td>
+                        <td style="padding-left: 16px; color: #d4d4d8; font-size: 15px;">Connect your calendar</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0;">
+                    <table role="presentation" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width: 32px; height: 32px; background: rgba(139, 92, 246, 0.15); border-radius: 8px; text-align: center; vertical-align: middle;">
+                          <span style="color: #a78bfa; font-size: 14px; font-weight: 700;">3</span>
+                        </td>
+                        <td style="padding-left: 16px; color: #d4d4d8; font-size: 15px;">Start receiving qualified leads</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
             </td>
           </tr>
           
+          <!-- Footer -->
           <tr>
-            <td style="background-color: #f8fafc; padding: 24px 40px; border-top: 1px solid #e2e8f0;">
+            <td style="background: rgba(0,0,0,0.2); padding: 24px 40px; border-top: 1px solid rgba(139, 92, 246, 0.1);">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td style="color: #64748b; font-size: 13px;">
-                    <strong style="color: #475569;">Equity Connect</strong><br>
-                    Helping homeowners unlock their equity
-                  </td>
-                  <td align="right" style="color: #94a3b8; font-size: 12px;">
-                    © ${new Date().getFullYear()} Equity Connect
+                  <td style="color: #71717a; font-size: 13px; line-height: 1.5;">
+                    This link expires in 24 hours.<br>
+                    <span style="color: #52525b;">If you didn't request this, ignore this email.</span>
                   </td>
                 </tr>
               </table>
@@ -204,9 +261,20 @@ serve(async (req) => {
           
         </table>
         
-        <p style="margin: 24px 0 0 0; color: #94a3b8; font-size: 12px; text-align: center;">
-          Questions? Reply to this email or contact support@equityconnectguide.com
-        </p>
+        <!-- Bottom text -->
+        <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width: 560px;">
+          <tr>
+            <td align="center" style="padding: 32px 0 0 0;">
+              <p style="margin: 0 0 8px 0; color: #52525b; font-size: 13px;">
+                Questions? <a href="mailto:support@barbarapro.com" style="color: #8b5cf6; text-decoration: none;">support@barbarapro.com</a>
+              </p>
+              <p style="margin: 0; color: #3f3f46; font-size: 12px;">
+                © ${new Date().getFullYear()} Barbara
+              </p>
+            </td>
+          </tr>
+        </table>
+        
       </td>
     </tr>
   </table>
@@ -214,17 +282,17 @@ serve(async (req) => {
 </html>
       `;
 
-      const emailResponse = await fetch('https://api.resend.com/emails', {
+      const emailResponse = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${resendApiKey}`
+          'api-key': brevoApiKey
         },
         body: JSON.stringify({
-          from: 'Barbara by Equity Connect <noreply@equityconnect.com>',
-          to: [broker.email],
+          sender: { name: 'Barbara by Equity Connect', email: 'noreply@barbarapro.com' },
+          to: [{ email: broker.email, name: broker.contact_name }],
           subject: `Welcome to Equity Connect, ${broker.contact_name}! 🎉`,
-          html: emailHtml
+          htmlContent: emailHtml
         })
       });
 

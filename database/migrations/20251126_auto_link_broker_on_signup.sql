@@ -43,3 +43,10 @@ CREATE TRIGGER on_auth_user_created
 -- Comment
 COMMENT ON FUNCTION public.handle_new_user() IS 'Auto-creates user_profiles record when new user signs up. If email matches a broker, links them as role=broker.';
 
+
+
+
+
+
+
+

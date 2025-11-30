@@ -1,0 +1,82 @@
+EMAIL 1 - Curiosity Opener
+Subject: {{RANDOM | Quick question about your {{property_city}} home | Your home equity - quick question | Thought you should know this}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+I'm {{accountSignature}} with Equity Connect.
+I came across your {{property_city}} property and noticed you've built {{RANDOM | solid | good | real}} equity - {{RANDOM | roughly | approximately | around}} {{estimated_equity}}.
+{{RANDOM | Here's something a lot of homeowners don't realize | What many homeowners in your position don't know}}: you may be able to access between {{equity_50_percent}} and {{equity_60_percent}} of that without selling, moving, or taking on a monthly payment.
+It's called a reverse mortgage - federally insured and used by thousands of homeowners {{RANDOM | every year | as a retirement tool}}.
+{{RANDOM | Is this something you've thought about? | Have you ever looked into this? | Is this on your radar at all?}}
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
+
+EMAIL 2 - Value Add (Practical/Lifestyle)
+Subject: {{RANDOM | What people use this for | A few things worth knowing | Following up - your {{property_city}} equity}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+{{RANDOM | Wanted to share | Thought I'd mention}} how homeowners with equity like yours typically use this.
+Some use it for retirement income - a monthly deposit that {{RANDOM | supplements | adds to}} Social Security or savings. Others keep it as a line of credit for medical expenses or emergencies down the road.
+A lot of folks use it for home modifications - walk-in showers, ramps, things that make it easier to stay in their home long-term.
+The funds aren't treated as taxable income, and there's nothing to pay back while you live there.
+{{RANDOM | Any questions about how this works? | Anything you'd like me to explain? | Want me to walk through any of this?}}
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
+
+EMAIL 3 - Direct Ask
+Subject: {{RANDOM | Worth a quick call? | 3 minutes to check eligibility | Quick question for you}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+I know you're {{RANDOM | probably busy | getting plenty of emails}}, so I'll be quick.
+If you're curious whether this could work for your situation, we can find out {{RANDOM | fast | in just a few minutes}}.
+We'll call to verify eligibility - takes about 3 minutes - then connect you with {{broker_name}}, a licensed specialist in {{property_city}}, to {{RANDOM | go over your options | talk through the details}}.
+{{RANDOM | If you're open to it | If that sounds reasonable}}, just reply with your phone number and a good time to reach you.
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
+
+EMAIL 4 - Hail Mary with Microsite
+Subject: {{RANDOM | Your personalized numbers | Last note from me | Your {{property_city}} equity breakdown}}
+
+{{RANDOM | Hi | Hello}} {{firstName}},
+This is my last message.
+I put together a personalized calculator for your {{property_city}} property - it shows your equity, what you could access, and how the different options compare (monthly income, lump sum, or line of credit).
+👉 [View Your Personalized Calculator]
+Two ways to move forward:
+
+Review the calculator, then click "Get Pre-Qualified" to schedule
+Reply here with your phone number and we'll call you {{RANDOM | today | directly}}
+
+If I don't hear back, I'll close your file - {{RANDOM | no hard feelings either way | but no pressure}}.
+
+Best,
+{{accountSignature}}
+Pre-Qualification Coordinator
+Equity Connect
+Working with {{broker_name}}
+NMLS #{{broker_nmls}}
+
+Reply "STOP" to unsubscribe
+Barbara LLC | 6210 Wilshire Blvd, Ste 200 PMB, Los Angeles, CA 90048
