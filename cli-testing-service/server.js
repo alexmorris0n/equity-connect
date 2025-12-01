@@ -2,6 +2,7 @@
  * CLI Testing Service - Complete Standalone Service
  * 
  * Provides HTTP API for executing swaig-test CLI commands from Portal UI.
+ * Also provides outbound call triggering for test scenarios.
  * This is a complete service, separate from the deprecated bridge/ folder.
  */
 
@@ -13,6 +14,13 @@ const { executeRoutingValidator } = require('./validate-routing');
 // Configuration
 const PORT = process.env.PORT || 8080;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// SignalWire outbound call config
+const SIGNALWIRE_SPACE_URL = process.env.SIGNALWIRE_SPACE_URL;
+const SIGNALWIRE_PROJECT_ID = process.env.SIGNALWIRE_PROJECT_ID;
+const SIGNALWIRE_API_TOKEN = process.env.SIGNALWIRE_API_TOKEN;
+const SIGNALWIRE_PHONE_NUMBER = process.env.SIGNALWIRE_PHONE_NUMBER;
+const SWAIG_AGENT_URL = process.env.SWAIG_AGENT_URL || 'https://equity-connect.fly.dev/agent';
 
 // Initialize Fastify
 const app = Fastify({
@@ -27,15 +35,35 @@ const app = Fastify({
 
 // Register CORS plugin for Portal UI
 app.register(require('@fastify/cors'), {
-  origin: [
-    // Production portal (update with your actual Vercel domain)
-    process.env.PORTAL_URL || 'https://your-portal-name.vercel.app',
-    // Local development
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:5173',  // Vite default alternate port
-    'http://127.0.0.1:5173'
-  ],
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, curl, etc)
+    if (!origin) return cb(null, true);
+    
+    // Allow localhost for development
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return cb(null, true);
+    }
+    
+    // Allow all Vercel deployments
+    if (origin.includes('.vercel.app')) {
+      return cb(null, true);
+    }
+    
+    // Allow specific production domains
+    const allowedOrigins = [
+      process.env.PORTAL_URL,
+      'https://equity-connect-portal.vercel.app',
+      'https://barbara-portal.vercel.app'
+    ].filter(Boolean);
+    
+    if (allowedOrigins.includes(origin)) {
+      return cb(null, true);
+    }
+    
+    // Log blocked origins for debugging
+    console.log(`CORS blocked origin: ${origin}`);
+    cb(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 });
@@ -158,6 +186,84 @@ app.post('/api/validate-routing', async (request, reply) => {
   }
 });
 
+/**
+ * Trigger Outbound Call API
+ * Triggers an outbound call to a lead via SignalWire
+ * POST /trigger-call
+ * 
+ * Body: { to_phone, lead_id?, from_phone? }
+ * Returns: { success, call_id, message }
+ */
+app.post('/trigger-call', async (request, reply) => {
+  try {
+    const { to_phone, lead_id, from_phone } = request.body || {};
+    
+    if (!to_phone) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Missing required field: to_phone'
+      });
+    }
+    
+    // Check SignalWire credentials
+    if (!SIGNALWIRE_PROJECT_ID || !SIGNALWIRE_API_TOKEN || !SIGNALWIRE_SPACE_URL) {
+      return reply.code(500).send({
+        success: false,
+        error: 'SignalWire credentials not configured. Set SIGNALWIRE_PROJECT_ID, SIGNALWIRE_API_TOKEN, SIGNALWIRE_SPACE_URL'
+      });
+    }
+    
+    app.log.info({ 
+      to_phone, 
+      lead_id,
+      from_phone: from_phone || SIGNALWIRE_PHONE_NUMBER
+    }, '[trigger-call] Creating outbound call via SignalWire');
+    
+    const auth = Buffer.from(`${SIGNALWIRE_PROJECT_ID}:${SIGNALWIRE_API_TOKEN}`).toString('base64');
+    
+    const response = await fetch(`${SIGNALWIRE_SPACE_URL}/api/laml/2010-04-01/Accounts/${SIGNALWIRE_PROJECT_ID}/Calls.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${auth}`
+      },
+      body: new URLSearchParams({
+        To: to_phone,
+        From: from_phone || SIGNALWIRE_PHONE_NUMBER,
+        Url: SWAIG_AGENT_URL,
+        Method: 'POST'
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (!result.sid) {
+      app.log.error({ result }, '[trigger-call] SignalWire call creation failed');
+      return reply.code(500).send({
+        success: false,
+        error: result.message || result.error || 'SignalWire call creation failed'
+      });
+    }
+    
+    app.log.info({ 
+      call_sid: result.sid
+    }, '[trigger-call] ✅ Call created');
+    
+    return reply.code(200).send({
+      success: true,
+      call_id: result.sid,
+      message: 'Outbound call initiated via SignalWire'
+    });
+    
+  } catch (err) {
+    app.log.error({ err }, '[trigger-call] Error triggering call');
+    return reply.code(500).send({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 // Start server
 async function start() {
   try {
@@ -169,7 +275,8 @@ async function start() {
     console.log('\n🚀 CLI Testing Service Started');
     console.log(`   Environment: ${NODE_ENV}`);
     console.log(`   Health: http://localhost:${PORT}/healthz`);
-    console.log(`   Test API: POST http://localhost:${PORT}/api/test-cli\n`);
+    console.log(`   Test API: POST http://localhost:${PORT}/api/test-cli`);
+    console.log(`   Trigger Call: POST http://localhost:${PORT}/trigger-call\n`);
     
   } catch (err) {
     app.log.error(err);
