@@ -325,7 +325,7 @@ export default {
 
       this.callingTesty = true
       try {
-        const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'https://equity-connect-cli-testing.fly.dev'
+        const CLI_TESTING_URL = import.meta.env.VITE_CLI_TESTING_URL || 'https://barbara-cli-testing.fly.dev'
         
         const response = await fetch(`${CLI_TESTING_URL}/trigger-call`, {
           method: 'POST',
