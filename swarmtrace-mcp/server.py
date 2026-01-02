@@ -116,10 +116,19 @@ class BatchSkipTraceArgs(BaseModel):
     )
 
 
+class PrimaryContact(BaseModel):
+    """Lean primary contact information."""
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+
+
 class SkipTraceResult(BaseModel):
     index: int
     input: dict[str, Any]
-    contacts: list[dict[str, Any]] | None = None
+    primary_contact: PrimaryContact | None = None
+    contacts: list[dict[str, Any]] | None = None  # Deprecated: kept for backward compatibility
     error: str | None = None
     status_code: int | None = None
     duration_ms: float | None = None
@@ -275,7 +284,7 @@ class SwarmTraceClient:
 def _compute_stats(results: list[SkipTraceResult]) -> Stats:
     total = len(results)
     successful_calls = sum(1 for r in results if r.status_code == 200)
-    billable_hits = sum(1 for r in results if r.contacts)
+    billable_hits = sum(1 for r in results if r.primary_contact)
     api_failures = sum(1 for r in results if r.status_code and r.status_code >= 400)
     validation_failures = sum(1 for r in results if r.status_code == 0)
 
@@ -333,19 +342,65 @@ async def _call_swarmtrace(
             return status_code, data, duration_ms
 
 
+def _extract_primary_contact(contacts: list[dict[str, Any]]) -> PrimaryContact | None:
+    """Extract lean primary contact data: first name, last name, top email, top phone."""
+    if not contacts:
+        return None
+    
+    # Get the first contact as primary
+    primary = contacts[0]
+    
+    # Extract first name and last name from names array
+    first_name = None
+    last_name = None
+    names = primary.get("names", [])
+    if names and len(names) > 0:
+        first_name = names[0].get("firstname")
+        last_name = names[0].get("lastname")
+    
+    # Extract top-ranked email (first email in the list)
+    email = None
+    emails = primary.get("emails", [])
+    if emails and len(emails) > 0:
+        email = emails[0].get("email")
+    
+    # Extract top-ranked phone (first phone in the list)
+    phone = None
+    phones = primary.get("phones", [])
+    if phones and len(phones) > 0:
+        phone = phones[0].get("phonenumber")
+    
+    # Only return if we have at least some data
+    if first_name or last_name or email or phone:
+        return PrimaryContact(
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=phone,
+        )
+    
+    return None
+
+
 def _serialize_result(index: int, payload: dict[str, Any], status: int, data: dict[str, Any], duration_ms: float) -> SkipTraceResult:
     error_message = None
     contacts = None
+    primary_contact = None
+    
     if status == 200:
         contacts = data.get("contacts") or []
-        if not contacts:
+        if contacts:
+            primary_contact = _extract_primary_contact(contacts)
+        else:
             contacts = None
     else:
         error_message = data.get("status", {}).get("error") or data.get("error") or json.dumps(data)
+    
     return SkipTraceResult(
         index=index,
         input=payload,
-        contacts=contacts,
+        primary_contact=primary_contact,
+        contacts=None,  # Set to None to reduce bloat - only include primary_contact
         error=error_message,
         status_code=status,
         duration_ms=duration_ms,
@@ -356,6 +411,7 @@ def _serialize_validation_error(index: int, payload: dict[str, Any], error: str)
     return SkipTraceResult(
         index=index,
         input=payload,
+        primary_contact=None,
         contacts=None,
         error=error,
         status_code=0,
@@ -367,7 +423,7 @@ def _filter_results(results: list[SkipTraceResult]) -> tuple[list[SkipTraceResul
     successful: list[SkipTraceResult] = []
     failed: list[SkipTraceResult] = []
     for r in results:
-        if r.contacts:
+        if r.primary_contact:
             successful.append(r)
         else:
             failed.append(r)
@@ -470,6 +526,7 @@ async def batch_skip_trace(
                         SkipTraceResult(
                             index=index,
                             input=payload,
+                            primary_contact=None,
                             contacts=None,
                             error="Cancelled due to upstream error",
                             status_code=0,
@@ -507,6 +564,7 @@ async def batch_skip_trace(
                     SkipTraceResult(
                         index=index,
                         input=payload,
+                        primary_contact=None,
                         contacts=None,
                         error="Cancelled due to upstream error",
                         status_code=0,
